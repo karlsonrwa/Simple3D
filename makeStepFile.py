@@ -291,7 +291,7 @@ def main():
                 # shift the packge to symbol position
                 if data[ref]['is_mirrored']:
                     rotation_x = -180.0
-                    z = -2.0
+                    z = - data['pcb']['thickness']
                 else:
                     rotation_x = 0.0
                     z = 0.0
