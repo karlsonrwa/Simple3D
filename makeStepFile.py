@@ -1,6 +1,5 @@
 import argparse
 import os
-# import sys
 import warnings
 import json
 import math
@@ -205,7 +204,7 @@ def save_step_file(shape, filename):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Process some integers.',
+        description='Generate STEP file.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
     parser.add_argument('file',
