@@ -435,6 +435,45 @@ procedure( boardGeometryParseSegment( segment )
     )
 )
 
+procedure( calculateBoardThickness()
+    let( ( stackup padToPadThickness topSoldermaskThickness bottomSoldermaskThickness )
+        stackup = axlXSectionGet( nil 'all )
+        padToPadThickness = 0.0
+        topSoldermaskThickness = 0.0
+        bottomSoldermaskThickness = 0.0
+
+        foreach( layer stackup
+            case( layer->layerType
+                (
+                    "CONDUCTOR"
+                    padToPadThickness += layer->thickness
+                )
+                (
+                    "DIELECTRIC"
+                    padToPadThickness += layer->thickness
+                )
+                (
+                    "MASK"
+                    if( layer->name == "SOLDERMASK_TOP" then
+                        topSoldermaskThickness = layer->thickness
+                    else
+                        bottomSoldermaskThickness = layer->thickness
+                    )
+                    ; printf( "material: %s\n" layer->name )
+                )
+                (
+                    "PLANE"
+                    padToPadThickness += layer->thickness
+                )
+                (
+                    t
+                )
+            )
+        )
+        list( topSoldermaskThickness padToPadThickness bottomSoldermaskThickness)
+    )
+)
+
 procedure( makePcbContour( dsn )
     let( ( outline segments ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) )
         ; make pcb geometry
@@ -603,12 +642,16 @@ procedure( symbolReturn3DElements( refDes )
     )
 )
 
-procedure( makePcb( thickness edges cuts )
+procedure( makePcb( thicknesses edges cuts )
     let( ()
         if( boundp( 'cuts ) then
             edges = strcat(
                 "\"pcb\": {\n"
-                "\t\"thickness\": " sprintf( nil "%f" thickness ) ",\n"
+                "\t\"thickness\": {\n"
+                "\t\t\"soldermask_top\": " sprintf( nil "%f" car( thicknesses ) ) ",\n"
+                "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
+                "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
+                "\t},\n"
                 "\t\"edges\": [\n"
                 "\t\t[\n"
                 addIndent( 
@@ -639,7 +682,7 @@ procedure( makePcb( thickness edges cuts )
     )
 )
 
-procedure( create3dIntermediateFormat( thickness edgeCuts symbols fileName )
+procedure( create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
     let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) )
         ; reset base board contour
         when( car( edgeCuts )
@@ -672,9 +715,9 @@ procedure( create3dIntermediateFormat( thickness edgeCuts symbols fileName )
                 )
             )
         )
-        
+
         ; make pcb (including all cutouts and holes)
-        pcb = makePcb( thickness edges cuts )
+        pcb = makePcb( thicknesses edges cuts )
 
         ; write step model placement informations
         stepModelPlacements = buildString( car( stepModelPlacements) ",\n" )
@@ -702,7 +745,7 @@ procedure( create3dIntermediateFormat( thickness edgeCuts symbols fileName )
 )
 
 procedure( makeVariant3dIntermediates( dir )
-    let( (  ( variantFile "Variants.lst" ) dsnName dsn edgeCuts variantInformation variantSymbolList alternateParts variant symbols fileName thickness elements placement outFile outPort pcb lines )
+    let( (  ( variantFile "Variants.lst" ) dsnName dsn thicknesses edgeCuts variantInformation variantSymbolList alternateParts variant symbols fileName thicknesses elements placement outFile outPort pcb lines )
 
         ; get design and design name
         dsnName = axlCurrentDesign()
@@ -713,8 +756,8 @@ procedure( makeVariant3dIntermediates( dir )
             createDir( dir )
         )
         
-        ; remove soldermask from overall thickness tbd
-        thickness = axlXSectionGet(nil 'thickness)
+        ; calculate pcb thickness
+        thicknesses = calculateBoardThickness()
 
         ; make pcb contour
         edgeCuts = makePcbContour( dsn )
@@ -738,7 +781,7 @@ procedure( makeVariant3dIntermediates( dir )
                     )
                     
                     fileName = strcat( dir "/" dsnName "_" variant ".json" )
-                    create3dIntermediateFormat( thickness edgeCuts symbols fileName )
+                    create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
                 )
 
                 print( "Export complete!" )
@@ -756,7 +799,7 @@ procedure( makeVariant3dIntermediates( dir )
             symbols = remd( nil symbols )
 
             fileName = strcat( dir "/" dsnName "_CORE" ".json" )
-            create3dIntermediateFormat( thickness edgeCuts symbols fileName )
+            create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
         )
     )
 )

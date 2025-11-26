@@ -21,9 +21,3 @@ The python script accepts up to 4 arguments, where 2 are mandatory.
 ### Example
 
 `python makeStepFile.py "yourDesign.json" "path_to_you_step_files"`
-
-## ToDos
-
-- [x] add support for mechanical holes
-- [x] add support for slot holes
-- [ ] subtract the soldermask thickness from overall thickness

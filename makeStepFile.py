@@ -1,6 +1,6 @@
 import argparse
 import os
-# import sys
+import sys
 import warnings
 import json
 import math
@@ -15,7 +15,7 @@ from OCC.Core.BRep import BRep_Builder
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCC.Core.TopLoc import TopLoc_Location
 
-def buildContour(contour):
+def buildContour(contour, z_offset):
     """Make a wire."""
     edges = []
 
@@ -26,7 +26,8 @@ def buildContour(contour):
             #  get radius and coordinates from json
             radius = segment['radius']
             p_center = gp_Pnt(segment['center'][0],
-                              segment['center'][1], 0)
+                              segment['center'][1],
+                              z_offset)
 
             # build arc from circle
             circle = gp_Circ(gp_Ax2(p_center,
@@ -44,7 +45,8 @@ def buildContour(contour):
             #  get radius and coordinates from json
             radius = segment['radius']
             xy = gp_Pnt(segment['x'],
-                        segment['y'], 0)
+                        segment['y'], 
+                        z_offset)
 
             # build circle
             circle = gp_Circ(gp_Ax2(xy,
@@ -57,11 +59,11 @@ def buildContour(contour):
             # get start and end points
             p_start = gp_Pnt(segment['start'][0],
                              segment['start'][1],
-                             0)
+                             z_offset)
             
             p_end = gp_Pnt(segment['end'][0],
                            segment['end'][1],
-                           0)
+                           z_offset)
 
             # append edges
             edges.append(BRepBuilderAPI_MakeEdge(p_start,p_end).Edge())
@@ -80,7 +82,7 @@ def buildContour(contour):
     return wire_maker.Wire()
 
 
-def make_board_geometry(pcb):
+def make_board_geometry(pcb, thickness, z_offset=0):
     """Make the board geometry."""
 
     contours = pcb['edges']
@@ -91,7 +93,7 @@ def make_board_geometry(pcb):
         outline = contours[0]
 
     # make board contour
-    wire = buildContour( outline )
+    wire = buildContour(outline, z_offset)
 
     # make face
     face = BRepBuilderAPI_MakeFace(wire)
@@ -101,13 +103,13 @@ def make_board_geometry(pcb):
         cutouts = contours[1:]
 
         for cutout in cutouts:
-            face.Add(buildContour(cutout))
+            face.Add(buildContour(cutout, z_offset))
 
     # make
     face = face.Face()
 
     # extrusion
-    vec = gp_Vec(0, 0, - pcb['thickness'])
+    vec = gp_Vec(0, 0, - thickness)
     return BRepPrimAPI_MakePrism(face, vec).Shape()
 
 def findFile(name, path):
@@ -247,7 +249,16 @@ def main():
             data = json.load(content)
 
             # create board geometry
-            board_geometry = make_board_geometry(data['pcb'])
+            if args.pad_to_pad:
+                thickness = data['pcb']['thickness']['board']
+                z_offset = 0
+            else:
+                thickness = data['pcb']['thickness']['board'] + data['pcb']['thickness']['soldermask_top'] + data['pcb']['thickness']['soldermask_bottom']
+                z_offset = data['pcb']['thickness']['soldermask_top']
+                
+            board_geometry = make_board_geometry(data['pcb'],
+                                                    thickness,
+                                                    z_offset)
             shapes.append(board_geometry)
 
             for ref in data:
@@ -291,7 +302,7 @@ def main():
                 # shift the packge to symbol position
                 if data[ref]['is_mirrored']:
                     rotation_x = -180.0
-                    z = - data['pcb']['thickness']
+                    z = - data['pcb']['thickness']['board']
                 else:
                     rotation_x = 0.0
                     z = 0.0
