@@ -1,5 +1,6 @@
 import argparse
 import os
+# import sys
 import warnings
 import json
 import math
@@ -32,8 +33,8 @@ def buildContour(contour):
                                     gp_Dir(0, 0, 1)),
                                     radius)
             arc = GC_MakeArcOfCircle(circle,
-                                     math.radians( segment['beta'] ),
                                      math.radians( segment['alpha'] ),
+                                     math.radians( segment['beta'] ),
                                      segment['ccw']).Value()
 
             # append edges

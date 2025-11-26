@@ -24,6 +24,6 @@ The python script accepts up to 4 arguments, where 2 are mandatory.
 
 ## ToDos
 
-- [ ] add support for mechanical holes
-- [ ] add support for slot holes
+- [x] add support for mechanical holes
+- [x] add support for slot holes
 - [ ] subtract the soldermask thickness from overall thickness

@@ -38,7 +38,7 @@ when( not( isCallable( 'getVariantInfo ) )
                             "awaitStartCondition"
                             when( strcmp( line "\t\t(base\n" ) == 0
                                 state = "appendSymbols"  
-                                symbols = list()               
+                                symbols = list()
                             )
                         )
                         ( 
@@ -178,7 +178,7 @@ procedure( makeLine( segment )
 )
 
 procedure( makeArc( segment )
-    let( ( xy xCenter yCenter radius extents xStart yStart xEnd yEnd cw angle1 angle2 startAngle endAngle element )
+    let( ( xy xCenter yCenter radius extents xStart yStart xEnd yEnd cw ccw angle1 angle2 startAngle endAngle element )
         xy = segment->xy
         xCenter = car( xy )
         yCenter = cadr( xy )
@@ -196,12 +196,12 @@ procedure( makeArc( segment )
         cw = segment->isClockwise
 
         if(cw then
-            counterclockwise = "false"
+            ccw = "false"
         else
-            counterclockwise = "true"
+            ccw = "true"
         )
-        
-        angle1 =  axlRadToDeg( atan2( ( yStart - yCenter ), ( xStart - xCenter ) ) )   
+
+        angle1 =  axlRadToDeg( atan2( ( yStart - yCenter ), ( xStart - xCenter ) ) )
 
         ; convert to positive angle
         when( negativep( angle1 )
@@ -214,34 +214,13 @@ procedure( makeArc( segment )
         when( negativep( angle2 )
             angle2 = angle2 + 360
         )
-        
-        ; map the correct angles
-        if( ( angle2 - angle1 ) > 0 then
-            if( cw then
-                startAngle = angle1
-                endAngle = angle2
-            else
-                startAngle = angle2
-                endAngle = angle1
-            )
 
-            ; if arc is a circle, but not marked as a circle ...
-            when( startAngle == endAngle
-                endAngle = endAngle + 360.0
-            )
+        if( cw then
+            startAngle = angle2
+            endAngle = angle1
         else
-            if( cw then
-                startAngle = angle1
-                endAngle = angle2
-            else
-                startAngle = angle2
-                endAngle = angle1
-            )
-            
-            ; if arc is a circle, but not marked as a circle ...
-            when( startAngle == endAngle
-                startAngle = startAngle + 360.0
-            )
+            startAngle = angle1
+            endAngle = angle2
         )
 
         element = strcat( 
@@ -250,18 +229,18 @@ procedure( makeArc( segment )
             "\t\"radius\": " sprintf( nil "%f" radius ) ",\n"
             "\t\"alpha\": " sprintf( nil "%f" startAngle ) ",\n"
             "\t\"beta\": " sprintf( nil "%f" endAngle ) ",\n"
-            "\t\"ccw\": " counterclockwise "\n"
+            "\t\"ccw\": " ccw "\n"
             "}" 
         )
     )
 )
 
-procedure( makeCircle( x y diameter )
+procedure( makeCircle( xy diameter )
     let( ( element )
         element = strcat(
             "{\n\t\"type\": \"circle\",\n"
-            "\t\"x\": " sprintf( nil "%f" x ) ",\n"
-            "\t\"y\": " sprintf( nil "%f" y ) ",\n"
+            "\t\"x\": " sprintf( nil "%f" xCoord( xy ) ) ",\n"
+            "\t\"y\": " sprintf( nil "%f" yCoord( xy ) ) ",\n"
             "\t\"radius\": " sprintf( nil "%f" diameter/2 ) "\n"
             "}" 
         )
@@ -282,135 +261,155 @@ procedure( rotateXY( origin xy angle )
     )
 )
 
-procedure( makeSlot( padstack x y rotation )
-    let( ( drillOffset xDrillOffset yDrillOffset xy x y drillSizeWidth drillSizeHeight slot radius xCenter yCenter xyCenter alpha beta counterclockwise segment )
+procedure( makeSlot( pin padstack )
+    let( ( xy x y rotation drillOffset xDrillOffset yDrillOffset drillSizeWidth drillSizeHeight slot radius xCenter yCenter xyCenter alpha beta ccw segment )
+        ; get coordinates
+        xy = pin->xy
+        x = xCoord( xy )
+        y = yCoord( xy )
+        rotation = pin->rotation
 
         drillOffset = padstack->drillOffset
-
         xDrillOffset = xCoord( drillOffset) + x
         yDrillOffset = yCoord( drillOffset) + y
 
-        ; print(x)
-        ; print("\n")
-        ; print(y)
-        
-        
-        ; calculate origin (drilloffset )
-        xy = rotateXY( list( x y ) list( xDrillOffset yDrillOffset) rotation )
+        ; calculate origin (drilloffset)
+        xy = rotateXY( list( x y ) list( xDrillOffset yDrillOffset ) rotation )
         x = xCoord( xy )
         y = yCoord( xy )
 
-        ; print( xy )
-
         drillSizeWidth = padstack->drillSizeWidth
         drillSizeHeight = padstack->drillSizeHeight
+
+        ; printf( "coordinates %L \n" xy )
+        ; printf( "rotation %f \n" rotation )
+        ; printf( "width: %f \n" drillSizeWidth )
+        ; printf( "height: %f \n" drillSizeHeight )
+        ; printf( "diameter: %f \n" padstack->drillDiameter )
 
         ; if slot is actually a hole
         if( drillSizeWidth == drillSizeHeight then
             slot = makeCircle( x y drillSizeWidth )
         else
-            if( drillSizeWidth >= drillSizeHeight then
-                ; calculate radius 
-                radius = drillSizeHeight / 2
-
-                ; make first half circle
-                xCenter = x + ( drillSizeWidth - drillSizeHeight ) / 2
-                yCenter = y
-
-                ; apply rotation
-                xyCenter = rotateXY( xy list( xCenter yCenter ) rotation )
-                xCenter = xCoord( xyCenter )
-                yCenter = yCoord( xyCenter )
-
-                alpha = 270 + rotation
-                beta = 90 + rotation
-                alpha = modf( alpha 360.0 )
-                beta = modf( beta 360.0 )
-                counterclockwise = "true"
-
-                segment = strcat( 
-                    "{\n\t\"type\": \"arc\",\n"
-                    "\t\"center\": [" sprintf( nil "%f" xCenter ) ", " sprintf( nil "%f" yCenter ) "],\n"
-                    "\t\"radius\": " sprintf( nil "%f" radius ) ",\n"
-                    "\t\"alpha\": " sprintf( nil "%f" alpha ) ",\n"
-                    "\t\"beta\": " sprintf( nil "%f" beta ) ",\n"
-                    "\t\"ccw\": " counterclockwise "\n"
-                    "}" 
-                )
-
-                slot = tconc( nil segment )
-
-                ; make first line
-                xStart = x + ( drillSizeWidth - drillSizeHeight ) / 2
-                yStart = y + radius
-
-                xPoint = x - ( drillSizeWidth - drillSizeHeight ) / 2
-                yPoint = yStart
-
-                xyEnd = rotateXY( xy list( xPoint yPoint ) rotation )
-                xEnd = xCoord( xyEnd )
-                yEnd = yCoord( xyEnd )
-
-                segment = strcat( 
-                    "{\n\t\"type\": \"segment\",\n"
-                    "\t\"start\": [" sprintf( nil "%f" xStart ) ", " sprintf( nil "%f" yStart ) "],\n"
-                    "\t\"end\": [" sprintf( nil "%f" xEnd ) ", " sprintf( nil "%f" yEnd ) "]\n"
-                    "}"
-                )
-
-                tconc( slot segment )
-
-                ; make last half circle
-                xCenter = x - ( drillSizeWidth - drillSizeHeight ) / 2
-                yCenter = y
-
-                ; apply rotation
-                xyCenter = rotateXY( xy list( xCenter yCenter ) rotation )
-                xCenter = xCoord( xyCenter )
-                yCenter = yCoord( xyCenter )
-
-                alpha = 270 + rotation
-                beta = 90 + rotation
-                alpha = modf( alpha 360.0 )
-                beta = modf( beta 360.0 )
-                counterclockwise = "true"
-
-                segment = strcat( 
-                    "{\n\t\"type\": \"arc\",\n"
-                    "\t\"center\": [" sprintf( nil "%f" xCenter ) ", " sprintf( nil "%f" yCenter ) "],\n"
-                    "\t\"radius\": " sprintf( nil "%f" radius ) ",\n"
-                    "\t\"alpha\": " sprintf( nil "%f" alpha ) ",\n"
-                    "\t\"beta\": " sprintf( nil "%f" beta ) ",\n"
-                    "\t\"ccw\": " counterclockwise "\n"
-                    "}" 
-                )
-
-                tconc( slot segment )
-
-                ; make last line
-                xStart = x - ( drillSizeWidth - drillSizeHeight ) / 2
-                yStart = y - radius
-
-                xPoint = x + ( drillSizeWidth - drillSizeHeight ) / 2
-                yPoint = y - radius
-
-                xyEnd = rotateXY( xy list( xPoint yPoint ) rotation )
-                xEnd = xCoord( xyEnd )
-                yEnd = yCoord( xyEnd )
-
-                segment = strcat( 
-                    "{\n\t\"type\": \"segment\",\n"
-                    "\t\"start\": [" sprintf( nil "%f" xStart ) ", " sprintf( nil "%f" yStart ) "],\n"
-                    "\t\"end\": [" sprintf( nil "%f" xEnd ) ", " sprintf( nil "%f" yEnd ) "]\n"
-                    "}"
-                )
-
-                tconc( slot segment )
-
-            else
-                ; print( "nope" )
+            ; default state is drillSizeWidth < drillSizeHeight
+            ; otherwise swap both and add 90 deg rotation
+            unless( drillSizeHeight >= drillSizeWidth
+                tmp = drillSizeWidth
+                drillSizeWidth = drillSizeHeight
+                drillSizeHeight = tmp
+                rotation = rotation + 90.0
             )
+
+            ; calculate radius 
+            radius = drillSizeWidth / 2
+
+            ; make first half circle
+            xCenter = x
+            yCenter = y + ( drillSizeHeight - drillSizeWidth ) / 2
+
+            ; apply rotation
+            xyCenter = rotateXY( xy list( xCenter yCenter ) rotation )
+            xCenter = xCoord( xyCenter )
+            yCenter = yCoord( xyCenter )
+
+            ; calculate angles
+            alpha = 0.0 + rotation
+            beta = 180.0 + rotation
+            alpha = modf( alpha 360.0 )
+            beta = modf( beta 360.0 )
+            ccw = "false"
+
+            segment = strcat( 
+                "{\n\t\"type\": \"arc\",\n"
+                "\t\"center\": [" sprintf( nil "%f" xCenter ) ", " sprintf( nil "%f" yCenter ) "],\n"
+                "\t\"radius\": " sprintf( nil "%f" radius ) ",\n"
+                "\t\"alpha\": " sprintf( nil "%f" alpha ) ",\n"
+                "\t\"beta\": " sprintf( nil "%f" beta ) ",\n"
+                "\t\"ccw\": " ccw "\n"
+                "}" 
+            )
+
+            slot = tconc( nil segment )
+
+            ; make first line
+            xStart = x - radius
+            yStart = y + ( drillSizeHeight - drillSizeWidth ) / 2
+
+            xEnd = x - radius
+            yEnd = y - ( drillSizeHeight - drillSizeWidth ) / 2
+
+            ; apply rotation
+            xyStart = rotateXY( xy list( xStart yStart ) rotation )
+            xStart = xCoord( xyStart )
+            yStart = yCoord( xyStart )
+
+            xyEnd = rotateXY( xy list( xEnd yEnd ) rotation )
+            xEnd = xCoord( xyEnd )
+            yEnd = yCoord( xyEnd )
+
+            segment = strcat( 
+                "{\n\t\"type\": \"segment\",\n"
+                "\t\"start\": [" sprintf( nil "%f" xStart ) ", " sprintf( nil "%f" yStart ) "],\n"
+                "\t\"end\": [" sprintf( nil "%f" xEnd ) ", " sprintf( nil "%f" yEnd ) "]\n"
+                "}"
+            )
+
+            tconc( slot segment )
+
+            ; make last half circle
+            xCenter = x
+            yCenter = y - ( drillSizeHeight - drillSizeWidth ) / 2
+
+            ; apply rotation
+            xyCenter = rotateXY( xy list( xCenter yCenter ) rotation )
+            xCenter = xCoord( xyCenter )
+            yCenter = yCoord( xyCenter )
+
+            ; calculate angles
+            alpha = 180.0 + rotation
+            beta = 360.0 + rotation
+            alpha = modf( alpha 360.0 )
+            beta = modf( beta 360.0 )
+            ccw = "true"
+
+            segment = strcat( 
+                "{\n\t\"type\": \"arc\",\n"
+                "\t\"center\": [" sprintf( nil "%f" xCenter ) ", " sprintf( nil "%f" yCenter ) "],\n"
+                "\t\"radius\": " sprintf( nil "%f" radius ) ",\n"
+                "\t\"alpha\": " sprintf( nil "%f" alpha ) ",\n"
+                "\t\"beta\": " sprintf( nil "%f" beta ) ",\n"
+                "\t\"ccw\": " ccw "\n"
+                "}" 
+            )
+
+            tconc( slot segment )
+
+            ; make last line
+            xStart = x + radius
+            yStart = y - ( drillSizeHeight - drillSizeWidth ) / 2
+
+            xEnd = x + radius
+            yEnd = y + ( drillSizeHeight - drillSizeWidth ) / 2
+
+            ; apply rotation
+            xyStart = rotateXY( xy list( xStart yStart ) rotation )
+            xStart = xCoord( xyStart )
+            yStart = yCoord( xyStart )
+
+            xyEnd = rotateXY( xy list( xEnd yEnd ) rotation )
+            xEnd = xCoord( xyEnd )
+            yEnd = yCoord( xyEnd )
+
+            segment = strcat( 
+                "{\n\t\"type\": \"segment\",\n"
+                "\t\"start\": [" sprintf( nil "%f" xStart ) ", " sprintf( nil "%f" yStart ) "],\n"
+                "\t\"end\": [" sprintf( nil "%f" xEnd ) ", " sprintf( nil "%f" yEnd ) "]\n"
+                "}"
+            )
+
+            tconc( slot segment )
         )
+        ; return slot
         car( slot )
     )
 )
@@ -497,15 +496,17 @@ procedure( makePcbContour( dsn )
     )
 )
 
-procedure( symbolReturn3DElements( symbol )
-    let( ( stepPackageMapping refdes mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle x y hole ( holes 'unbound ) )
+procedure( symbolReturn3DElements( refDes )
+    let( ( stepPackageMapping dbid mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole ( holes 'unbound ) )
 
         stepPackageMapping = nil
 
-        refdes = axlDBFindByName( 'refdes symbol )
+        ; get symbol (dbid)
+        dbid = axlDBFindByName( 'refdes refDes )
+        sym = dbid->symbol
 
         ; step package mappingData
-        mappingData = axlStepGet( nil nil refdes->symbol )
+        mappingData = axlStepGet( nil nil sym )
         stepFileName = mappingData->step_name
 
         offset_x = mappingData->offset_x
@@ -517,23 +518,23 @@ procedure( symbolReturn3DElements( symbol )
         rotation_z = mappingData->rotation_z
 
         ; symbol
-        if( refdes->symbol->isMirrored then
+        if( sym->isMirrored then
             isMirrored = "true"
         else 
 
             isMirrored = "false"
         )
 
-        xy = refdes->symbol->xy
-        angle = refdes->symbol->rotation
+        xy = sym->xy
+        angle = sym->rotation
 
-        x = xCoord( xy )
-        y = yCoord( xy )
+        ; x = xCoord( xy )
+        ; y = yCoord( xy )
 
         ; set step package mapping
         when( stepFileName
             stepPackageMapping = strcat(
-                "\"" sprintf( nil "%s" refdes->symbol->refdes ) "\": {\n"
+                "\"" sprintf( nil "%s" refDes ) "\": {\n"
                 "\t\"step_mapping\": {\n"
                 "\t\t\"step_name\": \"" sprintf( nil "%s" stepFileName ) "\",\n"
                 "\t\t\"rotation_x\": " sprintf( nil "%f" rotation_x ) ",\n"
@@ -544,37 +545,36 @@ procedure( symbolReturn3DElements( symbol )
                 "\t\t\"offset_z\": " sprintf( nil "%f" offset_z ) "\n"
                 "\t},\n"
                 "\t\"is_mirrored\": " isMirrored ",\n"
-                "\t\"x\": " sprintf( nil "%f" x ) ",\n"
-                "\t\"y\": " sprintf( nil "%f" y ) ",\n"
+                "\t\"x\": " sprintf( nil "%f" xCoord( xy ) ) ",\n"
+                "\t\"y\": " sprintf( nil "%f" yCoord( xy ) ) ",\n"
                 "\t\"angle\": " sprintf( nil "%f" angle ) "\n"
                 "}"
             )
         )
 
         ; export pin holes
-        foreach( pin refdes->pins
+        foreach( pin sym->pins
             when( pin->isThrough
-                ; hole = nil
+                ; reset hole
+                hole = nil
+
+                ; retrieve padstack information
+                padstack = axlLoadPadstack( pin->name )
+
+                ; get position
                 xy = pin->xy
 
-                ; get padstack
-                padstack = axlLoadPadstack( pin->name )
-                
-                ; calculate position
-                x = xCoord( xy )
-                y = yCoord( xy )
-
                 if( padstack->usage == "Slot" then
-                    ;element = makeSlot( padstack x y pin->rotation )
-                    ; print("make slot")
-                    ; hole = strcat(
-                    ;     "[\n"
-                    ;         addIndent( buildString( element ",\n" ) )
-                    ;     "\n]"
-                    ; )
-                    hole = nil
+                    element = makeSlot( pin padstack )
+
+                    hole = strcat(
+                        "[\n"
+                            addIndent( buildString( element ",\n" ) )
+                        "\n]"
+                    )
                 else
-                    hole = makeCircle( x y padstack->drillDiameter )
+                    ; make a simple drill hole
+                    hole = makeCircle( xy padstack->drillDiameter )
 
                     hole = strcat(
                         "[\n"
@@ -599,7 +599,6 @@ procedure( symbolReturn3DElements( symbol )
         else 
             holes = nil
         )
-
         list( stepPackageMapping holes )
     )
 )
@@ -666,7 +665,7 @@ procedure( create3dIntermediateFormat( thickness edgeCuts symbols fileName )
             )
 
             when( placement
-                    if( boundp( 'stepModelPlacements ) then
+                if( boundp( 'stepModelPlacements ) then
                     tconc( stepModelPlacements placement )
                 else
                     stepModelPlacements = tconc( nil placement )
