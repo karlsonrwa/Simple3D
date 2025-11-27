@@ -1,6 +1,5 @@
 import argparse
 import os
-import sys
 import warnings
 import json
 import math
@@ -14,6 +13,7 @@ from OCC.Core.TopoDS import TopoDS_Compound
 from OCC.Core.BRep import BRep_Builder
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCC.Core.TopLoc import TopLoc_Location
+from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
 
 def buildContour(contour, z_offset):
     """Make a wire."""
@@ -81,7 +81,6 @@ def buildContour(contour, z_offset):
     # return wire
     return wire_maker.Wire()
 
-
 def make_board_geometry(pcb, thickness, z_offset=0):
     """Make the board geometry."""
 
@@ -95,22 +94,27 @@ def make_board_geometry(pcb, thickness, z_offset=0):
     # make board contour
     wire = buildContour(outline, z_offset)
 
-    # make face
+    # make board 
     face = BRepBuilderAPI_MakeFace(wire)
+    face = face.Face()
+    vec = gp_Vec(0, 0, - thickness)
+    board = BRepPrimAPI_MakePrism(face, vec).Shape()
 
     # make cutouts/holes
     if( len(contours) > 1 ):
         cutouts = contours[1:]
 
         for cutout in cutouts:
-            face.Add(buildContour(cutout, z_offset))
+            # make hole
+            wire = buildContour(cutout, z_offset)
+            face = BRepBuilderAPI_MakeFace(wire).Face()
+            vec = gp_Vec(0, 0, - thickness)
+            hole = BRepPrimAPI_MakePrism(face, vec).Shape()
 
-    # make
-    face = face.Face()
+            # "cut" hole into board
+            board = BRepAlgoAPI_Cut(board, hole).Shape()
 
-    # extrusion
-    vec = gp_Vec(0, 0, - thickness)
-    return BRepPrimAPI_MakePrism(face, vec).Shape()
+    return board
 
 def findFile(name, path):
     """Find the given file."""
@@ -224,9 +228,9 @@ def main():
                         help="Optional output filename"
                         )
     
-    parser.add_argument('--pad-to-pad',
+    parser.add_argument('--include_sm',
                         action='store_true',
-                        help="PCB thickness without soldermask"
+                        help="Include soldermask in PCB thickness."
                         )
     
     args = parser.parse_args()
@@ -249,13 +253,13 @@ def main():
             data = json.load(content)
 
             # create board geometry
-            if args.pad_to_pad:
-                thickness = data['pcb']['thickness']['board']
-                z_offset = 0
-            else:
+            if args.include_sm:
                 thickness = data['pcb']['thickness']['board'] + data['pcb']['thickness']['soldermask_top'] + data['pcb']['thickness']['soldermask_bottom']
                 z_offset = data['pcb']['thickness']['soldermask_top']
-                
+            else:
+                thickness = data['pcb']['thickness']['board']
+                z_offset = 0
+
             board_geometry = make_board_geometry(data['pcb'],
                                                     thickness,
                                                     z_offset)
