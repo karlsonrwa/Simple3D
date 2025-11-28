@@ -3,6 +3,7 @@ import os
 import warnings
 import json
 import math
+from tqdm import tqdm
 
 from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer, STEPControl_AsIs
 from OCC.Core.IFSelect import IFSelect_RetDone
@@ -116,7 +117,7 @@ def make_board_geometry(pcb, thickness, z_offset=0):
 
     return board
 
-def findFile(name, path):
+def find_file(name, path):
     """Find the given file."""
 
     for root, dirs, files in os.walk(path):
@@ -265,80 +266,81 @@ def main():
                                                     z_offset)
             shapes.append(board_geometry)
 
-            for ref in data:
-                # skip pcb geometry
-                if ref=='pcb':
-                    continue
+            with tqdm(data, desc="Processing", unit="item") as components:
+                for component in components:
+                    # show additional infos in progress bar
+                    components.set_postfix_str(f"adding: {component}")
 
-                # status
-                print(f"Adding '{ref}'")
+                    # skip pcb geometry
+                    if component=='pcb':
+                        continue
 
-                # get name of step file
-                step_name = data[ref]['step_mapping']['step_name']
+                    # get name of step file
+                    step_name = data[component]['step_mapping']['step_name']
 
-                # find step file
-                step_file_path = findFile(step_name, step_dir )
+                    # find step file
+                    step_file_path = find_file(step_name, step_dir )
 
-                if step_file_path is None:
-                    warnings.warn(f"Step model {step_name} not found.")
-                    continue
+                    if step_file_path is None:
+                        warnings.warn(f"Step model {step_name} not found.")
+                        continue
 
-                # check, if step file was previously loaded
-                if step_name not in cache:
-                    # load step file
-                    shape = load_step_file(step_file_path)
+                    # check, if step file was previously loaded
+                    if step_name not in cache:
+                        # load step file
+                        shape = load_step_file(step_file_path)
 
-                    # get step mapping data
-                    step_mapping = data[ref]['step_mapping']
-                    offset = (step_mapping['offset_x'],
-                              step_mapping['offset_y'],
-                              step_mapping['offset_z'])
+                        # get step mapping data
+                        step_mapping = data[component]['step_mapping']
+                        offset = (step_mapping['offset_x'],
+                                step_mapping['offset_y'],
+                                step_mapping['offset_z'])
 
-                    # map the step file to the symbol origin
-                    package = transform_shape(shape,
-                                              translation=offset,
-                                              rotation_x=step_mapping['rotation_x'],
-                                              rotation_y=step_mapping['rotation_y'],
-                                              rotation_z=step_mapping['rotation_z'])
+                        # map the step file to the symbol origin
+                        package = transform_shape(shape,
+                                                translation=offset,
+                                                rotation_x=step_mapping['rotation_x'],
+                                                rotation_y=step_mapping['rotation_y'],
+                                                rotation_z=step_mapping['rotation_z'])
 
-                    cache[step_name] = package
+                        cache[step_name] = package
 
-                # shift the packge to symbol position
-                if data[ref]['is_mirrored']:
-                    rotation_x = -180.0
-                    z = - data['pcb']['thickness']['board']
-                else:
-                    rotation_x = 0.0
-                    z = 0.0
+                    # shift the packge to symbol position
+                    if data[component]['is_mirrored']:
+                        rotation_x = -180.0
+                        z = - data['pcb']['thickness']['board']
+                    else:
+                        rotation_x = 0.0
+                        z = 0.0
 
-                # make translation
-                trsf = gp_Trsf()
-                trsf.SetTranslation(gp_Vec(data[ref]['x'],
-                                           data[ref]['y'],
-                                           z))
+                    # make translation
+                    trsf = gp_Trsf()
+                    trsf.SetTranslation(gp_Vec(data[component]['x'],
+                                            data[component]['y'],
+                                            z))
 
-                # flip component
-                rx = gp_Trsf()
-                rx.SetRotation(gp_Ax1(gp_Pnt(0,0,0),
-                                      gp_Dir(1,0,0)),
-                                      math.radians(rotation_x))
-                
-                trsf.Multiply(rx)
+                    # flip component
+                    rx = gp_Trsf()
+                    rx.SetRotation(gp_Ax1(gp_Pnt(0,0,0),
+                                        gp_Dir(1,0,0)),
+                                        math.radians(rotation_x))
+                    
+                    trsf.Multiply(rx)
 
-                # rotate
-                rz = gp_Trsf()
-                rz.SetRotation(gp_Ax1(gp_Pnt(0,0,0),
-                                      gp_Dir(0,0,1)),
-                                      math.radians(data[ref]['angle']))
-                
-                trsf.Multiply(rz)
+                    # rotate
+                    rz = gp_Trsf()
+                    rz.SetRotation(gp_Ax1(gp_Pnt(0,0,0),
+                                        gp_Dir(0,0,1)),
+                                        math.radians(data[component]['angle']))
+                    
+                    trsf.Multiply(rz)
 
-                # map to step file
-                loc = TopLoc_Location(trsf)
-                instanced_shape = cache[step_name].Located(loc)
+                    # map to step file
+                    loc = TopLoc_Location(trsf)
+                    instanced_shape = cache[step_name].Located(loc)
 
-                #  append shape
-                shapes.append(instanced_shape)
+                    #  append shape
+                    shapes.append(instanced_shape)
 
             # merge all shapes into one and create step file
             merged_shape = merge_shapes(shapes)
