@@ -1,5 +1,5 @@
 when( not( isCallable( 'getVariantInfo ) )
-    procedure( gdsysGetVariantInfo()
+    procedure( getVariantInfo()
         let( (  (   variantFile "Variants.lst" ) 
                     ( state "findVariant" )
                     pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
@@ -764,7 +764,7 @@ procedure( makeVariant3dIntermediates( dir )
 
         if( isFile( variantFile ) then
             ; Read / parse variant list
-            variantInformation = gdsysGetVariantInfo()
+            variantInformation = getVariantInfo()
 
             if( variantInformation then
                 variantSymbolList = car( variantInformation )

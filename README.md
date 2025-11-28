@@ -13,10 +13,10 @@ A directory named like the passed argument is created in your project folder con
 As a second step, the created `.json` file(s) need to be passed to the python script.
 The python script accepts up to 4 arguments, where 2 are mandatory.
 
-1. the filename or path to the `.json`` file
+1. the filename or path to the `.json` file
 2. the path to the directory alle STEP files of your footprints are stored
 3. (optional) filename of the output file (STEP), if not passed, the name will be the name of the `.json` file with the ending `.step`
-4. (optional and not yet implemented) ignore the soldermask
+4. include the soldermask in the pcb thickness
 
 ### Example
 
