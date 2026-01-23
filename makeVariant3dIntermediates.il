@@ -1,6 +1,6 @@
 when( not( isCallable( 'getVariantInfo ) )
     procedure( gdsysGetVariantInfo()
-        let( (  (   variantFile "Variants.lst" ) 
+        let( (  (   variantFile "Variants.lst" )
                     ( state "findVariant" )
                     pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
 
@@ -14,16 +14,16 @@ when( not( isCallable( 'getVariantInfo ) )
 
             inPort = infile( variantFile )
 
-            if( inPort then 
+            if( inPort then
 
                 variantTable = makeTable( "variantTable" nil )
                 alternateParts = makeTable( "alternateParts" nil )
                 parts = makeTable( "parts" nil )
                 partProperties = makeTable( "partProperties" nil )
 
-                while( gets( line inPort ) 
+                while( gets( line inPort )
 
-                    case( state 
+                    case( state
                         (
                             "findVariant"
                             ; parse for \"
@@ -37,11 +37,11 @@ when( not( isCallable( 'getVariantInfo ) )
                         (
                             "awaitStartCondition"
                             when( strcmp( line "\t\t(base\n" ) == 0
-                                state = "appendSymbols"  
+                                state = "appendSymbols"
                                 symbols = list()
                             )
                         )
-                        ( 
+                        (
                             "appendSymbols"
                             if( strcmp( line "\t\t)\n" ) == 0 then
                                 state = "awaitEndCondition"
@@ -84,10 +84,10 @@ when( not( isCallable( 'getVariantInfo ) )
                                         ; check, if property information ends in this line
                                         if( strcmp( car(last(subStrings)) ")\n" ) == 0 then
 
-                                            foreach( subString subStrings	
+                                            foreach( subString subStrings
                                                 ; parse properties
                                                 valueKey = parseString( subString "=" )
-                                                
+
                                                 when( length(valueKey ) == 2
                                                     partProperties[nth( 0 valueKey )] = pcreReplace( pattern nth( 1 valueKey ) "" 0 )
                                                 )
@@ -146,9 +146,9 @@ when( not( isCallable( 'getVariantInfo ) )
                         (
                             t
                             warn( "I should not be here ... " )
-                        )                   
-                    )     
-                )            
+                        )
+                    )
+                )
                 list( variantTable alternateParts )
             else
                 error( "Can not read from file ... " )
@@ -164,11 +164,11 @@ procedure( makeLine( segment )
 
         xStart = caar( extents )
         yStart = cadar( extents )
-        
+
         xEnd = caadr( extents )
         yEnd = cadadr( extents )
 
-        element = strcat( 
+        element = strcat(
             "{\n\t\"type\": \"segment\",\n"
             "\t\"start\": [" sprintf( nil "%f" xStart ) ", " sprintf( nil "%f" yStart ) "],\n"
             "\t\"end\": [" sprintf( nil "%f" xEnd ) ", " sprintf( nil "%f" yEnd ) "]\n"
@@ -182,14 +182,14 @@ procedure( makeArc( segment )
         xy = segment->xy
         xCenter = car( xy )
         yCenter = cadr( xy )
-        
+
         radius = segment->radius
 
         extents = segment->startEnd
 
         xStart = caar( extents )
         yStart = cadar( extents )
-        
+
         xEnd = caadr( extents )
         yEnd = cadadr( extents )
 
@@ -207,7 +207,7 @@ procedure( makeArc( segment )
         when( negativep( angle1 )
             angle1 = angle1 + 360
         )
-        
+
         angle2 = axlRadToDeg( atan2( ( yEnd - yCenter ), ( xEnd - xCenter ) ) )
 
         ; convert to positive angle
@@ -223,14 +223,14 @@ procedure( makeArc( segment )
             endAngle = angle2
         )
 
-        element = strcat( 
+        element = strcat(
             "{\n\t\"type\": \"arc\",\n"
             "\t\"center\": [" sprintf( nil "%f" xCenter ) ", " sprintf( nil "%f" yCenter ) "],\n"
             "\t\"radius\": " sprintf( nil "%f" radius ) ",\n"
             "\t\"alpha\": " sprintf( nil "%f" startAngle ) ",\n"
             "\t\"beta\": " sprintf( nil "%f" endAngle ) ",\n"
             "\t\"ccw\": " ccw "\n"
-            "}" 
+            "}"
         )
     )
 )
@@ -242,12 +242,12 @@ procedure( makeCircle( xy diameter )
             "\t\"x\": " sprintf( nil "%f" xCoord( xy ) ) ",\n"
             "\t\"y\": " sprintf( nil "%f" yCoord( xy ) ) ",\n"
             "\t\"radius\": " sprintf( nil "%f" diameter/2 ) "\n"
-            "}" 
+            "}"
         )
     )
 )
 
-procedure( rotateXY( origin xy angle ) 
+procedure( rotateXY( origin xy angle )
     let( ( angleRad dX dY dXY x y )
         angleRad = axlDegToRad( angle )
         dX = xCoord( xy ) - xCoord( origin )
@@ -281,12 +281,6 @@ procedure( makeSlot( pin padstack )
         drillSizeWidth = padstack->drillSizeWidth
         drillSizeHeight = padstack->drillSizeHeight
 
-        ; printf( "coordinates %L \n" xy )
-        ; printf( "rotation %f \n" rotation )
-        ; printf( "width: %f \n" drillSizeWidth )
-        ; printf( "height: %f \n" drillSizeHeight )
-        ; printf( "diameter: %f \n" padstack->drillDiameter )
-
         ; if slot is actually a hole
         if( drillSizeWidth == drillSizeHeight then
             slot = makeCircle( x y drillSizeWidth )
@@ -300,7 +294,7 @@ procedure( makeSlot( pin padstack )
                 rotation = rotation + 90.0
             )
 
-            ; calculate radius 
+            ; calculate radius
             radius = drillSizeWidth / 2
 
             ; make first half circle
@@ -319,14 +313,14 @@ procedure( makeSlot( pin padstack )
             beta = modf( beta 360.0 )
             ccw = "false"
 
-            segment = strcat( 
+            segment = strcat(
                 "{\n\t\"type\": \"arc\",\n"
                 "\t\"center\": [" sprintf( nil "%f" xCenter ) ", " sprintf( nil "%f" yCenter ) "],\n"
                 "\t\"radius\": " sprintf( nil "%f" radius ) ",\n"
                 "\t\"alpha\": " sprintf( nil "%f" alpha ) ",\n"
                 "\t\"beta\": " sprintf( nil "%f" beta ) ",\n"
                 "\t\"ccw\": " ccw "\n"
-                "}" 
+                "}"
             )
 
             slot = tconc( nil segment )
@@ -347,7 +341,7 @@ procedure( makeSlot( pin padstack )
             xEnd = xCoord( xyEnd )
             yEnd = yCoord( xyEnd )
 
-            segment = strcat( 
+            segment = strcat(
                 "{\n\t\"type\": \"segment\",\n"
                 "\t\"start\": [" sprintf( nil "%f" xStart ) ", " sprintf( nil "%f" yStart ) "],\n"
                 "\t\"end\": [" sprintf( nil "%f" xEnd ) ", " sprintf( nil "%f" yEnd ) "]\n"
@@ -372,14 +366,14 @@ procedure( makeSlot( pin padstack )
             beta = modf( beta 360.0 )
             ccw = "true"
 
-            segment = strcat( 
+            segment = strcat(
                 "{\n\t\"type\": \"arc\",\n"
                 "\t\"center\": [" sprintf( nil "%f" xCenter ) ", " sprintf( nil "%f" yCenter ) "],\n"
                 "\t\"radius\": " sprintf( nil "%f" radius ) ",\n"
                 "\t\"alpha\": " sprintf( nil "%f" alpha ) ",\n"
                 "\t\"beta\": " sprintf( nil "%f" beta ) ",\n"
                 "\t\"ccw\": " ccw "\n"
-                "}" 
+                "}"
             )
 
             tconc( slot segment )
@@ -400,7 +394,7 @@ procedure( makeSlot( pin padstack )
             xEnd = xCoord( xyEnd )
             yEnd = yCoord( xyEnd )
 
-            segment = strcat( 
+            segment = strcat(
                 "{\n\t\"type\": \"segment\",\n"
                 "\t\"start\": [" sprintf( nil "%f" xStart ) ", " sprintf( nil "%f" yStart ) "],\n"
                 "\t\"end\": [" sprintf( nil "%f" xEnd ) ", " sprintf( nil "%f" yEnd ) "]\n"
@@ -424,7 +418,7 @@ procedure( boardGeometryParseSegment( segment )
             (
                 "arc"
                 element = makeArc( segment )
-                
+
             )
             (
                 t
@@ -530,13 +524,13 @@ procedure( makePcbContour( dsn )
             cuts = nil
         )
 
-        ; return 
+        ; return
         list( edges cuts )
     )
 )
 
 procedure( symbolReturn3DElements( refDes )
-    let( ( stepPackageMapping dbid mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole ( holes 'unbound ) )
+    let( ( stepPackageMapping dbid sym mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole ( holes 'unbound ) )
 
         stepPackageMapping = nil
 
@@ -559,16 +553,13 @@ procedure( symbolReturn3DElements( refDes )
         ; symbol
         if( sym->isMirrored then
             isMirrored = "true"
-        else 
+        else
 
             isMirrored = "false"
         )
 
         xy = sym->xy
         angle = sym->rotation
-
-        ; x = xCoord( xy )
-        ; y = yCoord( xy )
 
         ; set step package mapping
         when( stepFileName
@@ -591,42 +582,52 @@ procedure( symbolReturn3DElements( refDes )
             )
         )
 
-        ; export pin holes
-        foreach( pin sym->pins
-            when( pin->isThrough
-                ; reset hole
-                hole = nil
+        stepPackageMapping
+    )
+)
 
-                ; retrieve padstack information
-                padstack = axlLoadPadstack( pin->name )
+procedure( symbolReturnPinHoles()
+    let( ( symbols sym hole padstack xy element ( holes 'unbound ) )
+        symbols = axlDBGetDesign()->symbols
 
-                ; get position
-                xy = pin->xy
+        foreach( sym symbols
+            ; export pin holes
+            foreach( pin sym->pins
+                when( pin->isThrough
+                    ; reset hole
+                    hole = nil
 
-                if( padstack->usage == "Slot" then
-                    element = makeSlot( pin padstack )
+                    ; retrieve padstack information
+                    padstack = axlLoadPadstack( pin->name )
 
-                    hole = strcat(
-                        "[\n"
-                            addIndent( buildString( element ",\n" ) )
-                        "\n]"
-                    )
-                else
-                    ; make a simple drill hole
-                    hole = makeCircle( xy padstack->drillDiameter )
+                    ; get position
+                    xy = pin->xy
 
-                    hole = strcat(
-                        "[\n"
-                            addIndent( hole )
-                        "\n]"
-                    )
-                )
+                    if( padstack->usage == "Slot" then
+                        element = makeSlot( pin padstack )
 
-                when( hole
-                    if( boundp( 'holes ) then
-                        tconc( holes hole )
+                        hole = strcat(
+                            "[\n"
+                                addIndent( buildString( element ",\n" ) )
+                            "\n]"
+                        )
                     else
-                        holes = tconc( nil hole )
+                        ; make a simple drill hole
+                        hole = makeCircle( xy padstack->drillDiameter )
+
+                        hole = strcat(
+                            "[\n"
+                                addIndent( hole )
+                            "\n]"
+                        )
+                    )
+
+                    when( hole
+                        if( boundp( 'holes ) then
+                            tconc( holes hole )
+                        else
+                            holes = tconc( nil hole )
+                        )
                     )
                 )
             )
@@ -635,10 +636,12 @@ procedure( symbolReturn3DElements( refDes )
         if( boundp( 'holes ) then
             holes = car( holes )
             holes = buildString( holes ",\n" )
-        else 
+        else
             holes = nil
         )
-        list( stepPackageMapping holes )
+
+        ; return holes
+        holes
     )
 )
 
@@ -654,7 +657,7 @@ procedure( makePcb( thicknesses edges cuts )
                 "\t},\n"
                 "\t\"edges\": [\n"
                 "\t\t[\n"
-                addIndent( 
+                addIndent(
                     buildString( car( edges ) ",\n" ),
                     3
                 )
@@ -665,14 +668,14 @@ procedure( makePcb( thicknesses edges cuts )
                 )
                 "\n\t]\n}"
             )
-        
+
         else
             edges = strcat(
                 "\"pcb\": {\n"
                 "\t\"thickness\": " sprintf( nil "%f" 1.67 ) ",\n"
                 "\t\"edges\": [\n"
                 "\t\t[\n"
-                addIndent( 
+                addIndent(
                     buildString( car( edges ) ",\n" ),
                     3
                 )
@@ -689,23 +692,13 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
             edges = car( edgeCuts )
         )
 
-        when( cadr( edgeCuts ) 
+        when( cadr( edgeCuts )
             cuts = cadr( edgeCuts )
         )
 
         ; export step package mapping information
         foreach( symbol symbols
-            elements = symbolReturn3DElements( symbol )
-            placement = car( elements )
-            cut = cadr( elements )
-
-            when( cut
-                if( boundp( 'cuts ) then
-                    tconc( cuts cut )
-                else
-                    cuts = tconc( nil cut )
-                )
-            )
+            placement = symbolReturn3DElements( symbol )
 
             when( placement
                 if( boundp( 'stepModelPlacements ) then
@@ -713,6 +706,16 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
                 else
                     stepModelPlacements = tconc( nil placement )
                 )
+            )
+        )
+
+        ; export symbol pin holes
+        cut = symbolReturnPinHoles()
+        when( cut
+            if( boundp( 'cuts ) then
+                tconc( cuts cut )
+            else
+                cuts = tconc( nil cut )
             )
         )
 
@@ -755,7 +758,7 @@ procedure( makeVariant3dIntermediates( dir )
         unless( isDir( dir )
             createDir( dir )
         )
-        
+
         ; calculate pcb thickness
         thicknesses = calculateBoardThickness()
 
@@ -779,7 +782,7 @@ procedure( makeVariant3dIntermediates( dir )
                     else
                         symbols = variantSymbolList[variant]
                     )
-                    
+
                     fileName = strcat( dir "/" dsnName "_" variant ".json" )
                     create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
                 )
