@@ -1,8 +1,7 @@
-when( not( isCallable( 'getVariantInfo ) )
-    procedure( gdsysGetVariantInfo()
-        let( (  (   variantFile "Variants.lst" )
-                    ( state "findVariant" )
-                    pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
+procedure( getVariantInfo()
+    let( (  (   variantFile "Variants.lst" ) 
+                ( state "findVariant" )
+                pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
 
             pattern = pcreCompile("[\"\t+\\()]")
             newLine = pcreCompile("\t\t")
@@ -767,7 +766,7 @@ procedure( makeVariant3dIntermediates( dir )
 
         if( isFile( variantFile ) then
             ; Read / parse variant list
-            variantInformation = gdsysGetVariantInfo()
+            variantInformation = getVariantInfo()
 
             if( variantInformation then
                 variantSymbolList = car( variantInformation )
