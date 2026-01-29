@@ -1,158 +1,157 @@
 procedure( getVariantInfo()
-    let( (  (   variantFile "Variants.lst" ) 
-                ( state "findVariant" )
-                pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
+    let(    ( (variantFile "Variants.lst" ) 
+            ( state "findVariant" )
+            pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
 
-            pattern = pcreCompile("[\"\t+\\()]")
-            newLine = pcreCompile("\t\t")
-            newLineEnd = pcreCompile("\t\t \\)")
-            newLineWithinProperty = pcreCompile( "=\"\t\t " )
-            propertyStart = pcreCompile( "^\t\t\\(.*" )
-            propertySeparator = pcreCompile( "(\" )" )
-            blankSpace = pcreCompile( " " )
+        pattern = pcreCompile("[\"\t+\\()]")
+        newLine = pcreCompile("\t\t")
+        newLineEnd = pcreCompile("\t\t \\)")
+        newLineWithinProperty = pcreCompile( "=\"\t\t " )
+        propertyStart = pcreCompile( "^\t\t\\(.*" )
+        propertySeparator = pcreCompile( "(\" )" )
+        blankSpace = pcreCompile( " " )
 
-            inPort = infile( variantFile )
+        inPort = infile( variantFile )
 
-            if( inPort then
+        if( inPort then
 
-                variantTable = makeTable( "variantTable" nil )
-                alternateParts = makeTable( "alternateParts" nil )
-                parts = makeTable( "parts" nil )
-                partProperties = makeTable( "partProperties" nil )
+            variantTable = makeTable( "variantTable" nil )
+            alternateParts = makeTable( "alternateParts" nil )
+            parts = makeTable( "parts" nil )
+            partProperties = makeTable( "partProperties" nil )
 
-                while( gets( line inPort )
+            while( gets( line inPort )
 
-                    case( state
-                        (
-                            "findVariant"
-                            ; parse for \"
-                            subStrings = parseString( line "\"" )
+                case( state
+                    (
+                        "findVariant"
+                        ; parse for \"
+                        subStrings = parseString( line "\"" )
 
-                            when( length( subStrings ) == 3
-                                currentVariant = nth( 1 subStrings )
-                                state = "awaitStartCondition"
-                            )
-                        )
-                        (
-                            "awaitStartCondition"
-                            when( strcmp( line "\t\t(base\n" ) == 0
-                                state = "appendSymbols"
-                                symbols = list()
-                            )
-                        )
-                        (
-                            "appendSymbols"
-                            if( strcmp( line "\t\t)\n" ) == 0 then
-                                state = "awaitEndCondition"
-                            else
-                                ;append symbols to list
-                                symbols = nconc( symbols parseString( line ) )
-                            )
-                        )
-                        (
-                            "awaitEndCondition"
-                            if( strcmp( line "\t)\n" ) == 0 then
-                                ;remove ")" in list
-                                symbols = remove( ")" symbols )
-                                symbols = mapcar( lambda( ( symbol ) pcreReplace( pattern symbol "" 0 ) )  symbols )
-
-                                ; append components to array
-                                variantTable[currentVariant] = symbols
-                                alternateParts[currentVariant] = parts
-
-                                ; initialize parts (again, clear previous values)
-                                parts = makeTable( "parts" nil )
-
-                                state = "findVariant"
-                            else
-                                ; alternate part properties
-                                when( pcreMatchp( propertyStart line )
-
-                                    ; find variant specific information
-                                    subStrings = parseString( line )
-
-                                    when( length( subStrings ) > 1
-                                        refDes = pcreReplace( pattern nth( 0 subStrings ) "" 0 )
-
-                                        ; substrings without first element (refDes)
-                                        properties = buildString( cdr(subStrings) )
-
-                                        temp = pcreReplace( propertySeparator properties "\\\\" 0 )
-                                        subStrings = parseString( temp "\\\\" )
-
-                                        ; check, if property information ends in this line
-                                        if( strcmp( car(last(subStrings)) ")\n" ) == 0 then
-
-                                            foreach( subString subStrings
-                                                ; parse properties
-                                                valueKey = parseString( subString "=" )
-
-                                                when( length(valueKey ) == 2
-                                                    partProperties[nth( 0 valueKey )] = pcreReplace( pattern nth( 1 valueKey ) "" 0 )
-                                                )
-                                            )
-
-                                            ; set part properties, clear properties
-                                            parts[refDes] = partProperties
-                                            partProperties = makeTable( "partProperties" nil )
-
-                                            ; append to symbol list
-                                            symbols = nconc( symbols list( nth( 0 subStrings ) ) )
-                                        else
-                                            state = "awaitMoreProperties"
-                                        )
-                                    )
-                                )
-                            )
-                        )
-                        (
-                            "awaitMoreProperties"
-                            ; add more properties
-
-                            ; append line to properties and check
-                            ; newLineEnd needs to be replaced by space + ), because the last space is ignore by buildString (...) in previous loop
-                            properties = strcat( properties pcreReplace( newLineEnd line " )" 0 ) )
-                            properties = pcreReplace( newLineWithinProperty properties "=\"" 0 )
-                            properties = pcreReplace( newLine properties "" 0 )
-                            temp = pcreReplace( propertySeparator properties "\\\\" 0 )
-                            temp = pcreReplace( newLineEnd temp "\\\\" 0 )
-                            subStrings = parseString( temp "\\\\" )
-
-                            ; check, if property information ends in this line
-                            when( strcmp( car(last(subStrings)) ")\n" ) == 0
-                                foreach( subString subStrings
-
-                                    ; parse properties
-                                    valueKey = parseString( subString "=" )
-
-                                    when( length(valueKey ) == 2
-                                        partProperties[nth( 0 valueKey )] = pcreReplace( blankSpace pcreReplace( pattern cadr( valueKey ) "" 0 ) "" 0 )
-                                    )
-                                )
-
-                                ; set part properties, clear properties
-                                parts[refDes] = partProperties
-                                partProperties = makeTable( "partProperties" nil )
-
-                                ; append to symbol list
-                                symbols = nconc( symbols list( nth( 0 subStrings ) ) )
-
-                                properties = ""
-
-                                state = "awaitEndCondition"
-                            )
-                        )
-                        (
-                            t
-                            warn( "I should not be here ... " )
+                        when( length( subStrings ) == 3
+                            currentVariant = nth( 1 subStrings )
+                            state = "awaitStartCondition"
                         )
                     )
+                    (
+                        "awaitStartCondition"
+                        when( strcmp( line "\t\t(base\n" ) == 0
+                            state = "appendSymbols"
+                            symbols = list()
+                        )
+                    )
+                    (
+                        "appendSymbols"
+                        if( strcmp( line "\t\t)\n" ) == 0 then
+                            state = "awaitEndCondition"
+                        else
+                            ;append symbols to list
+                            symbols = nconc( symbols parseString( line ) )
+                        )
+                    )
+                    (
+                        "awaitEndCondition"
+                        if( strcmp( line "\t)\n" ) == 0 then
+                            ;remove ")" in list
+                            symbols = remove( ")" symbols )
+                            symbols = mapcar( lambda( ( symbol ) pcreReplace( pattern symbol "" 0 ) )  symbols )
+
+                            ; append components to array
+                            variantTable[currentVariant] = symbols
+                            alternateParts[currentVariant] = parts
+
+                            ; initialize parts (again, clear previous values)
+                            parts = makeTable( "parts" nil )
+
+                            state = "findVariant"
+                        else
+                            ; alternate part properties
+                            when( pcreMatchp( propertyStart line )
+
+                                ; find variant specific information
+                                subStrings = parseString( line )
+
+                                when( length( subStrings ) > 1
+                                    refDes = pcreReplace( pattern nth( 0 subStrings ) "" 0 )
+
+                                    ; substrings without first element (refDes)
+                                    properties = buildString( cdr(subStrings) )
+
+                                    temp = pcreReplace( propertySeparator properties "\\\\" 0 )
+                                    subStrings = parseString( temp "\\\\" )
+
+                                    ; check, if property information ends in this line
+                                    if( strcmp( car(last(subStrings)) ")\n" ) == 0 then
+
+                                        foreach( subString subStrings
+                                            ; parse properties
+                                            valueKey = parseString( subString "=" )
+
+                                            when( length(valueKey ) == 2
+                                                partProperties[nth( 0 valueKey )] = pcreReplace( pattern nth( 1 valueKey ) "" 0 )
+                                            )
+                                        )
+
+                                        ; set part properties, clear properties
+                                        parts[refDes] = partProperties
+                                        partProperties = makeTable( "partProperties" nil )
+
+                                        ; append to symbol list
+                                        symbols = nconc( symbols list( nth( 0 subStrings ) ) )
+                                    else
+                                        state = "awaitMoreProperties"
+                                    )
+                                )
+                            )
+                        )
+                    )
+                    (
+                        "awaitMoreProperties"
+                        ; add more properties
+
+                        ; append line to properties and check
+                        ; newLineEnd needs to be replaced by space + ), because the last space is ignore by buildString (...) in previous loop
+                        properties = strcat( properties pcreReplace( newLineEnd line " )" 0 ) )
+                        properties = pcreReplace( newLineWithinProperty properties "=\"" 0 )
+                        properties = pcreReplace( newLine properties "" 0 )
+                        temp = pcreReplace( propertySeparator properties "\\\\" 0 )
+                        temp = pcreReplace( newLineEnd temp "\\\\" 0 )
+                        subStrings = parseString( temp "\\\\" )
+
+                        ; check, if property information ends in this line
+                        when( strcmp( car(last(subStrings)) ")\n" ) == 0
+                            foreach( subString subStrings
+
+                                ; parse properties
+                                valueKey = parseString( subString "=" )
+
+                                when( length(valueKey ) == 2
+                                    partProperties[nth( 0 valueKey )] = pcreReplace( blankSpace pcreReplace( pattern cadr( valueKey ) "" 0 ) "" 0 )
+                                )
+                            )
+
+                            ; set part properties, clear properties
+                            parts[refDes] = partProperties
+                            partProperties = makeTable( "partProperties" nil )
+
+                            ; append to symbol list
+                            symbols = nconc( symbols list( nth( 0 subStrings ) ) )
+
+                            properties = ""
+
+                            state = "awaitEndCondition"
+                        )
+                    )
+                    (
+                        t
+                        warn( "I should not be here ... " )
+                    )
                 )
-                list( variantTable alternateParts )
-            else
-                error( "Can not read from file ... " )
-                nil
             )
+            list( variantTable alternateParts )
+        else
+            error( "Can not read from file ... " )
+            nil
         )
     )
 )
