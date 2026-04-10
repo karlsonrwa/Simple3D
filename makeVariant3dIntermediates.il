@@ -1,5 +1,5 @@
 procedure( getVariantInfo()
-    let(    ( (variantFile "Variants.lst" ) 
+    let(    (   ( variantFile "Variants.lst" )
             ( state "findVariant" )
             pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
 
@@ -643,8 +643,15 @@ procedure( symbolReturnPinHoles()
     )
 )
 
-procedure( makePcb( thicknesses edges cuts )
+procedure( makePcb( thicknesses edges cuts color )
     let( ()
+        pcbColor = strcat(
+          "\"color\": {\n"
+          "\t\"r\": " sprintf( nil "%f" car( color ) ) ",\n"
+          "\t\"g\": " sprintf( nil "%f" cadr( color ) ) ",\n"
+          "\t\"b\": " sprintf( nil "%f" caddr( color ) ) "\n"
+          "}"
+        )
         if( boundp( 'cuts ) then
             edges = strcat(
                 "\"pcb\": {\n"
@@ -653,6 +660,10 @@ procedure( makePcb( thicknesses edges cuts )
                 "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
                 "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
                 "\t},\n"
+                addIndent( 
+                    pcbColor
+                )
+                ",\n"
                 "\t\"edges\": [\n"
                 "\t\t[\n"
                 addIndent(
@@ -671,6 +682,10 @@ procedure( makePcb( thicknesses edges cuts )
             edges = strcat(
                 "\"pcb\": {\n"
                 "\t\"thickness\": " sprintf( nil "%f" 1.67 ) ",\n"
+                addIndent( 
+                    pcbColor
+                )
+                ",\n"
                 "\t\"edges\": [\n"
                 "\t\t[\n"
                 addIndent(
@@ -683,7 +698,7 @@ procedure( makePcb( thicknesses edges cuts )
     )
 )
 
-procedure( create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
+procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName )
     let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) )
         ; reset base board contour
         when( car( edgeCuts )
@@ -717,8 +732,11 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
             )
         )
 
+        ; add name
+        name = strcat( "\"name\": \"" variantName "\"" )
+
         ; make pcb (including all cutouts and holes)
-        pcb = makePcb( thicknesses edges cuts )
+        pcb = makePcb( thicknesses edges cuts pcbColor )
 
         ; write step model placement informations
         stepModelPlacements = buildString( car( stepModelPlacements) ",\n" )
@@ -728,7 +746,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
         outPort = outfile( outFile )
 
         ; to prevent fprintf insufficient memory error
-        lines = parseString( strcat( pcb ",\n" stepModelPlacements ) "\n" )
+        lines = parseString( strcat( name ",\n" pcb ",\n" stepModelPlacements ) "\n" )
 
         fprintf( outPort "{\n")
 
@@ -745,8 +763,8 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
     )
 )
 
-procedure( makeVariant3dIntermediates( dir )
-    let( (  ( variantFile "Variants.lst" ) dsnName dsn thicknesses edgeCuts variantInformation variantSymbolList alternateParts variant symbols fileName thicknesses elements placement outFile outPort pcb lines )
+procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0.0) ) )
+    let( (  ( variantFile "Variants.lst" ) dsnName dsn thicknesses edgeCuts variantInformation variantSymbolList alternateParts variant symbols variantName fileName thicknesses elements placement outFile outPort pcb lines )
 
         ; get design and design name
         dsnName = axlCurrentDesign()
@@ -781,8 +799,9 @@ procedure( makeVariant3dIntermediates( dir )
                         symbols = variantSymbolList[variant]
                     )
 
-                    fileName = strcat( dir "/" dsnName "_" variant ".json" )
-                    create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
+                    variantName = lowerCase( strcat( dsnName "_" variant ) )
+                    fileName = lowerCase( strcat( dir "/" variantName ".json" ) )
+                    create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName )
                 )
 
                 print( "Export complete!" )
@@ -799,8 +818,9 @@ procedure( makeVariant3dIntermediates( dir )
             ; remove nils
             symbols = remd( nil symbols )
 
-            fileName = strcat( dir "/" dsnName "_CORE" ".json" )
-            create3dIntermediateFormat( thicknesses edgeCuts symbols fileName )
+            variantName = lowerCase( dsnName )
+            fileName = strcat( dir "/" variantName ".json" )
+            create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName )
         )
     )
 )
