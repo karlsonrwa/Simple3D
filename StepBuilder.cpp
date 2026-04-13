@@ -164,7 +164,7 @@ std::string find_file(const std::string& name, const std::string& path)
 }
 
 struct step_mapping {
-    TDF_Label label;
+    std::vector<TDF_Label> labels;
     json mapping;
 };
 
@@ -286,7 +286,11 @@ int main(int argc, char* arg[])
             TDF_LabelSequence roots;
             shapeTool->GetFreeShapes(roots);
 
-            cache[step_name].label = roots.Value(roots.Length());
+            // start at 2 (roots are 1-based and the first element is the document root)
+            for (int i = 2; i <= roots.Length(); i++) {
+                cache[step_name].labels.push_back(roots.Value(i));
+            }
+
             cache[step_name].mapping = data[component]["step_mapping"];
         }
 
@@ -364,8 +368,14 @@ int main(int argc, char* arg[])
         gp_Trsf trsf = position * angle * mirror * offset * rotation;
 
         // create component instance
-        TDataStd_Name::Set(cache[step_name].label, component.c_str());
-        TDF_Label test = shapeTool->AddComponent(mainAssembly, cache[step_name].label, TopLoc_Location(trsf));
+        TDF_Label instance = shapeTool->NewShape();
+
+        for (int n = 0; n < cache[step_name].labels.size(); n++) {
+            shapeTool->AddComponent(instance, cache[step_name].labels[n], TopLoc_Location(trsf));
+        }
+
+        TDataStd_Name::Set(instance, component.c_str());
+        shapeTool->AddComponent(mainAssembly, instance, TopLoc_Location(gp_Trsf()));
     }
 
     // update assembly
