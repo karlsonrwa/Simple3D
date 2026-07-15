@@ -1,4 +1,4 @@
-procedure( getVariantInfo()
+procedure( gdsysGetVariantInfo()
     let(    (   ( variantFile "Variants.lst" )
             ( state "findVariant" )
             pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
@@ -415,8 +415,12 @@ procedure( boardGeometryParseSegment( segment )
             )
             (
                 "arc"
-                element = makeArc( segment )
-
+                if( segment->isCircle then
+                    printf("i am here")
+                    element = makeCircle( segment->xy 2*segment->radius )
+                else
+                    element = makeArc( segment )
+                )
             )
             (
                 t
