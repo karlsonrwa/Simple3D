@@ -12,8 +12,11 @@
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <gp_Vec.hxx>
+#include <ShapeAnalysis_FreeBounds.hxx>
 #include <STEPCAFControl_Reader.hxx>
 #include <STEPCAFControl_Writer.hxx>
+#include <TopTools_HSequenceOfShape.hxx>
+#include <TopoDS.hxx>
 #include <XCAFApp_Application.hxx>
 #include <XCAFDoc_DocumentTool.hxx>
 #include <XCAFDoc_ShapeTool.hxx>
@@ -102,18 +105,16 @@ TopoDS_Wire buildContour(const json& contour, double z_offset)
         }
     }
 
-    BRepBuilderAPI_MakeWire wire_maker;
+    Handle(TopTools_HSequenceOfShape) edge_seq = new TopTools_HSequenceOfShape();
 
     for (const auto& e : edges)
-        wire_maker.Add(e);
+        edge_seq->Append(e);
 
-    if (!wire_maker.IsDone())
-    {
-        std::cerr << "Wire not done!\n";
-        throw std::runtime_error("Wire not done");
-    }
+    Handle(TopTools_HSequenceOfShape) wires = new TopTools_HSequenceOfShape();
 
-    return wire_maker.Wire();
+    ShapeAnalysis_FreeBounds::ConnectEdgesToWires(edge_seq, 1.0e-5, false, wires);
+
+    return TopoDS::Wire(wires->Value(1));
 }
 
 TopoDS_Shape make_board_geometry(const json& pcb, double thickness, double z_offset = 0.0)
