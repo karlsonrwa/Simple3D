@@ -1,3 +1,174 @@
+;=====================================================================
+;  makeVariant3dIntermediates.il
+;
+;  Exports an Allegro PCB design to an intermediate JSON that the
+;  "Simple 3D" Python tool turns into a STEP assembly.
+;
+;  ORIGIN & CREDIT
+;  Based on the original makeVariant3dIntermediates.il by juulsA
+;  (https://github.com/juulsA/exportStep). This copy has been
+;  modified for the Simple 3D toolchain. Changes vs the original are
+;  marked inline with "FIX (simple3d)" or "NEW (simple3d)":
+;    * addIndent() - was called 8x but never defined in the repo; added.
+;    * getVariantInfo -> gdsysGetVariantInfo (the defined name).
+;    * calculateBoardThickness - only SOLDERMASK counts toward the mask
+;      thickness; SILKSCREEN/PASTEMASK are also layerType "MASK" and were
+;      wrongly folded in and overwritten. Side is decided by position.
+;    * makePcb - the no-cutout branch emitted a bare "thickness": 1.67
+;      scalar the reader rejects; now emits the real thickness object.
+;    * makeSlot - makeCircle was called with 3 args; it takes (xy diameter).
+;    * removed a leftover debug printf("i am here").
+;    * symbolReturn3DElements - now also emits "mfr_pn" (the MFRPN article
+;      number, read from the component definition) for the STEP writer.
+;    * s3dGetMfrPn / s3dJsonEscape / s3dCheckMfrPn helpers added.
+;
+;  USAGE
+;    makeVariant3dIntermediates( outputDir [ pcbColor ] )
+;  Writes <design>.json (or one <design>_<variant>.json per variant if a
+;  Variants.lst is present) into outputDir. Design units must be mm.
+;=====================================================================
+
+; s3dMakeDirs( t_path ) -> create every missing level of a directory path.
+; createDir makes only one level at a time; a path like ".../A1/cad" where an
+; intermediate level is missing needs each segment created in turn.
+procedure( s3dMakeDirs( t_path )
+    let( ( norm parts acc seg )
+        ; normalise slashes; parseString drops empty tokens so "d:/a//b" is safe
+        norm = buildString( parseString( t_path "\\" ) "/" )
+        parts = parseString( norm "/" )
+        acc = ""
+        foreach( seg parts
+            acc = if( acc == "" then seg else strcat( acc "/" seg ) )
+            ; skip the bare drive letter "d:" (creating it is meaningless).
+            ; A drive token is exactly 2 chars ending in ":".
+            unless( (strlen( acc ) == 2) && (substring( acc 2 1 ) == ":")
+                unless( isDir( acc )
+                    errset( createDir( acc ) )
+                )
+            )
+        )
+        isDir( t_path )
+    )
+)
+
+; addIndent( t_string [ x_levels ] ) -> prefix every line with x_levels tabs.
+; Reconstructed from the call sites; output matches the reference demo.json
+; byte-for-byte. (The original repo used this but never shipped its source.)
+procedure( addIndent( t_string @optional ( x_levels 1 ) )
+    let( ( pad lines i )
+        pad = ""
+        for( i 1 x_levels
+            pad = strcat( pad "\t" )
+        )
+        cond(
+            ( !t_string           nil )
+            ( !stringp( t_string ) t_string )
+            ( t
+                lines = parseString( t_string "\n" )
+                if( lines then
+                    buildString( mapcar( lambda( (line) strcat( pad line ) ) lines ) "\n" )
+                else
+                    strcat( pad t_string )
+                )
+            )
+        )
+    )
+)
+
+; --- MFRPN (article number) helpers -------------------------------------
+
+defvar( S3D_MfrPnProp "MFRPN" )
+
+; Case-insensitive property read via axlDBGetProperties. The dictionary
+; spelling is whatever the netlist declared (F4 prints MFRPN); match loosely.
+procedure( s3dPropCI( dbid t_name )
+    let( ( props p key val want )
+        val  = nil
+        want = upperCase( t_name )
+        when( dbid
+            errset( props = axlDBGetProperties( dbid ) )
+            when( props
+                foreach( p props
+                    when( p && listp( p )
+                        key = car( p )
+                        unless( stringp( key ) key = sprintf( nil "%L" key ) )
+                        when( upperCase( key ) == want
+                            val = cdr( p )
+                            when( listp( val ) val = car( val ) )
+                        )
+                    )
+                )
+            )
+        )
+        when( val && !stringp( val ) val = sprintf( nil "%L" val ) )
+        when( val && val != "" val )
+    )
+)
+
+; MFRPN lives on the component definition (F4: "Properties attached to
+; component definition"). An instance-level override, if present, wins.
+procedure( s3dGetMfrPn( comp )
+    let( ( val )
+        val = nil
+        when( comp
+            val = s3dPropCI( comp S3D_MfrPnProp )
+            unless( val
+                when( comp->compdef  val = s3dPropCI( comp->compdef S3D_MfrPnProp ) )
+            )
+        )
+        val
+    )
+)
+
+; Minimal JSON string escaping for the article number.
+procedure( s3dJsonEscape( t_string )
+    let( ( out c i n )
+        unless( stringp( t_string ) t_string = sprintf( nil "%L" t_string ) )
+        out = ""
+        n = strlen( t_string )
+        for( i 1 n
+            c = substring( t_string i 1 )
+            cond(
+                ( c == "\""  out = strcat( out "\\\"" ) )
+                ( c == "\\"  out = strcat( out "\\\\" ) )
+                ( c == "\t"  out = strcat( out "\\t"  ) )
+                ( c == "\n"  out = strcat( out "\\n"  ) )
+                ( t          out = strcat( out c ) )
+            )
+        )
+        out
+    )
+)
+
+; Pre-flight check for the Simple 3D menu. Returns
+;   ( refDesWithoutMfrPn  refDesWithoutStepModel ).
+; Only components that would be exported (refdes + STEP mapping) are checked.
+procedure( s3dCheckMfrPn()
+    let( ( noMfrPn noModel sym comp mapping )
+        noMfrPn = tconc( nil nil )
+        noModel = tconc( nil nil )
+        foreach( sym axlDBGetDesign()->symbols
+            when( sym->refdes
+                mapping = nil
+                errset( mapping = axlStepGet( nil nil sym ) )
+                if( mapping && mapping->step_name then
+                    comp = sym->component
+                    unless( s3dGetMfrPn( comp )
+                        tconc( noMfrPn sym->refdes )
+                    )
+                else
+                    tconc( noModel sym->refdes )
+                )
+            )
+        )
+        list( cdr( car( noMfrPn ) ) cdr( car( noModel ) ) )
+    )
+)
+
+;=====================================================================
+;  ORIGINAL SCRIPT (with the inline fixes noted in the header)
+;=====================================================================
+
 procedure( gdsysGetVariantInfo()
     let(    (   ( variantFile "Variants.lst" )
             ( state "findVariant" )
@@ -281,7 +452,8 @@ procedure( makeSlot( pin padstack )
 
         ; if slot is actually a hole
         if( drillSizeWidth == drillSizeHeight then
-            slot = makeCircle( x y drillSizeWidth )
+            ; FIX (simple3d): makeCircle takes (xy diameter), not (x y d).
+            slot = makeCircle( list( x y ) drillSizeWidth )
         else
             ; default state is drillSizeWidth < drillSizeHeight
             ; otherwise swap both and add 90 deg rotation
@@ -416,7 +588,6 @@ procedure( boardGeometryParseSegment( segment )
             (
                 "arc"
                 if( segment->isCircle then
-                    printf("i am here")
                     element = makeCircle( segment->xy 2*segment->radius )
                 else
                     element = makeArc( segment )
@@ -432,41 +603,57 @@ procedure( boardGeometryParseSegment( segment )
 )
 
 procedure( calculateBoardThickness()
-    let( ( stackup padToPadThickness topSoldermaskThickness bottomSoldermaskThickness )
+    ; FIX (simple3d): SILKSCREEN_* and PASTEMASK_* are ALSO layerType "MASK"
+    ; (verified on a real board), so the original
+    ;     if name == "SOLDERMASK_TOP" then top else bottom
+    ; put silkscreen into the bottom mask and, using plain "=", let each later
+    ; MASK layer overwrite the previous one. Now: only SOLDERMASK layers count,
+    ; classified top/bottom by cross-section position relative to the outermost
+    ; conductor (so a renamed mask still lands correctly). Dielectric pseudo-
+    ; layers have name = nil, hence the guard.
+    ;
+    ; NOTE (simple3d): this sums a SINGLE stackup. Multi-stackup / rigid-flex
+    ; designs (more than one stackup zone) are NOT supported - the whole board
+    ; is exported with this one averaged thickness. See the README limitation.
+    let( ( stackup padToPadThickness topSoldermaskThickness bottomSoldermaskThickness
+           topCondPos nm thk )
         stackup = axlXSectionGet( nil 'all )
         padToPadThickness = 0.0
         topSoldermaskThickness = 0.0
         bottomSoldermaskThickness = 0.0
+        topCondPos = nil
 
+        ; first conductor/plane from the top gives the reference position
         foreach( layer stackup
             case( layer->layerType
-                (
-                    "CONDUCTOR"
-                    padToPadThickness += layer->thickness
+                ( ( "CONDUCTOR" "PLANE" )
+                    unless( topCondPos  topCondPos = layer->position )
                 )
-                (
-                    "DIELECTRIC"
-                    padToPadThickness += layer->thickness
-                )
-                (
-                    "MASK"
-                    if( layer->name == "SOLDERMASK_TOP" then
-                        topSoldermaskThickness = layer->thickness
-                    else
-                        bottomSoldermaskThickness = layer->thickness
-                    )
-                    ; printf( "material: %s\n" layer->name )
-                )
-                (
-                    "PLANE"
-                    padToPadThickness += layer->thickness
-                )
-                (
-                    t
-                )
+                ( t nil )
             )
         )
-        list( topSoldermaskThickness padToPadThickness bottomSoldermaskThickness)
+
+        foreach( layer stackup
+            thk = layer->thickness
+            unless( thk  thk = 0.0 )
+            case( layer->layerType
+                ( ( "CONDUCTOR" "DIELECTRIC" "PLANE" )
+                    padToPadThickness = padToPadThickness + thk
+                )
+                ( ( "MASK" )
+                    nm = if( layer->name then upperCase( layer->name ) else "" )
+                    when( substring( nm 1 10 ) == "SOLDERMASK"
+                        if( topCondPos && layer->position && (layer->position < topCondPos) then
+                            topSoldermaskThickness = topSoldermaskThickness + thk
+                        else
+                            bottomSoldermaskThickness = bottomSoldermaskThickness + thk
+                        )
+                    )
+                )
+                ( t nil )
+            )
+        )
+        list( topSoldermaskThickness padToPadThickness bottomSoldermaskThickness )
     )
 )
 
@@ -532,7 +719,7 @@ procedure( makePcbContour( dsn )
 )
 
 procedure( symbolReturn3DElements( refDes )
-    let( ( stepPackageMapping dbid sym mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole ( holes 'unbound ) )
+    let( ( stepPackageMapping dbid sym mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole mfrPn ( holes 'unbound ) )
 
         stepPackageMapping = nil
 
@@ -551,6 +738,11 @@ procedure( symbolReturn3DElements( refDes )
         rotation_x = mappingData->rotation_x
         rotation_y = mappingData->rotation_y
         rotation_z = mappingData->rotation_z
+
+        ; NEW (simple3d): MFRPN (article number) travels in the JSON so the
+        ; downstream STEP writer can use it. It lives on the component
+        ; definition, not the instance.
+        mfrPn = s3dGetMfrPn( dbid->component )
 
         ; symbol
         if( sym->isMirrored then
@@ -576,6 +768,10 @@ procedure( symbolReturn3DElements( refDes )
                 "\t\t\"offset_y\": " sprintf( nil "%f" offset_y ) ",\n"
                 "\t\t\"offset_z\": " sprintf( nil "%f" offset_z ) "\n"
                 "\t},\n"
+                "\t\"mfr_pn\": " if( mfrPn then
+                                     strcat( "\"" s3dJsonEscape( mfrPn ) "\"" )
+                                 else
+                                     "null" ) ",\n"
                 "\t\"is_mirrored\": " isMirrored ",\n"
                 "\t\"x\": " sprintf( nil "%f" xCoord( xy ) ) ",\n"
                 "\t\"y\": " sprintf( nil "%f" yCoord( xy ) ) ",\n"
@@ -683,9 +879,17 @@ procedure( makePcb( thicknesses edges cuts color )
             )
 
         else
+            ; FIX (simple3d): the original emitted  "thickness": 1.67  as a bare
+            ; scalar here (reached on a board with no cutouts and no through
+            ; pins, when 'cuts stays unbound), which the reader rejects. Emit
+            ; the real thickness object, same as the other branch.
             edges = strcat(
                 "\"pcb\": {\n"
-                "\t\"thickness\": " sprintf( nil "%f" 1.67 ) ",\n"
+                "\t\"thickness\": {\n"
+                "\t\t\"soldermask_top\": " sprintf( nil "%f" car( thicknesses ) ) ",\n"
+                "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
+                "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
+                "\t},\n"
                 addIndent( 
                     pcbColor
                 )
@@ -736,8 +940,14 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
             )
         )
 
-        ; add name
-        name = strcat( "\"name\": \"" variantName "\"" )
+        ; add name + a format marker so the Python side can tell a Simple 3D
+        ; intermediate from any other .json that happens to sit in the folder.
+        ; Files without "format": "simple3d" are ignored by the GUI.
+        name = strcat(
+            "\"format\": \"simple3d\",\n"
+            "\t\"format_version\": 1,\n"
+            "\t\"name\": \"" variantName "\""
+        )
 
         ; make pcb (including all cutouts and holes)
         pcb = makePcb( thicknesses edges cuts pcbColor )
@@ -747,7 +957,17 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 
         ; write to file
         outFile = fileName
+        printf( "Simple 3D: writing -> %s\n" outFile )
         outPort = outfile( outFile )
+
+        ; FIX (simple3d): outfile returns nil if the path could not be opened
+        ; (missing folder, permissions, etc). Without this guard the following
+        ; fprintf's silently do nothing and the caller still prints
+        ; "Export complete!", leaving an empty/absent .json that the GUI then
+        ; cannot find. Fail loudly instead.
+        unless( outPort
+            error( "Simple 3D: outfile() returned nil for: %s\n(check the folder exists and the path/permissions)\n" outFile )
+        )
 
         ; to prevent fprintf insufficient memory error
         lines = parseString( strcat( name ",\n" pcb ",\n" stepModelPlacements ) "\n" )
@@ -763,21 +983,27 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 
         close( outPort )
 
+        ; confirm the file actually landed on disk
+        if( isFile( outFile ) then
+            printf( "Simple 3D: wrote %s\n" outFile )
+        else
+            error( "Simple 3D: file was NOT created after close: %s\n" outFile )
+        )
+
         t
     )
 )
 
 procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0.0) ) )
-    let( (  ( variantFile "Variants.lst" ) dsnName dsn thicknesses edgeCuts variantInformation variantSymbolList alternateParts variant symbols variantName fileName thicknesses elements placement outFile outPort pcb lines )
+    let( (  ( variantFile "Variants.lst" ) dsnName dsn thicknesses edgeCuts variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName thicknesses elements placement outFile outPort pcb lines )
 
         ; get design and design name
         dsnName = axlCurrentDesign()
         dsn = axlDBGetDesign()
 
-        ; create dir
-        unless( isDir( dir )
-            createDir( dir )
-        )
+        ; create dir (recursively - createDir makes only one level at a time,
+        ; so walk the path and create each missing segment).
+        s3dMakeDirs( dir )
 
         ; calculate pcb thickness
         thicknesses = calculateBoardThickness()
@@ -787,11 +1013,33 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
 
         if( isFile( variantFile ) then
             ; Read / parse variant list
-            variantInformation = getVariantInfo()
+            variantInformation = gdsysGetVariantInfo()
 
             if( variantInformation then
                 variantSymbolList = car( variantInformation )
                 alternateParts = cadr( variantInformation )
+
+                ; FIX (simple3d): variantSymbolList is a table (from makeTable),
+                ; not a list - it is always truthy and length() does not apply,
+                ; so count its keys by iterating. If a Variants.lst is present
+                ; but yields zero variants for THIS board, the foreach below
+                ; runs zero times, no JSON is written, yet "Export complete!"
+                ; still prints. That usually means the Variants.lst in the
+                ; working folder belongs to a DIFFERENT project. Surface it.
+                variantCount = 0
+                foreach( variant variantSymbolList
+                    variantCount = variantCount + 1
+                )
+                printf( "Simple 3D: %d variant(s) parsed from %s\n"
+                        variantCount variantFile )
+                when( variantCount == 0
+                    error( strcat(
+                        "Simple 3D: a Variants.lst was found but no matching "
+                        "variants were parsed for this board.\n"
+                        "The file likely belongs to a different project. "
+                        "Delete or replace the Variants.lst in the design "
+                        "folder, or remove it to export all components.\n" ) )
+                )
 
                 foreach( variant variantSymbolList
                     printf( "Exporting .json for variant: %s\n" variant )
