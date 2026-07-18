@@ -7,6 +7,14 @@
 <a name="english"></a>
 # English
 
+# ⚠️ Disclaimer
+
+Everything in this repository has been created through vibe coding with Claude.
+I am not a professional software developer. My background is in hardware engineering, and this project exists solely because I wanted to solve problems I encountered in my own workflow.
+I am not proficient in either Python or SKILL. Instead, I focus on clearly defining the behavior I expect from the tool and iteratively refining it until it does what I need.
+If you find a bug, an issue, or have an idea for improvement, please feel free to open an Issue or submit a Pull Request. I will do my best to investigate and fix it, but I cannot promise a quick response.
+Although this project was developed using an AI-assisted workflow, I make an effort to validate the generated code in real-world use and rely on this tool in my own projects.
+
 ## Why this exists
 
 Allegro PCB Editor ships a native 3D STEP export (`File → Export → 3D`), but it
@@ -211,6 +219,14 @@ stepbuilder/
 
 <a name="русский"></a>
 # Русский
+
+# ⚠️ Дисклеймер
+
+Весь код в этом репозитории создан с использованием вайбкодинга совместно с Claude.
+Я не являюсь профессиональным разработчиком программного обеспечения. По профессии я инженер-разработчик аппаратного обеспечения, и этот проект появился исключительно как попытка решить собственные практические задачи.
+Я не владею в совершенстве ни Python, ни SKILL. Вместо этого я стараюсь максимально точно формулировать требования к инструменту и постепенно доводить его до нужного результата.
+Если вы обнаружите ошибку, неточность или захотите предложить улучшение — пожалуйста, создайте Issue или Pull Request. Я постараюсь разобраться и исправить проблему, однако не могу гарантировать, что это произойдет быстро.
+Несмотря на выбранный подход к разработке, я стараюсь проверять результаты работы инструмента на практике и использовать этот проект в реальных задачах.
 
 ## Зачем это нужно
 
