@@ -275,7 +275,8 @@ class BuildResult:
     components_placed: int = 0
     components_skipped: list[str] = field(default_factory=list)
     missing_step_files: list[str] = field(default_factory=list)
-    missing_mfr_pn: list[str] = field(default_factory=list)
+    # MFRPN reporting DISABLED (property attachment unreliable); kept for future:
+    # missing_mfr_pn: list[str] = field(default_factory=list)
 
 
 def _validate(data: dict) -> None:
@@ -426,7 +427,7 @@ def generate(
     z_datum: str = "top",
     board_color: tuple[int, int, int] | None = None,
     rim_color: tuple[int, int, int] | None = None,
-    name_instances_with_mfr_pn: bool = False,
+    # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
     minimize_size: bool = True,
     srgb_color: bool = True,
     log: LogFn = _noop_log,
@@ -442,8 +443,6 @@ def generate(
     board_color / rim_color:
         RGB 0-255. board_color defaults to the JSON's pcb.color. rim_color, if
         given, paints the board sides + underside separately from the top face.
-    name_instances_with_mfr_pn:
-        Append the MFRPN to each instance name (refdes_json_MfrPN).
     minimize_size:
         Set write.surfacecurve.mode = 0 (about half the file size, geometry
         unchanged) and share one part per distinct model.
@@ -525,7 +524,10 @@ def generate(
         for face in rim_faces:
             color_tool.SetColor(face, rim_q, XCAFDoc_ColorType.XCAFDoc_ColorSurf)
 
-    TDataStd_Name.Set_s(pcb_label, TCollection_ExtendedString("PCB"))
+    # Name the board part per board (PCB_<jsonstem>), not a bare "PCB": otherwise
+    # importing several boards into one CAD session, each carrying a part called
+    # "PCB", lets one board's PCB silently substitute another's.
+    TDataStd_Name.Set_s(pcb_label, TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
     shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))
 
     # ---- component group assemblies (symbols_top / symbols_bot) ---------- #
@@ -604,30 +606,24 @@ def generate(
             result.components_skipped.append(ref_des)
             continue
 
-        # Track components missing MFRPN for the report (not fatal: mechanicals
-        # and fiducials legitimately lack it).
-        mfr_pn = component.get("mfr_pn")
-        if not mfr_pn:
-            result.missing_mfr_pn.append(ref_des)
+        # MFRPN tracking DISABLED (property attachment unreliable); keep for future:
+        # mfr_pn = component.get("mfr_pn")
+        # if not mfr_pn:
+        #     result.missing_mfr_pn.append(ref_des)
 
         trsf = component_transform(mapping, component, board_top_z, board_bottom_z)
 
-        # Unique instance name: refdes_<jsonstem>, so two different boards never
-        # collide in the same SolidWorks session.
-        inst_name = f"{ref_des}_{json_stem}"
-        if name_instances_with_mfr_pn and mfr_pn:
-            inst_name = f"{inst_name}_{mfr_pn}"
-        inst_name = _sanitize(inst_name)
-
+        # Place the shared part DIRECTLY under symbols_top / symbols_bot, as an
+        # instance that carries the STEP file's own name. No per-refdes wrapper
+        # sub-assembly and no refdes_<board> instance name (that was
+        # over-complication): the tree under symbols_* is just the model parts,
+        # instanced in place. The part is still shared, so N identical footprints
+        # cost one solid.
         side = "symbols_bot" if component["is_mirrored"] else "symbols_top"
         parent = group_for(side)
 
-        instance = shape_tool.NewShape()
         for root in roots:
-            shape_tool.AddComponent(instance, root, TopLoc_Location(trsf))
-
-        TDataStd_Name.Set_s(instance, TCollection_ExtendedString(inst_name))
-        shape_tool.AddComponent(parent, instance, TopLoc_Location(gp_Trsf()))
+            shape_tool.AddComponent(parent, root, TopLoc_Location(trsf))
         result.components_placed += 1
 
     # Without this the written document is empty.

@@ -59,10 +59,11 @@ S3D_ModelLibDir = "d:/Projects/OrCAD/CIS/3D"
 ; in colors.py: Black Blue Dark_green Green Purple Red White Yellow.
 S3D_DefaultColor = "Dark_green"
 
+; MFRPN DISABLED (property attachment unreliable); kept for future re-enable.
 ; If t, abort the export when an exportable component (one that has a STEP
 ; model) has no MFRPN property. If nil, warn and continue - mechanicals and
 ; fiducials legitimately lack MFRPN, so nil is the safe default.
-S3D_StrictMfrPn = nil
+; S3D_StrictMfrPn = nil
 
 ; Menu label and internal command name.
 S3D_CommandVisible = "Simple 3D"
@@ -170,24 +171,27 @@ procedure( s3dExportCommand()
         cadDir = s3dResolveCadDir( designDir )
         printf( "Simple 3D: JSON + STEP output -> %s\n" cadDir )
 
-        ; --- pre-flight MFRPN check -----------------------------------
+        ; --- pre-flight: components with no 3D model ------------------
+        ; s3dCheckMfrPn still returns the no-model list (2nd element); its MFRPN
+        ; half is disabled - property attachment unreliable - but kept for future.
         check = s3dCheckMfrPn()
-        noMfrPn = car( check )
+        ; noMfrPn = car( check )                        ; MFRPN DISABLED (future)
         noModel = cadr( check )
 
         when( noModel
             printf( "Simple 3D: %d component(s) have no 3D model, not exported: %L\n"
                     length( noModel ) noModel )
         )
-        when( noMfrPn
-            printf( "Simple 3D: %d exported component(s) have no MFRPN: %L\n"
-                    length( noMfrPn ) noMfrPn )
-            when( S3D_StrictMfrPn
-                axlUIWPrint( nil
-                    "Simple 3D: aborting - components without MFRPN (see console)." )
-                return( nil )
-            )
-        )
+        ; --- MFRPN pre-flight DISABLED (kept for future) --------------
+        ; when( noMfrPn
+        ;     printf( "Simple 3D: %d exported component(s) have no MFRPN: %L\n"
+        ;             length( noMfrPn ) noMfrPn )
+        ;     when( S3D_StrictMfrPn
+        ;         axlUIWPrint( nil
+        ;             "Simple 3D: aborting - components without MFRPN (see console)." )
+        ;         return( nil )
+        ;     )
+        ; )
 
         ; --- generate the intermediate JSON(s) into cad ---------------
         ; makeVariant3dIntermediates takes the output dir as its first arg and

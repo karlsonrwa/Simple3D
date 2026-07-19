@@ -78,70 +78,70 @@ procedure( addIndent( t_string @optional ( x_levels 1 ) )
     )
 )
 
-; --- MFRPN (article number) helpers -------------------------------------
+; --- MFRPN helpers DISABLED (property attachment unreliable; kept for future) ---
 
-defvar( S3D_MfrPnProp "MFRPN" )
+; defvar( S3D_MfrPnProp "MFRPN" )
 
 ; Case-insensitive property read via axlDBGetProperties. The dictionary
 ; spelling is whatever the netlist declared (F4 prints MFRPN); match loosely.
-procedure( s3dPropCI( dbid t_name )
-    let( ( props p key val want )
-        val  = nil
-        want = upperCase( t_name )
-        when( dbid
-            errset( props = axlDBGetProperties( dbid ) )
-            when( props
-                foreach( p props
-                    when( p && listp( p )
-                        key = car( p )
-                        unless( stringp( key ) key = sprintf( nil "%L" key ) )
-                        when( upperCase( key ) == want
-                            val = cdr( p )
-                            when( listp( val ) val = car( val ) )
-                        )
-                    )
-                )
-            )
-        )
-        when( val && !stringp( val ) val = sprintf( nil "%L" val ) )
-        when( val && val != "" val )
-    )
-)
+; procedure( s3dPropCI( dbid t_name )
+;     let( ( props p key val want )
+;         val  = nil
+;         want = upperCase( t_name )
+;         when( dbid
+;             errset( props = axlDBGetProperties( dbid ) )
+;             when( props
+;                 foreach( p props
+;                     when( p && listp( p )
+;                         key = car( p )
+;                         unless( stringp( key ) key = sprintf( nil "%L" key ) )
+;                         when( upperCase( key ) == want
+;                             val = cdr( p )
+;                             when( listp( val ) val = car( val ) )
+;                         )
+;                     )
+;                 )
+;             )
+;         )
+;         when( val && !stringp( val ) val = sprintf( nil "%L" val ) )
+;         when( val && val != "" val )
+;     )
+; )
 
 ; MFRPN lives on the component definition (F4: "Properties attached to
 ; component definition"). An instance-level override, if present, wins.
-procedure( s3dGetMfrPn( comp )
-    let( ( val )
-        val = nil
-        when( comp
-            val = s3dPropCI( comp S3D_MfrPnProp )
-            unless( val
-                when( comp->compdef  val = s3dPropCI( comp->compdef S3D_MfrPnProp ) )
-            )
-        )
-        val
-    )
-)
+; procedure( s3dGetMfrPn( comp )
+;     let( ( val )
+;         val = nil
+;         when( comp
+;             val = s3dPropCI( comp S3D_MfrPnProp )
+;             unless( val
+;                 when( comp->compdef  val = s3dPropCI( comp->compdef S3D_MfrPnProp ) )
+;             )
+;         )
+;         val
+;     )
+; )
 
 ; Minimal JSON string escaping for the article number.
-procedure( s3dJsonEscape( t_string )
-    let( ( out c i n )
-        unless( stringp( t_string ) t_string = sprintf( nil "%L" t_string ) )
-        out = ""
-        n = strlen( t_string )
-        for( i 1 n
-            c = substring( t_string i 1 )
-            cond(
-                ( c == "\""  out = strcat( out "\\\"" ) )
-                ( c == "\\"  out = strcat( out "\\\\" ) )
-                ( c == "\t"  out = strcat( out "\\t"  ) )
-                ( c == "\n"  out = strcat( out "\\n"  ) )
-                ( t          out = strcat( out c ) )
-            )
-        )
-        out
-    )
-)
+; procedure( s3dJsonEscape( t_string )
+;     let( ( out c i n )
+;         unless( stringp( t_string ) t_string = sprintf( nil "%L" t_string ) )
+;         out = ""
+;         n = strlen( t_string )
+;         for( i 1 n
+;             c = substring( t_string i 1 )
+;             cond(
+;                 ( c == "\""  out = strcat( out "\\\"" ) )
+;                 ( c == "\\"  out = strcat( out "\\\\" ) )
+;                 ( c == "\t"  out = strcat( out "\\t"  ) )
+;                 ( c == "\n"  out = strcat( out "\\n"  ) )
+;                 ( t          out = strcat( out c ) )
+;             )
+;         )
+;         out
+;     )
+; )
 
 ; Pre-flight check for the Simple 3D menu. Returns
 ;   ( refDesWithoutMfrPn  refDesWithoutStepModel ).
@@ -155,10 +155,11 @@ procedure( s3dCheckMfrPn()
                 mapping = nil
                 errset( mapping = axlStepGet( nil nil sym ) )
                 if( mapping && mapping->step_name then
-                    comp = sym->component
-                    unless( s3dGetMfrPn( comp )
-                        tconc( noMfrPn sym->refdes )
-                    )
+                    ; MFRPN check DISABLED (property attachment unreliable);
+                    ; kept for future - restore the two lines below to re-enable:
+                    ; comp = sym->component
+                    ; unless( s3dGetMfrPn( comp )  tconc( noMfrPn sym->refdes ) )
+                    t
                 else
                     tconc( noModel sym->refdes )
                 )
@@ -742,10 +743,9 @@ procedure( symbolReturn3DElements( refDes )
         rotation_y = mappingData->rotation_y
         rotation_z = mappingData->rotation_z
 
-        ; NEW (simple3d): MFRPN (article number) travels in the JSON so the
-        ; downstream STEP writer can use it. It lives on the component
-        ; definition, not the instance.
-        mfrPn = s3dGetMfrPn( dbid->component )
+        ; MFRPN DISABLED (property attachment unreliable); kept for future.
+        ; It lives on the component definition, not the instance:
+        ; mfrPn = s3dGetMfrPn( dbid->component )
 
         ; symbol
         if( sym->isMirrored then
@@ -771,10 +771,12 @@ procedure( symbolReturn3DElements( refDes )
                 "\t\t\"offset_y\": " sprintf( nil "%f" offset_y ) ",\n"
                 "\t\t\"offset_z\": " sprintf( nil "%f" offset_z ) "\n"
                 "\t},\n"
-                "\t\"mfr_pn\": " if( mfrPn then
-                                     strcat( "\"" s3dJsonEscape( mfrPn ) "\"" )
-                                 else
-                                     "null" ) ",\n"
+                ; MFRPN DISABLED (kept for future). The "},\n" above already ends
+                ; step_mapping with a comma, so dropping mfr_pn keeps valid JSON:
+                ; "\t\"mfr_pn\": " if( mfrPn then
+                ;                      strcat( "\"" s3dJsonEscape( mfrPn ) "\"" )
+                ;                  else
+                ;                      "null" ) ",\n"
                 "\t\"is_mirrored\": " isMirrored ",\n"
                 "\t\"x\": " sprintf( nil "%f" xCoord( xy ) ) ",\n"
                 "\t\"y\": " sprintf( nil "%f" yCoord( xy ) ) ",\n"

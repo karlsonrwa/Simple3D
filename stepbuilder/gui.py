@@ -48,7 +48,8 @@ class StepBuilderApp(tk.Tk):
         self.theme = tk.StringVar(value=DEFAULT_THEME)
         self.rim_choice = tk.StringVar(value=RIM_SAME)
         self.rim_custom = tk.StringVar(value="")
-        self.mfr_pn_in_name = tk.BooleanVar(value=False)
+        # MFRPN DISABLED (property attachment unreliable); kept for future:
+        # self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
 
         # Prefill state, set by prefill_jobs() when launched from Allegro.
@@ -83,13 +84,18 @@ class StepBuilderApp(tk.Tk):
         opts.columnconfigure(3, weight=1)
 
         ttk.Label(opts, text="Board colour").grid(row=0, column=0, sticky="w", pady=3)
+        # Keep the combobox and its colour swatch together in one frame so the
+        # swatch sits directly beside the dropdown instead of being pushed to the
+        # right edge by the expanding grid column.
+        colour_row = ttk.Frame(opts)
+        colour_row.grid(row=0, column=1, columnspan=2, sticky="w", padx=6)
         theme_box = ttk.Combobox(
-            opts, textvariable=self.theme, values=THEME_ORDER, state="readonly", width=16
+            colour_row, textvariable=self.theme, values=THEME_ORDER, state="readonly", width=16
         )
-        theme_box.grid(row=0, column=1, sticky="w", padx=6)
-        self._swatch = tk.Canvas(opts, width=22, height=22, highlightthickness=1,
+        theme_box.pack(side="left")
+        self._swatch = tk.Canvas(colour_row, width=22, height=22, highlightthickness=1,
                                  highlightbackground="#888")
-        self._swatch.grid(row=0, column=2, sticky="w")
+        self._swatch.pack(side="left", padx=(6, 0))
         theme_box.bind("<<ComboboxSelected>>", lambda e: self._update_swatch())
 
         ttk.Label(opts, text="Board edge").grid(row=0, column=3, sticky="e", padx=(12, 6))
@@ -112,10 +118,11 @@ class StepBuilderApp(tk.Tk):
 
         checks = ttk.Frame(opts)
         checks.grid(row=2, column=0, columnspan=5, sticky="w", pady=(6, 0))
-        ttk.Checkbutton(checks, text="Append MFRPN to instance names",
-                        variable=self.mfr_pn_in_name).pack(side="left")
+        # MFRPN DISABLED (property attachment unreliable); kept for future:
+        # ttk.Checkbutton(checks, text="Append MFRPN to instance names",
+        #                 variable=self.mfr_pn_in_name).pack(side="left")
         ttk.Checkbutton(checks, text="Minimise file size",
-                        variable=self.minimize).pack(side="left", padx=(16, 0))
+                        variable=self.minimize).pack(side="left")
 
         # --- log ---
         log_frame = ttk.LabelFrame(self, text="Log", padding=4)
@@ -331,7 +338,7 @@ class StepBuilderApp(tk.Tk):
                 z_datum=self.z_datum.get(),
                 board_color=BOARD_THEMES.get(self.theme.get()),
                 rim_color=self._rim_color(),
-                name_instances_with_mfr_pn=self.mfr_pn_in_name.get(),
+                # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=self.mfr_pn_in_name.get(),
                 minimize_size=self.minimize.get(),
                 log=lambda m: self._queue.put(("log", m)),
                 progress=lambda i, n: self._queue.put(("progress", (i, n))),
@@ -340,8 +347,9 @@ class StepBuilderApp(tk.Tk):
             outputs.append(result.output.name)
             if result.missing_step_files:
                 warnings.append(f"{result.output.name}: {len(result.missing_step_files)} STEP missing")
-            if result.missing_mfr_pn:
-                warnings.append(f"{result.output.name}: {len(result.missing_mfr_pn)} without MFRPN")
+            # MFRPN DISABLED (kept for future):
+            # if result.missing_mfr_pn:
+            #     warnings.append(f"{result.output.name}: {len(result.missing_mfr_pn)} without MFRPN")
 
         summary = f"Done: {len(outputs)} file(s), {total_placed} component(s) placed"
         for w in warnings:
@@ -433,7 +441,8 @@ class StepBuilderApp(tk.Tk):
         self.output_dir.set(cfg.get("output_dir", ""))
         self.z_datum.set(cfg.get("z_datum", "top"))
         self.theme.set(cfg.get("theme", DEFAULT_THEME))
-        self.mfr_pn_in_name.set(cfg.get("mfr_pn_in_name", False))
+        # MFRPN DISABLED (kept for future):
+        # self.mfr_pn_in_name.set(cfg.get("mfr_pn_in_name", False))
         self.minimize.set(cfg.get("minimize", True))
 
     def _save_config(self) -> None:
@@ -446,7 +455,8 @@ class StepBuilderApp(tk.Tk):
                         "output_dir": self.output_dir.get(),
                         "z_datum": self.z_datum.get(),
                         "theme": self.theme.get(),
-                        "mfr_pn_in_name": self.mfr_pn_in_name.get(),
+                        # MFRPN DISABLED (kept for future):
+                        # "mfr_pn_in_name": self.mfr_pn_in_name.get(),
                         "minimize": self.minimize.get(),
                     },
                     indent=1,

@@ -122,10 +122,11 @@ def main(argv: list[str] | None = None) -> int:
         "--rim-color", default=None,
         help="separate colour for the board rim/underside (same formats as --color)",
     )
-    parser.add_argument(
-        "--mfr-pn-in-name", action="store_true",
-        help="append MFRPN to each instance name",
-    )
+    # MFRPN DISABLED (property attachment unreliable); kept for future:
+    # parser.add_argument(
+    #     "--mfr-pn-in-name", action="store_true",
+    #     help="append MFRPN to each instance name",
+    # )
     parser.add_argument(
         "--no-minimize", action="store_true",
         help="do not shrink the file (keep surface curves)",
@@ -177,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
                 z_datum=args.z_datum,
                 board_color=board_color,
                 rim_color=rim_color,
-                name_instances_with_mfr_pn=args.mfr_pn_in_name,
+                # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
                 minimize_size=not args.no_minimize,
                 srgb_color=not args.legacy_color,
                 log=log,
@@ -189,8 +190,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if result.missing_step_files:
             log(f"warning: {len(result.missing_step_files)} STEP file(s) not found")
-        if result.missing_mfr_pn:
-            log(f"warning: {len(result.missing_mfr_pn)} component(s) without MFRPN")
+        # MFRPN DISABLED (kept for future):
+        # if result.missing_mfr_pn:
+        #     log(f"warning: {len(result.missing_mfr_pn)} component(s) without MFRPN")
 
     return 1 if failures else 0
 

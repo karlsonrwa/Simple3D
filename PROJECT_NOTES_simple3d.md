@@ -203,7 +203,11 @@ Python; the resulting `makePcb` output matches `demo/ap-214/demo.json` **byte-fo
 So the reconstruction is right — and the author clearly *has* the function, it just never
 made it into the repo.
 
-### MFRPN
+### MFRPN — DISABLED 2026-07-19 (see round 8)
+
+**Now commented out end to end** (property read proved unreliable in practice;
+kept in the source, disabled, for a future re-enable). The notes below describe
+the intended design for whoever restores it.
 
 Lives on the **component definition**, not the instance (F4: "Properties attached to
 component definition -> MFRPN = SP3030-01E"). Access `sym->component->compdef`. Comes in
@@ -445,3 +449,70 @@ Core regression still V=12073.309477. ruff F-codes clean.
 
 ### Regression: 8/8 (core V=12073.309477, rim=4 walls, resolver, dated
 ### collision, minimize halves). F-lint clean, SKILL balance 0 both files.
+
+## Update 2026-07-19 (round 8) — one folder, MFRPN off, PCB naming, flat symbols
+
+Packaging (prior round, recorded here): the whole project is now one
+self-contained folder, `d:/Projects/OrCAD/Scripts/Simple3D/`. `S3D_ScriptDir`,
+both `load()` lines and every install path point at it. `S3D_ModelLibDir`
+(`d:/Projects/OrCAD/CIS/3D`) stays outside — it is the shared component library.
+The two READMEs were merged into one bilingual file, disclaimer kept.
+
+Four changes this round (user request):
+
+1. **MFRPN commented out everywhere, kept for future.** Property attachment was
+   unreliable and not everyone needs it, so every MFRPN branch is disabled (not
+   deleted) with a `MFRPN DISABLED (kept for future)` marker:
+   - `makeVariant3dIntermediates.il`: `S3D_MfrPnProp`, `s3dPropCI`,
+     `s3dGetMfrPn`, `s3dJsonEscape` procedures commented out; the `mfr_pn` read
+     and its JSON field emission commented (the `"},\n"` that closes
+     `step_mapping` already carries the trailing comma, so the JSON stays valid).
+   - `s3dCheckMfrPn` is **kept** but only its no-model half now runs — it still
+     returns `(nilMfrPnSlot noModelList)` so `simple3d.il` reads `cadr` for the
+     no-model report. The MFRPN accumulation branch is commented with a `t`
+     placeholder in the `then` clause.
+   - `simple3d.il`: `S3D_StrictMfrPn` setting and the MFRPN pre-flight block
+     commented; the **no-3D-model** pre-flight (useful, non-MFRPN) is retained.
+   - Python: `core.generate`'s `name_instances_with_mfr_pn` param + docstring,
+     the `mfr_pn` tracking, and `BuildResult.missing_mfr_pn` commented;
+     `__main__` `--mfr-pn-in-name` arg + kwarg + warning commented; GUI var,
+     checkbox, kwarg, warning, and config load/save lines commented. The GUI
+     "Minimise file size" checkbox stays (now the only one in that row).
+2. **Board part named `PCB_<json_stem>`** (was a bare `PCB`, which some viewers
+   showed as `PCB_1`). `json_stem` is the same identifier already used for the
+   output `.step` filename and the assembly root, so all three are unique and
+   consistent per board — importing several boards no longer lets one board's
+   PCB substitute another's. (`core.py`, one line + rationale comment.)
+3. **Symbols tree flattened.** Removed the per-refdes wrapper sub-assembly and
+   the `refdes_<board>` instance naming (over-complication). Under
+   `symbols_top`/`symbols_bot` the shared model part is now added **directly**
+   as an instance carrying its STEP file's own name; identical footprints still
+   share one solid. (`core.py`, placement loop rewritten.)
+4. **GUI swatch moved.** The board-colour swatch was pushed to the right edge by
+   the expanding grid column; it now sits in a small frame beside its dropdown
+   (`ttk.Frame` + `pack`), directly to the right of the combobox.
+
+README updated to match (EN+RU): assembly-structure tree + bullets, PCB naming
+note, MFRPN rows removed from settings/GUI tables, `--mfr-pn-in-name` dropped
+from both flag lists, tree comments de-MFRPN'd, changelog entry added.
+
+### Verified here
+- All three `.py` files `py_compile` clean; no active (uncommented) `mfr`
+  reference remains in Python.
+- SKILL: no active call to any commented procedure remains (only benign unused
+  `noMfrPn`/`mfrPn` locals and the intentional empty return slot in
+  `s3dCheckMfrPn`). Paren-balance delta unchanged by the edits in both `.il`
+  files (identical before/after), i.e. the commenting is paren-neutral.
+
+### NOT verified here (user must confirm live in Allegro)
+- The STEP tree actually showing model parts directly under `symbols_*` with
+  their STEP-file names, and the board part as `PCB_<board>` — CAF instancing
+  and how a given viewer labels repeated instances is review-only here.
+- GUI layout (swatch beside the dropdown) — no display available; code review only.
+- SKILL still loads/runs cleanly and the no-model pre-flight still fires.
+
+### Pre-existing, flagged (not touched)
+- The Environment block at the top says Allegro **17.4**, but later sections and
+  `simple3d.il` say **24.1** — stale top line, left as-is pending confirmation.
+- `demo/ap-214/demo.json` still carries old `mfr_pn` fields; harmless (the core
+  no longer reads them). Regenerating it needs Allegro.
