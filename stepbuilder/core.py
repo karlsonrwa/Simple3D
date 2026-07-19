@@ -324,6 +324,46 @@ def is_simple3d_json(path: str | Path) -> bool:
     return isinstance(data, dict) and data.get("format") == FORMAT_MARKER
 
 
+def dated_output_name(base: str, output_dir: str | Path) -> str:
+    """<base>_simple_DD_MM_YYYY, with a trailing _ per existing collision.
+
+    Shared by the GUI and the CLI so the naming rule cannot drift between them.
+    """
+    from datetime import date
+
+    output_dir = Path(output_dir)
+    stem = f"{base}_simple_{date.today().strftime('%d_%m_%Y')}"
+    candidate = stem
+    while (output_dir / f"{candidate}.step").exists():
+        candidate += "_"
+    return candidate
+
+
+def resolve_json_jobs(path: str | Path) -> tuple[list[Path], list[Path]]:
+    """Resolve what to build from a user-visible path, at generate time.
+
+    *path* may be a single JSON file or a folder of variant JSONs. Returns
+    (jobs, ignored): jobs are Simple 3D intermediates to build, ignored are
+    .json files present but lacking the format marker.
+
+    Resolving at generate time - instead of caching a job list when the paths
+    are first filled in - means the field the user sees is always the truth:
+    picking a different file or editing the path cannot leave a stale queue
+    behind.
+    """
+    p = Path(path)
+    if p.is_dir():
+        all_jsons = sorted(p.glob("*.json"))
+        jobs = [j for j in all_jsons if is_simple3d_json(j)]
+        ignored = [j for j in all_jsons if j not in jobs]
+        return jobs, ignored
+    if p.is_file():
+        if is_simple3d_json(p):
+            return [p], []
+        return [], [p]
+    return [], []
+
+
 def _set_color(color_tool, label, rgb01, srgb: bool) -> None:
     color_type = (
         Quantity_TypeOfColor.Quantity_TOC_sRGB

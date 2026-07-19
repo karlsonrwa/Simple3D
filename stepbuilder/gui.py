@@ -51,8 +51,9 @@ class StepBuilderApp(tk.Tk):
         self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
 
-        # Batch/prefill state, set by prefill_jobs() when launched from Allegro.
-        self._job_jsons: list[Path] = []       # explicit list of variant JSONs
+        # Prefill state, set by prefill_jobs() when launched from Allegro.
+        # Note: there is deliberately NO cached job list - jobs are resolved
+        # from the JSON field at Generate time (see _generate).
         self._brd_name: str | None = None      # base name for dated output
         self._dated_name: bool = False
 
@@ -192,56 +193,44 @@ class StepBuilderApp(tk.Tk):
         output folder must replace whatever the config file held, otherwise the
         window would show the previous board's paths (and build it by mistake).
 
+        This method only fills the visible fields and logs what is queued. The
+        actual job list is resolved from the JSON field when Generate is
+        pressed (core.resolve_json_jobs), so there is no hidden queue that can
+        go stale if the user browses to a different file afterwards.
+
         json_dir: a folder of variant JSONs -> all are built on Generate.
         json_file: a single JSON.
         """
         self._brd_name = brd_name
         self._dated_name = dated_name
-        self._job_jsons = []          # reset, so no stale variants linger
 
         if output_dir:
             self.output_dir.set(self._show_path(output_dir))
 
         if json_file:
-            self._job_jsons = [Path(json_file)]
             self.json_file.set(self._show_path(json_file))
         elif json_dir:
             folder = Path(json_dir)
-            # Only Simple 3D intermediates, not any other .json in the folder
-            # (netlist variant tables, tool configs, etc).
-            all_jsons = sorted(folder.glob("*.json"))
-            self._job_jsons = [j for j in all_jsons if core.is_simple3d_json(j)]
-            ignored = [j for j in all_jsons if j not in self._job_jsons]
+            jobs, ignored = core.resolve_json_jobs(folder)
             if ignored:
                 self.after(200, lambda: self._append_log(
                     f"Ignored {len(ignored)} non-Simple-3D .json file(s): " +
                     ", ".join(j.name for j in ignored)))
-            if len(self._job_jsons) == 1:
-                self.json_file.set(self._show_path(self._job_jsons[0]))
-            elif self._job_jsons:
-                # show the folder; the exact files are logged on generate
-                self.json_file.set(self._show_path(folder))
-                self.after(250, lambda: self._append_log(
-                    f"{len(self._job_jsons)} variant JSON(s) queued:\n  " +
-                    "\n  ".join(j.name for j in self._job_jsons)))
+            if len(jobs) == 1:
+                self.json_file.set(self._show_path(jobs[0]))
             else:
-                # no Simple 3D json here: show the folder, Generate will explain
+                # several variants (or none): show the folder; Generate
+                # re-resolves and, if empty, explains what it found.
                 self.json_file.set(self._show_path(folder))
+                if jobs:
+                    self.after(250, lambda: self._append_log(
+                        f"{len(jobs)} variant JSON(s) queued:\n  " +
+                        "\n  ".join(j.name for j in jobs)))
 
         # Only fall back to deriving output from the json path if the launcher
         # did not supply one explicitly.
         if not output_dir and not self.output_dir.get() and (json_dir or json_file):
             self.output_dir.set(self._show_path(Path(json_dir or Path(json_file).parent)))
-
-
-    def _dated_output_name(self, base: str) -> str:
-        from datetime import date
-        stem = f"{base}_simple_{date.today().strftime('%d_%m_%Y')}"
-        out = Path(self.output_dir.get())
-        candidate = stem
-        while (out / f"{candidate}.step").exists():
-            candidate += "_"
-        return candidate
 
     # ------------------------------------------------------------ pickers -- #
 
@@ -291,52 +280,49 @@ class StepBuilderApp(tk.Tk):
         self._run_in_worker(self._generate)
 
     def _generate(self) -> None:
-        """Runs on the worker thread. Builds one or many JSONs."""
-        # Determine the job list: explicit prefill list, else the single field.
-        jobs = list(self._job_jsons) if self._job_jsons else [Path(self.json_file.get())]
+        """Runs on the worker thread. Builds one or many JSONs.
 
-        # Guard against a JSON field that is actually a folder (e.g. a launcher
-        # path that got mangled) or a missing file, so the error is clear
-        # instead of the generic "input file does not exist".
-        real_jobs = [j for j in jobs if j.is_file()]
-        if not real_jobs:
-            shown = ", ".join(str(j) for j in jobs)
-            # List what the folder actually contains, to distinguish "no json
-            # here" from "json named differently" at a glance.
-            listing = ""
-            for j in jobs:
-                folder = j if j.is_dir() else j.parent
-                if folder.is_dir():
-                    entries = sorted(p.name for p in folder.iterdir())
-                    listing = (f"\nFolder {self._show_path(folder)} contains: "
-                               + (", ".join(entries) if entries else "(empty)"))
-                    break
-                else:
-                    listing = f"\nFolder does not exist: {self._show_path(folder)}"
-                    break
-            raise core.StepBuilderError(
-                f"No JSON file to build. The JSON path is not a file: {shown}"
-                f"{listing}"
-            )
-        jobs = real_jobs
+        The job list is resolved HERE, from the JSON field as it is right now -
+        never from a cached queue. This way, browsing to a different file after
+        an Allegro prefill builds exactly what the field shows.
+        """
+        field = Path(self.json_file.get())
+        jobs, ignored = core.resolve_json_jobs(field)
 
-        # If a single file was set directly (not via the folder glob, which
-        # already filtered), make sure it is actually a Simple 3D intermediate.
-        if not self._job_jsons:
-            bad = [j for j in jobs if not core.is_simple3d_json(j)]
-            if bad:
-                raise core.StepBuilderError(
-                    "This file is not a Simple 3D intermediate JSON (missing the "
-                    f'"format": "simple3d" marker): {self._show_path(bad[0])}\n'
-                    "Pick a JSON produced by File -> Export -> Simple 3D."
-                )
+        for j in ignored:
+            self._queue.put(("log", f"Ignoring non-Simple-3D json: {j.name}"))
+
+        if not jobs:
+            # Explain precisely what was found, so a wrong path, an empty
+            # folder and a foreign json are distinguishable at a glance.
+            if field.is_dir():
+                entries = sorted(p.name for p in field.iterdir())
+                detail = (f"Folder {self._show_path(field)} contains: "
+                          + (", ".join(entries) if entries else "(empty)"))
+            elif field.is_file():
+                detail = (f"{self._show_path(field)} is not a Simple 3D "
+                          'intermediate (missing the "format": "simple3d" '
+                          "marker). Pick a JSON produced by "
+                          "File -> Export -> Simple 3D.")
+            else:
+                detail = f"Path does not exist: {self._show_path(field)}"
+            raise core.StepBuilderError(f"No JSON file to build.\n{detail}")
 
         total_placed = 0
         outputs = []
         warnings = []
         for jf in jobs:
-            base = self._brd_name or jf.stem
-            output_name = self._dated_output_name(base) if self._dated_name else None
+            # Base name for the output file. With SEVERAL variants the stem of
+            # each json (design_variant) must win, or every variant would get
+            # the same name and only differ by collision underscores. The
+            # launcher's brd_name (original-case board name) applies only when
+            # there is a single json.
+            if len(jobs) > 1:
+                base = jf.stem
+            else:
+                base = self._brd_name or jf.stem
+            output_name = (core.dated_output_name(base, self.output_dir.get())
+                           if self._dated_name else None)
             result = core.generate(
                 self.step_dir.get(),
                 jf,

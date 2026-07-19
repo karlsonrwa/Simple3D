@@ -17,17 +17,6 @@ from . import core
 from .colors import resolve_board_color
 
 
-def _dated_name(brd_name: str, output_dir: Path) -> str:
-    """<brd>_simple_DD_MM_YYYY, with a trailing _ per existing collision."""
-    from datetime import date
-
-    stem = f"{brd_name}_simple_{date.today().strftime('%d_%m_%Y')}"
-    candidate = stem
-    while (output_dir / f"{candidate}.step").exists():
-        candidate += "_"
-    return candidate
-
-
 def _gui_prefill(argv: list[str]) -> int:
     """Open the GUI with paths and options prefilled from the Allegro launcher.
 
@@ -159,9 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output_dir)
 
     if args.batch:
-        all_jsons = sorted(json_path.glob("*.json"))
-        jsons = [j for j in all_jsons if core.is_simple3d_json(j)]
-        ignored = [j for j in all_jsons if j not in jsons]
+        jsons, ignored = core.resolve_json_jobs(json_path)
         for j in ignored:
             log(f"ignoring non-Simple-3D json: {j.name}")
         if not jsons:
@@ -173,8 +160,15 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     for jf in jsons:
         try:
-            base = args.brd_name or jf.stem
-            output_name = _dated_name(base, output_dir) if args.dated_name else None
+            # With several variants, each json's stem (design_variant) must
+            # name the output, or all variants would collide into one base and
+            # differ only by underscores. --brd-name applies to a single json.
+            if len(jsons) > 1:
+                base = jf.stem
+            else:
+                base = args.brd_name or jf.stem
+            output_name = (core.dated_output_name(base, output_dir)
+                           if args.dated_name else None)
             result = core.generate(
                 args.step_dir,
                 jf,

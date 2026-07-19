@@ -31,6 +31,9 @@
 ; s3dMakeDirs( t_path ) -> create every missing level of a directory path.
 ; createDir makes only one level at a time; a path like ".../A1/cad" where an
 ; intermediate level is missing needs each segment created in turn.
+; LIMITATION: UNC paths (//server/share/...) are not handled - parseString
+; collapses the leading slashes, so the first segment would be created as a
+; relative folder. Local drive paths (d:/...) only.
 procedure( s3dMakeDirs( t_path )
     let( ( norm parts acc seg )
         ; normalise slashes; parseString drops empty tokens so "d:/a//b" is safe
@@ -943,10 +946,16 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; add name + a format marker so the Python side can tell a Simple 3D
         ; intermediate from any other .json that happens to sit in the folder.
         ; Files without "format": "simple3d" are ignored by the GUI.
+        ; add name + a format marker so the Python side can tell a Simple 3D
+        ; intermediate from any other .json that happens to sit in the folder.
+        ; Files without "format": "simple3d" are ignored by the GUI.
+        ; NOTE: no embedded \t here - the line writer below prefixes every line
+        ; with one tab, so embedding another would double-indent these keys
+        ; (still valid JSON, but inconsistent with the rest of the file).
         name = strcat(
             "\"format\": \"simple3d\",\n"
-            "\t\"format_version\": 1,\n"
-            "\t\"name\": \"" variantName "\""
+            "\"format_version\": 1,\n"
+            "\"name\": \"" variantName "\""
         )
 
         ; make pcb (including all cutouts and holes)
