@@ -10,9 +10,10 @@
 ;    3. launches the Python GUI with the JSON path, the output (cad)
 ;       path and the dated output filename already filled in.
 ;
-;  LOAD ORDER (e.g. from allegro.ilinit or manually):
-;      load("d:/Projects/OrCAD/Scripts/makeVariant3dIntermediates.il")  ; incl. fixes + MFRPN helpers
-;      load("d:/Projects/OrCAD/Scripts/simple3d.il")                    ; this file
+;  LOAD ORDER (e.g. from allegro.ilinit or manually). The whole tool lives in
+;  ONE folder, so both loads share the same base - match it to S3D_ScriptDir:
+;      load("d:/Projects/OrCAD/Scripts/Simple3D/makeVariant3dIntermediates.il")  ; incl. fixes + MFRPN helpers
+;      load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")                    ; this file
 ;
 ;  Follows the menu-insertion idiom from the user's own addeskd_v30.il
 ;  (idempotent find/insert + menu trigger + TriggerClear before TriggerSet).
@@ -29,10 +30,14 @@
 ;  when the file is loaded.
 ;=====================================================================
 
-; Folder where the Python package lives (the parent of the "stepbuilder"
-; directory). Used to launch it without depending on the current directory,
-; which is what caused the "No module named stepbuilder" error.
-S3D_ScriptDir = "d:/Projects/OrCAD/Scripts"
+; The Simple 3D project folder - the ONE folder that holds this whole tool:
+; both .il files AND the "stepbuilder" package sit here together. Used to launch
+; Python without depending on the current directory (which is what caused the
+; "No module named stepbuilder" error). This is the single path to match to
+; wherever you unpacked the project; the load() lines in the header above use
+; the same folder. If you named the folder something other than "Simple3D",
+; change it here (and in those two load lines).
+S3D_ScriptDir = "d:/Projects/OrCAD/Scripts/Simple3D"
 
 ; Python launcher. "python" if it is on PATH; otherwise a full path such as
 ; "c:/Python312/python.exe".
@@ -45,8 +50,9 @@ S3D_Python = "python"
 S3D_PythonW = "pythonw"
 
 ; Folder that holds the footprint STEP models referenced by PKGDEF_STEP_FILE.
-; If empty, the GUI defaults it to the output folder; set it if your library
-; models live in a fixed location.
+; This is a shared 3D-model library, so it intentionally sits OUTSIDE the
+; project folder above - it is not part of this tool. If empty, the GUI
+; defaults it to the output folder; set it if your models live in a fixed spot.
 S3D_ModelLibDir = "d:/Projects/OrCAD/CIS/3D"
 
 ; Default board colour pre-selected in the GUI. Must be one of the theme names
