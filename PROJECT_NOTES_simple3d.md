@@ -268,21 +268,27 @@ documented in addIndent (harmless: generator never emits empty lines, byte-verif
       but wants confirming on a real component.
 - [ ] Board rim colour default (same as board / cream / custom).
 
-## STATUS: all six requirements implemented (2026-07-18)
+## STATUS: requirement table — LIVING, keep current
 
-Delivered files:
+First written 2026-07-18, when all six were implemented. Unlike the dated round
+entries below, this table is **not** a historical snapshot: revise a row in place
+whenever a later round changes that requirement's state, and name the round that
+changed it so the trail stays followable. Last revised: round 9 (2026-07-21).
+
+Delivered files (as of 2026-07-18; the `exportstep_fixes.il` overlay was folded
+into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 - `exportstep_fixes.il` v1.1 — SKILL overlay (thickness, addIndent, mfr_pn, pre-flight).
 - `simple3d.il` v1.0 — File→Export→Simple 3D menu, pcb→cad, launches prefilled GUI.
 - `stepbuilder/` — Python package: core.py, colors.py, gui.py, __main__.py.
 
 | # | requirement | status |
 |---|---|---|
-| 1 | mask thickness in board | core.total_board_thickness: board+both masks. Verified 1.104. |
-| 2 | colour dropdown in GUI | colors.py: 8 themes from XML, dropdown + swatch. |
+| 1 | mask thickness in board | done; core.total_board_thickness: board+both masks. Verified 1.104. Limitation: mask layers count only if named `SOLDERMASK*` (round 2 decision) — a stackup naming them otherwise contributes 0.0 silently. |
+| 2 | colour dropdown in GUI | done; colors.py: 8 themes from XML, dropdown + swatch. |
 | 3 | simple3d.il menu, pcb→cad, dated name, prefill | done; anchor 3d_export_ui; --dated-name accumulating _ |
-| 4 | symbols_top/bot, unique names | done; part=model file, instance=refdes_json, +MFRPN flag |
-| 5 | minimise size / reuse | surfacecurve.mode=0 (~49% smaller) + one shared part per model |
-| 6 | MFRPN in json | exportstep_fixes writes mfr_pn; z_datum parts sit on mask |
+| 4 | symbols_top/bot, unique names `refdes_<jsonname>` | **PARTIAL** — groups and shared parts done (part = model file). The `refdes_<jsonname>` instance naming this requirement asks for was **removed in round 8** as over-complication, so no reference designator survives into the STEP at all. The requirement itself was never withdrawn: either restore the naming or amend requirement 4. |
+| 5 | minimise size / reuse | done; surfacecurve.mode=0 (~49% smaller) + one shared part per model |
+| 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
 
 ### Verification done here
 - Core geometry still bit-for-bit vs C++ (V=12073.309477, 5054 ents) with mask zeroed.
@@ -516,3 +522,257 @@ from both flag lists, tree comments de-MFRPN'd, changelog entry added.
   `simple3d.il` say **24.1** — stale top line, left as-is pending confirmation.
 - `demo/ap-214/demo.json` still carries old `mfr_pn` fields; harmless (the core
   no longer reads them). Regenerating it needs Allegro.
+
+## Update 2026-07-21 (round 9) — GUI threading, batch isolation, Python pre-flight
+
+Started as a full-repo review; four of its findings were then fixed, and the
+SKILL fixes cost two live-debug cycles that are worth recording (below).
+
+### Fixed — Python
+
+1. **GUI read Tk variables from the worker thread.** `_generate` called
+   `self.step_dir.get()` and seven more, including `_rim_color()`, on the
+   background thread. That enters the Tcl interpreter off the main thread:
+   `RuntimeError: main thread is not in main loop` on a non-threaded Tcl, a data
+   race on a threaded one. **The round-7 review at line ~246 above missed this**
+   — it checked that the worker performs no tk *mutations* and stopped there;
+   the reads were never considered. Fixed with a frozen `BuildSettings`
+   dataclass (`gui.py:43`) filled by `_snapshot()` (`gui.py:306`) on the main
+   thread in `on_generate`, and passed into the worker. Frozen also means a
+   widget edit mid-build can no longer change the build in flight.
+   `_snapshot()` calls `_rim_color()`, so the early colour validation still
+   happens before the thread starts.
+2. **One bad variant aborted the whole GUI batch.** The per-job loop had no
+   try/except, so the first `StepBuilderError` cancelled every remaining
+   variant — while the CLI counted the failure and carried on. Two entry points
+   over one core disagreed. Fixed at `gui.py:375-...`: per-job try/except
+   (`StepBuilderError` for clean text, bare `Exception` with traceback for the
+   unexpected), a `failures` list, `", N failed"` appended to the summary, and
+   all-jobs-failed reported as an error instead of a green "Done: 0 file(s)".
+3. **Log severity moved to the source.** `Could not find X` was rendered plain
+   because the GUI infers severity from a prefix list. Rather than add a pattern,
+   `core` now labels its own lines: `warning: could not find X` (`core.py:572`)
+   and `warning: <ref> has no step_mapping, skipped` (`core.py:563`). The
+   `"could not find"` special case was then removed from the GUI list, which is
+   now two named tuples (`gui.py:38-39`). **Side effect worth knowing:** the CLI
+   prints the same strings, so its output changed — both lines now carry a
+   `warning:` marker they did not have before. Nothing in the repo parses it.
+   Still uncoloured by design: `if not roots` (`core.py:605`) logs nothing at
+   all, to avoid one line per component for a single missing STEP file.
+
+### Fixed — SKILL
+
+4. **The GUI could fail to start with no message anywhere.** It is launched
+   detached (`start`) and normally through `pythonw.exe`, which has no console:
+   a missing Python or a missing `cadquery-ocp` killed it instantly and the user
+   saw the JSON appear and nothing else. New `s3dPreflight` (`simple3d.il:266`)
+   runs the interpreter **once, synchronously**, capturing stdout+stderr to a
+   file, and reports in the Allegro console **leading with the good news** — the
+   JSON is fine, only the viewer failed. Success is a printed sentinel
+   (`S3D_OK`), not an empty log: some installs write deprecation warnings to
+   stderr on a successful import.
+5. **Mojibake in that report.** cmd's "is not recognized as an internal or
+   external command" is localised *and* emitted in the OEM codepage (866 on a
+   Russian Windows); the Allegro console renders it as garbage, and re-encoding
+   it in SKILL is not practical. Instead the bat flags the case with an ASCII
+   marker — `if errorlevel 9009 echo S3D_NOEXE` (`simple3d.il:294`) — and the
+   report prints our own English text for it, never the captured bytes.
+   Python's own tracebacks are ASCII and are still shown verbatim.
+6. **`s3dLaunch` was a silent no-op on a read-only `S3D_ScriptDir`.** `when(port
+   ...)` with no else. Now reports and prints a ready-to-paste manual launch
+   command (`simple3d.il:368`). The sibling file already had the right pattern
+   (`makeVariant3dIntermediates.il:979` errors when `outfile` returns nil) — it
+   had simply never propagated here.
+7. **Variant "alternate parts" were silently dropped from the export.** Reported
+   from a real board (`PAG30N .../C0/PCB/Variants.lst`): two
+   `*WARNING* (axlStepGet): Invalid database id argument - nil` lines per run.
+   A Variants.lst variant holds a `base` refdes list plus optional per-component
+   parameter overrides:
+   ```
+   ("BNO"
+       (base (A1 C1 ... ZQ3) )
+       (C43 VALUE="12pF" JEDEC_TYPE="CAPC100X50X55L25N" TOL="1" )
+       (C44 VALUE="12pF" ... )
+   )
+   ```
+   Those C43/C44 entries are components installed in that variant with
+   overridden parameters. They reached `symbolReturn3DElements` through
+   `append( variantSymbolList[variant] alternateParts[variant]~>? )`.
+
+   **Root cause: `gdsysGetVariantInfo`'s own Variants.lst parser.** Note this
+   procedure is defined **in this same file** (~line 176), not an external API —
+   an earlier claim in this round that it was an undocumented Allegro function is
+   corrected below. When it parses an alternate-part line it computes `refDes`
+   correctly and keys `parts[refDes]` by it, but then appends the wrong thing to
+   the variant's symbol list:
+   ```skill
+   subStrings = parseString( temp "\\\\" )        ; REASSIGNED to property chunks
+   ...
+   parts[refDes] = partProperties                 ; correct
+   symbols = nconc( symbols list( nth( 0 subStrings ) ) )   ; <- first PROPERTY token
+   ```
+   So `variantTable["BNO"]` carried two bogus `VALUE=12pF` entries instead of
+   `C43`/`C44`. The bug is duplicated in both parser branches — the single-line
+   and the multi-line-properties path. Fixed to `list( refDes )` in both.
+
+   **`~>?` was innocent.** `alternateParts[variant]` is a table keyed by refdes
+   (`printf( "%L\n" cadr( gdsysGetVariantInfo() )["BNO"] )` → `table:parts`), and
+   `~>?` over it returns those keys, so the append *was* delivering `C43`/`C44` —
+   which is exactly why the capacitors were placed correctly all along. With the
+   parser fixed, `variantSymbolList[variant]` holds every installed refdes on its
+   own, so the append is now redundant and would duplicate them; dropped. The
+   dead `boundp('alternateParts)` test went with it (the "Minor" from round 2).
+   `alternateParts` remains available for what it is actually for — per-part
+   property overrides, which a 3D export does not need.
+
+   **Three wrong turns worth recording, since two were mine and one was avoidable
+   only by looking:**
+   1. Guessed the cause was symbol-vs-string in `axlDBFindByName`. Wrong.
+   2. On seeing `table:parts`, concluded `~>?` yielded property tokens and the
+      append was broken. Also wrong — it yielded keys.
+   3. Then concluded the append was *unnecessary* and dropped it, which — before
+      the parser fix — would have removed C43/C44 from the export entirely. The
+      user's own observation ("the capacitors are placed regardless") is what
+      contradicted the story and forced reading the parser instead of guessing at
+      it. The procedure was local and readable the whole time.
+
+   **Kept from the wrong attempts, because they earn their keep:**
+   - the refdes guard at `makeVariant3dIntermediates.il:739`, which turns an
+     unresolvable refdes into `Simple 3D: <ref> - not found in the design,
+     skipped.` instead of an opaque `axlStepGet` warning plus a silent drop. It
+     is what made the junk visible by name in the first place. Confirmed live: a
+     deliberately inserted `VT100` is reported correctly.
+   - the `unless( stringp( refDes ) ...)` coercion, now purely defensive.
+
+### SKILL prog/let — two runtime errors, both self-inflicted
+
+Adding `return()` to those procedures broke the export twice in the user's
+Allegro before it worked. Both rules are absent from `skill_api_index` and from
+`skill_doc` (which covers the `axl*` API and DB attributes only) but are visible
+in the example scripts under `skill_doc/skill/`:
+
+- **`return()` is legal only inside `prog`**, never `let` → *"return can only be
+  used within a prog"*. Cadence's own example annotates it:
+  `prog( (fw position) ; need to do this since have a return`.
+  Note this was **pre-existing and latent**: the `return( nil )` in the "no
+  design is open" branch sat in a `let` from the start and had simply never been
+  reached, because the menu implies an open design.
+- **`prog` var lists take bare symbols only** — the `(var value)` init form is
+  `let`-only syntax → *"local vars must be symbol"*.
+- **`prog` returns nil unless an explicit `return()` runs.** The body's last
+  value is not the result, unlike `let`. So `s3dExportCommand`'s trailing `t`
+  had to become `return( t )`, or a fully successful export would report nil.
+
+`s3dExportCommand`, `s3dPreflight` and `s3dLaunch` are now `prog`. The
+pre-flight call is additionally wrapped in `errset` (`simple3d.il:214`): a fault
+inside the diagnostic must degrade to "check skipped, launching anyway" rather
+than replacing the diagnosis with a SKILL trace — which is exactly what happened
+twice during this round.
+
+A static checker was written (paren balance + `return` outside `prog` + init
+forms in a `prog` var list) and self-tested by reintroducing both bugs into a
+copy; it caught both. It currently lives in scratch, not in the repo — worth
+adding if SKILL edits continue.
+
+### Corrections to the 2026-07-20 repo review
+
+- **Withdrawn:** the claim that `makePcb`'s `if( boundp( 'cuts ) ...)` has no
+  `else`, and therefore that an all-SMD board breaks. The `else` is at
+  `makeVariant3dIntermediates.il:886` and emits a proper thickness object; the
+  round-2 correction above (line ~188) already explains why `boundp` is right
+  here. The finding was made from a truncated grep window.
+- **Reframed:** the soldermask-name finding. Gating on a `SOLDERMASK` prefix is
+  the deliberate design recorded in round 2, not an oversight. It remains an
+  **undocumented limitation** — a stackup whose mask layers are named otherwise
+  (`SM_TOP`) silently contributes 0.0 to thickness — and belongs in the README
+  limitations list.
+- **Confirmed, still open:** `boundp('alternateParts)` is always t (already
+  noted at line ~197 as "Minor"); the flattened symbols tree still contradicts
+  requirement #4, which was never withdrawn.
+
+### New lead — thickness may not need to be hand-rolled
+
+`axlXSectionGet( nil 'thickness )` returns, per the Allegro SKILL reference,
+*"provided stackup thickness in user units ... **This is the total thickness
+with masks**"*. `calculateBoardThickness()` sums the stackup by hand and decides
+mask inclusion by name — i.e. re-implements this, with the naming fragility
+above. The three components are still needed separately for the JSON, but the
+API value is an authoritative cross-check. Not acted on: the open question is
+what to do when the two disagree (trust the API, warn, or both).
+
+### Verified here
+- `py_compile` clean on all four `.py`; no Tk access remains inside `_generate`
+  (checked by grep over the method body).
+- Every `core` `log()` literal mapped through the actual `_append_log` logic:
+  two warnings coloured, four neutral lines untouched.
+- Both `.il` files: paren balance 0/0, and every `return()` now sits in a `prog`
+  (static checker, which was itself verified against deliberately broken copies).
+- Every `axl*` call in both `.il` files exists in `skill_api_index` (16/16), and
+  every `->attribute` resolves against `skill_db_attributes` or the function's
+  own doc page (`axlStepGet`, `axlXSectionGet`). `gdsysGetVariantInfo` is not in
+  the index — **because it is defined in `makeVariant3dIntermediates.il` itself**
+  (~line 176), not an Allegro API at all. An earlier draft of this round called
+  it an undocumented external dependency that an Allegro upgrade might remove;
+  that was wrong, and it cost time in item 7 above: the parser whose behaviour
+  was being guessed at was sitting in the same file.
+
+### Confirmed live by the user (Allegro 24.1, 2026-07-21)
+- **Pre-flight, missing-package branch:** with the `stepbuilder` package absent,
+  the console report is correct — the JSON-is-fine preamble followed by Python's
+  own (ASCII) ImportError. This is the third `cond` branch, the one that prints
+  the captured text verbatim.
+- **Implied by the above, and the point of the two failed attempts before it:**
+  the report printed to completion and the command ended cleanly, so
+  `s3dPreflight`'s `prog` body, the sentinel scan, and `s3dExportCommand`'s
+  `unless( pyOk ) return( nil )` all execute. The `let` → `prog` conversion works
+  on a live path, not just on paper.
+
+- **Pre-flight, interpreter-not-found branch:** a bad `S3D_Python` (`_python`)
+  now reports adequately. This is the `S3D_NOEXE` path, i.e. the encoding fix
+  works: cmd's localised OEM-codepage message is no longer printed, our own
+  English text is.
+
+### How the success path terminates (asked 2026-07-21, worth writing down)
+
+**Nothing is printed after the GUI closes, by design.** The GUI is launched
+detached — `s3dLaunch` writes a bat whose body is `start "" pythonw ...`, so
+`system()` returns as soon as cmd exits, long before the window is even drawn.
+`s3dExportCommand` then hits `return( t )` and the SKILL command is over; it
+holds no handle on the Python process and cannot report on it. The last console
+line of a successful run is `Simple 3D: launching GUI (-m stepbuilder --gui ...)`.
+
+Consequence for verification, correcting what an earlier draft of this round
+said: `return( t )`'s value goes to Allegro's interactive-command dispatcher and
+is displayed nowhere, so it cannot be observed by watching the console. It does
+not need to be. It is the statement immediately after that `printf`, so seeing
+the "launching GUI" line and a window appear with no `*Error*` already proves
+the `prog` body ran to the end — through `s3dLaunch`'s own `return( t )` — and
+that the conversion is sound on the success path too.
+
+### NOT verified here (user must confirm in Allegro)
+- GUI: the batch-isolation path (queue several variants, break the second — the
+  rest should build and the summary should end `, 1 failed`).
+- Log colours on the user's Windows tk theme.
+
+### Doc debt found while reading this memo
+
+**Fixed in this round:**
+- The requirement table claimed req 4 done with `instance=refdes_json, +MFRPN
+  flag` and req 6 done via `exportstep_fixes writes mfr_pn` — both undone in
+  round 8. Rows 4 and 6 now read PARTIAL and DISABLED with the reason and the
+  round that changed them. The table's heading now states explicitly that it is
+  a living table, not a dated snapshot like the round entries — that ambiguity
+  is what let it drift for two rounds. Row 1 also gained the `SOLDERMASK*`
+  naming limitation.
+- The "Delivered files" list under it still named `exportstep_fixes.il`;
+  annotated in place with the round-4 fate of the overlay.
+
+**Still outstanding:**
+- Line ~411 puts the README at `stepbuilder-py/README.md` (422 lines); it is at
+  the repo root and roughly 700 lines. Inside a dated round entry, so left as
+  written — but it is a live pointer, and it is wrong.
+- The "Open issue: No module named stepbuilder" section (line ~80) was settled by
+  `S3D_ScriptDir` + `cd /d` in the generated bat. Reads as open; is not.
+- "Verification done here" (line ~295) records the tree as `board -> PCB /
+  symbols_top / symbols_bot`; the board part became `PCB_<json_stem>` in round 8.
+  Genuine historical record of what was checked that day, so left alone.

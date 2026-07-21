@@ -158,8 +158,11 @@ procedure( s3dDesignDir()
 ;  THE COMMAND
 ;=====================================================================
 
+; NOTE: prog, not let. SKILL's return() is only legal inside a prog block - in a
+; let it raises "return can only be used within a prog". prog also means the
+; body's last value is NOT the result: every exit has to be an explicit return().
 procedure( s3dExportCommand()
-    let( ( designName designDir cadDir check noMfrPn noModel modelDir argTail )
+    prog( ( designName designDir cadDir check noMfrPn noModel modelDir argTail pyOk )
 
         designName = axlCurrentDesign()
         unless( designName
@@ -200,6 +203,24 @@ procedure( s3dExportCommand()
         printf( "Simple 3D: writing intermediate JSON...\n" )
         makeVariant3dIntermediates( cadDir )
 
+        ; --- can Python actually start? -------------------------------
+        ; Done AFTER the JSON exists, so a broken Python install still leaves the
+        ; user with a usable export, and the message can say so. Costs a few
+        ; seconds (importing OCP is slow) - worth it against a silent no-op.
+        printf( "Simple 3D: checking the Python side...\n" )
+        ; The check must never be able to break the export it is reporting on:
+        ; wrapped in errset so a fault inside it degrades to "skipped" instead
+        ; of replacing the diagnosis with a raw SKILL error trace.
+        pyOk = 'failed
+        errset( pyOk = s3dPreflight( cadDir ) )
+        when( pyOk == 'failed
+            printf( "Simple 3D: the Python check itself errored - skipping it and launching anyway.\n" )
+            pyOk = t
+        )
+        unless( pyOk
+            return( nil )
+        )
+
         ; --- launch the GUI, prefilled --------------------------------
         ; Open the GUI with paths already set. The GUI lets the user pick colour
         ; and z-datum and press Generate; with several variant JSONs it builds
@@ -223,7 +244,107 @@ procedure( s3dExportCommand()
         printf( "Simple 3D: launching GUI (%s)\n" argTail )
         s3dLaunch( argTail )
 
-        t
+        return( t )
+    )
+)
+
+; Check that the Python side can actually start, BEFORE launching it detached.
+;
+; Why this exists: the GUI is started with "start" (detached) and normally with
+; pythonw.exe, which has NO console. So when Python is missing from PATH, or
+; cadquery-ocp / tkinter are not installed, the interpreter dies instantly and
+; the error goes nowhere - the user sees the JSON get written, no window opens,
+; and nothing explains why. Here the interpreter is run ONCE, synchronously,
+; with stdout+stderr captured to a file, so the real ImportError can be shown in
+; the Allegro console together with the fact that the JSON itself is fine.
+;
+; Success is signalled by a sentinel the check prints, not by an empty log: some
+; installs emit deprecation warnings on stderr even when the import succeeds.
+;
+; Returns t to proceed, nil to abort. Fails OPEN: if the check itself cannot be
+; written or run, it says so and returns t rather than blocking a working setup.
+procedure( s3dPreflight( t_workDir )
+    ; prog locals must be bare symbols - the (var value) init form is let-only
+    ; syntax and prog rejects it with "local vars must be symbol". Hence the
+    ; explicit assignments below.
+    prog( ( exe batPath logFile port line ok noExe out )
+        ok    = nil
+        noExe = nil
+        out   = ""
+        exe = if( (S3D_Python != "") then S3D_Python else S3D_PythonW )
+        batPath = strcat( t_workDir "/_simple3d_preflight.bat" )
+        logFile = strcat( t_workDir "/_simple3d_preflight.txt" )
+
+        port = outfile( batPath )
+        unless( port
+            printf( "Simple 3D: cannot write the preflight check to %s - skipping it.\n" batPath )
+            return( t )
+        )
+        ; cd /d so "stepbuilder" resolves exactly as it will at launch time.
+        ; Importing stepbuilder.core pulls in OCP, the heavy dependency that is
+        ; usually the missing one; tkinter is what the GUI itself needs.
+        fprintf( port "@echo off\r\n" )
+        fprintf( port "cd /d \"%s\"\r\n" S3D_ScriptDir )
+        fprintf( port "\"%s\" -c \"import stepbuilder.core, tkinter; print('S3D_OK')\" > \"%s\" 2>&1\r\n"
+                 exe logFile )
+        ; cmd returns 9009 for "command not found", and its message for that is
+        ; localised AND written in the OEM codepage (866 on a Russian Windows),
+        ; which the Allegro console renders as mojibake. Flag the case with an
+        ; ASCII marker instead and print our own English text for it below.
+        fprintf( port "if errorlevel 9009 echo S3D_NOEXE>>\"%s\"\r\n" logFile )
+        close( port )
+
+        errset( system( strcat( "cmd /c \"" batPath "\"" ) ) )
+        errset( deleteFile( batPath ) )
+
+        port = infile( logFile )
+        when( port
+            while( gets( line port )
+                out = strcat( out line )
+                when( rexMatchp( "S3D_OK" line )     ok = t )
+                when( rexMatchp( "S3D_NOEXE" line )  noExe = t )
+            )
+            close( port )
+        )
+        errset( deleteFile( logFile ) )
+
+        when( ok  return( t ) )
+
+        ; Not OK. Lead with the good news so the user does not go hunting in the
+        ; wrong place: the export itself worked, only the viewer failed to start.
+        printf( "\n" )
+        printf( "===== Simple 3D: the JSON was written, but Python did not start =====\n" )
+        printf( "The intermediate JSON(s) ARE in:\n    %s\n" t_workDir )
+        printf( "Nothing is wrong with the board or the export.\n\n" )
+        ; Three cases, and only the last one prints the captured text. Windows'
+        ; own error messages come back localised in the OEM codepage and arrive
+        ; here as mojibake, so the case we can identify (interpreter not found)
+        ; is reported in our own words. Python's own tracebacks are ASCII.
+        cond(
+            ( noExe
+                printf( "Windows could not run the interpreter at all:\n    %s\n\n" exe )
+                printf( "That name is not on PATH and is not a valid full path.\n" )
+            )
+            ( (out == "")
+                printf( "The check produced no output at all, which usually also\n" )
+                printf( "means the interpreter was not found:\n    %s\n" exe )
+            )
+            ( t
+                printf( "Python (%s) failed this check:\n" exe )
+                printf( "    import stepbuilder.core, tkinter\n\n" )
+                printf( "It reported:\n%s\n" out )
+            )
+        )
+        printf( "\nCheck, in this order:\n" )
+        printf( "  1. Python is installed and the paths at the top of simple3d.il\n" )
+        printf( "     are right:  S3D_Python = \"%s\"   S3D_PythonW = \"%s\"\n"
+                S3D_Python S3D_PythonW )
+        printf( "  2. The dependency is installed:   pip install cadquery-ocp\n" )
+        printf( "  3. The stepbuilder folder sits in S3D_ScriptDir = \"%s\"\n" S3D_ScriptDir )
+        printf( "=====================================================================\n\n" )
+        axlUIWPrint( nil
+            "Simple 3D: JSON written OK - but Python could not start. See the console." )
+        return( nil )
     )
 )
 
@@ -241,30 +362,41 @@ procedure( s3dExportCommand()
 ; S3D_PythonW (pythonw.exe) runs with no console at all; if it is empty we fall
 ; back to S3D_Python but still detach so the launching window closes promptly.
 procedure( s3dLaunch( t_argTail )
-    let( ( batPath port launchLine )
+    prog( ( batPath port launchLine )       ; prog: return() below needs it
         batPath = strcat( S3D_ScriptDir "/_simple3d_launch.bat" )
         port = outfile( batPath )
-        when( port
-            fprintf( port "@echo off\r\n" )
-            fprintf( port "cd /d \"%s\"\r\n" S3D_ScriptDir )
-            if( (S3D_PythonW != "") then
-                ; pythonw: no console, detached, window closes immediately.
-                launchLine = strcat( "start \"\" \"" S3D_PythonW "\" " t_argTail )
-            else
-                ; plain python, but detached via start so this window still exits.
-                launchLine = strcat( "start \"\" \"" S3D_Python "\" " t_argTail )
-            )
-            fprintf( port "%s\r\n" launchLine )
-            ; The GUI is launched detached (start ...), so by the time this line
-            ; runs the interpreter already has its own arguments and no longer
-            ; needs the .bat. Delete it so it does not linger. The
-            ; "(goto) 2>nul & del" idiom lets cmd release its handle on the file
-            ; before deleting, avoiding a "file in use" failure; "%~f0" is this
-            ; batch file's own full path.
-            fprintf( port "(goto) 2>nul & del \"%%~f0\"\r\n" )
-            close( port )
-            errset( system( strcat( "cmd /c \"" batPath "\"" ) ) )
+        unless( port
+            ; Read-only or unreachable install dir. Without this the whole
+            ; procedure was a silent no-op: JSON on disk, no window, no message.
+            printf( "\nSimple 3D: the JSON was written, but the launcher could not be created:\n" )
+            printf( "    %s\n" batPath )
+            printf( "S3D_ScriptDir is not writable. Point it at a writable folder,\n" )
+            printf( "or start the GUI by hand:\n    cd /d \"%s\"\n    %s %s\n\n"
+                    S3D_ScriptDir S3D_Python t_argTail )
+            axlUIWPrint( nil
+                "Simple 3D: JSON written OK - but the launcher could not be created. See the console." )
+            return( nil )
         )
+        fprintf( port "@echo off\r\n" )
+        fprintf( port "cd /d \"%s\"\r\n" S3D_ScriptDir )
+        if( (S3D_PythonW != "") then
+            ; pythonw: no console, detached, window closes immediately.
+            launchLine = strcat( "start \"\" \"" S3D_PythonW "\" " t_argTail )
+        else
+            ; plain python, but detached via start so this window still exits.
+            launchLine = strcat( "start \"\" \"" S3D_Python "\" " t_argTail )
+        )
+        fprintf( port "%s\r\n" launchLine )
+        ; The GUI is launched detached (start ...), so by the time this line
+        ; runs the interpreter already has its own arguments and no longer
+        ; needs the .bat. Delete it so it does not linger. The
+        ; "(goto) 2>nul & del" idiom lets cmd release its handle on the file
+        ; before deleting, avoiding a "file in use" failure; "%~f0" is this
+        ; batch file's own full path.
+        fprintf( port "(goto) 2>nul & del \"%%~f0\"\r\n" )
+        close( port )
+        errset( system( strcat( "cmd /c \"" batPath "\"" ) ) )
+        return( t )
     )
 )
 

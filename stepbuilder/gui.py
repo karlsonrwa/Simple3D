@@ -17,6 +17,7 @@ import queue
 import threading
 import tkinter as tk
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -28,6 +29,37 @@ CONFIG_PATH = Path.home() / ".stepbuilder.json"
 RIM_SAME = "Same as board"
 RIM_CREAM = "Cream (dielectric)"
 RIM_CUSTOM = "Custom..."
+
+# Log lines arrive from core as plain text, so severity is inferred from how the
+# line opens. core labels its own non-fatal lines with a "warning:" prefix, which
+# is what colours them here AND marks them in the CLI's plain-text output - so
+# prefer adding the prefix at the log() call over adding a pattern below.
+# Match lowercase: _append_log lowercases before testing.
+ERROR_PREFIXES = ("error", "traceback")
+WARNING_PREFIXES = ("warning", "ignored", "ignoring")
+
+
+@dataclass(frozen=True)
+class BuildSettings:
+    """Everything a build needs, snapshotted off the widgets on the main thread.
+
+    Tk variables belong to the thread running mainloop: reading a StringVar from
+    the worker enters the Tcl interpreter from a second thread, which raises
+    "main thread is not in main loop" on a non-threaded Tcl and is a data race
+    on a threaded one. So the worker never touches self.<var>.get() - it gets
+    one of these, taken in on_generate() before the thread starts. Frozen so a
+    later widget edit cannot change the build already in flight.
+    """
+
+    step_dir: str
+    json_file: str
+    output_dir: str
+    z_datum: str
+    board_color: tuple[int, int, int] | None
+    rim_color: tuple[int, int, int] | None
+    minimize: bool
+    brd_name: str | None
+    dated_name: bool
 
 
 class StepBuilderApp(tk.Tk):
@@ -271,6 +303,24 @@ class StepBuilderApp(tk.Tk):
             return None
         return resolve_board_color(text)
 
+    def _snapshot(self) -> BuildSettings:
+        """Read every widget the build needs. MAIN THREAD ONLY - see BuildSettings.
+
+        Raises ValueError if the custom rim colour does not parse, which doubles
+        as the early validation on_generate wants.
+        """
+        return BuildSettings(
+            step_dir=self.step_dir.get(),
+            json_file=self.json_file.get(),
+            output_dir=self.output_dir.get(),
+            z_datum=self.z_datum.get(),
+            board_color=BOARD_THEMES.get(self.theme.get()),
+            rim_color=self._rim_color(),
+            minimize=self.minimize.get(),
+            brd_name=self._brd_name,
+            dated_name=self._dated_name,
+        )
+
     def on_generate(self) -> None:
         if not self.step_dir.get() or not self.json_file.get() or not self.output_dir.get():
             messagebox.showwarning(
@@ -278,22 +328,26 @@ class StepBuilderApp(tk.Tk):
             )
             return
         try:
-            self._rim_color()  # validate custom colour early
+            settings = self._snapshot()   # also validates the custom colour
         except ValueError as exc:
             messagebox.showerror("Bad colour", str(exc))
             return
 
         self._clear_log()
-        self._run_in_worker(self._generate)
+        self._run_in_worker(lambda: self._generate(settings))
 
-    def _generate(self) -> None:
+    def _generate(self, settings: BuildSettings) -> None:
         """Runs on the worker thread. Builds one or many JSONs.
 
-        The job list is resolved HERE, from the JSON field as it is right now -
-        never from a cached queue. This way, browsing to a different file after
-        an Allegro prefill builds exactly what the field shows.
+        Reads nothing from the widgets - everything comes from *settings*, taken
+        on the main thread by _snapshot().
+
+        The job list is resolved HERE, from the JSON path as it was when
+        Generate was pressed - never from a cached queue. This way, browsing to
+        a different file after an Allegro prefill builds exactly what the field
+        showed at that moment.
         """
-        field = Path(self.json_file.get())
+        field = Path(settings.json_file)
         jobs, ignored = core.resolve_json_jobs(field)
 
         for j in ignored:
@@ -318,6 +372,7 @@ class StepBuilderApp(tk.Tk):
         total_placed = 0
         outputs = []
         warnings = []
+        failures = []
         for jf in jobs:
             # Base name for the output file. With SEVERAL variants the stem of
             # each json (design_variant) must win, or every variant would get
@@ -327,22 +382,38 @@ class StepBuilderApp(tk.Tk):
             if len(jobs) > 1:
                 base = jf.stem
             else:
-                base = self._brd_name or jf.stem
-            output_name = (core.dated_output_name(base, self.output_dir.get())
-                           if self._dated_name else None)
-            result = core.generate(
-                self.step_dir.get(),
-                jf,
-                self.output_dir.get(),
-                output_name=output_name,
-                z_datum=self.z_datum.get(),
-                board_color=BOARD_THEMES.get(self.theme.get()),
-                rim_color=self._rim_color(),
-                # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=self.mfr_pn_in_name.get(),
-                minimize_size=self.minimize.get(),
-                log=lambda m: self._queue.put(("log", m)),
-                progress=lambda i, n: self._queue.put(("progress", (i, n))),
-            )
+                base = settings.brd_name or jf.stem
+
+            # One variant must not take the rest of the batch down with it: a
+            # gap in board 2's outline should still leave boards 3..n built.
+            # This mirrors the CLI, which counts failures and carries on.
+            try:
+                output_name = (core.dated_output_name(base, settings.output_dir)
+                               if settings.dated_name else None)
+                result = core.generate(
+                    settings.step_dir,
+                    jf,
+                    settings.output_dir,
+                    output_name=output_name,
+                    z_datum=settings.z_datum,
+                    board_color=settings.board_color,
+                    rim_color=settings.rim_color,
+                    # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
+                    minimize_size=settings.minimize,
+                    log=lambda m: self._queue.put(("log", m)),
+                    progress=lambda i, n: self._queue.put(("progress", (i, n))),
+                )
+            except core.StepBuilderError as exc:
+                failures.append(f"{jf.name}: {exc}")
+                self._queue.put(("log", f"error ({jf.name}): {exc}"))
+                continue
+            except Exception:
+                # Unexpected (a malformed JSON key, an OCCT failure): keep the
+                # traceback so the bug is reportable, but still build the rest.
+                failures.append(f"{jf.name}: unexpected error (see log)")
+                self._queue.put(("log", f"error ({jf.name}):\n{traceback.format_exc()}"))
+                continue
+
             total_placed += result.components_placed
             outputs.append(result.output.name)
             if result.missing_step_files:
@@ -351,9 +422,18 @@ class StepBuilderApp(tk.Tk):
             # if result.missing_mfr_pn:
             #     warnings.append(f"{result.output.name}: {len(result.missing_mfr_pn)} without MFRPN")
 
-        summary = f"Done: {len(outputs)} file(s), {total_placed} component(s) placed"
         for w in warnings:
             self._queue.put(("log", "warning: " + w))
+
+        # Nothing built at all -> report as a failure, not a green "Done: 0".
+        if failures and not outputs:
+            self._queue.put(("error", f"All {len(failures)} job(s) failed:\n"
+                                      + "\n".join(failures)))
+            return
+
+        summary = f"Done: {len(outputs)} file(s), {total_placed} component(s) placed"
+        if failures:
+            summary += f", {len(failures)} failed"
         self._queue.put(("done", summary))
 
 
@@ -411,9 +491,9 @@ class StepBuilderApp(tk.Tk):
         # queue items are coloured too.
         if severity is None:
             low = message.lstrip().lower()
-            if low.startswith("error") or low.startswith("traceback"):
+            if low.startswith(ERROR_PREFIXES):
                 severity = "error"
-            elif low.startswith("warning") or low.startswith("ignored") or low.startswith("ignoring"):
+            elif low.startswith(WARNING_PREFIXES):
                 severity = "warning"
         self.log_view.configure(state="normal")
         text = message.rstrip() + "\n"

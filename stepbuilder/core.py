@@ -560,7 +560,7 @@ def generate(
 
         mapping = component.get("step_mapping")
         if not mapping or not mapping.get("step_name"):
-            log(f"{ref_des}: no step_mapping, skipped")
+            log(f"warning: {ref_des} has no step_mapping, skipped")
             result.components_skipped.append(ref_des)
             continue
 
@@ -569,7 +569,7 @@ def generate(
         if step_name not in label_cache:
             path = index.find(step_name)
             if path is None:
-                log(f"Could not find {step_name}")
+                log(f"warning: could not find {step_name}")
                 result.missing_step_files.append(step_name)
                 label_cache[step_name] = []
             else:

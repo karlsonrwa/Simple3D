@@ -272,7 +272,16 @@ procedure( gdsysGetVariantInfo()
                                         partProperties = makeTable( "partProperties" nil )
 
                                         ; append to symbol list
-                                        symbols = nconc( symbols list( nth( 0 subStrings ) ) )
+                                        ; FIX (simple3d): was nth( 0 subStrings ),
+                                        ; but subStrings was reassigned above to the
+                                        ; PROPERTY chunks, so this appended the first
+                                        ; property token ("VALUE=12pF") to the variant's
+                                        ; symbol list instead of the refdes. Seen on
+                                        ; PAG30N/BNO as two
+                                        ;   Simple 3D: VALUE=12pF - not found in the design
+                                        ; lines. refDes is already correct here - it is
+                                        ; what parts[refDes] above is keyed by.
+                                        symbols = nconc( symbols list( refDes ) )
                                     else
                                         state = "awaitMoreProperties"
                                     )
@@ -310,7 +319,10 @@ procedure( gdsysGetVariantInfo()
                             partProperties = makeTable( "partProperties" nil )
 
                             ; append to symbol list
-                            symbols = nconc( symbols list( nth( 0 subStrings ) ) )
+                            ; FIX (simple3d): same bug as in the single-line branch
+                            ; above - subStrings holds property chunks by now, not
+                            ; the refdes. This is the multi-line-properties path.
+                            symbols = nconc( symbols list( refDes ) )
 
                             properties = ""
 
@@ -727,12 +739,27 @@ procedure( symbolReturn3DElements( refDes )
 
         stepPackageMapping = nil
 
+        ; Defensive: the caller appends  alternateParts[variant]~>?  to the base
+        ; refdes list, and that expression does NOT yield refdes (see below), so
+        ; non-string junk can arrive here. Coerce with the stringp/%L idiom used
+        ; elsewhere in this file, then let the guard below report it by name.
+        unless( stringp( refDes )  refDes = sprintf( nil "%L" refDes ) )
+
         ; get symbol (dbid)
         dbid = axlDBFindByName( 'refdes refDes )
         sym = dbid->symbol
 
         ; step package mappingData
-        mappingData = axlStepGet( nil nil sym )
+        ; Guard the call: an unresolved refdes used to reach axlStepGet(nil nil
+        ; nil), which warned opaquely and then dropped the component in silence.
+        ; Name it instead. mappingData stays nil -> stepFileName stays nil -> the
+        ; when(stepFileName ...) below still skips it, so behaviour is unchanged
+        ; apart from the message.
+        if( sym then
+            mappingData = axlStepGet( nil nil sym )
+        else
+            printf( "Simple 3D: %s - not found in the design, skipped.\n" refDes )
+        )
         stepFileName = mappingData->step_name
 
         offset_x = mappingData->offset_x
@@ -1055,12 +1082,27 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                 foreach( variant variantSymbolList
                     printf( "Exporting .json for variant: %s\n" variant )
 
-                    ; if variant has alternate parts, add them to the symbol list
-                    if( boundp( 'alternateParts ) then
-                        symbols = append( variantSymbolList[variant] alternateParts[variant]~>? )
-                    else
-                        symbols = variantSymbolList[variant]
-                    )
+                    ; FIX (simple3d 2026-07-21): was
+                    ;   symbols = append( variantSymbolList[variant]
+                    ;                     alternateParts[variant]~>? )
+                    ; The ~>? half was actually FINE - alternateParts[variant] is
+                    ; a table (dumps as "table:parts") keyed by refdes, so ~>?
+                    ; returned (C43 C44) and those components were placed. The
+                    ; junk came from the OTHER side: gdsysGetVariantInfo's parser
+                    ; appended the first property token instead of the refdes to
+                    ; the variant's symbol list (fixed above, both branches), so
+                    ; variantSymbolList carried two bogus "VALUE=12pF" entries.
+                    ;
+                    ; With the parser fixed, variantSymbolList[variant] holds every
+                    ; installed refdes - base parts AND alternate parts - so the
+                    ; append is now redundant and would duplicate C43/C44.
+                    ; alternateParts stays available for its actual purpose: the
+                    ; per-part property overrides, which a 3D export does not need.
+                    ;
+                    ; (The old boundp('alternateParts) test was dead anyway - a
+                    ; plain let local assigned unconditionally above, so always
+                    ; bound. Noted as "Minor" back in round 2.)
+                    symbols = variantSymbolList[variant]
 
                     variantName = lowerCase( strcat( dsnName "_" variant ) )
                     fileName = lowerCase( strcat( dir "/" variantName ".json" ) )
