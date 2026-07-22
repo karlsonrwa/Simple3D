@@ -498,11 +498,14 @@ def build_silkscreen(
     flat=True writes each polygon as a single planar face instead of a prism.
     Measured on a 150-polygon legend: 566 kB against 2191 kB, so about a
     quarter of the size. A prism costs V+2 faces for a V-vertex polygon (top,
-    bottom and one wall per edge); a face costs one. The face is placed at the
-    ink's OUTER surface, not on the board, so it does not z-fight with the board
-    face in a viewer. What is given up is that the ink is then a surface, not a
-    solid: it has no thickness to measure and nothing downstream can do boolean
-    work with it.
+    bottom and one wall per edge); a face costs one. What is given up is that
+    the ink is then a surface, not a solid: it has no thickness to measure and
+    nothing downstream can do boolean work with it.
+
+    The flat face lies ON the board face, coincident with it, which is what a
+    zero-thickness legend should mean. Two coplanar faces can flicker against
+    each other in a viewer that resolves depth per pixel; if that shows up,
+    solid mode is the answer, since it genuinely stands off the board.
 
     Fusing the prisms was measured too, and made the file LARGER (3377 kB,
     154%): a boolean union replaces analytic cylinders and planes with general
@@ -528,10 +531,10 @@ def build_silkscreen(
             skipped += 1
             continue
         try:
-            # In flat mode the face is built directly at the ink's outer
-            # surface; in solid mode it is built on the board face and the
-            # prism grows away from the board.
-            face = _silk_face(polygon, z + thickness if flat else z, convention)
+            # The face is built on the board face either way. In solid mode
+            # the prism then grows away from the board; in flat mode the face
+            # itself is the legend and stays on the surface.
+            face = _silk_face(polygon, z, convention)
             builder.Add(
                 compound,
                 face if flat
@@ -841,7 +844,8 @@ def generate(
     z_datum: str = "top",
     board_color: tuple[int, int, int] | None = None,
     rim_color: tuple[int, int, int] | None = None,
-    silkscreen: bool = True,
+    silk_top: bool = True,
+    silk_bottom: bool = True,
     silk_color: tuple[int, int, int] | None = None,
     silk_flat: bool = False,
     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
@@ -860,9 +864,10 @@ def generate(
     board_color / rim_color:
         RGB 0-255. board_color defaults to the JSON's pcb.color. rim_color, if
         given, paints the board sides + underside separately from the top face.
-    silkscreen:
-        Build the printed legend, if the JSON carries one (format_version 2+).
-        Silently does nothing for an older JSON or a board with no silkscreen.
+    silk_top / silk_bottom:
+        Build the printed legend on that side, if the JSON carries one
+        (format_version 2+). Both False skips silkscreen entirely. Silently
+        does nothing for an older JSON or a board with no silkscreen.
     silk_color:
         RGB 0-255 for the ink; defaults to colors.SILK_COLORS["White"].
     silk_flat:
@@ -962,7 +967,8 @@ def generate(
     silk_data = data.get("silkscreen")
     silk_built = 0
     silk_skipped = 0
-    if silkscreen and silk_data:
+    want_silk = silk_top or silk_bottom
+    if want_silk and silk_data:
         from .colors import SILK_COLORS
 
         ink = silk_color if silk_color is not None else SILK_COLORS["White"]
@@ -971,11 +977,12 @@ def generate(
 
         # The ink sits ON the outer face of each side and grows away from the
         # board, so it never intersects the solid it is printed on.
-        for side, polygons, z, sign in (
-            ("silkscreen_top", silk_data.get("top") or [], board_top_z, 1.0),
-            ("silkscreen_bot", silk_data.get("bottom") or [], board_bottom_z, -1.0),
+        for wanted, side, polygons, z, sign in (
+            (silk_top, "silkscreen_top", silk_data.get("top") or [], board_top_z, 1.0),
+            (silk_bottom, "silkscreen_bot", silk_data.get("bottom") or [],
+             board_bottom_z, -1.0),
         ):
-            if not polygons:
+            if not wanted or not polygons:
                 continue
             log(f"Building {side} ({len(polygons)} polygons)")
             compound, built, skipped = build_silkscreen(
@@ -994,7 +1001,7 @@ def generate(
                 TCollection_ExtendedString(_sanitize(f"{side}_{json_stem}")),
             )
             shape_tool.AddComponent(main_assembly, silk_label, TopLoc_Location(gp_Trsf()))
-    elif silkscreen and not silk_data:
+    elif want_silk and not silk_data:
         log("No silkscreen in this JSON (re-export from Allegro to include it)")
 
     # ---- component group assemblies (symbols_top / symbols_bot) ---------- #

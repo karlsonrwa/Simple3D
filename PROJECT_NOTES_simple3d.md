@@ -1366,3 +1366,59 @@ and this also shrinks the JSON); and turning silkscreen off for working exports.
 Both paths built end to end through `generate()`; GUI smoke test confirms the
 default, the snapshot value, and that the checkbox greys out with the feature.
 Full suite clean.
+
+## Update 2026-07-22 (round 10h) — four requests: flat on the surface, per-side, one config, log wrap
+
+### 1. Flat legend sits ON the board face
+Was `z + thickness` (standing off it, inherited from the solid path). Now `z`.
+A zero-thickness legend that floats 25 um above the board was incoherent; the
+user was right. Measured: flat z-range now 0.0 .. 0.0, solid still 0.0 .. 0.025.
+
+The reason it was offset in the first place was z-fighting, and that risk is now
+real: two coplanar faces can flicker in a viewer that resolves depth per pixel.
+Documented in both README languages and in the docstring, with solid mode as the
+answer if it shows up. Not worth pre-empting with an epsilon nobody asked for.
+
+### 2. Two side checkboxes
+`generate()` lost `silkscreen: bool` and gained `silk_top` / `silk_bottom`. The
+GUI has "Silkscreen  [x] Top  [x] Bottom"; both off is the old "off". CLI keeps
+`--no-silkscreen` (both) and adds `--no-silk-top` / `--no-silk-bottom`.
+Verified: both=14 solids, top only=10, bottom only=4, none=0.
+
+### 3. ONE settings file
+Settings used to live in three places: `simple3d.il` source, the GUI's own
+`~/.stepbuilder.json`, and `simple3d_config.json`. Now one file with four
+sections - `allegro` (SKILL side), `gui` (Python side), `silkscreen` and
+`settings` (the exporter).
+
+What made this work cleanly: **the launcher stopped forwarding settings**. It
+used to pass `--step-dir`, `--color`, `--silk-color`; now it passes only
+`--config` and what is derived from the design (json dir, output dir, board
+name). The GUI reads its own section from the same file, so there is no second
+copy to drift. `S3D_ModelLibDir`, `S3D_DefaultColor` and `S3D_DefaultSilkColor`
+are gone from the SKILL source entirely.
+
+`S3D_ScriptDir` stays in source, and has to: the config is found relative to the
+project folder, so the folder must be known before the config can be read. That
+is the whole bootstrap, and it is now stated as such at the top of simple3d.il.
+
+The GUI's save is read-modify-write on the whole document, not a fresh one -
+losing the silkscreen layer lists on window close would be far worse than
+forgetting a path. Verified by round trip: GUI writes `gui`, the `allegro`,
+`silkscreen` and `settings` sections survive byte-identical, the SKILL JSON
+reader still parses the result, and reopening the GUI restores what was saved.
+
+`s3dLoadSettings()` re-reads on every export as well as at load, so config edits
+apply without reloading the SKILL files. The menu label is the exception and
+says so - the menu is built at load time.
+
+### 4. Log wrapping
+`wrap="none"` -> `wrap="word"`. Build messages carry full paths and OCCT errors
+and ran off the right edge with no horizontal scrollbar to reach them.
+
+### Verified here
+Per-side counts; flat and solid z-ranges; config round trip in both directions;
+GUI smoke test (config path, wrap mode, both checkboxes, colour box greying out
+when both sides are off); full suite clean. One scratch test still called
+`generate(silkscreen=...)` and was updated to the new API - worth remembering
+that renaming a keyword silently breaks callers that pass it by name.

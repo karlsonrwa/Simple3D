@@ -35,12 +35,15 @@ def _gui_prefill(argv: list[str]) -> int:
     p.add_argument("--silk-color", default="")
     p.add_argument("--no-silkscreen", action="store_true")
     p.add_argument("--flat-silkscreen", action="store_true")
+    p.add_argument("--no-silk-top", action="store_true")
+    p.add_argument("--no-silk-bottom", action="store_true")
+    p.add_argument("--config", default="")
     args, _ = p.parse_known_args(argv)
 
     from .gui import StepBuilderApp
 
     try:
-        app = StepBuilderApp()
+        app = StepBuilderApp(Path(args.config) if args.config else None)
         if args.step_dir:
             app.step_dir.set(args.step_dir)
         if args.color:
@@ -48,8 +51,11 @@ def _gui_prefill(argv: list[str]) -> int:
             app._update_swatch()
         if args.silk_color:
             app.silk_color.set(args.silk_color)
-        if args.no_silkscreen:
-            app.export_silk.set(False)
+        # Launch flags override what the config remembered, for this run only.
+        if args.no_silkscreen or args.no_silk_top:
+            app.silk_top.set(False)
+        if args.no_silkscreen or args.no_silk_bottom:
+            app.silk_bottom.set(False)
         if args.flat_silkscreen:
             app.silk_flat.set(True)
         app.prefill_jobs(
@@ -136,6 +142,14 @@ def main(argv: list[str] | None = None) -> int:
         help="do not build the printed legend even if the JSON carries one",
     )
     parser.add_argument(
+        "--no-silk-top", action="store_true",
+        help="skip the top-side legend only",
+    )
+    parser.add_argument(
+        "--no-silk-bottom", action="store_true",
+        help="skip the bottom-side legend only",
+    )
+    parser.add_argument(
         "--flat-silkscreen", action="store_true",
         help="draw the legend as surfaces, not solids: about a quarter of the "
              "file size, but the ink then has no thickness",
@@ -201,7 +215,8 @@ def main(argv: list[str] | None = None) -> int:
                 z_datum=args.z_datum,
                 board_color=board_color,
                 rim_color=rim_color,
-                silkscreen=not args.no_silkscreen,
+                silk_top=not (args.no_silkscreen or args.no_silk_top),
+                silk_bottom=not (args.no_silkscreen or args.no_silk_bottom),
                 silk_color=silk_color,
                 silk_flat=args.flat_silkscreen,
                 # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,

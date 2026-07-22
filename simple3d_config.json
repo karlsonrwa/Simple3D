@@ -1,4 +1,24 @@
 {
+    "allegro": {
+        "python": "python",
+        "pythonw": "pythonw",
+        "menuLabel": "Simple 3D",
+        "commandName": "simple_3d_export"
+    },
+    "gui": {
+        "stepDir": "d:/Projects/OrCAD/CIS/3D",
+        "jsonFile": "",
+        "outputDir": "",
+        "zDatum": "top",
+        "boardColor": "Dark_green",
+        "boardEdge": "Same as board",
+        "boardEdgeCustom": "",
+        "silkscreenTop": true,
+        "silkscreenBottom": true,
+        "silkColor": "White",
+        "silkscreenFlat": false,
+        "minimizeFileSize": true
+    },
     "silkscreen": {
         "top": [
             "BOARD GEOMETRY/SILKSCREEN_TOP",

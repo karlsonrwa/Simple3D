@@ -33,7 +33,11 @@ from .colors import (
     resolve_board_color,
 )
 
-CONFIG_PATH = Path.home() / ".stepbuilder.json"
+# Every user-facing setting lives in ONE file, simple3d_config.json, shared with
+# the SKILL side - which is why it sits next to the package rather than in the
+# home directory. The launcher passes its path with --config; run standalone,
+# the package's own folder is the documented install layout.
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "simple3d_config.json"
 
 RIM_SAME = "Same as board"
 RIM_CREAM = "Cream (dielectric)"
@@ -66,7 +70,8 @@ class BuildSettings:
     z_datum: str
     board_color: tuple[int, int, int] | None
     rim_color: tuple[int, int, int] | None
-    export_silk: bool
+    silk_top: bool
+    silk_bottom: bool
     silk_color: tuple[int, int, int] | None
     silk_flat: bool
     minimize: bool
@@ -75,8 +80,9 @@ class BuildSettings:
 
 
 class StepBuilderApp(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, config_path: Path | None = None) -> None:
         super().__init__()
+        self.config_path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
         self.title("Simple 3D - StepBuilder")
         self.minsize(760, 560)
 
@@ -92,7 +98,8 @@ class StepBuilderApp(tk.Tk):
         self.theme = tk.StringVar(value=DEFAULT_THEME)
         self.rim_choice = tk.StringVar(value=RIM_SAME)
         self.rim_custom = tk.StringVar(value="")
-        self.export_silk = tk.BooleanVar(value=True)
+        self.silk_top = tk.BooleanVar(value=True)
+        self.silk_bottom = tk.BooleanVar(value=True)
         self.silk_color = tk.StringVar(value=DEFAULT_SILK)
         self.silk_flat = tk.BooleanVar(value=False)
         # MFRPN DISABLED (property attachment unreliable); kept for future:
@@ -169,8 +176,11 @@ class StepBuilderApp(tk.Tk):
         # a hex field here would only invite a value no fab can print.
         silk_row = ttk.Frame(opts)
         silk_row.grid(row=2, column=0, columnspan=5, sticky="w", pady=(6, 0))
-        ttk.Checkbutton(silk_row, text="Export silkscreen", variable=self.export_silk,
-                        command=self._update_silk_row).pack(side="left")
+        ttk.Label(silk_row, text="Silkscreen").pack(side="left")
+        ttk.Checkbutton(silk_row, text="Top", variable=self.silk_top,
+                        command=self._update_silk_row).pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(silk_row, text="Bottom", variable=self.silk_bottom,
+                        command=self._update_silk_row).pack(side="left", padx=(4, 0))
         ttk.Label(silk_row, text="Colour").pack(side="left", padx=(12, 6))
         self.silk_box = ttk.Combobox(
             silk_row, textvariable=self.silk_color, values=SILK_ORDER,
@@ -202,7 +212,9 @@ class StepBuilderApp(tk.Tk):
         log_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=4)
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
-        self.log_view = tk.Text(log_frame, height=10, wrap="none", state="disabled")
+        # wrap="word": build messages carry full paths and OCCT errors, which
+        # ran off the right edge with no horizontal scrollbar to reach them.
+        self.log_view = tk.Text(log_frame, height=10, wrap="word", state="disabled")
         self.log_view.grid(row=0, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(log_frame, command=self.log_view.yview)
         scroll.grid(row=0, column=1, sticky="ns")
@@ -254,8 +266,8 @@ class StepBuilderApp(tk.Tk):
         self.rim_entry.configure(state=state)
 
     def _update_silk_row(self) -> None:
-        """Keep the ink swatch and the enabled state in step with the checkbox."""
-        on = self.export_silk.get()
+        """Keep the ink swatch and the enabled state in step with the checkboxes."""
+        on = self.silk_top.get() or self.silk_bottom.get()
         self.silk_box.configure(state="readonly" if on else "disabled")
         self.silk_flat_check.configure(state="normal" if on else "disabled")
         rgb = SILK_COLORS.get(self.silk_color.get(), (128, 128, 128))
@@ -366,7 +378,8 @@ class StepBuilderApp(tk.Tk):
             z_datum=self.z_datum.get(),
             board_color=BOARD_THEMES.get(self.theme.get()),
             rim_color=self._rim_color(),
-            export_silk=self.export_silk.get(),
+            silk_top=self.silk_top.get(),
+            silk_bottom=self.silk_bottom.get(),
             silk_color=SILK_COLORS.get(self.silk_color.get()),
             silk_flat=self.silk_flat.get(),
             minimize=self.minimize.get(),
@@ -451,7 +464,8 @@ class StepBuilderApp(tk.Tk):
                     z_datum=settings.z_datum,
                     board_color=settings.board_color,
                     rim_color=settings.rim_color,
-                    silkscreen=settings.export_silk,
+                    silk_top=settings.silk_top,
+                    silk_bottom=settings.silk_bottom,
                     silk_color=settings.silk_color,
                     silk_flat=settings.silk_flat,
                     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
@@ -570,42 +584,64 @@ class StepBuilderApp(tk.Tk):
 
     # -------------------------------------------------------------- config - #
 
-    def _load_config(self) -> None:
+    def _read_config_file(self) -> dict:
+        """The whole config document, or {} if it is missing or unreadable."""
         try:
-            cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            data = json.loads(self.config_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _load_config(self) -> None:
+        gui = self._read_config_file().get("gui")
+        if not isinstance(gui, dict):
             return
-        self.step_dir.set(cfg.get("step_dir", ""))
-        self.json_file.set(cfg.get("json_file", ""))
-        self.output_dir.set(cfg.get("output_dir", ""))
-        self.z_datum.set(cfg.get("z_datum", "top"))
-        self.theme.set(cfg.get("theme", DEFAULT_THEME))
-        self.export_silk.set(cfg.get("export_silk", True))
-        self.silk_color.set(cfg.get("silk_color", DEFAULT_SILK))
-        self.silk_flat.set(cfg.get("silk_flat", False))
+        self.step_dir.set(gui.get("stepDir", ""))
+        self.json_file.set(gui.get("jsonFile", ""))
+        self.output_dir.set(gui.get("outputDir", ""))
+        self.z_datum.set(gui.get("zDatum", "top"))
+        self.theme.set(gui.get("boardColor", DEFAULT_THEME))
+        self.rim_choice.set(gui.get("boardEdge", RIM_SAME))
+        self.rim_custom.set(gui.get("boardEdgeCustom", ""))
+        self.silk_top.set(gui.get("silkscreenTop", True))
+        self.silk_bottom.set(gui.get("silkscreenBottom", True))
+        self.silk_color.set(gui.get("silkColor", DEFAULT_SILK))
+        self.silk_flat.set(gui.get("silkscreenFlat", False))
         # MFRPN DISABLED (kept for future):
-        # self.mfr_pn_in_name.set(cfg.get("mfr_pn_in_name", False))
-        self.minimize.set(cfg.get("minimize", True))
+        # self.mfr_pn_in_name.set(gui.get("mfrPnInName", False))
+        self.minimize.set(gui.get("minimizeFileSize", True))
 
     def _save_config(self) -> None:
+        """Write the "gui" section back, leaving the rest of the file alone.
+
+        Read-modify-write rather than a fresh document: the same file carries
+        the silkscreen layer lists and the Allegro-side settings, and losing
+        those on window close would be a great deal worse than forgetting a
+        path. A file that cannot be read is treated as empty, so a first run
+        with no config still saves; a file that cannot be WRITTEN is ignored,
+        exactly as before - a read-only install directory must not turn closing
+        the window into an error dialog.
+        """
+        data = self._read_config_file()
+        data["gui"] = {
+            "stepDir": self.step_dir.get(),
+            "jsonFile": self.json_file.get(),
+            "outputDir": self.output_dir.get(),
+            "zDatum": self.z_datum.get(),
+            "boardColor": self.theme.get(),
+            "boardEdge": self.rim_choice.get(),
+            "boardEdgeCustom": self.rim_custom.get(),
+            "silkscreenTop": self.silk_top.get(),
+            "silkscreenBottom": self.silk_bottom.get(),
+            "silkColor": self.silk_color.get(),
+            "silkscreenFlat": self.silk_flat.get(),
+            # MFRPN DISABLED (kept for future):
+            # "mfrPnInName": self.mfr_pn_in_name.get(),
+            "minimizeFileSize": self.minimize.get(),
+        }
         try:
-            CONFIG_PATH.write_text(
-                json.dumps(
-                    {
-                        "step_dir": self.step_dir.get(),
-                        "json_file": self.json_file.get(),
-                        "output_dir": self.output_dir.get(),
-                        "z_datum": self.z_datum.get(),
-                        "theme": self.theme.get(),
-                        "export_silk": self.export_silk.get(),
-                        "silk_color": self.silk_color.get(),
-                        "silk_flat": self.silk_flat.get(),
-                        # MFRPN DISABLED (kept for future):
-                        # "mfr_pn_in_name": self.mfr_pn_in_name.get(),
-                        "minimize": self.minimize.get(),
-                    },
-                    indent=1,
-                ),
+            self.config_path.write_text(
+                json.dumps(data, indent=4, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
         except OSError:
@@ -616,5 +652,5 @@ class StepBuilderApp(tk.Tk):
         self.destroy()
 
 
-def main() -> None:
-    StepBuilderApp().mainloop()
+def main(config_path: Path | None = None) -> None:
+    StepBuilderApp(config_path).mainloop()

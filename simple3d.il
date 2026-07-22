@@ -27,52 +27,35 @@
 ;=====================================================================
 
 ;=====================================================================
-;  SETTINGS  - edit these to taste.
+;  SETTINGS
+;
+;  ONE setting lives here. Everything else is in simple3d_config.json, next to
+;  this file - Python paths, the model library, the menu label, every GUI
+;  default, and the silkscreen layer lists. Editing settings in three places
+;  (this file, the GUI's own store, the layer config) was the arrangement
+;  before; it is now one file that both halves of the tool read.
+;
+;  Why this one cannot move: the config is found relative to the project
+;  folder, so the project folder has to be known before the config can be read.
+;  That is the whole bootstrap, and it is why S3D_ScriptDir stays in source.
 ;
 ;  Plain assignment (=), NOT defvar: defvar only sets a value the first time
-;  and is ignored on reload or if the variable already exists, so a user edit
-;  would silently not take effect. With = the value in this file always wins
-;  when the file is loaded.
+;  and is ignored on reload, so a user edit would silently not take effect.
 ;=====================================================================
 
 ; The Simple 3D project folder - the ONE folder that holds this whole tool:
-; both .il files AND the "stepbuilder" package sit here together. Used to launch
-; Python without depending on the current directory (which is what caused the
-; "No module named stepbuilder" error). This is the single path to match to
-; wherever you unpacked the project; the load() lines in the header above use
-; the same folder. If you named the folder something other than "Simple3D",
-; change it here (and in those two load lines).
+; both .il files, simple3d_config.json AND the "stepbuilder" package sit here
+; together. Used to launch Python without depending on the current directory
+; (which is what caused the "No module named stepbuilder" error). This is the
+; single path to match to wherever you unpacked the project; the load() lines
+; in the header above use the same folder. If you named the folder something
+; other than "Simple3D", change it here (and in those two load lines).
 S3D_ScriptDir = "d:/Projects/OrCAD/Scripts/Simple3D"
 
-; Python launcher. "python" if it is on PATH; otherwise a full path such as
-; "c:/Python312/python.exe".
-S3D_Python = "python"
-
-; Console-less Python launcher (pythonw.exe). When set, the GUI opens with NO
-; console window and the launching cmd window closes immediately. Leave "" to
-; use S3D_Python instead (still detached, but a brief console may flash).
-; Typical value: "c:/Python312/pythonw.exe", or just "pythonw" if on PATH.
-S3D_PythonW = "pythonw"
-
-; Folder that holds the footprint STEP models referenced by PKGDEF_STEP_FILE.
-; This is a shared 3D-model library, so it intentionally sits OUTSIDE the
-; project folder above - it is not part of this tool. If empty, the GUI
-; defaults it to the output folder; set it if your models live in a fixed spot.
-S3D_ModelLibDir = "d:/Projects/OrCAD/CIS/3D"
-
-; Default board colour pre-selected in the GUI. Must be one of the theme names
-; in colors.py: Black Blue Dark_green Green Purple Red White Yellow.
-S3D_DefaultColor = "Dark_green"
-
-; Silkscreen settings file - which Allegro layers count as silkscreen, the ink
-; thickness, and whether to clip to the board outline. Ships next to the two
-; .il files; edit it, not the source, to match a different layer naming scheme.
-; Set to "" to fall back to the built-in defaults in
-; makeVariant3dIntermediates.il.
+; The settings file. Only change this if you deliberately keep the config
+; somewhere other than the project folder. "" falls back to the built-in
+; defaults below and in makeVariant3dIntermediates.il.
 S3D_ConfigFile = strcat( S3D_ScriptDir "/simple3d_config.json" )
-
-; Default silkscreen colour pre-selected in the GUI: "White" or "Black".
-S3D_DefaultSilkColor = "White"
 
 ; MFRPN DISABLED (property attachment unreliable); kept for future re-enable.
 ; If t, abort the export when an exportable component (one that has a STEP
@@ -80,9 +63,58 @@ S3D_DefaultSilkColor = "White"
 ; fiducials legitimately lack MFRPN, so nil is the safe default.
 ; S3D_StrictMfrPn = nil
 
-; Menu label and internal command name.
+;=====================================================================
+;  SETTINGS READ FROM simple3d_config.json
+;
+;  Defaults here are what applies when the file is missing, unreadable, or
+;  simply does not mention a key - so a deleted config degrades to a working
+;  tool rather than a broken one.
+;=====================================================================
+
+S3D_Python = "python"
+S3D_PythonW = "pythonw"
 S3D_CommandVisible = "Simple 3D"
 S3D_CommandName = "simple_3d_export"
+
+; Re-read on every export as well as at load time, so editing the config takes
+; effect without reloading the SKILL files. The menu label is the exception -
+; the menu is built at load time, so a changed label needs a reload.
+; Only the "allegro" section is read here. The "gui" section is the Python
+; side's, and it reads it directly from the same file - the launcher forwards
+; nothing, so the two cannot drift apart.
+procedure( s3dLoadSettings()
+    let( ( cfg allegro value )
+        when( (S3D_ConfigFile != "") && isFile( S3D_ConfigFile )
+            cfg = nil
+            errset( cfg = s3dJsonRead( S3D_ConfigFile ) )
+            if( cfg then
+                allegro = s3dJsonGet( cfg "allegro" )
+
+                value = s3dJsonGet( allegro "python" )
+                when( stringp( value )  S3D_Python = value )
+
+                ; pythonw may legitimately be "" (meaning: use S3D_Python), so
+                ; presence decides here, not truthiness.
+                when( s3dJsonHas( allegro "pythonw" )
+                    value = s3dJsonGet( allegro "pythonw" )
+                    when( stringp( value )  S3D_PythonW = value )
+                )
+
+                value = s3dJsonGet( allegro "menuLabel" )
+                when( stringp( value )  S3D_CommandVisible = value )
+
+                value = s3dJsonGet( allegro "commandName" )
+                when( stringp( value )  S3D_CommandName = value )
+            else
+                printf( "Simple 3D: warning - could not parse %s; using built-in settings.\n"
+                        S3D_ConfigFile )
+            )
+        )
+        t
+    )
+)
+
+s3dLoadSettings()
 
 ;=====================================================================
 ;  PATH HELPERS
@@ -177,7 +209,10 @@ procedure( s3dDesignDir()
 ; let it raises "return can only be used within a prog". prog also means the
 ; body's last value is NOT the result: every exit has to be an explicit return().
 procedure( s3dExportCommand()
-    prog( ( designName designDir cadDir check noMfrPn noModel modelDir argTail pyOk )
+    prog( ( designName designDir cadDir check noMfrPn noModel argTail pyOk )
+
+        ; Pick up config edits without reloading the SKILL files.
+        errset( s3dLoadSettings() )
 
         designName = axlCurrentDesign()
         unless( designName
@@ -241,21 +276,22 @@ procedure( s3dExportCommand()
         ; Open the GUI with paths already set. The GUI lets the user pick colour
         ; and z-datum and press Generate; with several variant JSONs it builds
         ; all of them. step_dir is the model library (or cad if unset).
-        modelDir = if( (S3D_ModelLibDir != "") then S3D_ModelLibDir else cadDir )
-
         ; Build the argument tail (everything AFTER the interpreter). The
         ; launcher prepends python/pythonw and writes it into a .bat so cmd
         ; parses the quoted paths natively (no nesting through "start", which
         ; mangled paths containing spaces).
+        ;
+        ; Only design-derived values are passed. Colours, the STEP folder and
+        ; the silkscreen options used to be passed here as well; the GUI now
+        ; reads them from simple3d_config.json itself, so passing them would be
+        ; a second copy of the same settings and a chance for the two to drift.
         argTail = strcat(
             "-m stepbuilder --gui "
-            "--step-dir \"" modelDir "\" "
+            "--config \"" S3D_ConfigFile "\" "
             "--json-dir \"" cadDir "\" "
             "--output-dir \"" cadDir "\" "
             "--brd-name \"" designName "\" "
-            "--dated-name "
-            "--color \"" S3D_DefaultColor "\" "
-            "--silk-color \"" S3D_DefaultSilkColor "\""
+            "--dated-name"
         )
 
         printf( "Simple 3D: launching GUI (%s)\n" argTail )
