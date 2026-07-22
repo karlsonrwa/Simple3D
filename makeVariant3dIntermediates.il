@@ -738,6 +738,15 @@ procedure( makePcbContour( dsn )
             cuts = nil
         )
 
+        ; FIX (simple3d 2026-07-22): cuts was guarded here but edges was not,
+        ; so a design whose outline yields no segments faulted on this very
+        ; line instead of reporting an empty outline. Same fault class as the
+        ; unbound `cuts` at the makePcb call site.
+        unless( boundp( 'edges )
+            printf( "Simple 3D: warning - the design outline produced no segments.\n" )
+            edges = nil
+        )
+
         ; return
         list( edges cuts )
     )
@@ -893,7 +902,16 @@ procedure( makePcb( thicknesses edges cuts color )
           "\t\"b\": " sprintf( nil "%f" caddr( color ) ) "\n"
           "}"
         )
-        if( boundp( 'cuts ) then
+        ; FIX (simple3d 2026-07-22): was  if( boundp( 'cuts ) ...).
+        ; cuts is a FORMAL PARAMETER, so it is bound the moment the call
+        ; succeeds - boundp is always t here and the else branch below was dead
+        ; code. Test the value instead, so a board that really has nothing to
+        ; cut takes the no-cuts branch and emits a valid "edges" array. With the
+        ; boundp test, nil cuts produced a trailing comma:
+        ;     "edges": [ [ ...outline... ],  ]
+        ; which is not JSON. See also the call site, which must not evaluate an
+        ; unbound cuts in the first place.
+        if( cuts then
             edges = strcat(
                 "\"pcb\": {\n"
                 "\t\"thickness\": {\n"
@@ -901,7 +919,7 @@ procedure( makePcb( thicknesses edges cuts color )
                 "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
                 "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
                 "\t},\n"
-                addIndent( 
+                addIndent(
                     pcbColor
                 )
                 ",\n"
@@ -1754,7 +1772,19 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         )
 
         ; make pcb (including all cutouts and holes)
-        pcb = makePcb( thicknesses edges cuts pcbColor )
+        ;
+        ; FIX (simple3d 2026-07-22): "*Error* eval: unbound variable - cuts",
+        ; and no JSON written at all, on a board with NO cutouts and NO
+        ; through-hole pins. Both `when`s above then leave `cuts` holding the
+        ; 'unbound marker, and passing it here evaluates it. An all-SMD board
+        ; without a CUTOUT shape is perfectly ordinary; it just had not been
+        ; exported before. Same for `edges` if a design somehow has no outline
+        ; segments - nil reaches the Python reader, which says "pcb.edges is
+        ; empty" instead of dying in SKILL.
+        pcb = makePcb( thicknesses
+                       if( boundp( 'edges ) then edges else nil )
+                       if( boundp( 'cuts ) then cuts else nil )
+                       pcbColor )
 
         ; write step model placement informations
         ; FIX (simple3d): guard the unbound case. If no component has a STEP

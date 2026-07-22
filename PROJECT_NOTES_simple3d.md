@@ -1250,3 +1250,67 @@ That per-segment conversion actually works on a live board: whether
 path. If a segment fails to convert, its piece of the line disappears and no
 area check can notice, so the SKILL side now warns when a path yields fewer
 polygons than it has segments. Needs a re-export to confirm.
+
+## Update 2026-07-22 (round 10f) — "unbound variable - cuts" on an all-SMD board
+
+A second board failed before writing anything:
+
+```
+Simple 3D: silkscreen polygons - top 143, bottom 0
+Simple 3D: after clipping - top 35, bottom 0
+*Error* eval: unbound variable - cuts
+```
+
+Silkscreen was fine. This is the upstream `cuts` defect the memo has carried
+since round 1 as "needs checking on a real cutout-less board" — now checked, by
+a board that has one.
+
+### The fault
+
+`create3dIntermediateFormat` declares `( cuts 'unbound )`, which in SKILL really
+does leave the variable unbound. It gets a value from only two places: the
+cutouts from `makePcbContour`, and the through-hole pins from
+`symbolReturnPinHoles`. A board with **no CUTOUT shape and no through-hole pins**
+— an ordinary all-SMD board — satisfies neither, so `cuts` is still unbound at
+
+```skill
+pcb = makePcb( thicknesses edges cuts pcbColor )
+```
+
+and passing it evaluates it. Nothing is written; the export dies before
+`outfile`.
+
+### The second half of the same bug
+
+`makePcb` then chooses its branch with `if( boundp( 'cuts ) ...)` — but `cuts` is
+its own **formal parameter**, so boundp is t whenever the call succeeds at all.
+The no-cuts branch was dead code, and had the caller merely passed nil the
+with-cuts branch would have run on nil and emitted
+
+```
+"edges": [ [ ...outline... ],
+	 ]
+```
+
+a trailing comma, i.e. not JSON. Verified by transliterating both branches:
+old behaviour → `Expecting value: line 22 column 2`; fixed → parses, one edges
+array. So the crash was hiding a second defect that would have produced a
+corrupt file instead of an error.
+
+Both fixed: the call site passes nil when unbound, and `makePcb` tests the
+value. `makePcbContour` had the same asymmetry (it guarded `cuts` but not
+`edges`) and now guards both, with a message rather than a fault.
+
+### Note
+This is the third time in this feature that a defect was reachable only through
+a data shape nobody had exported yet (no closing edge, mitred joins, now no
+cuts). The pattern: the code was written against one board. Worth trying
+deliberately degenerate inputs — no cutouts, no holes, no bottom silkscreen, no
+components — rather than waiting for a board to supply them.
+
+### Verified here
+- Both branches transliterated and parsed: with cuts → 2 edges arrays, without →
+  1; the old boundp path → invalid JSON, as predicted.
+- A cutout-free, hole-free board with silkscreen built end to end through the
+  real reader: 1 silk solid, areas matched, STEP written.
+- Balance 0, full Python suite clean.
