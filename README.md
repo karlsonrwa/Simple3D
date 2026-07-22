@@ -280,6 +280,41 @@ boolean union replaces analytic planes and cylinders with general surfaces, and
 after clipping the strokes barely overlap, so there is nothing much for it to
 remove. It makes the file half again as large and takes longer.
 
+## What gets exported
+
+Every symbol in the design that has a reference designator, minus two
+exclusions.
+
+**`NO_STEP_EXPORT` wins over everything.** Attach that property to a symbol —
+or to a component or component definition, to drop every instance of a part —
+and it is left out of the STEP, even if `Variants.lst` lists it as installed.
+Each one is named in the Allegro console:
+
+```
+Simple 3D: FID2 - NOT exported: the symbol carries the NO_STEP_EXPORT property.
+Simple 3D: 3 symbol(s) excluded by NO_STEP_EXPORT.
+```
+
+Excluded symbols are also kept out of the "no 3D model" pre-flight list, which
+is for parts that *would* be exported if they had a model.
+
+**A variant can only remove.** With a `Variants.lst` present, a refdes the
+variant table mentions somewhere but not in the variant being built is treated
+as not installed and skipped. A refdes the table never mentions at all is not
+variant-controlled, so it is exported in every variant.
+
+That last rule is what makes **mechanical components work**. A part with
+`Component Class: MECHANICAL` — a connector, a mounting hole, a bracket — is a
+real symbol with a real `PKGDEF_STEP_FILE`, but it has no electrical
+connections, and whether it turns up in the parsed variant list is not something
+to depend on. Because the export list is built from the design and the variant
+table only subtracts from it, such a part is exported either way. The console
+says how many were in that position:
+
+```
+Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.
+```
+
 ## Board thickness
 
 The board solid is `dielectrics + planes + conductors + both soldermasks`.
@@ -629,6 +664,41 @@ silkscreen_top: 214 polygon(s) match Allegro's areas (arc reading: ...)
 булева операция заменяет аналитические плоскости и цилиндры общими
 поверхностями, а после обрезки штрихи почти не перекрываются, так что удалять
 ей особо нечего. Файл вырастает в полтора раза, и это дольше.
+
+## Что попадает в экспорт
+
+Все символы проекта, у которых есть позиционное обозначение, за вычетом двух
+исключений.
+
+**`NO_STEP_EXPORT` сильнее всего остального.** Повесьте это свойство на символ —
+либо на компонент или его определение, чтобы убрать все экземпляры детали, — и
+он не попадёт в STEP, даже если `Variants.lst` числит его установленным. Каждый
+такой символ называется в консоли Allegro:
+
+```
+Simple 3D: FID2 - NOT exported: the symbol carries the NO_STEP_EXPORT property.
+Simple 3D: 3 symbol(s) excluded by NO_STEP_EXPORT.
+```
+
+Исключённые символы не попадают и в предварительный список «нет 3D-модели» — он
+про детали, которые экспортировались бы, будь у них модель.
+
+**Вариант умеет только убирать.** Если `Variants.lst` есть, позиционное
+обозначение, которое таблица вариантов где-то упоминает, но не в собираемом
+варианте, считается неустановленным и пропускается. Обозначение, которого в
+таблице нет вовсе, вариантами не управляется — и экспортируется во всех.
+
+Именно это правило заставляет работать **механические компоненты**. Деталь с
+`Component Class: MECHANICAL` — разъём, монтажное отверстие, кронштейн — это
+настоящий символ с настоящим `PKGDEF_STEP_FILE`, но электрических подключений у
+неё нет, и полагаться на то, попадёт ли она в разобранный список варианта,
+нельзя. Поскольку список на экспорт строится от проекта, а таблица вариантов
+только вычитает, такая деталь экспортируется в любом случае. Сколько их было,
+видно в консоли:
+
+```
+Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.
+```
 
 ## Толщина платы
 

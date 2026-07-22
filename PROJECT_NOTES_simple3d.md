@@ -1519,3 +1519,81 @@ depth buffer.
 Flat top +0.001, flat bottom -0.001 (sign follows the side), 0.01 honoured,
 solid unchanged at 0.0 .. 0.025; GUI loads the value, snapshots it, and
 preserves the comment across a save; full suite and shadow scan clean.
+
+## Update 2026-07-22 (round 11) — mechanical symbols in, NO_STEP_EXPORT out
+
+Branch `mech-export`. Two requirements from the user's F4 dumps:
+
+1. Mechanical components (`Component Class: MECHANICAL`, e.g. a MOLEX connector
+   with a real `PKGDEF_STEP_FILE` but no electrical connections) are in the
+   schematic and in Variants.lst, yet never reach the export.
+2. A symbol carrying `NO_STEP_EXPORT` must be excluded even when Variants.lst
+   lists it, and the log must name the symbol AND the reason.
+
+### The reversal that fixes (1)
+
+The export list WAS the parsed variant list:
+
+```skill
+symbols = variantSymbolList[variant]
+```
+
+so a symbol `gdsysGetVariantInfo` did not hand back could not be exported at
+all - there was no other path into the loop. Whether the parser drops
+mechanical entries, or Allegro writes them somewhere the state machine does not
+reach, could not be determined from here and **does not need to be**: the list
+now comes from `axlDBGetDesign()->symbols` and the variant table only ever
+subtracts.
+
+The rule that falls out of that is the useful one:
+
+- refdes mentioned by the variant table, but not in THIS variant -> not
+  installed, skip;
+- refdes the table never mentions -> not variant-controlled, export it in every
+  variant.
+
+Mechanical parts are the second case whether or not they appear in the file, so
+the fix holds under either explanation. Deliberately keyed on "the variant
+table has never heard of it" rather than on `Component Class == MECHANICAL`:
+the general rule covers mechanical parts and anything else the variant
+machinery does not track, and needs no list of blessed classes.
+
+### (2) NO_STEP_EXPORT
+
+Read with `axlDBGetProperties`, testing for the NAME's presence - it is a flag
+with no value, so anything value-based would miss it. Property names come back
+as symbols, hence the `%L` coercion (the idiom the disabled MFRPN helper
+already used). Checked on the symbol instance, where the F4 dump shows it, and
+also on the component and its definition, so it can be attached once to drop
+every fiducial.
+
+The earlier MFRPN trouble is not evidence against this: that was about which
+object carries the property, which is exactly why three levels are checked.
+
+Excluded symbols are also filtered out of the `s3dCheckMfrPn` "no 3D model"
+pre-flight list, which otherwise reported deliberate exclusions as missing
+models - the user's FID1/FID2/FID3 were in that list for precisely that reason.
+
+### Also removed: a lookup that could not succeed
+
+`symbolReturn3DElements` took a refdes STRING and resolved it with
+`axlDBFindByName( 'refdes ... )` -> component instance -> `->symbol`. Two
+lookups, each able to return nil, for a symbol the caller already had in hand.
+It now takes the dbid (a string is still accepted, three lines, keeps the old
+call shape). One fewer way for a part to vanish between the design and the JSON.
+
+### Verified here
+The selection logic transliterated and run over a decision table: mechanical
+part exported in every variant both when Variants.lst lists it and when it does
+not; an uninstalled part stays out of its variant and appears in the other; a
+NO_STEP_EXPORT symbol is excluded in all five configurations INCLUDING when the
+variant lists it, and the log names it every time; refdes matching is
+case-insensitive in both directions; a symbol with no refdes is skipped. Paren
+balance and the rest of the suite unchanged.
+
+### NOT verified here
+That `axlDBGetProperties` reports NO_STEP_EXPORT on a live symbol - the whole
+point of the three-level check is that the level it lives on is the uncertain
+part. If a marked symbol still comes through, the per-symbol log line will be
+absent, which says immediately that the property was not seen rather than that
+the filter misfired.
