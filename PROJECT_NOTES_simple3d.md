@@ -1032,3 +1032,78 @@ dropped from the list before restoring.
 - Which of the four readings the real board actually uses. The log now states
   it; worth recording here once seen, because it settles the doc question for
   good.
+
+## Update 2026-07-22 (round 10c) — the sign is measured against the centre, not travel
+
+Third live run: silkscreen is in the model, but line ends are drawn as "two
+half-circles toward the centre of the line" instead of one semicircle, and some
+90-degree corners come out as external corners where a fillet belongs.
+
+That symptom is specific. A round cap is split at its quadrant into two quarter
+arcs; both bulging inward is what "two half-circles toward the centre" is. And
+it was not uniform — some geometry looked right. **A uniformly wrong sign cannot
+produce a partly-correct result**, so the model of the sign was incomplete, not
+merely inverted.
+
+### The reading that fits
+
+Taking the doc sentence literally: "positive - the arc is to the left of **the
+y-axis**". Not the direction of travel — the vertical through the arc's **own
+centre**. The sentence next to it is what makes this coherent: arcs never cross
+a quadrant, and quadrants are measured from the centre, so every arc lies wholly
+on one side of its centre's vertical, and the sign names that side.
+
+The two rules differ exactly where a shape doubles back. For one stroke with a
+round cap at each end, walked clockwise:
+
+```
+travel  -> [+0.5, 0, +0.5, +0.5, 0, +0.5]     both caps the same sign
+axis    -> [+0.5, 0, -0.5, -0.5, 0, +0.5]     the caps split
+```
+
+So reading AXIS data with the TRAVEL rule leaves one cap correct and inverts the
+other — the reported symptom, exactly.
+
+### Why the area check did not catch it
+
+Measured: AXIS data read as TRAVEL gives 10.500000 against a true 10.785398 —
+off 2.65%, which does exceed the 0.5% tolerance and would have warned. But note
+**both TRAVEL polarities give the same 10.500000**: flipping polarity swaps
+which cap is inverted and the total is unchanged. Area is blind to that swap.
+It can separate TRAVEL from AXIS, but never the two polarities of a doubling-back
+shape from each other. Worth remembering before trusting area as an oracle for
+anything else.
+
+(The GUI log for this run was not captured — the Allegro console was pasted
+twice — so whether the warning fired is unknown. The numbers say it should have.)
+
+### What was done
+
+AXIS is now a third dimension of the convention search: 8 candidates instead of
+4, all scored, no early exit (two readings can both land inside tolerance on a
+gently curved sample, and taking the first to pass would pick by list order).
+The sample now prefers small arc-bearing polygons — only arcs discriminate, and
+the cheap ones say it as clearly as the expensive ones.
+
+The AXIS side test reduces to one term. For the candidate that bulges left, the
+arc midpoint is one radius from the centre along the left normal, so its x
+offset from the centre is exactly `rad * nx`: the arc sits left of its own centre
+iff `nx < 0`.
+
+The log now spells the winning reading out in words, e.g. "positive radius means
+the arc sits left of its centre, first radius closes".
+
+### Verified here
+- Signs each rule writes for the same physical stroke differ as shown above.
+- All 8 combinations round-trip: data emitted as each is recovered and rebuilt
+  to 3.6e-15 of the true area.
+- Cross-check: AXIS data read as TRAVEL is 2.65% off under either polarity;
+  read as AXIS it is exact.
+- Writer output still parses across six shapes; old-format JSON still builds;
+  demo board unchanged.
+
+### Open
+Which rule the real board uses is still unconfirmed — AXIS is a hypothesis that
+fits the symptom, not a measurement. Asked the user for the JSON so the eight
+candidates can be scored against real vertex data and real areas offline,
+instead of one candidate per round trip.

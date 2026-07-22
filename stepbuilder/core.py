@@ -207,32 +207,100 @@ DEFAULT_SILK_THICKNESS = 0.025
 
 
 # How a polygon's vertex list is read. Allegro gives (x, y, signed_radius) per
-# point, and two things about it are genuinely ambiguous in the documentation:
+# point, and three things about it are ambiguous in the documentation:
 #
-#   arc_left_when_positive
-#       "The sign of the radius indicates for postive the arc is to the left"
-#       - the arc bulges left of travel (centre on the RIGHT), or the centre is
-#       on the left? Both readings are defensible from that sentence.
-#   first_radius_closes
-#       Each vertex carries the radius of the edge REACHING it, and the list
-#       does not repeat its first point. So does the first vertex's radius
-#       describe the closing edge back to it, or is it unused?
+#   rule - what the sign is measured against. The sentence is "The sign of the
+#       radius indicates for postive the arc is to the left of the y-axis".
+#       TRAVEL reads it as the arc bulging left of the direction of travel.
+#       AXIS takes "the y-axis" literally: the vertical through the arc's own
+#       centre, so the sign says which side of its centre the arc sits on. The
+#       neighbouring sentence - polygon arcs never cross a quadrant, and
+#       quadrants are measured from the centre - is what makes AXIS coherent.
+#       The two rules disagree exactly where a shape doubles back: the two round
+#       ends of one stroke get the SAME sign under TRAVEL and OPPOSITE signs
+#       under AXIS, which is why reading it wrong leaves one end correct and
+#       turns the other inside out.
+#   polarity - whether a positive radius means the first side or the second.
+#   first_radius_closes - each vertex carries the radius of the edge REACHING
+#       it, and the list does not repeat its first point, so the first vertex's
+#       radius either describes the closing edge back to it or is unused.
 #
 # Rather than pick and hope, every combination is tried against the area Allegro
-# reported for that polygon; whichever reproduces it wins. See _pick_convention.
-_Convention = tuple  # (arc_left_when_positive: bool, first_radius_closes: bool)
+# reported for those same polygons; whichever reproduces them wins.
+# See _pick_convention.
+RULE_TRAVEL = "travel"
+RULE_AXIS = "axis"
+
+_Convention = tuple  # (rule: str, positive_is_first: bool, first_radius_closes: bool)
 
 _CONVENTIONS: list[_Convention] = [
-    (True, True),
-    (True, False),
-    (False, True),
-    (False, False),
+    (rule, polarity, closes)
+    for rule in (RULE_TRAVEL, RULE_AXIS)
+    for polarity in (True, False)
+    for closes in (True, False)
 ]
+
+
+def _describe_convention(convention: _Convention) -> str:
+    rule, polarity, closes = convention
+    if rule == RULE_TRAVEL:
+        side = "bulges left" if polarity else "bulges right"
+        what = f"positive radius {side} of travel"
+    else:
+        side = "left" if polarity else "right"
+        what = f"positive radius means the arc sits {side} of its centre"
+    return f"{what}, first radius {'closes' if closes else 'unused'}"
 
 # A rebuilt polygon has to land this close to Allegro's own area to be accepted.
 # Loose enough for float noise and OCCT's own tolerance, tight enough that a
 # wrong arc side (several percent even on gentle curves) never slips through.
 AREA_TOLERANCE = 0.005
+
+
+def _arc_geometry(p0, p1, radius: float):
+    """Chord bookkeeping shared by both readings.
+
+    Returns (mx, my, nx, ny, rad, h) where (nx, ny) is the left normal of
+    travel and h is the centre's distance from the chord midpoint. The two
+    candidate centres are (mx, my) +/- h * (nx, ny), and the arc bulging to the
+    LEFT of travel is the one whose centre sits to the right, and vice versa.
+    """
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    chord = math.hypot(dx, dy)
+    if chord < 1.0e-12:
+        return None
+    # A radius smaller than half the chord cannot span it (rounding in the
+    # source); clamp to the semicircle instead of taking a negative sqrt.
+    rad = max(abs(radius), chord / 2.0)
+    h = math.sqrt(max(0.0, rad * rad - (chord / 2.0) ** 2))
+    mx, my = (p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0
+    return mx, my, -dy / chord, dx / chord, rad, h
+
+
+def _arc_bulges_left(p0, p1, radius: float, rule: str, positive_is_first: bool) -> bool:
+    """Which side of travel this arc bulges to, under the given reading."""
+    positive = radius > 0.0
+    if rule == RULE_TRAVEL:
+        return positive == positive_is_first
+
+    # AXIS: the sign says which side of the vertical through its own centre the
+    # arc sits on. For the candidate that bulges LEFT, the arc's midpoint is one
+    # radius from the centre along the left normal, so its offset in x is simply
+    # rad * nx - the arc sits left of its own centre exactly when nx < 0.
+    #
+    # nx == 0 would mean a chord with no rise, which inside a single quadrant
+    # only happens for a zero-length arc; the guard is there for arithmetic
+    # safety, not for a case that occurs.
+    geometry = _arc_geometry(p0, p1, radius)
+    if geometry is None:
+        return positive == positive_is_first
+    _, _, nx, _, _, _ = geometry
+    if abs(nx) < 1.0e-12:
+        return positive == positive_is_first
+
+    left_candidate_sits_left = nx < 0.0
+    wants_left_of_centre = positive == positive_is_first
+    return left_candidate_sits_left == wants_left_of_centre
 
 
 def _arc_edge(p0, p1, radius: float, z: float, arc_left: bool):
@@ -243,17 +311,10 @@ def _arc_edge(p0, p1, radius: float, z: float, arc_left: bool):
     cross a quadrant, so every one of them is a minor arc and the midpoint is
     unambiguous: it sits (radius - h) off the chord, on the side the arc bulges.
     """
-    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
-    chord = math.hypot(dx, dy)
-    if chord < 1.0e-12:
+    geometry = _arc_geometry(p0, p1, radius)
+    if geometry is None:
         return None
-
-    # A radius smaller than half the chord cannot span it (rounding in the
-    # source); clamp to the semicircle instead of taking a negative sqrt.
-    rad = max(abs(radius), chord / 2.0)
-    h = math.sqrt(max(0.0, rad * rad - (chord / 2.0) ** 2))
-    mx, my = (p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0
-    nx, ny = -dy / chord, dx / chord          # left normal of travel
+    mx, my, nx, ny, rad, h = geometry
     sign = 1.0 if arc_left else -1.0
     mid = gp_Pnt(mx + sign * (rad - h) * nx, my + sign * (rad - h) * ny, z)
 
@@ -265,7 +326,7 @@ def _arc_edge(p0, p1, radius: float, z: float, arc_left: bool):
 
 def _wire_from_vertices(vertices: list, z: float, convention: _Convention) -> TopoDS_Wire:
     """Allegro vertex list -> closed wire, read under *convention*."""
-    arc_left_when_positive, first_radius_closes = convention
+    rule, positive_is_first, first_radius_closes = convention
 
     points = [(float(v[0]), float(v[1])) for v in vertices]
     radii = [float(v[2]) if len(v) > 2 else 0.0 for v in vertices]
@@ -274,7 +335,8 @@ def _wire_from_vertices(vertices: list, z: float, convention: _Convention) -> To
 
     def make(p0, p1, radius):
         if abs(radius) > 1.0e-9:
-            return _arc_edge(p0, p1, radius, z, (radius > 0) == arc_left_when_positive)
+            left = _arc_bulges_left(p0, p1, radius, rule, positive_is_first)
+            return _arc_edge(p0, p1, radius, z, left)
         if math.dist(p0, p1) < 1.0e-12:
             return None
         return BRepBuilderAPI_MakeEdge(
@@ -359,11 +421,17 @@ def _pick_convention(
     """
     candidates = [p for p in polygons if p.get("vertices") and p.get("area")
                   and abs(float(p["area"])) > 1.0e-6]
-    if not candidates:
+    # Only polygons that actually contain an arc can tell the readings apart, and
+    # the cheapest ones say it just as clearly, so sample small arc-bearing
+    # polygons. A legend of nothing but straight lines leaves every reading
+    # equivalent, and then the first is as good as any.
+    curved = [p for p in candidates
+              if any(abs(float(v[2])) > 1.0e-9 for v in p["vertices"] if len(v) > 2)]
+    sample = sorted(curved or candidates, key=lambda p: len(p["vertices"]))[:8]
+    if not sample:
         return _CONVENTIONS[0]
-    sample = candidates[:12]
 
-    best, best_error = _CONVENTIONS[0], None
+    scores: list[tuple[float, _Convention]] = []
     for convention in _CONVENTIONS:
         worst = 0.0
         for polygon in sample:
@@ -376,15 +444,17 @@ def _pick_convention(
                 worst = math.inf
                 break
             worst = max(worst, abs(area - declared) / declared)
-        if best_error is None or worst < best_error:
-            best, best_error = convention, worst
-        if worst <= AREA_TOLERANCE:
-            break
+        scores.append((worst, convention))
 
-    if best_error is not None and best_error > AREA_TOLERANCE:
+    # Every candidate is scored - no early exit. Two readings can both land
+    # inside the tolerance on a gently curved sample while only one is right,
+    # and taking the first to pass would then pick by list order.
+    best_error, best = min(scores, key=lambda s: s[0])
+
+    if best_error > AREA_TOLERANCE:
         log(f"warning: no reading of the {side} vertex data reproduces the areas "
-            f"Allegro reported (best is off by {best_error * 100:.1f}%). The "
-            f"legend geometry may be distorted.")
+            f"Allegro reported (best is off by {best_error * 100:.1f}%: "
+            f"{_describe_convention(best)}). The legend geometry may be distorted.")
     return best
 
 
@@ -462,9 +532,7 @@ def build_silkscreen(
             f"{worst[2]:.6g} mm2, {worst[0] * 100:.1f}%).")
     elif area_checked:
         log(f"{side}: {area_checked} polygon(s) match Allegro's areas "
-            f"(arc reading: {'left' if convention[0] else 'right'}-bulging on a "
-            f"positive radius, first radius "
-            f"{'closes' if convention[1] else 'unused'})")
+            f"(arc reading: {_describe_convention(convention)})")
     if not built:
         return None, 0, skipped
     return compound, built, skipped
