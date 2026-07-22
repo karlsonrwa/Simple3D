@@ -21,11 +21,20 @@
 ;    * symbolReturn3DElements - now also emits "mfr_pn" (the MFRPN article
 ;      number, read from the component definition) for the STEP writer.
 ;    * s3dGetMfrPn / s3dJsonEscape / s3dCheckMfrPn helpers added.
+;    * SILKSCREEN export (format_version 2) - see the SILKSCREEN section
+;      below. Adds a small JSON reader so the layer list lives in
+;      simple3d_config.json, collection of the silkscreen as filled
+;      polygons, and clipping to the board area.
+;    * create3dIntermediateFormat - guarded the case where no component has
+;      a STEP mapping (car of an unbound marker faulted).
 ;
 ;  USAGE
-;    makeVariant3dIntermediates( outputDir [ pcbColor ] )
+;    makeVariant3dIntermediates( outputDir [ pcbColor ] [ configFile ] )
 ;  Writes <design>.json (or one <design>_<variant>.json per variant if a
 ;  Variants.lst is present) into outputDir. Design units must be mm.
+;  configFile is the silkscreen layer/settings JSON; when omitted,
+;  "simple3d_config.json" in the working directory is used if present, and
+;  otherwise the built-in defaults apply.
 ;=====================================================================
 
 ; s3dMakeDirs( t_path ) -> create every missing level of a directory path.
@@ -272,7 +281,16 @@ procedure( gdsysGetVariantInfo()
                                         partProperties = makeTable( "partProperties" nil )
 
                                         ; append to symbol list
-                                        symbols = nconc( symbols list( nth( 0 subStrings ) ) )
+                                        ; FIX (simple3d): was nth( 0 subStrings ),
+                                        ; but subStrings was reassigned above to the
+                                        ; PROPERTY chunks, so this appended the first
+                                        ; property token ("VALUE=12pF") to the variant's
+                                        ; symbol list instead of the refdes. Seen on
+                                        ; PAG30N/BNO as two
+                                        ;   Simple 3D: VALUE=12pF - not found in the design
+                                        ; lines. refDes is already correct here - it is
+                                        ; what parts[refDes] above is keyed by.
+                                        symbols = nconc( symbols list( refDes ) )
                                     else
                                         state = "awaitMoreProperties"
                                     )
@@ -310,7 +328,10 @@ procedure( gdsysGetVariantInfo()
                             partProperties = makeTable( "partProperties" nil )
 
                             ; append to symbol list
-                            symbols = nconc( symbols list( nth( 0 subStrings ) ) )
+                            ; FIX (simple3d): same bug as in the single-line branch
+                            ; above - subStrings holds property chunks by now, not
+                            ; the refdes. This is the multi-line-properties path.
+                            symbols = nconc( symbols list( refDes ) )
 
                             properties = ""
 
@@ -717,6 +738,15 @@ procedure( makePcbContour( dsn )
             cuts = nil
         )
 
+        ; FIX (simple3d 2026-07-22): cuts was guarded here but edges was not,
+        ; so a design whose outline yields no segments faulted on this very
+        ; line instead of reporting an empty outline. Same fault class as the
+        ; unbound `cuts` at the makePcb call site.
+        unless( boundp( 'edges )
+            printf( "Simple 3D: warning - the design outline produced no segments.\n" )
+            edges = nil
+        )
+
         ; return
         list( edges cuts )
     )
@@ -727,12 +757,27 @@ procedure( symbolReturn3DElements( refDes )
 
         stepPackageMapping = nil
 
+        ; Defensive: the caller appends  alternateParts[variant]~>?  to the base
+        ; refdes list, and that expression does NOT yield refdes (see below), so
+        ; non-string junk can arrive here. Coerce with the stringp/%L idiom used
+        ; elsewhere in this file, then let the guard below report it by name.
+        unless( stringp( refDes )  refDes = sprintf( nil "%L" refDes ) )
+
         ; get symbol (dbid)
         dbid = axlDBFindByName( 'refdes refDes )
         sym = dbid->symbol
 
         ; step package mappingData
-        mappingData = axlStepGet( nil nil sym )
+        ; Guard the call: an unresolved refdes used to reach axlStepGet(nil nil
+        ; nil), which warned opaquely and then dropped the component in silence.
+        ; Name it instead. mappingData stays nil -> stepFileName stays nil -> the
+        ; when(stepFileName ...) below still skips it, so behaviour is unchanged
+        ; apart from the message.
+        if( sym then
+            mappingData = axlStepGet( nil nil sym )
+        else
+            printf( "Simple 3D: %s - not found in the design, skipped.\n" refDes )
+        )
         stepFileName = mappingData->step_name
 
         offset_x = mappingData->offset_x
@@ -857,7 +902,16 @@ procedure( makePcb( thicknesses edges cuts color )
           "\t\"b\": " sprintf( nil "%f" caddr( color ) ) "\n"
           "}"
         )
-        if( boundp( 'cuts ) then
+        ; FIX (simple3d 2026-07-22): was  if( boundp( 'cuts ) ...).
+        ; cuts is a FORMAL PARAMETER, so it is bound the moment the call
+        ; succeeds - boundp is always t here and the else branch below was dead
+        ; code. Test the value instead, so a board that really has nothing to
+        ; cut takes the no-cuts branch and emits a valid "edges" array. With the
+        ; boundp test, nil cuts produced a trailing comma:
+        ;     "edges": [ [ ...outline... ],  ]
+        ; which is not JSON. See also the call site, which must not evaluate an
+        ; unbound cuts in the first place.
+        if( cuts then
             edges = strcat(
                 "\"pcb\": {\n"
                 "\t\"thickness\": {\n"
@@ -865,7 +919,7 @@ procedure( makePcb( thicknesses edges cuts color )
                 "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
                 "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
                 "\t},\n"
-                addIndent( 
+                addIndent(
                     pcbColor
                 )
                 ",\n"
@@ -911,8 +965,762 @@ procedure( makePcb( thicknesses edges cuts color )
     )
 )
 
-procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName )
-    let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) )
+;=====================================================================
+;  SILKSCREEN  (NEW - simple3d)
+;
+;  Exports the silkscreen as filled regions so the Python side can extrude
+;  them into thin solids sitting on the board faces.
+;
+;  The whole "line + width -> filled outline" problem is handed to Allegro:
+;  axlPolyFromDB turns any line/cline/shape/rect dbid into o_polygon objects
+;  with the width already applied and the requested end caps, and
+;  axlText2Lines + axlPolyFromDB(?line2poly t) does the same for text (this is
+;  the idiom the axlText2Lines documentation itself recommends). Nothing here
+;  offsets or strokes geometry by hand.
+;
+;  Each polygon is written out in the SAME primitive vocabulary the board
+;  outline already uses (segment / arc / circle), so the Python reader needs no
+;  new geometry parser - build_contour() handles both.
+;
+;  VARIANTS: silkscreen is deliberately variant-INDEPENDENT. The bare board is
+;  manufactured once for every assembly variant, so the printed legend of a
+;  component that is not installed in a given variant is still physically on
+;  the board. It is therefore collected once per design, not per variant.
+;=====================================================================
+
+; Built-in defaults, used when no config file is found (or it fails to parse).
+; Mirrors simple3d_config.json - keep the two in step.
+S3D_SilkDefaultTop = list(
+    "BOARD GEOMETRY/SILKSCREEN_TOP"
+    "PACKAGE GEOMETRY/SILKSCREEN_TOP"
+    "REF DES/SILKSCREEN_TOP"
+    "COMPONENT VALUE/SILKSCREEN_TOP"
+)
+S3D_SilkDefaultBottom = list(
+    "BOARD GEOMETRY/SILKSCREEN_BOTTOM"
+    "PACKAGE GEOMETRY/SILKSCREEN_BOTTOM"
+    "REF DES/SILKSCREEN_BOTTOM"
+    "COMPONENT VALUE/SILKSCREEN_BOTTOM"
+)
+; Ink thickness in mm. 25 um is a typical cured screen-printed legend.
+S3D_SilkDefaultThickness = 0.025
+
+;---------------------------------------------------------------------
+;  A small JSON reader, so the layer list lives in an editable file
+;  instead of in the source (same idea as exportJson's config.json).
+;
+;  Purely functional: every parse step returns  list( value nextIndex )  and
+;  nothing is mutated, which avoids needing a by-reference cursor. Handles the
+;  JSON subset a config file needs: objects, arrays, strings (with escapes),
+;  numbers, true/false/null. \uXXXX is consumed but not decoded (a layer name
+;  is ASCII).
+;
+;  Parsed shape:  object -> ( 'jobj ((key value) ...) )
+;                 array  -> ( 'jarr (value ...) )
+;---------------------------------------------------------------------
+
+; Characters a JSON number may be built from. A list + member() rather than a
+; string + index(): member on strings is used elsewhere in this toolchain and
+; is known to work here, whereas index() is a core-SKILL string function that
+; the Allegro API reference does not carry - not worth betting the config
+; reader on.
+S3D_JsonNumChars = list( "0" "1" "2" "3" "4" "5" "6" "7" "8" "9"
+                         "+" "-" "." "e" "E" )
+
+procedure( s3dJsonSlurp( t_file )
+    let( ( port line out )
+        out = ""
+        port = infile( t_file )
+        when( port
+            while( gets( line port )
+                out = strcat( out line )
+            )
+            close( port )
+            out
+        )
+    )
+)
+
+; Skip whitespace, return the new index.
+procedure( s3dJsonWs( t_txt x_i )
+    let( ( n c ( go t ) )
+        n = strlen( t_txt )
+        while( go && (x_i <= n)
+            c = substring( t_txt x_i 1 )
+            if( (c == " ") || (c == "\t") || (c == "\n") || (c == "\r") then
+                x_i = x_i + 1
+            else
+                go = nil
+            )
+        )
+        x_i
+    )
+)
+
+; x_i points at the opening quote. -> list( t_string nextIndex )
+procedure( s3dJsonStr( t_txt x_i )
+    let( ( n c out ( go t ) )
+        n = strlen( t_txt )
+        out = ""
+        x_i = x_i + 1
+        while( go && (x_i <= n)
+            c = substring( t_txt x_i 1 )
+            cond(
+                ( c == "\""
+                    x_i = x_i + 1
+                    go = nil
+                )
+                ( c == "\\"
+                    x_i = x_i + 1
+                    c = if( x_i <= n then substring( t_txt x_i 1 ) else "" )
+                    cond(
+                        ( c == "n"  out = strcat( out "\n" ) )
+                        ( c == "t"  out = strcat( out "\t" ) )
+                        ( c == "r"  out = strcat( out "\r" ) )
+                        ( c == "b"  t )
+                        ( c == "f"  t )
+                        ( c == "u"  x_i = x_i + 4 )
+                        ( t         out = strcat( out c ) )
+                    )
+                    x_i = x_i + 1
+                )
+                ( t
+                    out = strcat( out c )
+                    x_i = x_i + 1
+                )
+            )
+        )
+        list( out x_i )
+    )
+)
+
+; -> list( f_number nextIndex )
+procedure( s3dJsonNum( t_txt x_i )
+    let( ( n c start ( go t ) )
+        n = strlen( t_txt )
+        start = x_i
+        while( go && (x_i <= n)
+            c = substring( t_txt x_i 1 )
+            if( member( c S3D_JsonNumChars ) then
+                x_i = x_i + 1
+            else
+                go = nil
+            )
+        )
+        if( x_i > start then
+            list( atof( substring( t_txt start x_i - start ) ) x_i )
+        else
+            ; not a number at all - step over the offending character so the
+            ; caller cannot spin forever on malformed input.
+            list( nil x_i + 1 )
+        )
+    )
+)
+
+; -> list( value nextIndex )
+procedure( s3dJsonVal( t_txt x_i )
+    let( ( c n )
+        n = strlen( t_txt )
+        x_i = s3dJsonWs( t_txt x_i )
+        c = if( x_i <= n then substring( t_txt x_i 1 ) else "" )
+        cond(
+            ( c == "{"   s3dJsonObj( t_txt x_i ) )
+            ( c == "["   s3dJsonArr( t_txt x_i ) )
+            ( c == "\""  s3dJsonStr( t_txt x_i ) )
+            ( (x_i + 3 <= n) && (substring( t_txt x_i 4 ) == "true")   list( t x_i + 4 ) )
+            ( (x_i + 4 <= n) && (substring( t_txt x_i 5 ) == "false")  list( nil x_i + 5 ) )
+            ( (x_i + 3 <= n) && (substring( t_txt x_i 4 ) == "null")   list( nil x_i + 4 ) )
+            ( t  s3dJsonNum( t_txt x_i ) )
+        )
+    )
+)
+
+; x_i points at "{". -> list( ( 'jobj alist ) nextIndex )
+procedure( s3dJsonObj( t_txt x_i )
+    let( ( n c key res out ( go t ) )
+        n = strlen( t_txt )
+        x_i = x_i + 1
+        out = nil
+        while( go
+            x_i = s3dJsonWs( t_txt x_i )
+            c = if( x_i <= n then substring( t_txt x_i 1 ) else "" )
+            cond(
+                ( c == "}"  x_i = x_i + 1  go = nil )
+                ( c == ","  x_i = x_i + 1 )
+                ( c == "\""
+                    res = s3dJsonStr( t_txt x_i )
+                    key = car( res )
+                    x_i = s3dJsonWs( t_txt cadr( res ) )
+                    when( (x_i <= n) && (substring( t_txt x_i 1 ) == ":")
+                        x_i = x_i + 1
+                    )
+                    res = s3dJsonVal( t_txt x_i )
+                    x_i = cadr( res )
+                    out = cons( list( key car( res ) ) out )
+                )
+                ( t  go = nil )        ; malformed or end of input
+            )
+        )
+        list( list( 'jobj reverse( out ) ) x_i )
+    )
+)
+
+; x_i points at "[". -> list( ( 'jarr elements ) nextIndex )
+procedure( s3dJsonArr( t_txt x_i )
+    let( ( n c res out ( go t ) )
+        n = strlen( t_txt )
+        x_i = x_i + 1
+        out = nil
+        while( go
+            x_i = s3dJsonWs( t_txt x_i )
+            c = if( x_i <= n then substring( t_txt x_i 1 ) else "" )
+            cond(
+                ( c == "]"  x_i = x_i + 1  go = nil )
+                ( c == ","  x_i = x_i + 1 )
+                ( c == ""   go = nil )
+                ( t
+                    res = s3dJsonVal( t_txt x_i )
+                    x_i = cadr( res )
+                    out = cons( car( res ) out )
+                )
+            )
+        )
+        list( list( 'jarr reverse( out ) ) x_i )
+    )
+)
+
+procedure( s3dJsonRead( t_file )
+    let( ( txt res )
+        txt = s3dJsonSlurp( t_file )
+        when( txt
+            res = nil
+            errset( res = s3dJsonVal( txt 1 ) )
+            when( res  car( res ) )
+        )
+    )
+)
+
+; Value of t_key in a parsed object, or nil. Own lookup rather than assoc: the
+; comparison must be a plain string compare, whatever assoc happens to use.
+procedure( s3dJsonGet( g_node t_key )
+    let( ( out )
+        when( g_node && listp( g_node ) && (car( g_node ) == 'jobj)
+            foreach( pair cadr( g_node )
+                when( car( pair ) == t_key  out = cadr( pair ) )
+            )
+        )
+        out
+    )
+)
+
+; t if the key is present, regardless of its value. Needed to tell a JSON
+; false/null apart from a missing key, since both parse to nil.
+procedure( s3dJsonHas( g_node t_key )
+    let( ( out )
+        when( g_node && listp( g_node ) && (car( g_node ) == 'jobj)
+            foreach( pair cadr( g_node )
+                when( car( pair ) == t_key  out = t )
+            )
+        )
+        out
+    )
+)
+
+; The elements of an array value, as a plain SKILL list.
+procedure( s3dJsonList( g_node t_key )
+    let( ( val )
+        val = s3dJsonGet( g_node t_key )
+        when( val && listp( val ) && (car( val ) == 'jarr)
+            cadr( val )
+        )
+    )
+)
+
+;---------------------------------------------------------------------
+;  Silkscreen configuration
+;---------------------------------------------------------------------
+
+; Read the config file and return
+;   list( l_topLayers l_bottomLayers f_thickness g_clip s_endCap g_export )
+; Any missing piece falls back to the built-in default, and a file that cannot
+; be read or parsed degrades to all defaults with a message - a broken config
+; must never cost the user the whole export.
+procedure( s3dSilkConfig( @optional ( t_file nil ) )
+    let( ( cfg silk settings top bottom thickness clip endCap doExport )
+        top = S3D_SilkDefaultTop
+        bottom = S3D_SilkDefaultBottom
+        thickness = S3D_SilkDefaultThickness
+        clip = t
+        endCap = 'ROUND
+        doExport = t
+
+        unless( t_file  t_file = "simple3d_config.json" )
+
+        if( isFile( t_file ) then
+            cfg = s3dJsonRead( t_file )
+            if( cfg then
+                printf( "Simple 3D: silkscreen config: %s\n" t_file )
+                silk = s3dJsonGet( cfg "silkscreen" )
+                settings = s3dJsonGet( cfg "settings" )
+
+                when( s3dJsonList( silk "top" )     top = s3dJsonList( silk "top" ) )
+                when( s3dJsonList( silk "bottom" )  bottom = s3dJsonList( silk "bottom" ) )
+
+                when( s3dJsonGet( settings "silkscreenThickness" )
+                    thickness = s3dJsonGet( settings "silkscreenThickness" )
+                )
+                when( s3dJsonHas( settings "clipToBoardOutline" )
+                    clip = s3dJsonGet( settings "clipToBoardOutline" )
+                )
+                when( s3dJsonHas( settings "exportSilkscreen" )
+                    doExport = s3dJsonGet( settings "exportSilkscreen" )
+                )
+                when( stringp( s3dJsonGet( settings "endCapType" ) )
+                    ; only the three Allegro end-cap keywords are accepted; a
+                    ; typo silently becoming 'SQUARE would be hard to notice.
+                    case( upperCase( s3dJsonGet( settings "endCapType" ) )
+                        ( "ROUND"    endCap = 'ROUND )
+                        ( "SQUARE"   endCap = 'SQUARE )
+                        ( "OCTAGON"  endCap = 'OCTAGON )
+                        ( t
+                            printf( "Simple 3D: warning - unknown endCapType %L in %s; using ROUND.\n"
+                                    s3dJsonGet( settings "endCapType" ) t_file )
+                        )
+                    )
+                )
+            else
+                printf( "Simple 3D: warning - could not parse %s; using built-in silkscreen defaults.\n"
+                        t_file )
+            )
+        else
+            printf( "Simple 3D: no silkscreen config at %s; using built-in defaults.\n" t_file )
+        )
+        list( top bottom thickness clip endCap doExport )
+    )
+)
+
+;---------------------------------------------------------------------
+;  Polygon -> JSON vertices
+;
+;  The polygon boundary goes into the JSON as Allegro's own vertex list -
+;  (x, y, signed_radius) per point - and the arcs are rebuilt on the Python
+;  side. It used to be rebuilt here, into segment/arc primitives; that put the
+;  one genuinely ambiguous decision in the file format, where nothing could
+;  check it. See PROJECT_NOTES round 10b: the doc sentence describing the sign
+;  of the radius admits two readings, and an arc built on the wrong side of its
+;  chord still closes, so the mistake is invisible until someone measures area.
+;
+;  Python can measure area - every polygon carries Allegro's own poly->area -
+;  so it resolves the reading itself, per board, and says which one won. This
+;  side therefore reports what the database holds and decides nothing.
+;---------------------------------------------------------------------
+
+; Write one vertex list as  [x, y, radius]  rows, indented x_indent tabs.
+procedure( s3dWriteVertexList( p_port l_vertices x_indent )
+    let( ( pad ( isFirst t ) xy rad )
+        pad = ""
+        for( i 1 x_indent
+            pad = strcat( pad "	" )
+        )
+        foreach( vertex l_vertices
+            if( isFirst then
+                isFirst = nil
+            else
+                fprintf( p_port ",
+" )
+            )
+            xy = car( vertex )
+            rad = cadr( vertex )
+            unless( rad  rad = 0.0 )
+            fprintf( p_port "%s[%f, %f, %f]" pad xCoord( xy ) yCoord( xy ) rad )
+        )
+    )
+)
+
+;---------------------------------------------------------------------
+;  Collecting the silkscreen
+;---------------------------------------------------------------------
+
+; Every dbid on a silkscreen layer -> filled polygons.
+;
+; Text is the only special case. Allegro draws text as strokes, so a text dbid
+; is vectorised with axlText2Lines and each resulting r_path is widened into a
+; polygon with ?line2poly (verbatim the idiom in the axlText2Lines docs).
+; True-type text has no text block and is converted directly instead - that is
+; how exportJson tells the two apart as well.
+; A multi-segment path is converted ONE SEGMENT AT A TIME, and that is the
+; whole point rather than an optimisation.
+;
+; axlPolyFromDB on a whole line/cline MITRES the joins between its segments: on
+; a real board, a 0.15 wide line turning a right angle came back with a square
+; outer corner whose diagonal offset was exactly 0.075*sqrt(2) - a textbook
+; mitre - where the artwork has a round join, because a plot sweeps a round
+; aperture along the path. The 3D model then showed sharp corners on some turns
+; while others (junctions of two separate lines, where the round END CAPS
+; overlap) came out round, which is exactly the inconsistency reported.
+;
+; Converting each segment separately gives each one round caps, and the union of
+; those overlapping stadiums IS a round join. The documentation says the same
+; thing from the other direction: of ?line2poly it notes "typically one poly is
+; returned for each segment in the r_path" - which is why text, which goes
+; through that path, never had the problem.
+;
+; They are deliberately NOT merged here. The Python side draws a compound of
+; overlapping solids anyway, and when clipping is on axlPolyOperation unions
+; them as a side effect of the AND.
+procedure( s3dPolysFromDbid( o_dbid s_endCap )
+    let( ( polys lines flat segments )
+        polys = nil
+        cond(
+            ( o_dbid->objType == "text"
+                ; Allegro draws text as strokes, so a text dbid is vectorised
+                ; with axlText2Lines and each r_path widened with ?line2poly -
+                ; verbatim the idiom in the axlText2Lines docs. True-type text
+                ; has no text block and converts directly instead; that is how
+                ; exportJson tells the two apart as well.
+                if( o_dbid->textBlock then
+                    errset( lines = axlText2Lines( o_dbid ) )
+                    when( lines
+                        flat = foreach( mapcan x lines x )
+                        foreach( path flat
+                            errset(
+                                polys = append( polys
+                                    axlPolyFromDB( path ?endCapType s_endCap ?line2poly t ) )
+                            )
+                        )
+                    )
+                    ; A font that does not vectorise still has an outline form.
+                    unless( polys
+                        errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
+                    )
+                else
+                    errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
+                )
+            )
+            ( o_dbid->objType == "path"
+                segments = nil
+                errset( segments = o_dbid->segments )
+                foreach( segment segments
+                    errset(
+                        polys = append( polys
+                            axlPolyFromDB( segment ?endCapType s_endCap ) )
+                    )
+                )
+                ; A segment that will not convert on its own drops a piece of
+                ; the line silently, and the area check downstream cannot see a
+                ; missing stroke - each surviving polygon is still consistent
+                ; with its own area. So say it here. One segment may yield more
+                ; than one polygon, hence "fewer than".
+                when( segments && (length( polys ) < length( segments ))
+                    printf( "Simple 3D: warning - a silkscreen line has %d segment(s) but produced only %d polygon(s).\n"
+                            length( segments ) length( polys ) )
+                )
+                ; Single-segment paths, or a path whose segments will not
+                ; convert on their own, still have to come out somehow.
+                unless( polys
+                    errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
+                )
+            )
+            ( t
+                ; shapes, rects, filled areas: a boundary already, nothing to
+                ; sweep, so convert whole.
+                errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
+            )
+        )
+        polys
+    )
+)
+
+; All silkscreen polygons on the given layers.
+;
+; One sweep covers both component legends and free board geometry: with the
+; silkscreen layers as the only visible ones, axlAddSelectAll returns the
+; figures owned by symbols as well as the loose ones (which is why exportJson
+; has to filter on elem->parent->refdes - here both are wanted).
+;
+; The visibility and find-filter state is snapshotted and restored, per the
+; programming model in the axlVisibleDesign documentation. Without that the
+; user is left staring at a blank board after an export.
+procedure( s3dCollectSilkPolys( l_layers s_endCap )
+    let( ( saveVis saveEnabled saveOn elems polys out )
+        out = nil
+        when( l_layers
+            saveVis = axlVisibleGet()
+            saveEnabled = axlGetFindFilter( t )
+            saveOn = axlGetFindFilter( nil )
+
+            axlVisibleDesign( nil )
+            foreach( layer l_layers
+                unless( axlVisibleLayer( layer t )
+                    printf( "Simple 3D: warning - no such layer: %s\n" layer )
+                )
+            )
+            axlClearSelSet()
+            axlSetFindFilter( ?enabled list( "noall" "lines" "shapes" "text" )
+                              ?onButtons list( "noall" "lines" "shapes" "text" ) )
+            axlAddSelectAll()
+            elems = axlGetSelSet()
+            axlClearSelSet()
+
+            ; Restore before the (much slower) polygon conversion, so an error
+            ; in the conversion cannot strand the session with a hidden design.
+            errset( axlVisibleSet( saveVis ) )
+            when( saveEnabled || saveOn
+                ; axlGetFindFilter reports DYNTHEMALS among the on-buttons but
+                ; refuses to take it back ("Options are ignored for onButtons"),
+                ; so handing its own answer straight back produces a warning on
+                ; every export. Drop it rather than leave the noise.
+                errset(
+                    axlSetFindFilter( ?enabled saveEnabled
+                                      ?onButtons remove( "DYNTHEMALS" saveOn ) )
+                )
+            )
+
+            foreach( elem elems
+                polys = s3dPolysFromDbid( elem s_endCap )
+                foreach( poly polys
+                    when( poly && !poly->isHole
+                        out = cons( poly out )
+                    )
+                )
+            )
+        )
+        reverse( out )
+    )
+)
+
+;---------------------------------------------------------------------
+;  Clipping to the board
+;---------------------------------------------------------------------
+
+; The board area as polygons: the design outline minus every cutout - the same
+; two sources makePcbContour() uses for the solid, so the silkscreen is clipped
+; to exactly the material that exists.
+procedure( s3dBoardPoly()
+    let( ( dsn outline polys cutouts cutPolys res )
+        dsn = axlDBGetDesign()
+        outline = dsn->designOutline
+        if( outline then
+            errset( polys = axlPolyFromDB( outline ) )
+            if( polys then
+                cutPolys = nil
+                cutouts = axlDBGetShapes( "BOARD GEOMETRY/CUTOUT" )
+                foreach( cutout cutouts
+                    errset( cutPolys = append( cutPolys axlPolyFromDB( cutout ) ) )
+                )
+                when( cutPolys
+                    res = nil
+                    errset( res = axlPolyOperation( polys cutPolys 'ANDNOT ) )
+                    if( res then
+                        polys = remd( nil res )
+                    else
+                        printf( "Simple 3D: warning - could not subtract cutouts from the board outline; silkscreen is clipped to the outline only.\n" )
+                    )
+                )
+                polys
+            else
+                printf( "Simple 3D: warning - could not convert the design outline to a polygon; silkscreen will not be clipped.\n" )
+                nil
+            )
+        else
+            printf( "Simple 3D: warning - no design outline; silkscreen will not be clipped.\n" )
+            nil
+        )
+    )
+)
+
+; t if bounding box l_inner lies entirely within l_outer.
+procedure( s3dBBoxInside( l_inner l_outer )
+    let( ( ( eps 1.0e-9 ) )
+        when( l_inner && l_outer
+            (xCoord( car( l_inner ) ) >= xCoord( car( l_outer ) ) - eps) &&
+            (yCoord( car( l_inner ) ) >= yCoord( car( l_outer ) ) - eps) &&
+            (xCoord( cadr( l_inner ) ) <= xCoord( cadr( l_outer ) ) + eps) &&
+            (yCoord( cadr( l_inner ) ) <= yCoord( cadr( l_outer ) ) + eps)
+        )
+    )
+)
+
+; One batch through axlPolyOperation. That API is documented as best-effort
+; ("provided as-is ... may fail", returns nil on failure), so a failed batch
+; keeps its geometry unclipped and says so, rather than dropping legend that
+; is almost certainly on the board anyway.
+procedure( s3dClipChunk( l_chunk l_board )
+    let( ( res )
+        res = nil
+        errset( res = axlPolyOperation( l_chunk l_board 'AND ) )
+        if( res then
+            remd( nil res )
+        else
+            printf( "Simple 3D: warning - silkscreen clip failed for %d polygon(s); kept unclipped.\n"
+                    length( l_chunk ) )
+            l_chunk
+        )
+    )
+)
+
+; Clip silkscreen polygons to the board area.
+;
+; Two things keep this affordable. Polygons whose bounding box is inside the
+; board's are passed through untouched when the board is a plain rectangle with
+; no cutouts (the common case, and then correct by construction). The rest go
+; through axlPolyOperation in batches: its documentation warns about time and
+; memory beyond ~10000 polygons, and batching also contains a failure to the
+; batch it happened in.
+procedure( s3dClipPolys( l_polys l_board )
+    let( ( ( batchSize 400 ) out batch ( n 0 ) fast boardBBox ( inside 0 ) )
+        if( !l_board || !l_polys then
+            l_polys
+        else
+            out = tconc( nil nil )
+            batch = nil
+            fast = (length( l_board ) == 1) && car( l_board )->isRect &&
+                   !car( l_board )->holes
+            when( fast  boardBBox = car( l_board )->bBox )
+
+            foreach( poly l_polys
+                if( fast && s3dBBoxInside( poly->bBox boardBBox ) then
+                    inside = inside + 1
+                    tconc( out poly )
+                else
+                    batch = cons( poly batch )
+                    n = n + 1
+                    when( n >= batchSize
+                        foreach( clipped s3dClipChunk( batch l_board )
+                            tconc( out clipped )
+                        )
+                        batch = nil
+                        n = 0
+                    )
+                )
+            )
+            when( batch
+                foreach( clipped s3dClipChunk( batch l_board )
+                    tconc( out clipped )
+                )
+            )
+            when( fast
+                printf( "Simple 3D: %d silkscreen polygon(s) were wholly inside the board outline (clip skipped).\n"
+                        inside )
+            )
+            cdr( car( out ) )
+        )
+    )
+)
+
+;---------------------------------------------------------------------
+;  Top level
+;---------------------------------------------------------------------
+
+; Collect the whole silkscreen once for the design.
+; -> list( f_thickness l_topPolys l_bottomPolys )  or nil if disabled/empty.
+procedure( s3dMakeSilkscreen( l_config )
+    let( ( top bottom thickness clip endCap doExport topPolys botPolys board )
+        top = nth( 0 l_config )
+        bottom = nth( 1 l_config )
+        thickness = nth( 2 l_config )
+        clip = nth( 3 l_config )
+        endCap = nth( 4 l_config )
+        doExport = nth( 5 l_config )
+
+        when( doExport
+            printf( "Simple 3D: collecting silkscreen...\n" )
+            topPolys = s3dCollectSilkPolys( top endCap )
+            botPolys = s3dCollectSilkPolys( bottom endCap )
+            printf( "Simple 3D: silkscreen polygons - top %d, bottom %d\n"
+                    length( topPolys ) length( botPolys ) )
+
+            when( clip && (topPolys || botPolys)
+                board = s3dBoardPoly()
+                when( board
+                    printf( "Simple 3D: clipping silkscreen to the board outline...\n" )
+                    topPolys = s3dClipPolys( topPolys board )
+                    botPolys = s3dClipPolys( botPolys board )
+                    printf( "Simple 3D: after clipping - top %d, bottom %d\n"
+                            length( topPolys ) length( botPolys ) )
+                )
+            )
+
+            when( topPolys || botPolys
+                list( thickness topPolys botPolys )
+            )
+        )
+    )
+)
+
+; Stream one side's polygons into the open file.
+;
+; Streamed rather than accumulated into one string: a dense board's legend runs
+; to tens of thousands of primitives, and building that with repeated strcat is
+; quadratic and hits the same "insufficient memory" wall the component section
+; already has a note about.
+procedure( s3dWriteSilkPolys( p_port l_polys )
+    let( ( ( firstPoly t ) holes ( firstHole t ) area )
+        foreach( poly l_polys
+            if( firstPoly then
+                firstPoly = nil
+            else
+                fprintf( p_port ",\n" )
+            )
+            fprintf( p_port "\t\t\t{\n" )
+
+            ; Allegro's own area for this polygon, already net of its holes.
+            ; This is the reference the Python side resolves the arc convention
+            ; against and then verifies every polygon by, so it is not optional
+            ; bookkeeping - without it the reconstruction has nothing to check
+            ; itself against. Costs one float per polygon.
+            area = nil
+            errset( area = poly->area )
+            when( area
+                fprintf( p_port "\t\t\t\t\"area\": %f,\n" area )
+            )
+
+            fprintf( p_port "\t\t\t\t\"vertices\": [\n" )
+            s3dWriteVertexList( p_port poly->vertices 5 )
+            fprintf( p_port "\n\t\t\t\t]" )
+
+            holes = poly->holes
+            when( holes
+                fprintf( p_port ",\n\t\t\t\t\"holes\": [\n" )
+                firstHole = t
+                foreach( hole holes
+                    if( firstHole then
+                        firstHole = nil
+                    else
+                        fprintf( p_port ",\n" )
+                    )
+                    fprintf( p_port "\t\t\t\t\t[\n" )
+                    s3dWriteVertexList( p_port hole->vertices 6 )
+                    fprintf( p_port "\n\t\t\t\t\t]" )
+                )
+                fprintf( p_port "\n\t\t\t\t]" )
+            )
+            fprintf( p_port "\n\t\t\t}" )
+        )
+    )
+)
+
+; The whole "silkscreen" object, written straight to the open file.
+procedure( s3dWriteSilkscreen( p_port l_silk )
+    let( ( thickness topPolys botPolys )
+        thickness = nth( 0 l_silk )
+        topPolys = nth( 1 l_silk )
+        botPolys = nth( 2 l_silk )
+
+        fprintf( p_port "\t\"silkscreen\": {\n" )
+        fprintf( p_port "\t\t\"thickness\": %f,\n" thickness )
+        fprintf( p_port "\t\t\"top\": [\n" )
+        s3dWriteSilkPolys( p_port topPolys )
+        fprintf( p_port "\n\t\t],\n" )
+        fprintf( p_port "\t\t\"bottom\": [\n" )
+        s3dWriteSilkPolys( p_port botPolys )
+        fprintf( p_port "\n\t\t]\n" )
+        fprintf( p_port "\t}\n" )
+    )
+)
+
+procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName @optional ( silk nil ) )
+    let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) body )
         ; reset base board contour
         when( car( edgeCuts )
             edges = car( edgeCuts )
@@ -954,17 +1762,40 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; NOTE: no embedded \t here - the line writer below prefixes every line
         ; with one tab, so embedding another would double-indent these keys
         ; (still valid JSON, but inconsistent with the rest of the file).
+        ; format_version 2 adds the optional "silkscreen" object. Readers that
+        ; only know version 1 ignore it; this reader treats it as optional, so
+        ; a version-1 file still builds.
         name = strcat(
             "\"format\": \"simple3d\",\n"
-            "\"format_version\": 1,\n"
+            "\"format_version\": 2,\n"
             "\"name\": \"" variantName "\""
         )
 
         ; make pcb (including all cutouts and holes)
-        pcb = makePcb( thicknesses edges cuts pcbColor )
+        ;
+        ; FIX (simple3d 2026-07-22): "*Error* eval: unbound variable - cuts",
+        ; and no JSON written at all, on a board with NO cutouts and NO
+        ; through-hole pins. Both `when`s above then leave `cuts` holding the
+        ; 'unbound marker, and passing it here evaluates it. An all-SMD board
+        ; without a CUTOUT shape is perfectly ordinary; it just had not been
+        ; exported before. Same for `edges` if a design somehow has no outline
+        ; segments - nil reaches the Python reader, which says "pcb.edges is
+        ; empty" instead of dying in SKILL.
+        pcb = makePcb( thicknesses
+                       if( boundp( 'edges ) then edges else nil )
+                       if( boundp( 'cuts ) then cuts else nil )
+                       pcbColor )
 
         ; write step model placement informations
-        stepModelPlacements = buildString( car( stepModelPlacements) ",\n" )
+        ; FIX (simple3d): guard the unbound case. If no component has a STEP
+        ; mapping, stepModelPlacements is still the 'unbound marker and car()
+        ; on it faults. That used to be an odd corner; with silkscreen a bare
+        ; board is a legitimate thing to export, so it has to work.
+        if( boundp( 'stepModelPlacements ) then
+            stepModelPlacements = buildString( car( stepModelPlacements ) ",\n" )
+        else
+            stepModelPlacements = nil
+        )
 
         ; write to file
         outFile = fileName
@@ -981,13 +1812,27 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         )
 
         ; to prevent fprintf insufficient memory error
-        lines = parseString( strcat( name ",\n" pcb ",\n" stepModelPlacements ) "\n" )
+        body = strcat( name ",\n" pcb )
+        when( stepModelPlacements
+            body = strcat( body ",\n" stepModelPlacements )
+        )
+        ; the silkscreen object follows, so the last line needs its comma
+        when( silk
+            body = strcat( body "," )
+        )
+        lines = parseString( body "\n" )
 
         fprintf( outPort "{\n")
 
         foreach( line lines
             fprintf( outPort strcat( "\t" line ) )
             fprintf( outPort "\n" )
+        )
+
+        ; Streamed straight to the port instead of being folded into the string
+        ; above - see s3dWriteSilkPolys for why.
+        when( silk
+            s3dWriteSilkscreen( outPort silk )
         )
 
         fprintf( outPort "}\n")
@@ -1005,8 +1850,8 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
     )
 )
 
-procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0.0) ) )
-    let( (  ( variantFile "Variants.lst" ) dsnName dsn thicknesses edgeCuts variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName thicknesses elements placement outFile outPort pcb lines )
+procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0.0) ) ( configFile nil ) )
+    let( (  ( variantFile "Variants.lst" ) dsnName dsn thicknesses edgeCuts silk variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName thicknesses elements placement outFile outPort pcb lines )
 
         ; get design and design name
         dsnName = axlCurrentDesign()
@@ -1021,6 +1866,15 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
 
         ; make pcb contour
         edgeCuts = makePcbContour( dsn )
+
+        ; Collect the silkscreen ONCE, outside the variant loop. The bare board
+        ; is manufactured once and serves every assembly variant, so its printed
+        ; legend does not change when a component is not installed - the legend
+        ; of a DNP part is still physically on the board. Every variant JSON
+        ; therefore carries the same silkscreen (and, like edgeCuts, it costs
+        ; one collection pass no matter how many variants there are).
+        silk = nil
+        errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) ) )
 
         if( isFile( variantFile ) then
             ; Read / parse variant list
@@ -1055,16 +1909,31 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                 foreach( variant variantSymbolList
                     printf( "Exporting .json for variant: %s\n" variant )
 
-                    ; if variant has alternate parts, add them to the symbol list
-                    if( boundp( 'alternateParts ) then
-                        symbols = append( variantSymbolList[variant] alternateParts[variant]~>? )
-                    else
-                        symbols = variantSymbolList[variant]
-                    )
+                    ; FIX (simple3d 2026-07-21): was
+                    ;   symbols = append( variantSymbolList[variant]
+                    ;                     alternateParts[variant]~>? )
+                    ; The ~>? half was actually FINE - alternateParts[variant] is
+                    ; a table (dumps as "table:parts") keyed by refdes, so ~>?
+                    ; returned (C43 C44) and those components were placed. The
+                    ; junk came from the OTHER side: gdsysGetVariantInfo's parser
+                    ; appended the first property token instead of the refdes to
+                    ; the variant's symbol list (fixed above, both branches), so
+                    ; variantSymbolList carried two bogus "VALUE=12pF" entries.
+                    ;
+                    ; With the parser fixed, variantSymbolList[variant] holds every
+                    ; installed refdes - base parts AND alternate parts - so the
+                    ; append is now redundant and would duplicate C43/C44.
+                    ; alternateParts stays available for its actual purpose: the
+                    ; per-part property overrides, which a 3D export does not need.
+                    ;
+                    ; (The old boundp('alternateParts) test was dead anyway - a
+                    ; plain let local assigned unconditionally above, so always
+                    ; bound. Noted as "Minor" back in round 2.)
+                    symbols = variantSymbolList[variant]
 
                     variantName = lowerCase( strcat( dsnName "_" variant ) )
                     fileName = lowerCase( strcat( dir "/" variantName ".json" ) )
-                    create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName )
+                    create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName silk )
                 )
 
                 print( "Export complete!" )
@@ -1083,7 +1952,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
 
             variantName = lowerCase( dsnName )
             fileName = strcat( dir "/" variantName ".json" )
-            create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName )
+            create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName silk )
         )
     )
 )

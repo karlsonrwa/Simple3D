@@ -17,22 +17,74 @@ import queue
 import threading
 import tkinter as tk
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import core
-from .colors import BOARD_THEMES, CREAM_DIELECTRIC, DEFAULT_THEME, THEME_ORDER, resolve_board_color
+from .core import DEFAULT_FLAT_HEIGHT
+from .colors import (
+    BOARD_THEMES,
+    CREAM_DIELECTRIC,
+    DEFAULT_SILK,
+    DEFAULT_THEME,
+    SILK_COLORS,
+    SILK_ORDER,
+    THEME_ORDER,
+    resolve_board_color,
+)
 
-CONFIG_PATH = Path.home() / ".stepbuilder.json"
+# Every user-facing setting lives in ONE file, simple3d_config.json, shared with
+# the SKILL side - which is why it sits next to the package rather than in the
+# home directory. The launcher passes its path with --config; run standalone,
+# the package's own folder is the documented install layout.
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "simple3d_config.json"
 
 RIM_SAME = "Same as board"
 RIM_CREAM = "Cream (dielectric)"
 RIM_CUSTOM = "Custom..."
 
+# Log lines arrive from core as plain text, so severity is inferred from how the
+# line opens. core labels its own non-fatal lines with a "warning:" prefix, which
+# is what colours them here AND marks them in the CLI's plain-text output - so
+# prefer adding the prefix at the log() call over adding a pattern below.
+# Match lowercase: _append_log lowercases before testing.
+ERROR_PREFIXES = ("error", "traceback")
+WARNING_PREFIXES = ("warning", "ignored", "ignoring")
+
+
+@dataclass(frozen=True)
+class BuildSettings:
+    """Everything a build needs, snapshotted off the widgets on the main thread.
+
+    Tk variables belong to the thread running mainloop: reading a StringVar from
+    the worker enters the Tcl interpreter from a second thread, which raises
+    "main thread is not in main loop" on a non-threaded Tcl and is a data race
+    on a threaded one. So the worker never touches self.<var>.get() - it gets
+    one of these, taken in on_generate() before the thread starts. Frozen so a
+    later widget edit cannot change the build already in flight.
+    """
+
+    step_dir: str
+    json_file: str
+    output_dir: str
+    z_datum: str
+    board_color: tuple[int, int, int] | None
+    rim_color: tuple[int, int, int] | None
+    silk_top: bool
+    silk_bottom: bool
+    silk_color: tuple[int, int, int] | None
+    silk_flat: bool
+    silk_flat_height: float
+    minimize: bool
+    brd_name: str | None
+    dated_name: bool
+
 
 class StepBuilderApp(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, config_path: Path | None = None) -> None:
         super().__init__()
+        self.config_path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
         self.title("Simple 3D - StepBuilder")
         self.minsize(760, 560)
 
@@ -48,6 +100,14 @@ class StepBuilderApp(tk.Tk):
         self.theme = tk.StringVar(value=DEFAULT_THEME)
         self.rim_choice = tk.StringVar(value=RIM_SAME)
         self.rim_custom = tk.StringVar(value="")
+        self.silk_top = tk.BooleanVar(value=True)
+        self.silk_bottom = tk.BooleanVar(value=True)
+        self.silk_color = tk.StringVar(value=DEFAULT_SILK)
+        self.silk_flat = tk.BooleanVar(value=False)
+        # Config-only, no widget: a display fudge you set once when a viewer
+        # flickers, not something to press on every build. Plain float, not a
+        # Tk variable, so the worker may read it straight off the snapshot.
+        self.silk_flat_height = DEFAULT_FLAT_HEIGHT
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
@@ -116,8 +176,37 @@ class StepBuilderApp(tk.Tk):
         ttk.Radiobutton(zrow, text="Bottom of board", variable=self.z_datum,
                         value="bottom").pack(side="left", padx=(10, 0))
 
+        # --- silkscreen ---
+        # The colour is a closed two-item choice, not the free entry the board
+        # rim gets: legend ink is white or black and nothing else, so offering
+        # a hex field here would only invite a value no fab can print.
+        silk_row = ttk.Frame(opts)
+        silk_row.grid(row=2, column=0, columnspan=5, sticky="w", pady=(6, 0))
+        ttk.Label(silk_row, text="Silkscreen").pack(side="left")
+        ttk.Checkbutton(silk_row, text="Top", variable=self.silk_top,
+                        command=self._update_silk_row).pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(silk_row, text="Bottom", variable=self.silk_bottom,
+                        command=self._update_silk_row).pack(side="left", padx=(4, 0))
+        ttk.Label(silk_row, text="Colour").pack(side="left", padx=(12, 6))
+        self.silk_box = ttk.Combobox(
+            silk_row, textvariable=self.silk_color, values=SILK_ORDER,
+            state="readonly", width=10
+        )
+        self.silk_box.pack(side="left")
+        self._silk_swatch = tk.Canvas(silk_row, width=22, height=22, highlightthickness=1,
+                                      highlightbackground="#888")
+        self._silk_swatch.pack(side="left", padx=(6, 0))
+        self.silk_box.bind("<<ComboboxSelected>>", lambda e: self._update_silk_row())
+        # Measured on a 150-polygon legend: 2191 kB as solids, 566 kB as
+        # surfaces. Offered as a checkbox rather than done silently because it
+        # is a real trade: the ink stops being a solid.
+        self.silk_flat_check = ttk.Checkbutton(
+            silk_row, text="Flat (about 1/4 the size)", variable=self.silk_flat
+        )
+        self.silk_flat_check.pack(side="left", padx=(12, 0))
+
         checks = ttk.Frame(opts)
-        checks.grid(row=2, column=0, columnspan=5, sticky="w", pady=(6, 0))
+        checks.grid(row=3, column=0, columnspan=5, sticky="w", pady=(6, 0))
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # ttk.Checkbutton(checks, text="Append MFRPN to instance names",
         #                 variable=self.mfr_pn_in_name).pack(side="left")
@@ -129,7 +218,9 @@ class StepBuilderApp(tk.Tk):
         log_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=4)
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
-        self.log_view = tk.Text(log_frame, height=10, wrap="none", state="disabled")
+        # wrap="word": build messages carry full paths and OCCT errors, which
+        # ran off the right edge with no horizontal scrollbar to reach them.
+        self.log_view = tk.Text(log_frame, height=10, wrap="word", state="disabled")
         self.log_view.grid(row=0, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(log_frame, command=self.log_view.yview)
         scroll.grid(row=0, column=1, sticky="ns")
@@ -154,6 +245,7 @@ class StepBuilderApp(tk.Tk):
 
         self._update_swatch()
         self._update_rim_entry()
+        self._update_silk_row()
 
     def _build_actions(self) -> None:
         """All action buttons live here. Add new ones alongside Generate."""
@@ -178,6 +270,14 @@ class StepBuilderApp(tk.Tk):
     def _update_rim_entry(self) -> None:
         state = "normal" if self.rim_choice.get() == RIM_CUSTOM else "disabled"
         self.rim_entry.configure(state=state)
+
+    def _update_silk_row(self) -> None:
+        """Keep the ink swatch and the enabled state in step with the checkboxes."""
+        on = self.silk_top.get() or self.silk_bottom.get()
+        self.silk_box.configure(state="readonly" if on else "disabled")
+        self.silk_flat_check.configure(state="normal" if on else "disabled")
+        rgb = SILK_COLORS.get(self.silk_color.get(), (128, 128, 128))
+        self._silk_swatch.configure(bg="#%02x%02x%02x" % rgb)
 
     # ------------------------------------------------------------ prefill -- #
 
@@ -271,6 +371,29 @@ class StepBuilderApp(tk.Tk):
             return None
         return resolve_board_color(text)
 
+    def _snapshot(self) -> BuildSettings:
+        """Read every widget the build needs. MAIN THREAD ONLY - see BuildSettings.
+
+        Raises ValueError if the custom rim colour does not parse, which doubles
+        as the early validation on_generate wants.
+        """
+        return BuildSettings(
+            step_dir=self.step_dir.get(),
+            json_file=self.json_file.get(),
+            output_dir=self.output_dir.get(),
+            z_datum=self.z_datum.get(),
+            board_color=BOARD_THEMES.get(self.theme.get()),
+            rim_color=self._rim_color(),
+            silk_top=self.silk_top.get(),
+            silk_bottom=self.silk_bottom.get(),
+            silk_color=SILK_COLORS.get(self.silk_color.get()),
+            silk_flat=self.silk_flat.get(),
+            silk_flat_height=self.silk_flat_height,
+            minimize=self.minimize.get(),
+            brd_name=self._brd_name,
+            dated_name=self._dated_name,
+        )
+
     def on_generate(self) -> None:
         if not self.step_dir.get() or not self.json_file.get() or not self.output_dir.get():
             messagebox.showwarning(
@@ -278,22 +401,26 @@ class StepBuilderApp(tk.Tk):
             )
             return
         try:
-            self._rim_color()  # validate custom colour early
+            settings = self._snapshot()   # also validates the custom colour
         except ValueError as exc:
             messagebox.showerror("Bad colour", str(exc))
             return
 
         self._clear_log()
-        self._run_in_worker(self._generate)
+        self._run_in_worker(lambda: self._generate(settings))
 
-    def _generate(self) -> None:
+    def _generate(self, settings: BuildSettings) -> None:
         """Runs on the worker thread. Builds one or many JSONs.
 
-        The job list is resolved HERE, from the JSON field as it is right now -
-        never from a cached queue. This way, browsing to a different file after
-        an Allegro prefill builds exactly what the field shows.
+        Reads nothing from the widgets - everything comes from *settings*, taken
+        on the main thread by _snapshot().
+
+        The job list is resolved HERE, from the JSON path as it was when
+        Generate was pressed - never from a cached queue. This way, browsing to
+        a different file after an Allegro prefill builds exactly what the field
+        showed at that moment.
         """
-        field = Path(self.json_file.get())
+        field = Path(settings.json_file)
         jobs, ignored = core.resolve_json_jobs(field)
 
         for j in ignored:
@@ -318,6 +445,7 @@ class StepBuilderApp(tk.Tk):
         total_placed = 0
         outputs = []
         warnings = []
+        failures = []
         for jf in jobs:
             # Base name for the output file. With SEVERAL variants the stem of
             # each json (design_variant) must win, or every variant would get
@@ -327,33 +455,66 @@ class StepBuilderApp(tk.Tk):
             if len(jobs) > 1:
                 base = jf.stem
             else:
-                base = self._brd_name or jf.stem
-            output_name = (core.dated_output_name(base, self.output_dir.get())
-                           if self._dated_name else None)
-            result = core.generate(
-                self.step_dir.get(),
-                jf,
-                self.output_dir.get(),
-                output_name=output_name,
-                z_datum=self.z_datum.get(),
-                board_color=BOARD_THEMES.get(self.theme.get()),
-                rim_color=self._rim_color(),
-                # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=self.mfr_pn_in_name.get(),
-                minimize_size=self.minimize.get(),
-                log=lambda m: self._queue.put(("log", m)),
-                progress=lambda i, n: self._queue.put(("progress", (i, n))),
-            )
+                base = settings.brd_name or jf.stem
+
+            # One variant must not take the rest of the batch down with it: a
+            # gap in board 2's outline should still leave boards 3..n built.
+            # This mirrors the CLI, which counts failures and carries on.
+            try:
+                output_name = (core.dated_output_name(base, settings.output_dir)
+                               if settings.dated_name else None)
+                result = core.generate(
+                    settings.step_dir,
+                    jf,
+                    settings.output_dir,
+                    output_name=output_name,
+                    z_datum=settings.z_datum,
+                    board_color=settings.board_color,
+                    rim_color=settings.rim_color,
+                    silk_top=settings.silk_top,
+                    silk_bottom=settings.silk_bottom,
+                    silk_color=settings.silk_color,
+                    silk_flat=settings.silk_flat,
+                    silk_flat_height=settings.silk_flat_height,
+                    # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
+                    minimize_size=settings.minimize,
+                    log=lambda m: self._queue.put(("log", m)),
+                    progress=lambda i, n: self._queue.put(("progress", (i, n))),
+                )
+            except core.StepBuilderError as exc:
+                failures.append(f"{jf.name}: {exc}")
+                self._queue.put(("log", f"error ({jf.name}): {exc}"))
+                continue
+            except Exception:
+                # Unexpected (a malformed JSON key, an OCCT failure): keep the
+                # traceback so the bug is reportable, but still build the rest.
+                failures.append(f"{jf.name}: unexpected error (see log)")
+                self._queue.put(("log", f"error ({jf.name}):\n{traceback.format_exc()}"))
+                continue
+
             total_placed += result.components_placed
             outputs.append(result.output.name)
+            if result.silkscreen_solids:
+                self._queue.put(("log", f"{result.output.name}: silkscreen "
+                                        f"{result.silkscreen_solids} solid(s)"))
             if result.missing_step_files:
                 warnings.append(f"{result.output.name}: {len(result.missing_step_files)} STEP missing")
             # MFRPN DISABLED (kept for future):
             # if result.missing_mfr_pn:
             #     warnings.append(f"{result.output.name}: {len(result.missing_mfr_pn)} without MFRPN")
 
-        summary = f"Done: {len(outputs)} file(s), {total_placed} component(s) placed"
         for w in warnings:
             self._queue.put(("log", "warning: " + w))
+
+        # Nothing built at all -> report as a failure, not a green "Done: 0".
+        if failures and not outputs:
+            self._queue.put(("error", f"All {len(failures)} job(s) failed:\n"
+                                      + "\n".join(failures)))
+            return
+
+        summary = f"Done: {len(outputs)} file(s), {total_placed} component(s) placed"
+        if failures:
+            summary += f", {len(failures)} failed"
         self._queue.put(("done", summary))
 
 
@@ -411,9 +572,9 @@ class StepBuilderApp(tk.Tk):
         # queue items are coloured too.
         if severity is None:
             low = message.lstrip().lower()
-            if low.startswith("error") or low.startswith("traceback"):
+            if low.startswith(ERROR_PREFIXES):
                 severity = "error"
-            elif low.startswith("warning") or low.startswith("ignored") or low.startswith("ignoring"):
+            elif low.startswith(WARNING_PREFIXES):
                 severity = "warning"
         self.log_view.configure(state="normal")
         text = message.rstrip() + "\n"
@@ -431,36 +592,80 @@ class StepBuilderApp(tk.Tk):
 
     # -------------------------------------------------------------- config - #
 
-    def _load_config(self) -> None:
+    def _read_config_file(self) -> dict:
+        """The whole config document, or {} if it is missing or unreadable."""
         try:
-            cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            data = json.loads(self.config_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _load_config(self) -> None:
+        gui = self._read_config_file().get("gui")
+        if not isinstance(gui, dict):
             return
-        self.step_dir.set(cfg.get("step_dir", ""))
-        self.json_file.set(cfg.get("json_file", ""))
-        self.output_dir.set(cfg.get("output_dir", ""))
-        self.z_datum.set(cfg.get("z_datum", "top"))
-        self.theme.set(cfg.get("theme", DEFAULT_THEME))
+        self.step_dir.set(gui.get("stepDir", ""))
+        self.json_file.set(gui.get("jsonFile", ""))
+        self.output_dir.set(gui.get("outputDir", ""))
+        self.z_datum.set(gui.get("zDatum", "top"))
+        self.theme.set(gui.get("boardColor", DEFAULT_THEME))
+        self.rim_choice.set(gui.get("boardEdge", RIM_SAME))
+        self.rim_custom.set(gui.get("boardEdgeCustom", ""))
+        self.silk_top.set(gui.get("silkscreenTop", True))
+        self.silk_bottom.set(gui.get("silkscreenBottom", True))
+        self.silk_color.set(gui.get("silkColor", DEFAULT_SILK))
+        self.silk_flat.set(gui.get("silkscreenFlat", False))
+        try:
+            self.silk_flat_height = abs(float(gui.get("silkscreenFlatHeight",
+                                                      DEFAULT_FLAT_HEIGHT)))
+        except (TypeError, ValueError):
+            self.silk_flat_height = DEFAULT_FLAT_HEIGHT
         # MFRPN DISABLED (kept for future):
-        # self.mfr_pn_in_name.set(cfg.get("mfr_pn_in_name", False))
-        self.minimize.set(cfg.get("minimize", True))
+        # self.mfr_pn_in_name.set(gui.get("mfrPnInName", False))
+        self.minimize.set(gui.get("minimizeFileSize", True))
 
     def _save_config(self) -> None:
+        """Write the "gui" section back, leaving the rest of the file alone.
+
+        Read-modify-write rather than a fresh document: the same file carries
+        the silkscreen layer lists and the Allegro-side settings, and losing
+        those on window close would be a great deal worse than forgetting a
+        path. A file that cannot be read is treated as empty, so a first run
+        with no config still saves; a file that cannot be WRITTEN is ignored,
+        exactly as before - a read-only install directory must not turn closing
+        the window into an error dialog.
+        """
+        data = self._read_config_file()
+        # Merge into the existing section, do not replace it. The file is
+        # hand-edited, so "gui" can hold keys this build does not know -
+        # comments, a setting added by a later version, a value someone parked
+        # there - and replacing the section wholesale would delete them on
+        # window close. Same reasoning as preserving the other sections, one
+        # level down.
+        gui = data.get("gui")
+        if not isinstance(gui, dict):
+            gui = {}
+        gui.update({
+            "stepDir": self.step_dir.get(),
+            "jsonFile": self.json_file.get(),
+            "outputDir": self.output_dir.get(),
+            "zDatum": self.z_datum.get(),
+            "boardColor": self.theme.get(),
+            "boardEdge": self.rim_choice.get(),
+            "boardEdgeCustom": self.rim_custom.get(),
+            "silkscreenTop": self.silk_top.get(),
+            "silkscreenBottom": self.silk_bottom.get(),
+            "silkColor": self.silk_color.get(),
+            "silkscreenFlat": self.silk_flat.get(),
+            "silkscreenFlatHeight": self.silk_flat_height,
+            # MFRPN DISABLED (kept for future):
+            # "mfrPnInName": self.mfr_pn_in_name.get(),
+            "minimizeFileSize": self.minimize.get(),
+        })
+        data["gui"] = gui
         try:
-            CONFIG_PATH.write_text(
-                json.dumps(
-                    {
-                        "step_dir": self.step_dir.get(),
-                        "json_file": self.json_file.get(),
-                        "output_dir": self.output_dir.get(),
-                        "z_datum": self.z_datum.get(),
-                        "theme": self.theme.get(),
-                        # MFRPN DISABLED (kept for future):
-                        # "mfr_pn_in_name": self.mfr_pn_in_name.get(),
-                        "minimize": self.minimize.get(),
-                    },
-                    indent=1,
-                ),
+            self.config_path.write_text(
+                json.dumps(data, indent=4, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
         except OSError:
@@ -471,5 +676,5 @@ class StepBuilderApp(tk.Tk):
         self.destroy()
 
 
-def main() -> None:
-    StepBuilderApp().mainloop()
+def main(config_path: Path | None = None) -> None:
+    StepBuilderApp(config_path).mainloop()

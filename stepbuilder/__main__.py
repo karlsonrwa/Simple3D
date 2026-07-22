@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from . import core
-from .colors import resolve_board_color
+from .colors import DEFAULT_SILK, SILK_ORDER, resolve_board_color, resolve_silk_color
 
 
 def _gui_prefill(argv: list[str]) -> int:
@@ -32,17 +32,32 @@ def _gui_prefill(argv: list[str]) -> int:
     p.add_argument("--brd-name", default="")
     p.add_argument("--dated-name", action="store_true")
     p.add_argument("--color", default="")
+    p.add_argument("--silk-color", default="")
+    p.add_argument("--no-silkscreen", action="store_true")
+    p.add_argument("--flat-silkscreen", action="store_true")
+    p.add_argument("--no-silk-top", action="store_true")
+    p.add_argument("--no-silk-bottom", action="store_true")
+    p.add_argument("--config", default="")
     args, _ = p.parse_known_args(argv)
 
     from .gui import StepBuilderApp
 
     try:
-        app = StepBuilderApp()
+        app = StepBuilderApp(Path(args.config) if args.config else None)
         if args.step_dir:
             app.step_dir.set(args.step_dir)
         if args.color:
             app.theme.set(args.color)
             app._update_swatch()
+        if args.silk_color:
+            app.silk_color.set(args.silk_color)
+        # Launch flags override what the config remembered, for this run only.
+        if args.no_silkscreen or args.no_silk_top:
+            app.silk_top.set(False)
+        if args.no_silkscreen or args.no_silk_bottom:
+            app.silk_bottom.set(False)
+        if args.flat_silkscreen:
+            app.silk_flat.set(True)
         app.prefill_jobs(
             json_dir=args.json_dir or None,
             json_file=args.json_file or None,
@@ -54,8 +69,13 @@ def _gui_prefill(argv: list[str]) -> int:
     except Exception:
         # Under pythonw there is no console, so a startup crash would vanish.
         # Write a log next to the package and try to show a dialog.
+        #
+        # Do NOT import Path here. It is already imported at module level, and
+        # binding the name anywhere inside a function makes it local to the
+        # WHOLE function - so an inner import in this handler turned every
+        # earlier use of Path in the try block into an UnboundLocalError. That
+        # is exactly what happened when the config path was added above.
         import traceback
-        from pathlib import Path
 
         tb = traceback.format_exc()
         try:
@@ -122,6 +142,32 @@ def main(argv: list[str] | None = None) -> int:
         "--rim-color", default=None,
         help="separate colour for the board rim/underside (same formats as --color)",
     )
+    parser.add_argument(
+        "--no-silkscreen", action="store_true",
+        help="do not build the printed legend even if the JSON carries one",
+    )
+    parser.add_argument(
+        "--no-silk-top", action="store_true",
+        help="skip the top-side legend only",
+    )
+    parser.add_argument(
+        "--no-silk-bottom", action="store_true",
+        help="skip the bottom-side legend only",
+    )
+    parser.add_argument(
+        "--flat-silkscreen", action="store_true",
+        help="draw the legend as surfaces, not solids: about a quarter of the "
+             "file size, but the ink then has no thickness",
+    )
+    parser.add_argument(
+        "--silk-flat-height", type=float, default=core.DEFAULT_FLAT_HEIGHT,
+        help="clearance in mm between the board face and a flat legend, so the "
+             f"two do not flicker (default: {core.DEFAULT_FLAT_HEIGHT})",
+    )
+    parser.add_argument(
+        "--silk-color", default=DEFAULT_SILK,
+        help=f"silkscreen colour: {' or '.join(SILK_ORDER)} (default: {DEFAULT_SILK})",
+    )
     # MFRPN DISABLED (property attachment unreliable); kept for future:
     # parser.add_argument(
     #     "--mfr-pn-in-name", action="store_true",
@@ -144,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
 
     board_color = resolve_board_color(args.color) if args.color else None
     rim_color = resolve_board_color(args.rim_color) if args.rim_color else None
+    silk_color = resolve_silk_color(args.silk_color) if args.silk_color else None
 
     json_path = Path(args.json_file)
     output_dir = Path(args.output_dir)
@@ -178,6 +225,11 @@ def main(argv: list[str] | None = None) -> int:
                 z_datum=args.z_datum,
                 board_color=board_color,
                 rim_color=rim_color,
+                silk_top=not (args.no_silkscreen or args.no_silk_top),
+                silk_bottom=not (args.no_silkscreen or args.no_silk_bottom),
+                silk_color=silk_color,
+                silk_flat=args.flat_silkscreen,
+                silk_flat_height=args.silk_flat_height,
                 # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
                 minimize_size=not args.no_minimize,
                 srgb_color=not args.legacy_color,
@@ -190,6 +242,8 @@ def main(argv: list[str] | None = None) -> int:
 
         if result.missing_step_files:
             log(f"warning: {len(result.missing_step_files)} STEP file(s) not found")
+        if result.silkscreen_solids:
+            log(f"silkscreen: {result.silkscreen_solids} solid(s)")
         # MFRPN DISABLED (kept for future):
         # if result.missing_mfr_pn:
         #     log(f"warning: {len(result.missing_mfr_pn)} component(s) without MFRPN")

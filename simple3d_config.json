@@ -1,0 +1,44 @@
+{
+    "allegro": {
+        "python": "python",
+        "pythonw": "pythonw",
+        "menuLabel": "Simple 3D",
+        "commandName": "simple_3d_export"
+    },
+    "gui": {
+        "stepDir": "d:/Projects/OrCAD/CIS/3D",
+        "jsonFile": "",
+        "outputDir": "",
+        "zDatum": "top",
+        "boardColor": "Dark_green",
+        "boardEdge": "Same as board",
+        "boardEdgeCustom": "",
+        "silkscreenTop": true,
+        "silkscreenBottom": true,
+        "silkColor": "White",
+        "silkscreenFlat": false,
+        "_comment_silkscreenFlatHeight": "Distance in mm from the board surface to the surface of a FLAT silkscreen, so that graphics do not flicker where the two would otherwise be coplanar. Not the ink thickness - that is settings.silkscreenThickness, and it applies to solid silkscreen only. 1 um is invisible at board scale; raise it to 0.005-0.01 if a particular viewer still flickers. Ignored when silkscreenFlat is false.",
+        "silkscreenFlatHeight": 0.001,
+        "minimizeFileSize": true
+    },
+    "silkscreen": {
+        "top": [
+            "BOARD GEOMETRY/SILKSCREEN_TOP",
+            "PACKAGE GEOMETRY/SILKSCREEN_TOP",
+            "REF DES/SILKSCREEN_TOP",
+            "COMPONENT VALUE/SILKSCREEN_TOP"
+        ],
+        "bottom": [
+            "BOARD GEOMETRY/SILKSCREEN_BOTTOM",
+            "PACKAGE GEOMETRY/SILKSCREEN_BOTTOM",
+            "REF DES/SILKSCREEN_BOTTOM",
+            "COMPONENT VALUE/SILKSCREEN_BOTTOM"
+        ]
+    },
+    "settings": {
+        "exportSilkscreen": true,
+        "silkscreenThickness": 0.025,
+        "clipToBoardOutline": true,
+        "endCapType": "ROUND"
+    }
+}

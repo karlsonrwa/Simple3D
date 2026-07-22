@@ -44,6 +44,26 @@ THEME_ORDER = [
 # is kept separate from the themes above.
 CREAM_DIELECTRIC = (253, 255, 215)
 
+# Silkscreen ink. Real legend ink comes in exactly these two in practice, so
+# this is a closed choice rather than a free colour: white on dark masks, black
+# on white/yellow ones. Neither is a pure 255/0 - printed ink never is, and a
+# pure white next to a pure white mask disappears.
+SILK_COLORS: dict[str, tuple[int, int, int]] = {
+    "White": (242, 242, 242),
+    "Black": (26, 26, 26),
+}
+
+SILK_ORDER = ["White", "Black"]
+
+DEFAULT_SILK = "White"
+
+
+def resolve_silk_color(name: str) -> tuple[int, int, int]:
+    """'White'/'Black' (or a custom 'r,g,b' / '#rrggbb') -> RGB 0-255."""
+    if name in SILK_COLORS:
+        return SILK_COLORS[name]
+    return parse_hex(name)
+
 
 def as_fraction(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
     """0-255 sRGB triple -> 0..1 triple for the STEP writer."""
