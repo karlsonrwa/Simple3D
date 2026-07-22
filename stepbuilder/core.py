@@ -808,11 +808,15 @@ def _rim_faces(shape: TopoDS_Shape):
     Everything with a vertical normal is rim; the flat top and bottom faces
     keep the board colour.
     """
+    # TopoDS is NOT re-imported here: it is a module-level import already, and
+    # a local import of a module-level name makes that name local to the whole
+    # function - which is how the GUI launcher acquired an UnboundLocalError.
+    # Harmless while these lines sit first, a trap the moment anything is added
+    # above them.
     from OCP.BRepAdaptor import BRepAdaptor_Surface
     from OCP.GeomAbs import GeomAbs_SurfaceType
     from OCP.TopAbs import TopAbs_ShapeEnum
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS
 
     rim = []
     exp = TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_FACE)

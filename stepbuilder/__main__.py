@@ -69,8 +69,13 @@ def _gui_prefill(argv: list[str]) -> int:
     except Exception:
         # Under pythonw there is no console, so a startup crash would vanish.
         # Write a log next to the package and try to show a dialog.
+        #
+        # Do NOT import Path here. It is already imported at module level, and
+        # binding the name anywhere inside a function makes it local to the
+        # WHOLE function - so an inner import in this handler turned every
+        # earlier use of Path in the try block into an UnboundLocalError. That
+        # is exactly what happened when the config path was added above.
         import traceback
-        from pathlib import Path
 
         tb = traceback.format_exc()
         try:

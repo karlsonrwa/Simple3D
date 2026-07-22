@@ -1422,3 +1422,56 @@ GUI smoke test (config path, wrap mode, both checkboxes, colour box greying out
 when both sides are off); full suite clean. One scratch test still called
 `generate(silkscreen=...)` and was updated to the new API - worth remembering
 that renaming a keyword silently breaks callers that pass it by name.
+
+## Update 2026-07-22 (round 10i) — UnboundLocalError in the GUI launcher
+
+The GUI would not start:
+
+```
+File "...\stepbuilder\__main__.py", line 46, in _gui_prefill
+    app = StepBuilderApp(Path(args.config) if args.config else None)
+UnboundLocalError: cannot access local variable 'Path' where it is not
+associated with a value
+```
+
+### Cause
+
+`_gui_prefill`'s `except` handler contained `from pathlib import Path` — a
+leftover, since `Path` is imported at module level. **Binding a name anywhere
+inside a function makes it local for the entire function**, so that one line in
+a branch that normally never runs turned every earlier use of `Path` into an
+UnboundLocalError. It was harmless for as long as nothing in the `try` block
+used `Path`; round 10h added exactly that use, and the function stopped working
+at its first line.
+
+Fix: delete the redundant import. The module-level one was always there.
+
+### The same trap, one more place
+
+An AST scan of the package for function-local imports of names that are already
+module-level found `_rim_faces()` re-importing `TopoDS`. Currently harmless —
+the import sits at the top of the function, before any use — but it becomes the
+identical failure the moment a line is added above it. Removed, with the reason
+written next to the remaining local imports (which are genuinely lazy: those
+names are NOT module-level).
+
+The scan is a five-line AST walk and worth keeping in mind as a check whenever
+this file grows: a local import is safe only when the module level does not
+already provide the name.
+
+### The test gap that let it through
+
+Every existing test either drives `core` or constructs `StepBuilderApp`
+directly. `_gui_prefill` — the entry point the Allegro launcher actually calls,
+and the only code path with the crash-handler wrapper around it — was never
+executed by anything. Its own `except` block then swallowed the error into a
+dialog, so it could only ever be found by a user.
+
+Added `test_launcher.py`: stubs `StepBuilderApp` so no window opens, then runs
+the full launcher command line, the standalone form without `--config`, the
+silkscreen flags, the legacy flags, and an unknown flag; plus five assertions on
+what actually reached the app. It fails loudly on this bug.
+
+### Verified here
+Launcher suite 10/10, shadow scan clean, the real GUI constructs and reports its
+config path and wrap mode, full suite unchanged.
