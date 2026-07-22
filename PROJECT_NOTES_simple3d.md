@@ -290,7 +290,7 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | 4 | symbols_top/bot, unique names `refdes_<jsonname>` | **PARTIAL** — groups and shared parts done (part = model file). The `refdes_<jsonname>` instance naming this requirement asks for was **removed in round 8** as over-complication, so no reference designator survives into the STEP at all. The requirement itself was never withdrawn: either restore the naming or amend requirement 4. |
 | 5 | minimise size / reuse | done; surfacecurve.mode=0 (~49% smaller) + one shared part per model |
 | 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
-| 7 | silkscreen export (user, 2026-07-22) | done in round 10; `format_version: 2`. Filled polys from `axlPolyFromDB`, clipped to outline−cutouts, extruded 25 µm into `silkscreen_top`/`silkscreen_bot` parts. Layers + ink settings in `simple3d_config.json`. GUI checkbox + White/Black dropdown. Variant-independent by requirement. Not verified live in Allegro. |
+| 7 | silkscreen export (user, 2026-07-22) | done in round 10; `format_version: 2`. Filled polys from `axlPolyFromDB`, clipped to outline−cutouts, extruded 25 µm into `silkscreen_top`/`silkscreen_bot` parts. Layers + ink settings in `simple3d_config.json`. GUI checkbox + White/Black dropdown. Variant-independent by requirement. **Round 10a**: first live run skipped every polygon (vertex list carries no closing edge, and `poly->segments` returns the source centreline for line-derived polys) — both fixed, awaiting a re-run. |
 
 ### Verification done here
 - Core geometry still bit-for-bit vs C++ (V=12073.309477, 5054 ents) with mask zeroed.
@@ -883,3 +883,76 @@ silkscreen a bare board is a legitimate export, so it is now guarded.
 - Runtime on a dense board (collection + clipping), and whether the 400-poly
   batch size needs tuning.
 - Whether `axlPolyOperation` copes with the design's actual polygon count.
+
+## Update 2026-07-22 (round 10a) — every silk contour arrived open
+
+First run on a real board (`my_test_board-a0`): **13 of 13 polygons skipped**,
+`Contour is open (start and end do not meet within 1e-05)`, top and bottom
+alike. The board itself built fine, so the failure was specific to the
+silkscreen path.
+
+### Cause: the vertex list has no closing edge
+
+`axlPolyFromDB`'s documentation says the vertex list "always describes a closed
+shape". Read as "the first point is repeated at the end" — it is not. Every
+polygon therefore lost its last edge and reached the STEP builder open.
+
+The evidence was in exportJson all along and I read past it: both routines that
+build geometry out of `poly->vertices` — `ttfVerticesToSvgPath` and the TTF
+branch of `textToSvgPath` — append an explicit `"Z"` after the vertex loop.
+They have to, for exactly this reason. **When two readings of a doc sentence are
+possible, working code that already uses the same attribute settles it.**
+
+Fix: `s3dVerticesToElements` emits a closing segment from the last vertex back
+to the first, guarded on the two ends actually being apart (> 1e-6), so a list
+that *does* repeat its first point cannot gain a degenerate edge.
+
+### Also removed: the poly->segments path
+
+`s3dPolyElements` used to prefer `poly->segments` and fall back to vertices.
+That preference is wrong here. For a polygon built from a line, or from an
+`r_path` with `?line2poly`, "Path describing boundary of shape" hands back the
+**source centreline** — an open path — not the widened outline. So on a board
+whose legend is mostly lines and text, that path produced open contours too.
+`s3dPolyElements` is now vertices-only, which is the representation
+`axlPolyFromDB` actually documents for a polygon and the one exportJson reads.
+
+This retires the round-10 open question about whether `poly->segments` is
+populated: it is not the right source either way.
+
+### New: the area cross-check settles the arc-sign question by itself
+
+An arc rebuilt on the **wrong side of its chord still closes**, so the contour
+check cannot see it — which is why the round-10 note listed the vertex-radius
+sign convention as unverifiable here. It is verifiable, cheaply: every polygon
+now carries Allegro's own `poly->area` (documented, net of holes) into the JSON,
+and `build_silkscreen` compares the built face against it, warning once per side
+with the worst offender and naming `s3dArcElement`.
+
+Measured on a round-capped stroke: correct arcs match the declared area exactly;
+flipping the sign convention still builds a closed face but comes out 4.6% off
+and trips the warning. So if the sign is wrong on real geometry, the log says so
+in plain words instead of the user noticing bulges by eye.
+
+### Diagnostics
+`build_contour`'s open-contour error now reports the gap and both endpoints
+(`Gap 0.707107 between (0.0000, 0.5000) and (-0.5000, -0.0000)`). A gap that
+size is obviously a missing edge; a gap near 1e-5 would have meant tolerance.
+The original message could not tell the two apart — which is why this round
+started with a guess instead of a reading.
+
+### Verified here
+- The un-closed element list reproduces the user's error verbatim, and the new
+  message names a 0.707 mm gap.
+- With the closing edge: builds, and the area check stays quiet.
+- Sign convention deliberately inverted: still builds, area check fires at 4.6%.
+- Glyph with a counter (outer ring + hole): builds.
+- Earlier checks all still pass (circle/capsule areas exact, demo board 5 solids,
+  z placement, paren balance, py_compile).
+
+### Still open
+- Only 10 top / 3 bottom polygons came out of a real board, which is few for a
+  legend with reference designators. Could be genuine (axlPolyOperation merging
+  overlapping strokes into few connected regions) or could mean the layer list
+  did not match. The Allegro console prints the counts before and after
+  clipping — that pair distinguishes the two, and has not been seen yet.

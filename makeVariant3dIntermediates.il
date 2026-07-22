@@ -1360,26 +1360,50 @@ procedure( s3dArcElement( l_p0 l_p1 f_r )
     )
 )
 
-; Fallback path: build the primitive list straight from poly->vertices.
-; The vertex list always describes a CLOSED shape (first point repeated last),
-; so no explicit closing segment is added.
+procedure( s3dDistance( l_p0 l_p1 )
+    let( ( dx dy )
+        dx = xCoord( l_p1 ) - xCoord( l_p0 )
+        dy = yCoord( l_p1 ) - yCoord( l_p0 )
+        sqrt( dx * dx + dy * dy )
+    )
+)
+
+; poly->vertices -> the list of primitive strings for one closed boundary.
+;
+; THE CLOSING EDGE HAS TO BE ADDED HERE. axlPolyFromDB's documentation says the
+; vertex list "always describes a closed shape", which reads as if the first
+; point were repeated at the end - it is not. exportJson, working from the same
+; attribute, appends an explicit "Z" to every path it builds out of vertices
+; (ttfVerticesToSvgPath, and the TTF branch of textToSvgPath); it has to, for
+; the same reason. Without the closing segment every contour arrives at the
+; STEP builder open and is rejected - which is exactly what happened on the
+; first real board: 13 of 13 polygons skipped, "Contour is open".
+;
+; The closing segment is emitted only when the two ends are genuinely apart, so
+; a list that DOES repeat its first point cannot gain a degenerate edge.
 procedure( s3dVerticesToElements( l_vertices )
-    let( ( out prev cur rad element )
+    let( ( out prev cur rad element first )
         out = tconc( nil nil )
         prev = nil
+        first = nil
         foreach( vertex l_vertices
             cur = car( vertex )
             rad = cadr( vertex )
             unless( rad  rad = 0.0 )
-            when( prev
+            if( prev then
                 element = if( abs( rad ) > 1.0e-9 then
                         s3dArcElement( prev cur rad )
                     else
                         s3dSegmentElement( prev cur )
                     )
                 when( element  tconc( out element ) )
+            else
+                first = cur
             )
             prev = cur
+        )
+        when( first && prev && (s3dDistance( prev first ) > 1.0e-6)
+            tconc( out s3dSegmentElement( prev first ) )
         )
         cdr( car( out ) )
     )
@@ -1387,27 +1411,14 @@ procedure( s3dVerticesToElements( l_vertices )
 
 ; One o_polygon -> list of primitive strings for its boundary.
 ;
-; poly->segments is preferred: it hands back line/arc segment dbids carrying an
-; explicit centre, radius and direction, which boardGeometryParseSegment (the
-; same routine the board outline uses) turns into primitives with no geometric
-; guesswork at all. Polygons synthesised by a boolean operation may not have
-; it, hence the vertices fallback above.
+; Always via vertices. poly->segments was tried first in the initial version and
+; is wrong here: for a polygon produced from a line or from an r_path with
+; ?line2poly, "Path describing boundary of shape" hands back the SOURCE
+; centreline - an open path - not the widened outline, so those contours arrived
+; open too. vertices is the representation axlPolyFromDB actually documents for
+; a polygon, and it is what exportJson reads as well.
 procedure( s3dPolyElements( g_poly )
-    let( ( segments out element )
-        segments = nil
-        errset( segments = g_poly->segments )
-        if( segments then
-            out = tconc( nil nil )
-            foreach( segment segments
-                element = nil
-                errset( element = boardGeometryParseSegment( segment ) )
-                when( element  tconc( out element ) )
-            )
-            cdr( car( out ) )
-        else
-            s3dVerticesToElements( g_poly->vertices )
-        )
-    )
+    s3dVerticesToElements( g_poly->vertices )
 )
 
 ;---------------------------------------------------------------------
@@ -1667,7 +1678,7 @@ procedure( s3dMakeSilkscreen( l_config )
 ; quadratic and hits the same "insufficient memory" wall the component section
 ; already has a note about.
 procedure( s3dWriteSilkPolys( p_port l_polys )
-    let( ( ( firstPoly t ) elements holes ( firstHole t ) )
+    let( ( ( firstPoly t ) elements holes ( firstHole t ) area )
         foreach( poly l_polys
             if( firstPoly then
                 firstPoly = nil
@@ -1675,6 +1686,18 @@ procedure( s3dWriteSilkPolys( p_port l_polys )
                 fprintf( p_port ",\n" )
             )
             fprintf( p_port "\t\t\t{\n" )
+
+            ; Allegro's own area for this polygon, already net of its holes.
+            ; Carried purely so the Python side can check its reconstruction
+            ; against it: an arc rebuilt on the wrong side of its chord still
+            ; closes, so an area check is what catches a bad arc, and it is what
+            ; independently confirms the vertex-radius sign convention on a real
+            ; board. Costs one float per polygon.
+            area = nil
+            errset( area = poly->area )
+            when( area
+                fprintf( p_port "\t\t\t\t\"area\": %f,\n" area )
+            )
 
             elements = s3dPolyElements( poly )
             fprintf( p_port "\t\t\t\t\"outline\": [\n" )

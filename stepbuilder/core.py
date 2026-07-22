@@ -124,10 +124,32 @@ def build_contour(contour: Iterable[dict], z_offset: float = 0.0) -> TopoDS_Wire
     wire = TopoDS.Wire_s(wires.Value(1))
     if not wire.Closed():
         # A single but open wire: MakeFace would silently build garbage.
+        # Report the actual gap and where it is: a large gap means the source
+        # never emitted a closing edge, a tiny one means the tolerance is what
+        # needs looking at. Without this the message cannot tell them apart.
         raise StepBuilderError(
             f"Contour is open (start and end do not meet within {WIRE_TOLERANCE})."
+            + _open_wire_detail(wire)
         )
     return wire
+
+
+def _open_wire_detail(wire: TopoDS_Wire) -> str:
+    """' Gap 3.81 mm between (x, y) and (x, y).' — best effort, never raises."""
+    try:
+        from OCP.BRep import BRep_Tool
+        from OCP.TopExp import TopExp
+        from OCP.TopoDS import TopoDS_Vertex
+
+        v1, v2 = TopoDS_Vertex(), TopoDS_Vertex()
+        TopExp.Vertices_s(wire, v1, v2)
+        if v1.IsNull() or v2.IsNull():
+            return ""
+        p1, p2 = BRep_Tool.Pnt_s(v1), BRep_Tool.Pnt_s(v2)
+        return (f" Gap {p1.Distance(p2):.6g} between "
+                f"({p1.X():.4f}, {p1.Y():.4f}) and ({p2.X():.4f}, {p2.Y():.4f}).")
+    except Exception:
+        return ""
 
 
 def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0) -> TopoDS_Shape:
@@ -236,6 +258,9 @@ def build_silkscreen(
     built = 0
     skipped = 0
     first_error: str | None = None
+    area_checked = 0
+    area_bad = 0
+    worst: tuple[float, float, float] | None = None   # (ratio, declared, got)
 
     for polygon in polygons:
         outline = polygon.get("outline")
@@ -250,13 +275,46 @@ def build_silkscreen(
             skipped += 1
             if first_error is None:
                 first_error = str(exc)
+            continue
+
+        # Cross-check against the area Allegro itself reported for this polygon.
+        # An arc rebuilt on the wrong side of its chord still closes, so a wrong
+        # arc is invisible to the contour check and shows up only here.
+        declared = polygon.get("area")
+        if declared and abs(declared) > 1.0e-6:
+            got = _face_area(face)
+            if got is not None:
+                area_checked += 1
+                ratio = abs(got - abs(declared)) / abs(declared)
+                if ratio > 0.01:
+                    area_bad += 1
+                    if worst is None or ratio > worst[0]:
+                        worst = (ratio, abs(declared), got)
 
     if skipped:
         log(f"warning: {skipped} {side} silkscreen polygon(s) skipped "
             f"(first: {first_error})")
+    if area_bad and worst is not None:
+        log(f"warning: {area_bad} of {area_checked} {side} polygons differ from "
+            f"the area Allegro reported (worst: {worst[1]:.6g} vs {worst[2]:.6g} "
+            f"mm2, {worst[0] * 100:.1f}%). Curved outlines are likely rebuilt on "
+            f"the wrong side of their chord - see s3dArcElement.")
     if not built:
         return None, 0, skipped
     return compound, built, skipped
+
+
+def _face_area(face) -> float | None:
+    """Surface area of a face, or None if it cannot be measured."""
+    try:
+        from OCP.BRepGProp import BRepGProp
+        from OCP.GProp import GProp_GProps
+
+        props = GProp_GProps()
+        BRepGProp.SurfaceProperties_s(face, props)
+        return props.Mass()
+    except Exception:
+        return None
 
 
 # --------------------------------------------------------------------------- #
