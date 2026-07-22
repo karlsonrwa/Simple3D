@@ -477,6 +477,7 @@ def build_silkscreen(
     thickness: float,
     log: LogFn = _noop_log,
     side: str = "",
+    flat: bool = False,
 ) -> tuple[TopoDS_Compound | None, int, int]:
     """Extrude one side's silkscreen polygons into a compound of thin solids.
 
@@ -493,6 +494,20 @@ def build_silkscreen(
 
     A polygon that cannot be built is counted and skipped rather than taken as
     fatal - one malformed glyph must not cost the whole board.
+
+    flat=True writes each polygon as a single planar face instead of a prism.
+    Measured on a 150-polygon legend: 566 kB against 2191 kB, so about a
+    quarter of the size. A prism costs V+2 faces for a V-vertex polygon (top,
+    bottom and one wall per edge); a face costs one. The face is placed at the
+    ink's OUTER surface, not on the board, so it does not z-fight with the board
+    face in a viewer. What is given up is that the ink is then a surface, not a
+    solid: it has no thickness to measure and nothing downstream can do boolean
+    work with it.
+
+    Fusing the prisms was measured too, and made the file LARGER (3377 kB,
+    154%): a boolean union replaces analytic cylinders and planes with general
+    surfaces, and after clipping the strokes barely overlap, so there is little
+    interior geometry for it to remove. Not offered.
     """
     builder = BRep_Builder()
     compound = TopoDS_Compound()
@@ -513,8 +528,15 @@ def build_silkscreen(
             skipped += 1
             continue
         try:
-            face = _silk_face(polygon, z, convention)
-            builder.Add(compound, BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, thickness)).Shape())
+            # In flat mode the face is built directly at the ink's outer
+            # surface; in solid mode it is built on the board face and the
+            # prism grows away from the board.
+            face = _silk_face(polygon, z + thickness if flat else z, convention)
+            builder.Add(
+                compound,
+                face if flat
+                else BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, thickness)).Shape(),
+            )
             built += 1
         except (StepBuilderError, RuntimeError, KeyError, TypeError, IndexError) as exc:
             skipped += 1
@@ -821,6 +843,7 @@ def generate(
     rim_color: tuple[int, int, int] | None = None,
     silkscreen: bool = True,
     silk_color: tuple[int, int, int] | None = None,
+    silk_flat: bool = False,
     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
     minimize_size: bool = True,
     srgb_color: bool = True,
@@ -842,6 +865,10 @@ def generate(
         Silently does nothing for an older JSON or a board with no silkscreen.
     silk_color:
         RGB 0-255 for the ink; defaults to colors.SILK_COLORS["White"].
+    silk_flat:
+        Draw the legend as surfaces instead of thin solids. About a quarter of
+        the file size; the ink then has no thickness and cannot be used in
+        downstream boolean work. See build_silkscreen.
     minimize_size:
         Set write.surfacecurve.mode = 0 (about half the file size, geometry
         unchanged) and share one part per distinct model.
@@ -952,7 +979,8 @@ def generate(
                 continue
             log(f"Building {side} ({len(polygons)} polygons)")
             compound, built, skipped = build_silkscreen(
-                polygons, z, sign * ink_thickness, log=log, side=side
+                polygons, z, sign * ink_thickness, log=log, side=side,
+                flat=silk_flat,
             )
             silk_built += built
             silk_skipped += skipped

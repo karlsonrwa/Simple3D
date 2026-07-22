@@ -68,6 +68,7 @@ class BuildSettings:
     rim_color: tuple[int, int, int] | None
     export_silk: bool
     silk_color: tuple[int, int, int] | None
+    silk_flat: bool
     minimize: bool
     brd_name: str | None
     dated_name: bool
@@ -93,6 +94,7 @@ class StepBuilderApp(tk.Tk):
         self.rim_custom = tk.StringVar(value="")
         self.export_silk = tk.BooleanVar(value=True)
         self.silk_color = tk.StringVar(value=DEFAULT_SILK)
+        self.silk_flat = tk.BooleanVar(value=False)
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
@@ -179,6 +181,13 @@ class StepBuilderApp(tk.Tk):
                                       highlightbackground="#888")
         self._silk_swatch.pack(side="left", padx=(6, 0))
         self.silk_box.bind("<<ComboboxSelected>>", lambda e: self._update_silk_row())
+        # Measured on a 150-polygon legend: 2191 kB as solids, 566 kB as
+        # surfaces. Offered as a checkbox rather than done silently because it
+        # is a real trade: the ink stops being a solid.
+        self.silk_flat_check = ttk.Checkbutton(
+            silk_row, text="Flat (about 1/4 the size)", variable=self.silk_flat
+        )
+        self.silk_flat_check.pack(side="left", padx=(12, 0))
 
         checks = ttk.Frame(opts)
         checks.grid(row=3, column=0, columnspan=5, sticky="w", pady=(6, 0))
@@ -248,6 +257,7 @@ class StepBuilderApp(tk.Tk):
         """Keep the ink swatch and the enabled state in step with the checkbox."""
         on = self.export_silk.get()
         self.silk_box.configure(state="readonly" if on else "disabled")
+        self.silk_flat_check.configure(state="normal" if on else "disabled")
         rgb = SILK_COLORS.get(self.silk_color.get(), (128, 128, 128))
         self._silk_swatch.configure(bg="#%02x%02x%02x" % rgb)
 
@@ -358,6 +368,7 @@ class StepBuilderApp(tk.Tk):
             rim_color=self._rim_color(),
             export_silk=self.export_silk.get(),
             silk_color=SILK_COLORS.get(self.silk_color.get()),
+            silk_flat=self.silk_flat.get(),
             minimize=self.minimize.get(),
             brd_name=self._brd_name,
             dated_name=self._dated_name,
@@ -442,6 +453,7 @@ class StepBuilderApp(tk.Tk):
                     rim_color=settings.rim_color,
                     silkscreen=settings.export_silk,
                     silk_color=settings.silk_color,
+                    silk_flat=settings.silk_flat,
                     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
                     minimize_size=settings.minimize,
                     log=lambda m: self._queue.put(("log", m)),
@@ -570,6 +582,7 @@ class StepBuilderApp(tk.Tk):
         self.theme.set(cfg.get("theme", DEFAULT_THEME))
         self.export_silk.set(cfg.get("export_silk", True))
         self.silk_color.set(cfg.get("silk_color", DEFAULT_SILK))
+        self.silk_flat.set(cfg.get("silk_flat", False))
         # MFRPN DISABLED (kept for future):
         # self.mfr_pn_in_name.set(cfg.get("mfr_pn_in_name", False))
         self.minimize.set(cfg.get("minimize", True))
@@ -586,6 +599,7 @@ class StepBuilderApp(tk.Tk):
                         "theme": self.theme.get(),
                         "export_silk": self.export_silk.get(),
                         "silk_color": self.silk_color.get(),
+                        "silk_flat": self.silk_flat.get(),
                         # MFRPN DISABLED (kept for future):
                         # "mfr_pn_in_name": self.mfr_pn_in_name.get(),
                         "minimize": self.minimize.get(),

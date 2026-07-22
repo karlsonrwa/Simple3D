@@ -1314,3 +1314,55 @@ components — rather than waiting for a board to supply them.
 - A cutout-free, hole-free board with silkscreen built end to end through the
   real reader: 1 silk solid, areas matched, STEP written.
 - Balance 0, full Python suite clean.
+
+## Update 2026-07-22 (round 10g) — silkscreen file size, measured
+
+User: 1619918 bytes without silkscreen, 4115593 with. Asked what can be done
+and at what cost. Measured rather than guessed — four representations of the
+same 150-polygon legend, "Minimise file size" on unless noted:
+
+| representation | bytes | vs default | seconds |
+|---|---|---|---|
+| solids (current) | 2191456 | 100% | 0.5 |
+| solids, minimise OFF | 5768921 | 263% | 0.8 |
+| flat faces | 566370 | **26%** | 0.1 |
+| boolean-fused per side | 3377048 | **154%** | 1.4 |
+
+Through the real `generate()` on the same data: silkscreen adds 2261572 bytes as
+solids and 651082 flat — 28.8%.
+
+### Fusing is counterproductive, and now we know
+
+Round 10 called fusing "minutes of solver time for nothing visible" and skipped
+it on those grounds. The measurement is worse than that guess: it makes the file
+**larger** (154%). A boolean union replaces analytic planes and cylinders with
+general surfaces, and after clipping the strokes barely overlap, so there is
+little interior geometry to remove. The reasoning in round 10 was right for the
+wrong reason — it is not merely not worth it, it is actively harmful. Recorded
+so nobody proposes it again as an optimisation.
+
+### Why flat is such a large win
+
+A V-vertex polygon as a prism costs V+2 faces (top, bottom, one wall per edge);
+as a surface it costs one. Everything under a face — surfaces, edge loops,
+oriented edges, curves, points — scales with it.
+
+Placed at the ink's OUTER surface (`z + thickness`), not on the board face, so
+it cannot z-fight with the board in a viewer. That is the only subtlety; the
+rest is a straight trade of solidity for size.
+
+### Delivered
+`silk_flat` through core / GUI checkbox ("Flat (about 1/4 the size)") / CLI
+`--flat-silkscreen`, persisted in the GUI config, disabled together with the
+silkscreen checkbox. Default OFF: solids are the honest representation, and the
+size is the user's call to make.
+
+README gained a "Silkscreen file size" section in both languages with the table
+above and three levers in order of effect: Flat; dropping `REF DES/SILKSCREEN_*`
+from the config layer list (reference designators are usually most of a legend,
+and this also shrinks the JSON); and turning silkscreen off for working exports.
+
+### Verified here
+Both paths built end to end through `generate()`; GUI smoke test confirms the
+default, the snapshot value, and that the checkbox greys out with the feature.
+Full suite clean.

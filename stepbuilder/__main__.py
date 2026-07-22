@@ -34,6 +34,7 @@ def _gui_prefill(argv: list[str]) -> int:
     p.add_argument("--color", default="")
     p.add_argument("--silk-color", default="")
     p.add_argument("--no-silkscreen", action="store_true")
+    p.add_argument("--flat-silkscreen", action="store_true")
     args, _ = p.parse_known_args(argv)
 
     from .gui import StepBuilderApp
@@ -49,6 +50,8 @@ def _gui_prefill(argv: list[str]) -> int:
             app.silk_color.set(args.silk_color)
         if args.no_silkscreen:
             app.export_silk.set(False)
+        if args.flat_silkscreen:
+            app.silk_flat.set(True)
         app.prefill_jobs(
             json_dir=args.json_dir or None,
             json_file=args.json_file or None,
@@ -133,6 +136,11 @@ def main(argv: list[str] | None = None) -> int:
         help="do not build the printed legend even if the JSON carries one",
     )
     parser.add_argument(
+        "--flat-silkscreen", action="store_true",
+        help="draw the legend as surfaces, not solids: about a quarter of the "
+             "file size, but the ink then has no thickness",
+    )
+    parser.add_argument(
         "--silk-color", default=DEFAULT_SILK,
         help=f"silkscreen colour: {' or '.join(SILK_ORDER)} (default: {DEFAULT_SILK})",
     )
@@ -195,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
                 rim_color=rim_color,
                 silkscreen=not args.no_silkscreen,
                 silk_color=silk_color,
+                silk_flat=args.flat_silkscreen,
                 # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
                 minimize_size=not args.no_minimize,
                 srgb_color=not args.legacy_color,
