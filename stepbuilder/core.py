@@ -206,26 +206,186 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0) -> T
 DEFAULT_SILK_THICKNESS = 0.025
 
 
-def _silk_face(outline: list[dict], holes: list[list[dict]], z: float):
-    """One silkscreen polygon (outer contour + holes) as a planar face at *z*."""
-    maker = BRepBuilderAPI_MakeFace(build_contour(outline, z), True)
+# How a polygon's vertex list is read. Allegro gives (x, y, signed_radius) per
+# point, and two things about it are genuinely ambiguous in the documentation:
+#
+#   arc_left_when_positive
+#       "The sign of the radius indicates for postive the arc is to the left"
+#       - the arc bulges left of travel (centre on the RIGHT), or the centre is
+#       on the left? Both readings are defensible from that sentence.
+#   first_radius_closes
+#       Each vertex carries the radius of the edge REACHING it, and the list
+#       does not repeat its first point. So does the first vertex's radius
+#       describe the closing edge back to it, or is it unused?
+#
+# Rather than pick and hope, every combination is tried against the area Allegro
+# reported for that polygon; whichever reproduces it wins. See _pick_convention.
+_Convention = tuple  # (arc_left_when_positive: bool, first_radius_closes: bool)
+
+_CONVENTIONS: list[_Convention] = [
+    (True, True),
+    (True, False),
+    (False, True),
+    (False, False),
+]
+
+# A rebuilt polygon has to land this close to Allegro's own area to be accepted.
+# Loose enough for float noise and OCCT's own tolerance, tight enough that a
+# wrong arc side (several percent even on gentle curves) never slips through.
+AREA_TOLERANCE = 0.005
+
+
+def _arc_edge(p0, p1, radius: float, z: float, arc_left: bool):
+    """Edge for an arc from p0 to p1 whose chord is `radius` away from centre.
+
+    Built through three points - start, arc midpoint, end - so there is no
+    angle bookkeeping and no sense flag to get backwards. Polygon arcs never
+    cross a quadrant, so every one of them is a minor arc and the midpoint is
+    unambiguous: it sits (radius - h) off the chord, on the side the arc bulges.
+    """
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    chord = math.hypot(dx, dy)
+    if chord < 1.0e-12:
+        return None
+
+    # A radius smaller than half the chord cannot span it (rounding in the
+    # source); clamp to the semicircle instead of taking a negative sqrt.
+    rad = max(abs(radius), chord / 2.0)
+    h = math.sqrt(max(0.0, rad * rad - (chord / 2.0) ** 2))
+    mx, my = (p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0
+    nx, ny = -dy / chord, dx / chord          # left normal of travel
+    sign = 1.0 if arc_left else -1.0
+    mid = gp_Pnt(mx + sign * (rad - h) * nx, my + sign * (rad - h) * ny, z)
+
+    arc = GC_MakeArcOfCircle(
+        gp_Pnt(p0[0], p0[1], z), mid, gp_Pnt(p1[0], p1[1], z)
+    ).Value()
+    return BRepBuilderAPI_MakeEdge(arc).Edge()
+
+
+def _wire_from_vertices(vertices: list, z: float, convention: _Convention) -> TopoDS_Wire:
+    """Allegro vertex list -> closed wire, read under *convention*."""
+    arc_left_when_positive, first_radius_closes = convention
+
+    points = [(float(v[0]), float(v[1])) for v in vertices]
+    radii = [float(v[2]) if len(v) > 2 else 0.0 for v in vertices]
+    if len(points) < 2:
+        raise StepBuilderError("polygon has fewer than two vertices")
+
+    def make(p0, p1, radius):
+        if abs(radius) > 1.0e-9:
+            return _arc_edge(p0, p1, radius, z, (radius > 0) == arc_left_when_positive)
+        if math.dist(p0, p1) < 1.0e-12:
+            return None
+        return BRepBuilderAPI_MakeEdge(
+            gp_Pnt(p0[0], p0[1], z), gp_Pnt(p1[0], p1[1], z)
+        ).Edge()
+
+    edges = []
+    for i in range(1, len(points)):
+        edge = make(points[i - 1], points[i], radii[i])
+        if edge is not None:
+            edges.append(edge)
+
+    # The list does not repeat its first point, so the closing edge is ours to
+    # add. If a list ever does repeat it, the distance test skips this and the
+    # closing edge's radius was already consumed by the loop above.
+    if math.dist(points[-1], points[0]) > 1.0e-9:
+        edge = make(points[-1], points[0], radii[0] if first_radius_closes else 0.0)
+        if edge is not None:
+            edges.append(edge)
+
+    if not edges:
+        raise StepBuilderError("polygon produced no edges")
+
+    edge_seq = TopTools_HSequenceOfShape()
+    for edge in edges:
+        edge_seq.Append(edge)
+    wires = TopTools_HSequenceOfShape()
+    ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(edge_seq, WIRE_TOLERANCE, False, wires)
+
+    if wires.Length() != 1:
+        raise StepBuilderError(
+            f"polygon edges formed {wires.Length()} wires, expected 1"
+        )
+    wire = TopoDS.Wire_s(wires.Value(1))
+    if not wire.Closed():
+        raise StepBuilderError("polygon contour is open" + _open_wire_detail(wire))
+    return wire
+
+
+def _face_from_wires(outer: TopoDS_Wire, inner: list[TopoDS_Wire]):
+    """Planar face from an outer wire and its hole wires."""
+    maker = BRepBuilderAPI_MakeFace(outer, True)
     if not maker.IsDone():
         raise StepBuilderError("silkscreen outline is not planar or self-intersects")
-
-    for hole in holes:
+    for wire in inner:
         # A hole wire has to run opposite to the outer one for MakeFace to read
-        # it as a void; ShapeFix_Face below repairs the cases where the source
-        # contour already came the other way round.
-        maker.Add(TopoDS.Wire_s(build_contour(hole, z).Reversed()))
-
+        # it as a void; ShapeFix_Face below repairs whichever way it came.
+        maker.Add(TopoDS.Wire_s(wire.Reversed()))
     face = maker.Face()
-    if holes:
+    if inner:
         from OCP.ShapeFix import ShapeFix_Face
 
         fix = ShapeFix_Face(face)
         fix.FixOrientation()
         face = fix.Face()
     return face
+
+
+def _silk_face(polygon: dict, z: float, convention: _Convention):
+    """One silkscreen polygon (vertex form, or the older primitive form)."""
+    if "vertices" in polygon:
+        outer = _wire_from_vertices(polygon["vertices"], z, convention)
+        inner = [_wire_from_vertices(h, z, convention)
+                 for h in polygon.get("holes", [])]
+    else:
+        # format_version 2.0 wrote pre-built segment/arc primitives.
+        outer = build_contour(polygon["outline"], z)
+        inner = [build_contour(h, z) for h in polygon.get("holes", [])]
+    return _face_from_wires(outer, inner)
+
+
+def _pick_convention(
+    polygons: list[dict], z: float, log: LogFn, side: str
+) -> _Convention:
+    """Choose the vertex reading that reproduces Allegro's reported areas.
+
+    Scored over the polygons that declare an area, worst-case first: the right
+    convention matches every one of them, a wrong one is off on any polygon with
+    a curve in it. Ties (a legend of nothing but straight lines, where the
+    readings cannot differ) fall through to the first convention, which is then
+    as good as any.
+    """
+    candidates = [p for p in polygons if p.get("vertices") and p.get("area")
+                  and abs(float(p["area"])) > 1.0e-6]
+    if not candidates:
+        return _CONVENTIONS[0]
+    sample = candidates[:12]
+
+    best, best_error = _CONVENTIONS[0], None
+    for convention in _CONVENTIONS:
+        worst = 0.0
+        for polygon in sample:
+            declared = abs(float(polygon["area"]))
+            try:
+                area = _face_area(_silk_face(polygon, z, convention))
+            except (StepBuilderError, RuntimeError, TypeError):
+                area = None
+            if area is None:
+                worst = math.inf
+                break
+            worst = max(worst, abs(area - declared) / declared)
+        if best_error is None or worst < best_error:
+            best, best_error = convention, worst
+        if worst <= AREA_TOLERANCE:
+            break
+
+    if best_error is not None and best_error > AREA_TOLERANCE:
+        log(f"warning: no reading of the {side} vertex data reproduces the areas "
+            f"Allegro reported (best is off by {best_error * 100:.1f}%). The "
+            f"legend geometry may be distorted.")
+    return best
 
 
 def build_silkscreen(
@@ -255,6 +415,9 @@ def build_silkscreen(
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
 
+    polygons = list(polygons)
+    convention = _pick_convention(polygons, z, log, side)
+
     built = 0
     skipped = 0
     first_error: str | None = None
@@ -263,30 +426,29 @@ def build_silkscreen(
     worst: tuple[float, float, float] | None = None   # (ratio, declared, got)
 
     for polygon in polygons:
-        outline = polygon.get("outline")
-        if not outline:
+        if not polygon.get("vertices") and not polygon.get("outline"):
             skipped += 1
             continue
         try:
-            face = _silk_face(outline, polygon.get("holes", []), z)
+            face = _silk_face(polygon, z, convention)
             builder.Add(compound, BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, thickness)).Shape())
             built += 1
-        except (StepBuilderError, RuntimeError, KeyError, TypeError) as exc:
+        except (StepBuilderError, RuntimeError, KeyError, TypeError, IndexError) as exc:
             skipped += 1
             if first_error is None:
                 first_error = str(exc)
             continue
 
-        # Cross-check against the area Allegro itself reported for this polygon.
-        # An arc rebuilt on the wrong side of its chord still closes, so a wrong
-        # arc is invisible to the contour check and shows up only here.
+        # Every polygon is verified, not just the ones that chose the reading:
+        # the convention is global, so a single polygon that still disagrees is
+        # a polygon whose geometry did not survive, and it should be reported.
         declared = polygon.get("area")
         if declared and abs(declared) > 1.0e-6:
             got = _face_area(face)
             if got is not None:
                 area_checked += 1
                 ratio = abs(got - abs(declared)) / abs(declared)
-                if ratio > 0.01:
+                if ratio > AREA_TOLERANCE:
                     area_bad += 1
                     if worst is None or ratio > worst[0]:
                         worst = (ratio, abs(declared), got)
@@ -295,10 +457,14 @@ def build_silkscreen(
         log(f"warning: {skipped} {side} silkscreen polygon(s) skipped "
             f"(first: {first_error})")
     if area_bad and worst is not None:
-        log(f"warning: {area_bad} of {area_checked} {side} polygons differ from "
-            f"the area Allegro reported (worst: {worst[1]:.6g} vs {worst[2]:.6g} "
-            f"mm2, {worst[0] * 100:.1f}%). Curved outlines are likely rebuilt on "
-            f"the wrong side of their chord - see s3dArcElement.")
+        log(f"warning: {area_bad} of {area_checked} {side} polygons still differ "
+            f"from the area Allegro reported (worst: {worst[1]:.6g} vs "
+            f"{worst[2]:.6g} mm2, {worst[0] * 100:.1f}%).")
+    elif area_checked:
+        log(f"{side}: {area_checked} polygon(s) match Allegro's areas "
+            f"(arc reading: {'left' if convention[0] else 'right'}-bulging on a "
+            f"positive radius, first radius "
+            f"{'closes' if convention[1] else 'unused'})")
     if not built:
         return None, 0, skipped
     return compound, built, skipped

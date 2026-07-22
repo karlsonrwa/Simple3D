@@ -1282,143 +1282,41 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
 )
 
 ;---------------------------------------------------------------------
-;  Polygon -> JSON primitives
+;  Polygon -> JSON vertices
+;
+;  The polygon boundary goes into the JSON as Allegro's own vertex list -
+;  (x, y, signed_radius) per point - and the arcs are rebuilt on the Python
+;  side. It used to be rebuilt here, into segment/arc primitives; that put the
+;  one genuinely ambiguous decision in the file format, where nothing could
+;  check it. See PROJECT_NOTES round 10b: the doc sentence describing the sign
+;  of the radius admits two readings, and an arc built on the wrong side of its
+;  chord still closes, so the mistake is invisible until someone measures area.
+;
+;  Python can measure area - every polygon carries Allegro's own poly->area -
+;  so it resolves the reading itself, per board, and says which one won. This
+;  side therefore reports what the database holds and decides nothing.
 ;---------------------------------------------------------------------
 
-procedure( s3dSegmentElement( l_p0 l_p1 )
-    strcat(
-        "{\n\t\"type\": \"segment\",\n"
-        "\t\"start\": [" sprintf( nil "%f" xCoord( l_p0 ) ) ", " sprintf( nil "%f" yCoord( l_p0 ) ) "],\n"
-        "\t\"end\": [" sprintf( nil "%f" xCoord( l_p1 ) ) ", " sprintf( nil "%f" yCoord( l_p1 ) ) "]\n"
-        "}"
-    )
-)
-
-; Arc through two points with a signed radius, as polygon vertices describe it.
-;
-; axlPolyFromDB documents the vertex form as (xy f_radius) where the radius is
-; "0 if previous point and this point forms a segment else points form a arc
-; with radius. The sign of the radius indicates for postive the arc is to the
-; left ... a negitve indicates arc is the right", and that polygon arcs never
-; cross a quadrant. Never crossing a quadrant means every arc is a MINOR arc,
-; so chord + |radius| + side fixes the circle completely:
-;   * the centre lies on the perpendicular bisector of the chord, |h| away,
-;     on the left side for a positive radius and the right for a negative one;
-;   * with the centre to the left, walking the minor arc from p0 to p1 is
-;     counter-clockwise (and clockwise for a centre to the right).
-; alpha/beta/ccw are then emitted with exactly the convention makeArc() uses,
-; because the Python reader is the same build_contour() either way.
-procedure( s3dArcElement( l_p0 l_p1 f_r )
-    let( ( x0 y0 x1 y1 dx dy chord rad h mx my nx ny cx cy a1 a2 alpha beta ccw )
-        x0 = xCoord( l_p0 )
-        y0 = yCoord( l_p0 )
-        x1 = xCoord( l_p1 )
-        y1 = yCoord( l_p1 )
-        dx = x1 - x0
-        dy = y1 - y0
-        chord = sqrt( dx * dx + dy * dy )
-        when( chord > 1.0e-12
-            rad = abs( f_r )
-            ; A radius smaller than half the chord cannot span it; clamp to the
-            ; semicircle rather than taking sqrt of a negative number.
-            when( rad < chord / 2.0  rad = chord / 2.0 )
-            h = sqrt( max( 0.0 rad * rad - (chord / 2.0) * (chord / 2.0) ) )
-            mx = (x0 + x1) / 2.0
-            my = (y0 + y1) / 2.0
-            nx = -dy / chord
-            ny = dx / chord
-            if( f_r > 0.0 then
-                cx = mx + h * nx
-                cy = my + h * ny
-                ccw = t
-            else
-                cx = mx - h * nx
-                cy = my - h * ny
-                ccw = nil
-            )
-            a1 = axlRadToDeg( atan2( y0 - cy, x0 - cx ) )
-            when( negativep( a1 )  a1 = a1 + 360.0 )
-            a2 = axlRadToDeg( atan2( y1 - cy, x1 - cx ) )
-            when( negativep( a2 )  a2 = a2 + 360.0 )
-            if( ccw then
-                alpha = a1
-                beta = a2
-            else
-                alpha = a2
-                beta = a1
-            )
-            strcat(
-                "{\n\t\"type\": \"arc\",\n"
-                "\t\"center\": [" sprintf( nil "%f" cx ) ", " sprintf( nil "%f" cy ) "],\n"
-                "\t\"radius\": " sprintf( nil "%f" rad ) ",\n"
-                "\t\"alpha\": " sprintf( nil "%f" alpha ) ",\n"
-                "\t\"beta\": " sprintf( nil "%f" beta ) ",\n"
-                "\t\"ccw\": " if( ccw then "true" else "false" ) "\n"
-                "}"
-            )
+; Write one vertex list as  [x, y, radius]  rows, indented x_indent tabs.
+procedure( s3dWriteVertexList( p_port l_vertices x_indent )
+    let( ( pad ( isFirst t ) xy rad )
+        pad = ""
+        for( i 1 x_indent
+            pad = strcat( pad "	" )
         )
-    )
-)
-
-procedure( s3dDistance( l_p0 l_p1 )
-    let( ( dx dy )
-        dx = xCoord( l_p1 ) - xCoord( l_p0 )
-        dy = yCoord( l_p1 ) - yCoord( l_p0 )
-        sqrt( dx * dx + dy * dy )
-    )
-)
-
-; poly->vertices -> the list of primitive strings for one closed boundary.
-;
-; THE CLOSING EDGE HAS TO BE ADDED HERE. axlPolyFromDB's documentation says the
-; vertex list "always describes a closed shape", which reads as if the first
-; point were repeated at the end - it is not. exportJson, working from the same
-; attribute, appends an explicit "Z" to every path it builds out of vertices
-; (ttfVerticesToSvgPath, and the TTF branch of textToSvgPath); it has to, for
-; the same reason. Without the closing segment every contour arrives at the
-; STEP builder open and is rejected - which is exactly what happened on the
-; first real board: 13 of 13 polygons skipped, "Contour is open".
-;
-; The closing segment is emitted only when the two ends are genuinely apart, so
-; a list that DOES repeat its first point cannot gain a degenerate edge.
-procedure( s3dVerticesToElements( l_vertices )
-    let( ( out prev cur rad element first )
-        out = tconc( nil nil )
-        prev = nil
-        first = nil
         foreach( vertex l_vertices
-            cur = car( vertex )
+            if( isFirst then
+                isFirst = nil
+            else
+                fprintf( p_port ",
+" )
+            )
+            xy = car( vertex )
             rad = cadr( vertex )
             unless( rad  rad = 0.0 )
-            if( prev then
-                element = if( abs( rad ) > 1.0e-9 then
-                        s3dArcElement( prev cur rad )
-                    else
-                        s3dSegmentElement( prev cur )
-                    )
-                when( element  tconc( out element ) )
-            else
-                first = cur
-            )
-            prev = cur
+            fprintf( p_port "%s[%f, %f, %f]" pad xCoord( xy ) yCoord( xy ) rad )
         )
-        when( first && prev && (s3dDistance( prev first ) > 1.0e-6)
-            tconc( out s3dSegmentElement( prev first ) )
-        )
-        cdr( car( out ) )
     )
-)
-
-; One o_polygon -> list of primitive strings for its boundary.
-;
-; Always via vertices. poly->segments was tried first in the initial version and
-; is wrong here: for a polygon produced from a line or from an r_path with
-; ?line2poly, "Path describing boundary of shape" hands back the SOURCE
-; centreline - an open path - not the widened outline, so those contours arrived
-; open too. vertices is the representation axlPolyFromDB actually documents for
-; a polygon, and it is what exportJson reads as well.
-procedure( s3dPolyElements( g_poly )
-    s3dVerticesToElements( g_poly->vertices )
 )
 
 ;---------------------------------------------------------------------
@@ -1496,7 +1394,14 @@ procedure( s3dCollectSilkPolys( l_layers s_endCap )
             ; in the conversion cannot strand the session with a hidden design.
             errset( axlVisibleSet( saveVis ) )
             when( saveEnabled || saveOn
-                errset( axlSetFindFilter( ?enabled saveEnabled ?onButtons saveOn ) )
+                ; axlGetFindFilter reports DYNTHEMALS among the on-buttons but
+                ; refuses to take it back ("Options are ignored for onButtons"),
+                ; so handing its own answer straight back produces a warning on
+                ; every export. Drop it rather than leave the noise.
+                errset(
+                    axlSetFindFilter( ?enabled saveEnabled
+                                      ?onButtons remove( "DYNTHEMALS" saveOn ) )
+                )
             )
 
             foreach( elem elems
@@ -1678,7 +1583,7 @@ procedure( s3dMakeSilkscreen( l_config )
 ; quadratic and hits the same "insufficient memory" wall the component section
 ; already has a note about.
 procedure( s3dWriteSilkPolys( p_port l_polys )
-    let( ( ( firstPoly t ) elements holes ( firstHole t ) area )
+    let( ( ( firstPoly t ) holes ( firstHole t ) area )
         foreach( poly l_polys
             if( firstPoly then
                 firstPoly = nil
@@ -1688,20 +1593,18 @@ procedure( s3dWriteSilkPolys( p_port l_polys )
             fprintf( p_port "\t\t\t{\n" )
 
             ; Allegro's own area for this polygon, already net of its holes.
-            ; Carried purely so the Python side can check its reconstruction
-            ; against it: an arc rebuilt on the wrong side of its chord still
-            ; closes, so an area check is what catches a bad arc, and it is what
-            ; independently confirms the vertex-radius sign convention on a real
-            ; board. Costs one float per polygon.
+            ; This is the reference the Python side resolves the arc convention
+            ; against and then verifies every polygon by, so it is not optional
+            ; bookkeeping - without it the reconstruction has nothing to check
+            ; itself against. Costs one float per polygon.
             area = nil
             errset( area = poly->area )
             when( area
                 fprintf( p_port "\t\t\t\t\"area\": %f,\n" area )
             )
 
-            elements = s3dPolyElements( poly )
-            fprintf( p_port "\t\t\t\t\"outline\": [\n" )
-            fprintf( p_port "%s" addIndent( buildString( elements ",\n" ) 5 ) )
+            fprintf( p_port "\t\t\t\t\"vertices\": [\n" )
+            s3dWriteVertexList( p_port poly->vertices 5 )
             fprintf( p_port "\n\t\t\t\t]" )
 
             holes = poly->holes
@@ -1715,8 +1618,7 @@ procedure( s3dWriteSilkPolys( p_port l_polys )
                         fprintf( p_port ",\n" )
                     )
                     fprintf( p_port "\t\t\t\t\t[\n" )
-                    fprintf( p_port "%s"
-                             addIndent( buildString( s3dPolyElements( hole ) ",\n" ) 6 ) )
+                    s3dWriteVertexList( p_port hole->vertices 6 )
                     fprintf( p_port "\n\t\t\t\t\t]" )
                 )
                 fprintf( p_port "\n\t\t\t\t]" )

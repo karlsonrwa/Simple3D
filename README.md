@@ -211,6 +211,18 @@ centreline plus a width, and turning that into a filled outline is done by
 stroked or offset by hand, so what lands in the STEP is the same geometry that
 goes to the Gerber.
 
+**Every polygon is checked against Allegro's own area.** The exporter carries
+each polygon's area into the JSON, and the builder verifies its reconstruction
+against it — so a curve rebuilt the wrong way round cannot pass silently. The
+log says which reading of the vertex data won and how many polygons matched:
+
+```
+silkscreen_top: 214 polygon(s) match Allegro's areas (arc reading: ...)
+```
+
+If some polygons do not match, the log names the worst offender with both
+areas. That is worth reporting — it means the legend geometry is distorted.
+
 **Silkscreen is the same for every assembly variant.** The bare board is
 manufactured once and serves all of them, so the legend of a component that is
 not installed in a given variant is still physically printed on the board. It is
@@ -494,6 +506,18 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 плюс ширина, и превращение её в залитый контур делает `axlPolyFromDB`, а текст
 сначала векторизуется через `axlText2Lines`. Ничего не обводится и не смещается
 вручную, поэтому в STEP попадает та же геометрия, что уходит в Gerber.
+
+**Каждый полигон сверяется с площадью, которую сообщил Allegro.** Экспортёр
+кладёт площадь каждого полигона в JSON, а сборщик проверяет по ней свою
+реконструкцию — так что дуга, восстановленная не в ту сторону, не пройдёт
+молча. В логе видно, какое прочтение данных победило и сколько полигонов сошлось:
+
+```
+silkscreen_top: 214 polygon(s) match Allegro's areas (arc reading: ...)
+```
+
+Если часть полигонов не сошлась, лог называет худший случай с обеими площадями.
+Об этом стоит сообщать — значит, геометрия легенды искажена.
 
 **Шелкография одинакова для всех вариантов сборки.** Текстолит производится один
 раз и обслуживает все варианты, поэтому маркировка неустановленного в данном

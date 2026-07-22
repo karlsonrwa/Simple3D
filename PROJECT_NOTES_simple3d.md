@@ -956,3 +956,79 @@ started with a guess instead of a reading.
   overlapping strokes into few connected regions) or could mean the layer list
   did not match. The Allegro console prints the counts before and after
   clipping — that pair distinguishes the two, and has not been seen yet.
+
+## Update 2026-07-22 (round 10b) — the arc reading moved to Python, decided by area
+
+Second live run: contours now close (13 solids built), but the area check I had
+added in 10a fired on almost everything, with two distinct signatures:
+
+- top: 8 of 10, built **smaller** than declared by up to 6.5%;
+- bottom: 3 of 3, built 11.3024 mm2 against 1.45453 declared — 677% **larger**.
+
+Small-and-smaller is the exact signature the controlled flip test produced
+(-4.6%). Large-and-larger is what happens when a polygon with big arcs is
+rebuilt on the wrong side and turns into a petal shape instead of a disc. Both
+point the same way: the vertex-radius sign is being read backwards.
+
+### Why guessing again was the wrong move
+
+Two readings of the doc sentence are defensible ("positive: the arc is to the
+left" — the arc bulges left of travel, centre on the RIGHT? or the centre is on
+the left?), and there is a *second*, independent ambiguity next to it: each
+vertex carries the radius of the edge reaching it, and the list does not repeat
+its first point, so the first vertex's radius either describes the closing edge
+or nothing at all. Four combinations, one guess per round trip.
+
+### What was done instead
+
+The vertex list now goes into the JSON raw — `[x, y, signed_radius]` per point —
+and Python resolves the reading itself, scoring all four combinations against
+the areas Allegro reported and keeping the one that reproduces them. The winner
+is logged in words; every polygon is then verified individually under it.
+
+This is the right split of responsibility, and it should have been the design in
+round 10: **the side that can measure the answer is the side that should decide.**
+SKILL has the database but no way to check a reconstruction; Python has an
+area oracle for every polygon and was throwing it away.
+
+Two side benefits: the JSON is much smaller (one line per vertex instead of a
+five-line primitive object), and the SKILL side lost `s3dArcElement`,
+`s3dSegmentElement`, `s3dVerticesToElements`, `s3dPolyElements` and
+`s3dDistance` — about 120 lines of geometry that no longer exists to be wrong.
+
+Arcs are now built through three points (start, arc midpoint, end) with
+`GC_MakeArcOfCircle`, so there is no alpha/beta/sense bookkeeping left either.
+Polygon arcs never cross a quadrant, so every one is a minor arc and its
+midpoint is unambiguous.
+
+### The counts were fine after all
+
+Round 10a flagged "10 top / 3 bottom is few". Console shows 12 and 12 before
+clipping, 10 and 3 after. `axlPolyOperation` takes *sets* of polygons, so
+overlapping members of the input come back merged — a cluster of touching
+strokes becomes one region. The reduction is a union, not a loss. Nothing to fix.
+
+### Also fixed
+`*WARNING* (axlSetFindFilter): Options are ignored for onButtons -
+"DYNTHEMALS"` on every export was ours: `axlGetFindFilter` reports DYNTHEMALS
+among the on-buttons and `axlSetFindFilter` refuses to take it back. It is now
+dropped from the list before restoring.
+
+### Verified here
+- Convention recovery: a shape described once geometrically, emitted as if
+  Allegro used each of the four conventions in turn; the reader picks each one
+  back out, builds all polygons, and issues no warning. Capsule and circle areas
+  come back at 3.6e-15 and 5.3e-15 from truth.
+- The streaming writer transliterated and its output parsed as JSON across six
+  shapes: both sides populated, empty top, empty bottom, both empty, two holes
+  on one polygon, and a polygon with no area key. All parse, all counts right,
+  and the assembled file builds end to end.
+- The area check demonstrably fires when it should: a polygon given a wrong
+  declared area is reported at 142.9%.
+- Old-format JSON (baked `outline` primitives) still builds — back-compat kept.
+- Paren balance 0, py_compile clean, demo board unchanged at 5 solids.
+
+### Still user-verified only
+- Which of the four readings the real board actually uses. The log now states
+  it; worth recording here once seen, because it settles the doc question for
+  good.
