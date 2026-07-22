@@ -1188,3 +1188,65 @@ version ever disagrees.
 Silkscreen is geometrically correct on a real board: 13 of 13 polygons match
 Allegro's own areas, no polygons skipped. Remaining unknowns are operational
 (runtime on a dense board, clip batch size), not correctness.
+
+## Update 2026-07-22 (round 10e) — the mitre was Allegro's, not ours
+
+With the sign rule settled, the model still showed square outer corners on some
+turns and round ones on others. Two screenshots of different places on the same
+board, one of each.
+
+### It is in the source polygon, and it is measurable
+
+The reconstruction is faithful — all 13 polygons match Allegro's own areas to
+3e-7..4.6e-7 mm2 — so the corner is square in what `axlPolyFromDB` returned.
+Scanning the user's JSON for right-angle corners between two straight edges:
+
+```
+10 CONVEX 90-degree corners with no arc at all
+top #9, corner (19.975, 8.225):
+    centreline corner (19.900, 8.150), half width 0.075
+    diagonal offset = 0.106066 = 0.075 * sqrt(2)   <- a textbook mitre
+```
+
+`axlPolyFromDB` called on a whole line/cline MITRES the joins between its
+segments. A plot sweeps a round aperture along the path, so the artwork - and
+Allegro's own 3D - has a round join of radius w/2 there.
+
+The corners that DID come out round are junctions of two separate lines, where
+the round END caps overlap. That is the whole inconsistency: not two kinds of
+error, but one kind of geometry (a mitred path join) sitting next to correct
+geometry (overlapping caps).
+
+### Fix: convert a path one segment at a time
+
+Each segment then gets its own round caps, and the union of overlapping stadiums
+IS a round join. The documentation says the same from the other side: of
+`?line2poly` it notes "typically one poly is returned for each segment in the
+r_path" - which is exactly why text, which goes through that path, never showed
+the problem. Shapes and rects are still converted whole; they are boundaries
+already, with nothing to sweep.
+
+Nothing is merged in SKILL: the Python side draws a compound of overlapping
+solids anyway, and with clipping on `axlPolyOperation` unions them as a side
+effect of the AND.
+
+### Verified here
+Rendering the corner both ways (BRepClass_FaceClassifier over a grid), from the
+real polygon versus the same two centrelines converted per segment: the mitre
+is square, the per-segment union is round. Regression suite unchanged.
+
+### Note for next time
+The area oracle cannot see this class of defect at all - a mitred polygon is
+perfectly consistent with its own reported area. Two things it is blind to are
+now known: compensating errors (two caps inverted the opposite way, round 10c)
+and faithful reproduction of geometry that is itself not what we want (this
+round). Both were caught by looking at a picture. Rasterising a face to text
+costs nothing and should be the first move whenever a shape "looks wrong" but
+the numbers agree.
+
+### NOT verified here
+That per-segment conversion actually works on a live board: whether
+`axlPolyFromDB` accepts a segment dbid and picks up the width from its parent
+path. If a segment fails to convert, its piece of the line disappears and no
+area check can notice, so the SKILL side now warns when a path yields fewer
+polygons than it has segments. Needs a re-export to confirm.

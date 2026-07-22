@@ -1330,30 +1330,84 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
 ; polygon with ?line2poly (verbatim the idiom in the axlText2Lines docs).
 ; True-type text has no text block and is converted directly instead - that is
 ; how exportJson tells the two apart as well.
+; A multi-segment path is converted ONE SEGMENT AT A TIME, and that is the
+; whole point rather than an optimisation.
+;
+; axlPolyFromDB on a whole line/cline MITRES the joins between its segments: on
+; a real board, a 0.15 wide line turning a right angle came back with a square
+; outer corner whose diagonal offset was exactly 0.075*sqrt(2) - a textbook
+; mitre - where the artwork has a round join, because a plot sweeps a round
+; aperture along the path. The 3D model then showed sharp corners on some turns
+; while others (junctions of two separate lines, where the round END CAPS
+; overlap) came out round, which is exactly the inconsistency reported.
+;
+; Converting each segment separately gives each one round caps, and the union of
+; those overlapping stadiums IS a round join. The documentation says the same
+; thing from the other direction: of ?line2poly it notes "typically one poly is
+; returned for each segment in the r_path" - which is why text, which goes
+; through that path, never had the problem.
+;
+; They are deliberately NOT merged here. The Python side draws a compound of
+; overlapping solids anyway, and when clipping is on axlPolyOperation unions
+; them as a side effect of the AND.
 procedure( s3dPolysFromDbid( o_dbid s_endCap )
-    let( ( polys lines flat )
+    let( ( polys lines flat segments )
         polys = nil
-        if( o_dbid->objType == "text" then
-            if( o_dbid->textBlock then
-                errset( lines = axlText2Lines( o_dbid ) )
-                when( lines
-                    flat = foreach( mapcan x lines x )
-                    foreach( path flat
-                        errset(
-                            polys = append( polys
-                                axlPolyFromDB( path ?endCapType s_endCap ?line2poly t ) )
+        cond(
+            ( o_dbid->objType == "text"
+                ; Allegro draws text as strokes, so a text dbid is vectorised
+                ; with axlText2Lines and each r_path widened with ?line2poly -
+                ; verbatim the idiom in the axlText2Lines docs. True-type text
+                ; has no text block and converts directly instead; that is how
+                ; exportJson tells the two apart as well.
+                if( o_dbid->textBlock then
+                    errset( lines = axlText2Lines( o_dbid ) )
+                    when( lines
+                        flat = foreach( mapcan x lines x )
+                        foreach( path flat
+                            errset(
+                                polys = append( polys
+                                    axlPolyFromDB( path ?endCapType s_endCap ?line2poly t ) )
+                            )
                         )
                     )
+                    ; A font that does not vectorise still has an outline form.
+                    unless( polys
+                        errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
+                    )
+                else
+                    errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
                 )
-                ; A font that does not vectorise still has an outline form.
+            )
+            ( o_dbid->objType == "path"
+                segments = nil
+                errset( segments = o_dbid->segments )
+                foreach( segment segments
+                    errset(
+                        polys = append( polys
+                            axlPolyFromDB( segment ?endCapType s_endCap ) )
+                    )
+                )
+                ; A segment that will not convert on its own drops a piece of
+                ; the line silently, and the area check downstream cannot see a
+                ; missing stroke - each surviving polygon is still consistent
+                ; with its own area. So say it here. One segment may yield more
+                ; than one polygon, hence "fewer than".
+                when( segments && (length( polys ) < length( segments ))
+                    printf( "Simple 3D: warning - a silkscreen line has %d segment(s) but produced only %d polygon(s).\n"
+                            length( segments ) length( polys ) )
+                )
+                ; Single-segment paths, or a path whose segments will not
+                ; convert on their own, still have to come out somehow.
                 unless( polys
                     errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
                 )
-            else
+            )
+            ( t
+                ; shapes, rects, filled areas: a boundary already, nothing to
+                ; sweep, so convert whole.
                 errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
             )
-        else
-            errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
         )
         polys
     )
