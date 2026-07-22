@@ -233,11 +233,24 @@ RULE_AXIS = "axis"
 
 _Convention = tuple  # (rule: str, positive_is_first: bool, first_radius_closes: bool)
 
+# MEASURED on a real board (Allegro 24.1, 2026-07-22): the reading Allegro
+# actually uses is AXIS / positive-sits-left / first-radius-closes. Scored
+# against that board's own polygon areas it lands at 0.0004% (top) and 0.0000%
+# (bottom), while every other reading is off by 1.3% to 677%. It is listed
+# first so that a legend of nothing but straight lines - where every reading is
+# equivalent and the scores tie - still resolves to the one known to be right.
+#
+# The search is kept rather than hard-coding it: it costs one pass over a
+# handful of small polygons, it is what established this in the first place,
+# and it will say so in the log if another Allegro version disagrees.
 _CONVENTIONS: list[_Convention] = [
+    (RULE_AXIS, True, True),
+] + [
     (rule, polarity, closes)
-    for rule in (RULE_TRAVEL, RULE_AXIS)
+    for rule in (RULE_AXIS, RULE_TRAVEL)
     for polarity in (True, False)
     for closes in (True, False)
+    if (rule, polarity, closes) != (RULE_AXIS, True, True)
 ]
 
 

@@ -1107,3 +1107,84 @@ Which rule the real board uses is still unconfirmed — AXIS is a hypothesis tha
 fits the symptom, not a measurement. Asked the user for the JSON so the eight
 candidates can be scored against real vertex data and real areas offline,
 instead of one candidate per round trip.
+
+## Update 2026-07-22 (round 10d) — SETTLED: the sign rule, measured
+
+The user supplied `my_test_board-a0.json`. That closed the question by
+measurement instead of by another round trip.
+
+### The answer
+
+**AXIS / positive-sits-left / first-radius-closes.** A positive radius means the
+arc lies to the LEFT of the vertical through its own centre; the first vertex's
+radius describes the closing edge back to it. The doc sentence "the arc is to
+the left of the y-axis" meant exactly what it said, and "y-axis" is the one
+through the arc's centre — not the direction of travel.
+
+Scored over the board's own polygon areas, every candidate at once:
+
+```
+                              top        bottom
+('axis',   True,  True )    0.0004%     0.0000%   <-- correct
+('axis',   True,  False)    1.3083%    25.9491%
+('travel', True,  False)    3.9257%   625.1500%
+('travel', False, True )    5.2343%   651.0991%
+('travel', True,  True )    5.2343%   651.0991%
+('travel', False, False)    6.5430%   677.0483%
+('axis',   False, False)    9.1604%    83.6356%
+('axis',   False, True )   10.4690%    57.6865%
+```
+
+The residual 0.0004% is the JSON's `%f` rounding of the area to six decimals,
+not geometry: per-polygon absolute differences are 3e-7 to 4.6e-7 mm2 on all 13.
+
+Note the last line of the table: 677.0483% is verbatim the number in the round
+10b failure report. The whole diagnosis chain reconciles.
+
+### Confirmed by hand, on the raw data, before running anything
+
+Top polygon #0 is a plain stroke, width 0.15, round caps:
+
+```
+[3.910, 2.850, +0.075]   left cap, centre (3.985, 2.850) -> arc lies LEFT
+[3.985, 2.775, +0.075]   left cap                        -> arc lies LEFT
+[6.515, 2.775,  0.000]
+[6.590, 2.850, -0.075]   right cap, centre (6.515, 2.850) -> arc lies RIGHT
+[6.515, 2.925, -0.075]   right cap                        -> arc lies RIGHT
+[3.985, 2.925,  0.000]
+```
+
+The two caps of one stroke carry OPPOSITE signs. Under TRAVEL they would be
+identical. That single observation decides between the rules, and it is visible
+in six lines of the file — which is why asking for the file was worth more than
+any further reasoning from the documentation.
+
+Its area: `2.53 x 0.15 + pi x 0.075^2 = 0.397171`, against `"area": 0.397171`.
+
+### And confirmed by looking at it
+
+Rasterising the faces under both readings (BRepClass_FaceClassifier over a
+grid) reproduces all three of the user's complaints under TRAVEL and none under
+AXIS:
+
+- the round cap comes out cut back on one side instead of a clean semicircle;
+- the L-shaped stroke loses the fillet at its right-angle turn;
+- the bottom stadium ring loses its hole entirely and becomes a blob — which is
+  what a 677% area error looks like.
+
+Worth keeping as a habit: area agreement is necessary, not sufficient. Two
+inverted caps can cancel. Rasterising a face to text is cheap and catches what
+a scalar cannot.
+
+### Change
+
+`('axis', True, True)` is now first in `_CONVENTIONS`, so a legend of nothing but
+straight lines — where all readings tie — resolves to the reading known to be
+correct. The search is kept: it costs one pass over a handful of small polygons,
+it is what established this, and it will report in the log if another Allegro
+version ever disagrees.
+
+### Requirement 7 status
+Silkscreen is geometrically correct on a real board: 13 of 13 polygons match
+Allegro's own areas, no polygons skipped. Remaining unknowns are operational
+(runtime on a dense board, clip batch size), not correctness.
