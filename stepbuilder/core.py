@@ -175,6 +175,91 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0) -> T
 
 
 # --------------------------------------------------------------------------- #
+# silkscreen
+# --------------------------------------------------------------------------- #
+
+# Fallback ink thickness (mm) when the JSON does not carry one. 25 um is a
+# typical cured screen-printed legend; the SKILL side normally supplies it from
+# simple3d_config.json.
+DEFAULT_SILK_THICKNESS = 0.025
+
+
+def _silk_face(outline: list[dict], holes: list[list[dict]], z: float):
+    """One silkscreen polygon (outer contour + holes) as a planar face at *z*."""
+    maker = BRepBuilderAPI_MakeFace(build_contour(outline, z), True)
+    if not maker.IsDone():
+        raise StepBuilderError("silkscreen outline is not planar or self-intersects")
+
+    for hole in holes:
+        # A hole wire has to run opposite to the outer one for MakeFace to read
+        # it as a void; ShapeFix_Face below repairs the cases where the source
+        # contour already came the other way round.
+        maker.Add(TopoDS.Wire_s(build_contour(hole, z).Reversed()))
+
+    face = maker.Face()
+    if holes:
+        from OCP.ShapeFix import ShapeFix_Face
+
+        fix = ShapeFix_Face(face)
+        fix.FixOrientation()
+        face = fix.Face()
+    return face
+
+
+def build_silkscreen(
+    polygons: Iterable[dict],
+    z: float,
+    thickness: float,
+    log: LogFn = _noop_log,
+    side: str = "",
+) -> tuple[TopoDS_Compound | None, int, int]:
+    """Extrude one side's silkscreen polygons into a compound of thin solids.
+
+    Returns (compound, built, skipped). *thickness* is signed: positive extrudes
+    upwards (top side), negative downwards (bottom side).
+
+    The solids are deliberately NOT fused. Silkscreen is thousands of
+    overlapping strokes and glyphs, and a boolean union of that many thin
+    prisms is minutes of OCCT time with a real chance of failing outright,
+    while the union buys nothing: the result is one label, one colour, and it
+    renders and exports identically. What it costs is that the compound is not
+    a single manifold solid, which matters only if someone means to do
+    downstream boolean work on the ink itself.
+
+    A polygon that cannot be built is counted and skipped rather than taken as
+    fatal - one malformed glyph must not cost the whole board.
+    """
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+
+    built = 0
+    skipped = 0
+    first_error: str | None = None
+
+    for polygon in polygons:
+        outline = polygon.get("outline")
+        if not outline:
+            skipped += 1
+            continue
+        try:
+            face = _silk_face(outline, polygon.get("holes", []), z)
+            builder.Add(compound, BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, thickness)).Shape())
+            built += 1
+        except (StepBuilderError, RuntimeError, KeyError, TypeError) as exc:
+            skipped += 1
+            if first_error is None:
+                first_error = str(exc)
+
+    if skipped:
+        log(f"warning: {skipped} {side} silkscreen polygon(s) skipped "
+            f"(first: {first_error})")
+    if not built:
+        return None, 0, skipped
+    return compound, built, skipped
+
+
+# --------------------------------------------------------------------------- #
 # transforms
 # --------------------------------------------------------------------------- #
 
@@ -275,6 +360,8 @@ class BuildResult:
     components_placed: int = 0
     components_skipped: list[str] = field(default_factory=list)
     missing_step_files: list[str] = field(default_factory=list)
+    silkscreen_solids: int = 0
+    silkscreen_skipped: int = 0
     # MFRPN reporting DISABLED (property attachment unreliable); kept for future:
     # missing_mfr_pn: list[str] = field(default_factory=list)
 
@@ -427,6 +514,8 @@ def generate(
     z_datum: str = "top",
     board_color: tuple[int, int, int] | None = None,
     rim_color: tuple[int, int, int] | None = None,
+    silkscreen: bool = True,
+    silk_color: tuple[int, int, int] | None = None,
     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
     minimize_size: bool = True,
     srgb_color: bool = True,
@@ -443,6 +532,11 @@ def generate(
     board_color / rim_color:
         RGB 0-255. board_color defaults to the JSON's pcb.color. rim_color, if
         given, paints the board sides + underside separately from the top face.
+    silkscreen:
+        Build the printed legend, if the JSON carries one (format_version 2+).
+        Silently does nothing for an older JSON or a board with no silkscreen.
+    silk_color:
+        RGB 0-255 for the ink; defaults to colors.SILK_COLORS["White"].
     minimize_size:
         Set write.surfacecurve.mode = 0 (about half the file size, geometry
         unchanged) and share one part per distinct model.
@@ -530,6 +624,46 @@ def generate(
     TDataStd_Name.Set_s(pcb_label, TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
     shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))
 
+    # ---- silkscreen ------------------------------------------------------ #
+    # Its own part per side, so it can be hidden or recoloured in the viewer
+    # without touching the board, and so the two sides stay distinguishable.
+    silk_data = data.get("silkscreen")
+    silk_built = 0
+    silk_skipped = 0
+    if silkscreen and silk_data:
+        from .colors import SILK_COLORS
+
+        ink = silk_color if silk_color is not None else SILK_COLORS["White"]
+        ink01 = (ink[0] / 255.0, ink[1] / 255.0, ink[2] / 255.0)
+        ink_thickness = float(silk_data.get("thickness", DEFAULT_SILK_THICKNESS))
+
+        # The ink sits ON the outer face of each side and grows away from the
+        # board, so it never intersects the solid it is printed on.
+        for side, polygons, z, sign in (
+            ("silkscreen_top", silk_data.get("top") or [], board_top_z, 1.0),
+            ("silkscreen_bot", silk_data.get("bottom") or [], board_bottom_z, -1.0),
+        ):
+            if not polygons:
+                continue
+            log(f"Building {side} ({len(polygons)} polygons)")
+            compound, built, skipped = build_silkscreen(
+                polygons, z, sign * ink_thickness, log=log, side=side
+            )
+            silk_built += built
+            silk_skipped += skipped
+            if compound is None:
+                continue
+            silk_label = shape_tool.NewShape()
+            shape_tool.SetShape(silk_label, compound)
+            _set_color(color_tool, silk_label, ink01, srgb_color)
+            TDataStd_Name.Set_s(
+                silk_label,
+                TCollection_ExtendedString(_sanitize(f"{side}_{json_stem}")),
+            )
+            shape_tool.AddComponent(main_assembly, silk_label, TopLoc_Location(gp_Trsf()))
+    elif silkscreen and not silk_data:
+        log("No silkscreen in this JSON (re-export from Allegro to include it)")
+
     # ---- component group assemblies (symbols_top / symbols_bot) ---------- #
     # Created lazily so a single-sided board does not get an empty group.
     groups: dict[str, TDF_Label] = {}
@@ -543,9 +677,15 @@ def generate(
         return groups[side]
 
     # ---- components ------------------------------------------------------ #
-    _reserved = ("name", "pcb", "format", "format_version")
+    # Anything not reserved is a refdes. "silkscreen" MUST be listed here or it
+    # would be walked as if it were a component.
+    _reserved = ("name", "pcb", "format", "format_version", "silkscreen")
     components = {k: v for k, v in data.items() if k not in _reserved}
-    result = BuildResult(output=output_dir / f"{json_stem}.step")
+    result = BuildResult(
+        output=output_dir / f"{json_stem}.step",
+        silkscreen_solids=silk_built,
+        silkscreen_skipped=silk_skipped,
+    )
 
     # One shared part per distinct STEP model (task 5). The label is imported
     # once and every refdes referencing that model becomes an instance of it, so

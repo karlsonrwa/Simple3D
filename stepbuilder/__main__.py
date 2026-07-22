@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from . import core
-from .colors import resolve_board_color
+from .colors import DEFAULT_SILK, SILK_ORDER, resolve_board_color, resolve_silk_color
 
 
 def _gui_prefill(argv: list[str]) -> int:
@@ -32,6 +32,8 @@ def _gui_prefill(argv: list[str]) -> int:
     p.add_argument("--brd-name", default="")
     p.add_argument("--dated-name", action="store_true")
     p.add_argument("--color", default="")
+    p.add_argument("--silk-color", default="")
+    p.add_argument("--no-silkscreen", action="store_true")
     args, _ = p.parse_known_args(argv)
 
     from .gui import StepBuilderApp
@@ -43,6 +45,10 @@ def _gui_prefill(argv: list[str]) -> int:
         if args.color:
             app.theme.set(args.color)
             app._update_swatch()
+        if args.silk_color:
+            app.silk_color.set(args.silk_color)
+        if args.no_silkscreen:
+            app.export_silk.set(False)
         app.prefill_jobs(
             json_dir=args.json_dir or None,
             json_file=args.json_file or None,
@@ -122,6 +128,14 @@ def main(argv: list[str] | None = None) -> int:
         "--rim-color", default=None,
         help="separate colour for the board rim/underside (same formats as --color)",
     )
+    parser.add_argument(
+        "--no-silkscreen", action="store_true",
+        help="do not build the printed legend even if the JSON carries one",
+    )
+    parser.add_argument(
+        "--silk-color", default=DEFAULT_SILK,
+        help=f"silkscreen colour: {' or '.join(SILK_ORDER)} (default: {DEFAULT_SILK})",
+    )
     # MFRPN DISABLED (property attachment unreliable); kept for future:
     # parser.add_argument(
     #     "--mfr-pn-in-name", action="store_true",
@@ -144,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
 
     board_color = resolve_board_color(args.color) if args.color else None
     rim_color = resolve_board_color(args.rim_color) if args.rim_color else None
+    silk_color = resolve_silk_color(args.silk_color) if args.silk_color else None
 
     json_path = Path(args.json_file)
     output_dir = Path(args.output_dir)
@@ -178,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
                 z_datum=args.z_datum,
                 board_color=board_color,
                 rim_color=rim_color,
+                silkscreen=not args.no_silkscreen,
+                silk_color=silk_color,
                 # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
                 minimize_size=not args.no_minimize,
                 srgb_color=not args.legacy_color,
@@ -190,6 +207,8 @@ def main(argv: list[str] | None = None) -> int:
 
         if result.missing_step_files:
             log(f"warning: {len(result.missing_step_files)} STEP file(s) not found")
+        if result.silkscreen_solids:
+            log(f"silkscreen: {result.silkscreen_solids} solid(s)")
         # MFRPN DISABLED (kept for future):
         # if result.missing_mfr_pn:
         #     log(f"warning: {len(result.missing_mfr_pn)} component(s) without MFRPN")

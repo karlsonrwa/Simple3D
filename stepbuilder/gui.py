@@ -22,7 +22,16 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import core
-from .colors import BOARD_THEMES, CREAM_DIELECTRIC, DEFAULT_THEME, THEME_ORDER, resolve_board_color
+from .colors import (
+    BOARD_THEMES,
+    CREAM_DIELECTRIC,
+    DEFAULT_SILK,
+    DEFAULT_THEME,
+    SILK_COLORS,
+    SILK_ORDER,
+    THEME_ORDER,
+    resolve_board_color,
+)
 
 CONFIG_PATH = Path.home() / ".stepbuilder.json"
 
@@ -57,6 +66,8 @@ class BuildSettings:
     z_datum: str
     board_color: tuple[int, int, int] | None
     rim_color: tuple[int, int, int] | None
+    export_silk: bool
+    silk_color: tuple[int, int, int] | None
     minimize: bool
     brd_name: str | None
     dated_name: bool
@@ -80,6 +91,8 @@ class StepBuilderApp(tk.Tk):
         self.theme = tk.StringVar(value=DEFAULT_THEME)
         self.rim_choice = tk.StringVar(value=RIM_SAME)
         self.rim_custom = tk.StringVar(value="")
+        self.export_silk = tk.BooleanVar(value=True)
+        self.silk_color = tk.StringVar(value=DEFAULT_SILK)
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
@@ -148,8 +161,27 @@ class StepBuilderApp(tk.Tk):
         ttk.Radiobutton(zrow, text="Bottom of board", variable=self.z_datum,
                         value="bottom").pack(side="left", padx=(10, 0))
 
+        # --- silkscreen ---
+        # The colour is a closed two-item choice, not the free entry the board
+        # rim gets: legend ink is white or black and nothing else, so offering
+        # a hex field here would only invite a value no fab can print.
+        silk_row = ttk.Frame(opts)
+        silk_row.grid(row=2, column=0, columnspan=5, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(silk_row, text="Export silkscreen", variable=self.export_silk,
+                        command=self._update_silk_row).pack(side="left")
+        ttk.Label(silk_row, text="Colour").pack(side="left", padx=(12, 6))
+        self.silk_box = ttk.Combobox(
+            silk_row, textvariable=self.silk_color, values=SILK_ORDER,
+            state="readonly", width=10
+        )
+        self.silk_box.pack(side="left")
+        self._silk_swatch = tk.Canvas(silk_row, width=22, height=22, highlightthickness=1,
+                                      highlightbackground="#888")
+        self._silk_swatch.pack(side="left", padx=(6, 0))
+        self.silk_box.bind("<<ComboboxSelected>>", lambda e: self._update_silk_row())
+
         checks = ttk.Frame(opts)
-        checks.grid(row=2, column=0, columnspan=5, sticky="w", pady=(6, 0))
+        checks.grid(row=3, column=0, columnspan=5, sticky="w", pady=(6, 0))
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # ttk.Checkbutton(checks, text="Append MFRPN to instance names",
         #                 variable=self.mfr_pn_in_name).pack(side="left")
@@ -186,6 +218,7 @@ class StepBuilderApp(tk.Tk):
 
         self._update_swatch()
         self._update_rim_entry()
+        self._update_silk_row()
 
     def _build_actions(self) -> None:
         """All action buttons live here. Add new ones alongside Generate."""
@@ -210,6 +243,13 @@ class StepBuilderApp(tk.Tk):
     def _update_rim_entry(self) -> None:
         state = "normal" if self.rim_choice.get() == RIM_CUSTOM else "disabled"
         self.rim_entry.configure(state=state)
+
+    def _update_silk_row(self) -> None:
+        """Keep the ink swatch and the enabled state in step with the checkbox."""
+        on = self.export_silk.get()
+        self.silk_box.configure(state="readonly" if on else "disabled")
+        rgb = SILK_COLORS.get(self.silk_color.get(), (128, 128, 128))
+        self._silk_swatch.configure(bg="#%02x%02x%02x" % rgb)
 
     # ------------------------------------------------------------ prefill -- #
 
@@ -316,6 +356,8 @@ class StepBuilderApp(tk.Tk):
             z_datum=self.z_datum.get(),
             board_color=BOARD_THEMES.get(self.theme.get()),
             rim_color=self._rim_color(),
+            export_silk=self.export_silk.get(),
+            silk_color=SILK_COLORS.get(self.silk_color.get()),
             minimize=self.minimize.get(),
             brd_name=self._brd_name,
             dated_name=self._dated_name,
@@ -398,6 +440,8 @@ class StepBuilderApp(tk.Tk):
                     z_datum=settings.z_datum,
                     board_color=settings.board_color,
                     rim_color=settings.rim_color,
+                    silkscreen=settings.export_silk,
+                    silk_color=settings.silk_color,
                     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
                     minimize_size=settings.minimize,
                     log=lambda m: self._queue.put(("log", m)),
@@ -416,6 +460,9 @@ class StepBuilderApp(tk.Tk):
 
             total_placed += result.components_placed
             outputs.append(result.output.name)
+            if result.silkscreen_solids:
+                self._queue.put(("log", f"{result.output.name}: silkscreen "
+                                        f"{result.silkscreen_solids} solid(s)"))
             if result.missing_step_files:
                 warnings.append(f"{result.output.name}: {len(result.missing_step_files)} STEP missing")
             # MFRPN DISABLED (kept for future):
@@ -521,6 +568,8 @@ class StepBuilderApp(tk.Tk):
         self.output_dir.set(cfg.get("output_dir", ""))
         self.z_datum.set(cfg.get("z_datum", "top"))
         self.theme.set(cfg.get("theme", DEFAULT_THEME))
+        self.export_silk.set(cfg.get("export_silk", True))
+        self.silk_color.set(cfg.get("silk_color", DEFAULT_SILK))
         # MFRPN DISABLED (kept for future):
         # self.mfr_pn_in_name.set(cfg.get("mfr_pn_in_name", False))
         self.minimize.set(cfg.get("minimize", True))
@@ -535,6 +584,8 @@ class StepBuilderApp(tk.Tk):
                         "output_dir": self.output_dir.get(),
                         "z_datum": self.z_datum.get(),
                         "theme": self.theme.get(),
+                        "export_silk": self.export_silk.get(),
+                        "silk_color": self.silk_color.get(),
                         # MFRPN DISABLED (kept for future):
                         # "mfr_pn_in_name": self.mfr_pn_in_name.get(),
                         "minimize": self.minimize.get(),

@@ -1,0 +1,22 @@
+{
+    "silkscreen": {
+        "top": [
+            "BOARD GEOMETRY/SILKSCREEN_TOP",
+            "PACKAGE GEOMETRY/SILKSCREEN_TOP",
+            "REF DES/SILKSCREEN_TOP",
+            "COMPONENT VALUE/SILKSCREEN_TOP"
+        ],
+        "bottom": [
+            "BOARD GEOMETRY/SILKSCREEN_BOTTOM",
+            "PACKAGE GEOMETRY/SILKSCREEN_BOTTOM",
+            "REF DES/SILKSCREEN_BOTTOM",
+            "COMPONENT VALUE/SILKSCREEN_BOTTOM"
+        ]
+    },
+    "settings": {
+        "exportSilkscreen": true,
+        "silkscreenThickness": 0.025,
+        "clipToBoardOutline": true,
+        "endCapType": "ROUND"
+    }
+}

@@ -10,6 +10,11 @@
 ;    3. launches the Python GUI with the JSON path, the output (cad)
 ;       path and the dated output filename already filled in.
 ;
+;  Silkscreen, when enabled, is collected by makeVariant3dIntermediates into
+;  the same JSON and extruded into thin solids by the Python side. Which
+;  Allegro layers count as silkscreen (and the ink thickness) is set in
+;  simple3d_config.json, next to these two files - see S3D_ConfigFile.
+;
 ;  LOAD ORDER (e.g. from allegro.ilinit or manually). The whole tool lives in
 ;  ONE folder, so both loads share the same base - match it to S3D_ScriptDir:
 ;      load("d:/Projects/OrCAD/Scripts/Simple3D/makeVariant3dIntermediates.il")  ; incl. fixes + MFRPN helpers
@@ -58,6 +63,16 @@ S3D_ModelLibDir = "d:/Projects/OrCAD/CIS/3D"
 ; Default board colour pre-selected in the GUI. Must be one of the theme names
 ; in colors.py: Black Blue Dark_green Green Purple Red White Yellow.
 S3D_DefaultColor = "Dark_green"
+
+; Silkscreen settings file - which Allegro layers count as silkscreen, the ink
+; thickness, and whether to clip to the board outline. Ships next to the two
+; .il files; edit it, not the source, to match a different layer naming scheme.
+; Set to "" to fall back to the built-in defaults in
+; makeVariant3dIntermediates.il.
+S3D_ConfigFile = strcat( S3D_ScriptDir "/simple3d_config.json" )
+
+; Default silkscreen colour pre-selected in the GUI: "White" or "Black".
+S3D_DefaultSilkColor = "White"
 
 ; MFRPN DISABLED (property attachment unreliable); kept for future re-enable.
 ; If t, abort the export when an exportable component (one that has a STEP
@@ -201,7 +216,8 @@ procedure( s3dExportCommand()
         ; createDir's it, so pointing it at cad needs no patch. With a
         ; Variants.lst present it writes one JSON per variant.
         printf( "Simple 3D: writing intermediate JSON...\n" )
-        makeVariant3dIntermediates( cadDir )
+        makeVariant3dIntermediates( cadDir list( 0.0 0.4 0.0 )
+                                    if( (S3D_ConfigFile != "") then S3D_ConfigFile else nil ) )
 
         ; --- can Python actually start? -------------------------------
         ; Done AFTER the JSON exists, so a broken Python install still leaves the
@@ -238,7 +254,8 @@ procedure( s3dExportCommand()
             "--output-dir \"" cadDir "\" "
             "--brd-name \"" designName "\" "
             "--dated-name "
-            "--color \"" S3D_DefaultColor "\""
+            "--color \"" S3D_DefaultColor "\" "
+            "--silk-color \"" S3D_DefaultSilkColor "\""
         )
 
         printf( "Simple 3D: launching GUI (%s)\n" argTail )

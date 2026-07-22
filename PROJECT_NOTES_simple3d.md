@@ -273,13 +273,14 @@ documented in addIndent (harmless: generator never emits empty lines, byte-verif
 First written 2026-07-18, when all six were implemented. Unlike the dated round
 entries below, this table is **not** a historical snapshot: revise a row in place
 whenever a later round changes that requirement's state, and name the round that
-changed it so the trail stays followable. Last revised: round 9 (2026-07-21).
+changed it so the trail stays followable. Last revised: round 10 (2026-07-22).
 
 Delivered files (as of 2026-07-18; the `exportstep_fixes.il` overlay was folded
 into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 - `exportstep_fixes.il` v1.1 — SKILL overlay (thickness, addIndent, mfr_pn, pre-flight).
 - `simple3d.il` v1.0 — File→Export→Simple 3D menu, pcb→cad, launches prefilled GUI.
 - `stepbuilder/` — Python package: core.py, colors.py, gui.py, __main__.py.
+- `simple3d_config.json` — added round 10: silkscreen layer lists + ink settings.
 
 | # | requirement | status |
 |---|---|---|
@@ -289,6 +290,7 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | 4 | symbols_top/bot, unique names `refdes_<jsonname>` | **PARTIAL** — groups and shared parts done (part = model file). The `refdes_<jsonname>` instance naming this requirement asks for was **removed in round 8** as over-complication, so no reference designator survives into the STEP at all. The requirement itself was never withdrawn: either restore the naming or amend requirement 4. |
 | 5 | minimise size / reuse | done; surfacecurve.mode=0 (~49% smaller) + one shared part per model |
 | 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
+| 7 | silkscreen export (user, 2026-07-22) | done in round 10; `format_version: 2`. Filled polys from `axlPolyFromDB`, clipped to outline−cutouts, extruded 25 µm into `silkscreen_top`/`silkscreen_bot` parts. Layers + ink settings in `simple3d_config.json`. GUI checkbox + White/Black dropdown. Variant-independent by requirement. Not verified live in Allegro. |
 
 ### Verification done here
 - Core geometry still bit-for-bit vs C++ (V=12073.309477, 5054 ents) with mask zeroed.
@@ -776,3 +778,108 @@ that the conversion is sound on the success path too.
 - "Verification done here" (line ~295) records the tree as `board -> PCB /
   symbols_top / symbols_bot`; the board part became `PCB_<json_stem>` in round 8.
   Genuine historical record of what was checked that day, so left alone.
+
+## Update 2026-07-22 (round 10) — silkscreen export
+
+Branch `feature/silkscreen-export`. User requirements for this round, verbatim
+in intent: variant A of the options memo; silkscreen of components absent from a
+variant must **not** be removed (the bare board is manufactured once for every
+assembly variant, so its legend is physically there regardless); ink 25 µm as a
+config parameter; GUI checkbox plus a two-item White/Black colour dropdown; silk
+outside the board must be clipped; a settings file for which layers are
+silkscreen, as exportJson has.
+
+### The design, and why
+
+**Stroke-to-region is Allegro's job, not ours.** A silkscreen line is a
+centreline plus a width; a filled outline is what 3D needs. `axlPolyFromDB`
+does that conversion natively (`?endCapType 'ROUND`, and `?line2poly t` for an
+`r_path`), including glyphs and curves, so nothing is offset or stroked by hand
+and the result matches what goes to the Gerber. Text goes through
+`axlText2Lines` first — that is verbatim the idiom in the axlText2Lines docs
+("You can convert a r_path to an o_polygon by using axlPolyFromDB using its
+?line2poly t option"). True-type text has no `textBlock` and converts directly,
+which is also how exportJson tells the two apart.
+
+**Same primitive vocabulary as the outline.** Each polygon is emitted as
+`segment` / `arc` / `circle` objects — exactly what `build_contour()` already
+parses — so the Python side needed no new geometry reader, only face+prism
+assembly. Preferred source is `poly->segments` (line/arc segment dbids carrying
+an explicit centre, radius and direction: no guesswork); `poly->vertices` is the
+documented fallback for polys a boolean synthesised.
+
+**One sweep, not per-symbol.** With only the silk layers visible,
+`axlAddSelectAll` returns symbol-owned figures as well as loose ones — which is
+exactly why exportJson has to filter on `elem->parent->refdes`. Here both are
+wanted, so one pass per side covers component legends and free board geometry.
+Visibility and find filter are snapshotted and restored per the programming
+model in the `axlVisibleDesign` docs.
+
+**Clipping in SKILL, not Python.** `axlPolyOperation(silk, outline−cutouts,
+'AND)`. Batched at 400 polys: the API's own docs warn about time and memory past
+~10000 polys, and a batch also contains a failure. That API is documented
+"provided as-is ... may fail", so a failed batch keeps its geometry **unclipped**
+with a warning rather than dropping legend that is almost certainly on the
+board. Rectangular boards with no cutouts get a bbox fast path.
+
+**Silk solids are deliberately NOT fused.** Thousands of overlapping thin prisms
+would cost minutes of OCCT time with a real chance of failing, and buy nothing
+visible. Each side is one compound, one label, one colour. Documented as a
+limitation in the README.
+
+### Files touched
+- `makeVariant3dIntermediates.il` — new SILKSCREEN section (~700 lines):
+  a small purely-functional JSON reader (`s3dJson*`), config loading
+  (`s3dSilkConfig`), polygon→primitive emission (`s3dPolyElements`,
+  `s3dArcElement`, `s3dVerticesToElements`), collection (`s3dCollectSilkPolys`,
+  `s3dPolysFromDbid`), clipping (`s3dBoardPoly`, `s3dClipPolys`), streaming
+  writer (`s3dWriteSilkscreen`). `format_version` 1 → 2.
+  `makeVariant3dIntermediates( dir [pcbColor] [configFile] )`.
+- `simple3d.il` — `S3D_ConfigFile`, `S3D_DefaultSilkColor`, both passed on.
+- `simple3d_config.json` — new.
+- `core.py` — `build_silkscreen`, `_silk_face`, `silkscreen`/`silk_color`
+  parameters, two new `BuildResult` counters.
+- `colors.py` — `SILK_COLORS` (White 242, Black 26 — printed ink is never a pure
+  255/0, and pure white next to a white mask disappears), `resolve_silk_color`.
+- `gui.py`, `__main__.py` — checkbox, dropdown + swatch, `--no-silkscreen`,
+  `--silk-color`, config persistence, log line.
+
+### Bug fixed in passing
+`create3dIntermediateFormat` did `car( stepModelPlacements )` on the still-
+unbound marker when no component had a STEP mapping. Latent before; with
+silkscreen a bare board is a legitimate export, so it is now guarded.
+
+### Verified here (Python + transliteration, no Allegro)
+- End-to-end on the demo board: 5 silk solids built, the deliberately-open
+  contour skipped with a warning instead of killing the build, `silkscreen_top`
+  and `silkscreen_bot` present in the STEP, `--no-silkscreen` → 0 solids.
+- Geometry exact, not approximately: ring polygon (10×10 outer, 6×6 hole)
+  volume 1.6 mm³ = 64 mm² × 0.025 to 6 dp; round-capped stroke 0.100785 mm³
+  against the analytic `(20×0.2 + π×0.01) × 0.025`. Holes really are voids.
+- Z placement: top ink 0.0000 … 0.0250, bottom −1.1210 … −1.0960 — on the outer
+  faces, growing away from the board.
+- The SKILL JSON reader transliterated to Python and run against the real
+  `simple3d_config.json`: every field matches the `json` module. Eight valid
+  shapes (compact, pretty, escapes, exponents, nested arrays, empty containers,
+  true/false/null) all match; eight malformed inputs all terminate — none hangs.
+- The vertices-fallback arc math run through OCCT: CCW circle, CW circle and a
+  quadrant-split round-capped stroke all reproduce their analytic areas exactly
+  (12.566370614, 12.566370614, 10.785398163). This pins the sign convention and
+  the alpha/beta/ccw emission, which mirrors `makeArc`.
+- Paren balance 0 on both `.il` files; all four `.py` files compile.
+
+### NOT verified here (user must confirm in Allegro)
+- That `axlAddSelectAll` over silk layers really returns symbol-owned figures on
+  a live board (inferred from exportJson's `elem->parent->refdes` filter).
+- `poly->segments` being populated on polys from `axlPolyFromDB` — the docs list
+  it as a polygon attribute; if it comes back nil the vertices fallback runs,
+  which is the tested path anyway.
+- The **sign convention of the vertex radius**. The doc's wording ("positive the
+  arc is to the left") is read as centre-on-the-left ⇒ CCW. Verified
+  self-consistent and exact through OCCT, but only Allegro can confirm the sign
+  itself means that. If arcs come out bulging the wrong way, flip the `f_r > 0.0`
+  test in `s3dArcElement` — that one line is the whole convention. This only
+  matters if `poly->segments` is unavailable.
+- Runtime on a dense board (collection + clipping), and whether the 400-poly
+  batch size needs tuning.
+- Whether `axlPolyOperation` copes with the design's actual polygon count.
