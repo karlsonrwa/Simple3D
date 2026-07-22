@@ -1475,3 +1475,47 @@ what actually reached the app. It fails loudly on this bug.
 ### Verified here
 Launcher suite 10/10, shadow scan clean, the real GUI constructs and reports its
 config path and wrap mode, full suite unchanged.
+
+## Update 2026-07-22 (round 10j) — silkscreenFlatHeight
+
+Round 10h moved the flat legend onto the board face and flagged coplanar
+z-fighting as a documented risk rather than pre-empting it. It happened: the
+user reports flicker where a flat legend meets the board. Their call: a
+`silkscreenFlatHeight` parameter, 1 um default.
+
+Added as `gui.silkscreenFlatHeight`, plumbed through `build_silkscreen`
+(`flat_offset`, signed per side like `thickness`), `generate()`
+(`silk_flat_height`), the GUI and `--silk-flat-height`.
+
+### Why `gui` and not `settings`
+
+`settings.silkscreenThickness` is read by SKILL and travels into the JSON, so
+changing it needs a re-export from Allegro. This one is a viewing correction -
+you reach for it precisely when a viewer flickers - and forcing a full re-export
+for a micron would be poor. In `gui` it is read by the Python side directly:
+edit the file, press Generate. Documented next to `silkscreenThickness` in the
+README so the pair is findable together.
+
+### The bug this nearly walked into
+
+`_save_config` replaced `data["gui"]` wholesale, so ANY key the running build
+did not know about was deleted when the window closed - including a
+hand-added `silkscreenFlatHeight`, and including the requested comment. The
+file is meant to be hand-edited; that is a real defect, not a hypothetical.
+Now merged into the existing section instead. Verified: a `_comment_*` key
+written by hand survives a GUI save.
+
+That is the same reasoning already applied one level up (preserving `allegro`,
+`silkscreen`, `settings`) - it simply had not been applied *within* `gui`.
+
+### The comment
+JSON has no comments, so the request is honoured with a sibling key,
+`_comment_silkscreenFlatHeight`, which both readers ignore and the merge now
+preserves. It states what the distance is, that it is NOT the ink thickness,
+and that 0.005-0.01 is the thing to try if a micron does not clear the viewer's
+depth buffer.
+
+### Verified here
+Flat top +0.001, flat bottom -0.001 (sign follows the side), 0.01 honoured,
+solid unchanged at 0.0 .. 0.025; GUI loads the value, snapshots it, and
+preserves the comment across a save; full suite and shadow scan clean.

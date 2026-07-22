@@ -205,6 +205,14 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0) -> T
 # simple3d_config.json.
 DEFAULT_SILK_THICKNESS = 0.025
 
+# How far a FLAT legend is lifted off the board face, in mm. It is not ink
+# thickness - a flat legend has none - it exists only so the two faces are not
+# coplanar: coincident planes flicker against each other in any viewer that
+# resolves depth per pixel, which is what happens with a legend lying exactly on
+# the board. 1 um is invisible at board scale; raise it (0.005-0.01) if a
+# particular viewer's depth buffer still cannot separate them.
+DEFAULT_FLAT_HEIGHT = 0.001
+
 
 # How a polygon's vertex list is read. Allegro gives (x, y, signed_radius) per
 # point, and three things about it are ambiguous in the documentation:
@@ -478,6 +486,7 @@ def build_silkscreen(
     log: LogFn = _noop_log,
     side: str = "",
     flat: bool = False,
+    flat_offset: float = 0.0,
 ) -> tuple[TopoDS_Compound | None, int, int]:
     """Extrude one side's silkscreen polygons into a compound of thin solids.
 
@@ -502,10 +511,10 @@ def build_silkscreen(
     the ink is then a surface, not a solid: it has no thickness to measure and
     nothing downstream can do boolean work with it.
 
-    The flat face lies ON the board face, coincident with it, which is what a
-    zero-thickness legend should mean. Two coplanar faces can flicker against
-    each other in a viewer that resolves depth per pixel; if that shows up,
-    solid mode is the answer, since it genuinely stands off the board.
+    flat_offset lifts the flat face off the board face by that much, signed the
+    same way as thickness. Coincident planes do flicker in a viewer that
+    resolves depth per pixel - confirmed on a real board - so the default is a
+    micron of clearance rather than a true zero. See DEFAULT_FLAT_HEIGHT.
 
     Fusing the prisms was measured too, and made the file LARGER (3377 kB,
     154%): a boolean union replaces analytic cylinders and planes with general
@@ -531,10 +540,10 @@ def build_silkscreen(
             skipped += 1
             continue
         try:
-            # The face is built on the board face either way. In solid mode
-            # the prism then grows away from the board; in flat mode the face
-            # itself is the legend and stays on the surface.
-            face = _silk_face(polygon, z, convention)
+            # Solid mode builds on the board face and grows the prism away
+            # from it. Flat mode has only the face, lifted just clear of the
+            # board so the two planes are not coincident.
+            face = _silk_face(polygon, z + flat_offset if flat else z, convention)
             builder.Add(
                 compound,
                 face if flat
@@ -852,6 +861,7 @@ def generate(
     silk_bottom: bool = True,
     silk_color: tuple[int, int, int] | None = None,
     silk_flat: bool = False,
+    silk_flat_height: float = DEFAULT_FLAT_HEIGHT,
     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
     minimize_size: bool = True,
     srgb_color: bool = True,
@@ -878,6 +888,9 @@ def generate(
         Draw the legend as surfaces instead of thin solids. About a quarter of
         the file size; the ink then has no thickness and cannot be used in
         downstream boolean work. See build_silkscreen.
+    silk_flat_height:
+        Clearance in mm between the board face and a flat legend, so the two
+        are not coplanar and do not flicker. Ignored in solid mode.
     minimize_size:
         Set write.surfacecurve.mode = 0 (about half the file size, geometry
         unchanged) and share one part per distinct model.
@@ -991,7 +1004,7 @@ def generate(
             log(f"Building {side} ({len(polygons)} polygons)")
             compound, built, skipped = build_silkscreen(
                 polygons, z, sign * ink_thickness, log=log, side=side,
-                flat=silk_flat,
+                flat=silk_flat, flat_offset=sign * abs(silk_flat_height),
             )
             silk_built += built
             silk_skipped += skipped

@@ -17,6 +17,8 @@
         "silkscreenBottom": true,
         "silkColor": "White",
         "silkscreenFlat": false,
+        "_comment_silkscreenFlatHeight": "Distance in mm from the board surface to the surface of a FLAT silkscreen, so that graphics do not flicker where the two would otherwise be coplanar. Not the ink thickness - that is settings.silkscreenThickness, and it applies to solid silkscreen only. 1 um is invisible at board scale; raise it to 0.005-0.01 if a particular viewer still flickers. Ignored when silkscreenFlat is false.",
+        "silkscreenFlatHeight": 0.001,
         "minimizeFileSize": true
     },
     "silkscreen": {

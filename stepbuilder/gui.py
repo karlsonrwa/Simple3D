@@ -22,6 +22,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import core
+from .core import DEFAULT_FLAT_HEIGHT
 from .colors import (
     BOARD_THEMES,
     CREAM_DIELECTRIC,
@@ -74,6 +75,7 @@ class BuildSettings:
     silk_bottom: bool
     silk_color: tuple[int, int, int] | None
     silk_flat: bool
+    silk_flat_height: float
     minimize: bool
     brd_name: str | None
     dated_name: bool
@@ -102,6 +104,10 @@ class StepBuilderApp(tk.Tk):
         self.silk_bottom = tk.BooleanVar(value=True)
         self.silk_color = tk.StringVar(value=DEFAULT_SILK)
         self.silk_flat = tk.BooleanVar(value=False)
+        # Config-only, no widget: a display fudge you set once when a viewer
+        # flickers, not something to press on every build. Plain float, not a
+        # Tk variable, so the worker may read it straight off the snapshot.
+        self.silk_flat_height = DEFAULT_FLAT_HEIGHT
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
@@ -382,6 +388,7 @@ class StepBuilderApp(tk.Tk):
             silk_bottom=self.silk_bottom.get(),
             silk_color=SILK_COLORS.get(self.silk_color.get()),
             silk_flat=self.silk_flat.get(),
+            silk_flat_height=self.silk_flat_height,
             minimize=self.minimize.get(),
             brd_name=self._brd_name,
             dated_name=self._dated_name,
@@ -468,6 +475,7 @@ class StepBuilderApp(tk.Tk):
                     silk_bottom=settings.silk_bottom,
                     silk_color=settings.silk_color,
                     silk_flat=settings.silk_flat,
+                    silk_flat_height=settings.silk_flat_height,
                     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
                     minimize_size=settings.minimize,
                     log=lambda m: self._queue.put(("log", m)),
@@ -607,6 +615,11 @@ class StepBuilderApp(tk.Tk):
         self.silk_bottom.set(gui.get("silkscreenBottom", True))
         self.silk_color.set(gui.get("silkColor", DEFAULT_SILK))
         self.silk_flat.set(gui.get("silkscreenFlat", False))
+        try:
+            self.silk_flat_height = abs(float(gui.get("silkscreenFlatHeight",
+                                                      DEFAULT_FLAT_HEIGHT)))
+        except (TypeError, ValueError):
+            self.silk_flat_height = DEFAULT_FLAT_HEIGHT
         # MFRPN DISABLED (kept for future):
         # self.mfr_pn_in_name.set(gui.get("mfrPnInName", False))
         self.minimize.set(gui.get("minimizeFileSize", True))
@@ -623,7 +636,16 @@ class StepBuilderApp(tk.Tk):
         the window into an error dialog.
         """
         data = self._read_config_file()
-        data["gui"] = {
+        # Merge into the existing section, do not replace it. The file is
+        # hand-edited, so "gui" can hold keys this build does not know -
+        # comments, a setting added by a later version, a value someone parked
+        # there - and replacing the section wholesale would delete them on
+        # window close. Same reasoning as preserving the other sections, one
+        # level down.
+        gui = data.get("gui")
+        if not isinstance(gui, dict):
+            gui = {}
+        gui.update({
             "stepDir": self.step_dir.get(),
             "jsonFile": self.json_file.get(),
             "outputDir": self.output_dir.get(),
@@ -635,10 +657,12 @@ class StepBuilderApp(tk.Tk):
             "silkscreenBottom": self.silk_bottom.get(),
             "silkColor": self.silk_color.get(),
             "silkscreenFlat": self.silk_flat.get(),
+            "silkscreenFlatHeight": self.silk_flat_height,
             # MFRPN DISABLED (kept for future):
             # "mfrPnInName": self.mfr_pn_in_name.get(),
             "minimizeFileSize": self.minimize.get(),
-        }
+        })
+        data["gui"] = gui
         try:
             self.config_path.write_text(
                 json.dumps(data, indent=4, ensure_ascii=False) + "\n",

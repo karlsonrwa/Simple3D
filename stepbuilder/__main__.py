@@ -160,6 +160,11 @@ def main(argv: list[str] | None = None) -> int:
              "file size, but the ink then has no thickness",
     )
     parser.add_argument(
+        "--silk-flat-height", type=float, default=core.DEFAULT_FLAT_HEIGHT,
+        help="clearance in mm between the board face and a flat legend, so the "
+             f"two do not flicker (default: {core.DEFAULT_FLAT_HEIGHT})",
+    )
+    parser.add_argument(
         "--silk-color", default=DEFAULT_SILK,
         help=f"silkscreen colour: {' or '.join(SILK_ORDER)} (default: {DEFAULT_SILK})",
     )
@@ -224,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
                 silk_bottom=not (args.no_silkscreen or args.no_silk_bottom),
                 silk_color=silk_color,
                 silk_flat=args.flat_silkscreen,
+                silk_flat_height=args.silk_flat_height,
                 # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
                 minimize_size=not args.no_minimize,
                 srgb_color=not args.legacy_color,
