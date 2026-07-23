@@ -73,33 +73,43 @@ It is the only dependency. That is the entire `requirements.txt`.
 
 ### 3. The files
 
-Put the Python package and the two SKILL files where the settings expect them:
+Clone the repository, or download and unpack it. **Its root already is the
+layout below** — nothing has to be assembled by hand:
 
 ```
 d:\Projects\OrCAD\Scripts\Simple3D\        ← ONE folder holds the whole tool
 ├── makeVariant3dIntermediates.il          ← SKILL exporter (fixes folded in)
 ├── simple3d.il                            ← the menu item + launcher
 ├── simple3d_config.json                   ← ALL settings: paths, GUI, silkscreen layers
-├── stepbuilder\                           ← the Python package (the FOLDER, not its contents)
+├── stepbuilder\                           ← the Python package
 │   ├── __main__.py
 │   ├── core.py
 │   ├── colors.py
 │   └── gui.py
 ├── demo\                                 ← sample board + reference JSON/STEP (optional)
+├── PROJECT_NOTES_simple3d.md              ← development memo, not needed to run
 ├── README.md
 └── LICENSE
 ```
 
-The most common install mistake is nesting `stepbuilder\` one level too deep
-(`…\Simple3D\stepbuilder\stepbuilder\`). It must be exactly
-`…\Simple3D\stepbuilder\__main__.py`. Verify from a `cmd`:
+The folder may be called anything and live anywhere; what matters is that
+`S3D_ScriptDir` and the two `load()` lines all name **the folder that holds the
+two `.il` files**.
+
+The one thing to watch for: downloading the repository as a ZIP from GitHub
+wraps everything in an extra folder (`Simple3D-main\`). Either unpack its
+*contents* into your Simple 3D folder, or point `S3D_ScriptDir` at the wrapper
+itself — but do not leave the two disagreeing.
+
+Verify from a `cmd`:
 
 ```
 cd /d d:\Projects\OrCAD\Scripts\Simple3D
 python -m stepbuilder
 ```
 
-If the GUI opens, the layout is correct.
+If the window opens and its log says `Settings loaded from …`, both the package
+and the config are where they should be.
 
 ### 4. Load the SKILL files in Allegro
 
@@ -542,33 +552,43 @@ pip install cadquery-ocp
 
 ### 3. Файлы
 
-Разложите Python-пакет и два SKILL-файла туда, где их ждут настройки:
+Склонируйте репозиторий или скачайте и распакуйте его. **Его корень уже
+представляет собой раскладку ниже** — собирать вручную ничего не нужно:
 
 ```
 d:\Projects\OrCAD\Scripts\Simple3D\        ← ОДНА папка со всем инструментом
 ├── makeVariant3dIntermediates.il          ← SKILL-экспортёр (правки внутри)
 ├── simple3d.il                            ← пункт меню + запуск
 ├── simple3d_config.json                   ← ВСЕ настройки: пути, GUI, слои шелкографии
-├── stepbuilder\                           ← Python-пакет (сама ПАПКА, не её содержимое)
+├── stepbuilder\                           ← Python-пакет
 │   ├── __main__.py
 │   ├── core.py
 │   ├── colors.py
 │   └── gui.py
 ├── demo\                                 ← пример платы + эталонные JSON/STEP (опц.)
+├── PROJECT_NOTES_simple3d.md              ← рабочая записка по разработке, для работы не нужна
 ├── README.md
 └── LICENSE
 ```
 
-Самая частая ошибка установки — вложить `stepbuilder\` на уровень глубже
-(`…\Simple3D\stepbuilder\stepbuilder\`). Должно быть ровно
-`…\Simple3D\stepbuilder\__main__.py`. Проверьте из `cmd`:
+Папка может называться как угодно и лежать где угодно; важно лишь, чтобы
+`S3D_ScriptDir` и обе строки `load()` указывали на **ту папку, где лежат два
+`.il`-файла**.
+
+За чем стоит следить: скачивание репозитория архивом с GitHub заворачивает всё
+в дополнительную папку (`Simple3D-main\`). Либо распакуйте её *содержимое* в
+свою папку Simple 3D, либо укажите `S3D_ScriptDir` на саму эту обёртку — но не
+оставляйте их в противоречии.
+
+Проверьте из `cmd`:
 
 ```
 cd /d d:\Projects\OrCAD\Scripts\Simple3D
 python -m stepbuilder
 ```
 
-Если окно открылось — раскладка верная.
+Если окно открылось и в его логе написано `Settings loaded from …`, значит и
+пакет, и конфигурация лежат там, где нужно.
 
 ### 4. Загрузка SKILL-файлов в Allegro
 

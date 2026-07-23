@@ -2171,3 +2171,40 @@ for the feature name.**
 Audit clean in both directions; the config parses in both readers and still has
 four sections; the GUI loads the new key; layer, config-save and config-safety
 suites unchanged.
+
+## Update 2026-07-23 (round 18a) — install advice from before the repository
+
+The user asked what the "most common install mistake is nesting `stepbuilder\`
+one level too deep" warning is still for, now that the whole tool is one repo.
+Nothing: it described handing the Python package over as a separate archive,
+where unpacking could produce `stepbuilder\stepbuilder\`. Clone or unpack the
+repository and its root already IS the install layout - there is nothing to
+assemble and nothing to double-nest.
+
+Same era, same paragraph: the tree annotated `stepbuilder\` as "the FOLDER, not
+its contents", which was advice about what to copy.
+
+Replaced with what can actually go wrong now:
+
+- the folder may be named anything and live anywhere, so long as
+  `S3D_ScriptDir` and both `load()` lines name the folder holding the two `.il`
+  files;
+- downloading the repo as a ZIP from GitHub wraps everything in
+  `Simple3D-main\`, so either unpack its contents or point `S3D_ScriptDir` at
+  the wrapper - the failure is the two disagreeing.
+
+The verification step gained a second half worth having: the log line
+`Settings loaded from …` proves the CONFIG was found too, not just the package,
+and the config now carries every setting.
+
+`PROJECT_NOTES_simple3d.md` added to the tree listing - it is in the repo, so a
+listing claiming to be the repo root should show it, marked as not needed to
+run.
+
+### Note to self
+This is the third documentation defect of exactly one kind: a statement that was
+true when written, about an arrangement that has since been replaced. The
+mechanical audit cannot see these - it checks that names exist, not that advice
+still applies. The user found this one by reading. Worth re-reading the
+Installation and Why-this-exists sections whenever the shape of the project
+changes, since those describe context rather than API and nothing checks them.
