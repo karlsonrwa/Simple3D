@@ -1774,3 +1774,334 @@ session, closed) - stepDir survives and all four sections survive. An Allegro
 export leaves jsonFile and outputDir untouched while still saving a real
 preference changed in the same session. A standalone run still remembers both.
 Full suite clean.
+
+## Update 2026-07-23 (round 14) — silkscreen layers chosen in the GUI
+
+Branch `silk_multiple_choice`. The user was tired of rewriting the config to
+change which layers the legend uses.
+
+### The constraint that shaped it
+
+The GUI runs AFTER the export. By the time the window is up, the JSON exists and
+the polygons are collected, so "tick layers in the GUI" cannot drive collection.
+Only two designs are possible: collect everything and filter at build time, or
+ask before collecting (a SKILL form in Allegro).
+
+Chose the first. The second puts a modal dialog in front of every export and
+still cannot change the choice without re-exporting, which is the actual
+complaint.
+
+### Division of labour, now explicit
+
+- `simple3d_config.json` says which layers are **collected** — that still costs
+  Allegro time, so an expensive layer left out of the lists is still the way to
+  avoid paying for it.
+- The GUI says which of the collected layers are **built** — free, per press of
+  Generate.
+
+`format_version` 3: every silkscreen polygon carries `"layer"`. The array stays
+flat, so a reader that ignores the key builds the whole legend, and a
+version-2 file is never filtered (there is nothing to match on).
+
+### Two things that needed care
+
+**Grouping had to happen at collection, not after.** A polygon has no layer of
+its own and text loses even its dbid once `axlText2Lines` has vectorised it, so
+elements are bucketed by `elem->layer` inside the existing sweep. Still one
+sweep per side - sweeping once per layer would multiply the visibility churn for
+nothing.
+
+**Clipping had to move per layer.** `axlPolyOperation` unions overlapping
+polygons, so clipping a whole side at once returned regions merged across layers
+with no layer left to speak of. `s3dClipGroups` clips each group separately;
+groups that clip to nothing are dropped, so a layer entirely off the board does
+not appear in the GUI as an empty choice.
+
+### The GUI
+
+Checkbuttons in a scrolled canvas, grouped Top/Bottom, each row showing the
+polygon count - that number is what explains a large file, and it is the thing
+you want before deciding. Not a multi-select Listbox: a highlighted row reads as
+"current item", a tick reads as "included", and included is the question.
+
+The list is built from the JSON that will be built, not from the config, so it
+cannot offer a layer that would do nothing; with several variants queued it is
+their union. A `trace_add` on the JSON field with a 400 ms debounce covers
+typing, pasting, Browse and the Allegro prefill in one place.
+
+**Exclusions are persisted, not inclusions** (`gui.silkscreenLayersOff`). A
+layer appearing on a board for the first time then defaults to ON. Storing
+inclusions would make a new layer silently missing - data present, geometry
+absent, nothing on screen to say why.
+
+The save only overwrites the remembered exclusions when a list has actually been
+shown, so opening an old layerless JSON does not wipe them.
+
+### Verified here
+Layer listing and counts; filtering drops exactly the right polygons; an unknown
+layer name changes nothing; version-2 polygons are never filtered; the GUI lists
+every layer, honours the remembered exclusions, defaults an unseen layer to on,
+All/None work, the new exclusion is saved and the other config sections survive;
+a layerless JSON leaves the exclusions alone. Writer transliteration extended
+with the layer key and an empty group - all seven shapes still parse. Full suite
+and shadow scan clean.
+
+## Update 2026-07-23 (round 14a) — a silent silkscreen failure, made loud
+
+Board `my_test_board2`: the JSON came out with no `"silkscreen"` key at all, and
+the user reasonably read that as "silkscreen not found".
+
+### Reading the console
+
+```
+Simple 3D: collecting silkscreen...
+Simple 3D: 22 symbol(s) are not listed in any variant ...
+```
+
+The line that should sit between those two — `silkscreen polygons - top N,
+bottom N` — is missing, and so is the new per-layer breakdown. Both print
+unconditionally right after collection. So execution left `s3dMakeSilkscreen`
+between the two `s3dCollectSilkByLayer` calls and the count: it raised, and
+
+```skill
+errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) ) )
+```
+
+swallowed it whole. `format_version: 3` in the file proves the new code was
+loaded, so this is not a stale install.
+
+### The defect is the errset, not whatever raised
+
+That bare `errset` was added in round 10 so a silkscreen fault could not cost
+the user the board export. The intent was right and the execution was not: it
+turned every possible silkscreen error into an empty legend with **nothing on
+the console at all**. There is no way to tell that from "this board has no
+silkscreen", which is exactly the confusion it produced.
+
+Two changes, both about making a failure survivable AND visible:
+
+- The call site now uses `errset( expr t )`, whose second argument prints the
+  SKILL error, and reports in its own words that the legend is missing while
+  the board is fine. A swallowed error is worse than a loud one.
+- `s3dCollectSilkByLayer` wraps the conversion of EACH element, so one object
+  the converter cannot handle costs that object rather than the whole side. The
+  first failure names the object type and its layer; the rest are counted.
+
+I could not determine the root cause from here - it needs the message that was
+being swallowed. The per-element guard covers the likely case (a single object
+on `MANUFACTURING/AUTOSILK_TOP`, a layer new to this config, that
+`s3dPolysFromDbid` cannot convert); if something bigger is wrong, the next run
+prints it.
+
+### Also found: string literals broken by a real newline
+
+`s3dWriteVertexList` had `fprintf( p_port "," <newline> " )` — a printf format
+split across two source lines by heredoc escaping in an earlier round. Harmless
+(a literal newline inside the string emits the same bytes as `\n`) but invisible
+in review and one careless edit away from mattering. Added `check_strings.py`
+to the scratch suite: it walks the source and flags any string literal that runs
+across a line break. Two found, both from the same cause, both fixed.
+
+**Lesson worth keeping:** heredocs through the Bash tool mangle backslash
+escapes often enough that generated SKILL needs a mechanical check afterwards.
+Paren balance was already checked; string literals now are too.
+
+## Update 2026-07-23 (round 14b) — the swallowed error, named
+
+The reporting added in 14a paid for itself on the first run:
+
+```
+*Error* eval: undefined function - s3dCollectSilkPolys
+Simple 3D: ERROR - silkscreen collection failed (message above).
+```
+
+`s3dCollectSilkPolys` was renamed to `s3dCollectSilkByLayer` in round 14. The
+DEFINITION was renamed; the two call sites in `s3dMakeSilkscreen` were not,
+because the scripted patch that was supposed to update them did not match and
+said nothing. `s3dClipPolys` -> `s3dClipGroups` and the two `length()` ->
+`s3dGroupCount()` in the same block were missed the same way. Fixed with the
+editor rather than a script, and verified by reading the block back.
+
+### Why nothing caught it
+
+SKILL resolves function names at CALL time, so a file with a stale call loads
+without complaint. Paren balance was clean, the string check was clean, and
+every Python test passed - none of them execute SKILL. The only thing that
+could have caught it is a check on the SKILL sources themselves.
+
+`check_calls.py` now does that: it collects every `procedure( name(` definition
+across both .il files and flags any call to a project-shaped name (`s3d*`,
+`make*`, `add*`, `symbolReturn*`, ...) that is defined nowhere, ignoring
+Allegro's `axl*` and the SKILL builtins that match those shapes. Verified by
+reintroducing the exact bug: it reports the line and exits 1.
+
+**Three mechanical checks on the SKILL sources now, and each exists because
+something got past the previous two:** paren balance, string literals broken by
+a real newline, and calls to undefined procedures. Run all three after any
+scripted edit.
+
+### The wider lesson, worth stating plainly
+Scripted find-and-replace over source that fails to match is silent by default.
+Every one of these three rounds traces back to a patch that did not apply and
+did not say so. When a replacement must apply, either use the editor, or make
+the script fail loudly on a miss - and then verify by reading the result, not
+by trusting the exit code.
+
+## Update 2026-07-23 (round 15) — layer panel: wheel scrolling, two columns
+
+Two refinements to the panel from round 14, both reported after live use.
+
+### The wheel only worked on the scrollbar
+
+Binding `<MouseWheel>` to the canvas is not enough: the pointer is almost always
+over a Checkbutton or the inner frame, and those consume the event before the
+canvas sees it. Binding every child would work but the list is rebuilt on every
+JSON change, so the bindings would have to be re-applied each time.
+
+Instead the panel grabs the wheel with `bind_all` on `<Enter>` and releases it
+on `<Leave>`, so the wheel scrolls the layer list while the pointer is inside it
+and behaves normally everywhere else in the window. `<Button-4>`/`<Button-5>`
+are bound too - X11's wheel encoding, harmless on Windows.
+
+Guarded against scrolling a list that already fits: without the check the canvas
+rubber-bands a short list out of view, which looks broken.
+
+### Bottom beside Top, not under it
+
+Each side now gets its own column in the inner frame. Two short columns fit
+where one long list scrolled, and the two sides stay comparable at a glance.
+Columns are allocated only to sides that actually have layers, so a top-only
+board leaves no gap.
+
+One hazard this introduced and closed immediately: `_layers_inner` now manages
+its children with `grid`, and the "no layer information" label in the same
+container was still using `pack`. Tkinter refuses both managers in one
+container. They never coexist (the label path returns early, and every refresh
+destroys the children first), but that is an accident of control flow rather
+than a guarantee, so the label moved to `grid` as well.
+
+### Verified here
+Two columns on the same grid row with the right layers in each; 24 layers
+overflow the 96 px panel and the wheel moves the view down and back exactly;
+a short list does not move; grab/release leaves no stray bindings; the
+empty-state label renders without a geometry-manager clash. Full suite and all
+three SKILL checks clean.
+
+## Update 2026-07-23 (round 16) — side switches grey their layers; zero-width objects reported
+
+### Switching a side off now greys its layers
+
+They stayed live and clickable, so you could edit a selection that had no
+effect. The layer rows are now kept per side as `(layer, var, widget)` triples,
+and `_update_silk_row` sets widget STATE only - the variables are never touched,
+so the ticks are exactly as they were when the side comes back, and they are
+what gets saved either way.
+
+All / None follows the same rule and skips a greyed side. Changing ticks the
+user cannot see the effect of, and then persisting them, is the same defect from
+the other direction.
+
+### Zero-width lines and text
+
+A line with no width, or text whose text block has zero pen width, has nothing
+to plot with - Allegro's own artwork cannot draw it either. `axlPolyFromDB` does
+not object: it returns nil, or a degenerate polygon that fails much later with a
+message about geometry rather than about width. So it was being dropped
+silently, or blamed on the wrong thing.
+
+`s3dZeroWidth` checks before conversion: for text, the text block's
+`photoWidth`; otherwise the figure's `width`, falling back to the per-segment
+widths of a path. Deliberately conservative - a shape is a filled area and
+true-type text is a filled outline, so neither can be zero-width, and a path
+with no segments to inspect is not accused of anything.
+
+Reported by layer AND position, which is what makes it actionable:
+
+```
+Simple 3D: WARNING - zero width: text on REF DES/SILKSCREEN_TOP at (12.500, 4.000) - skipped, it cannot be plotted.
+```
+
+The messages also travel into the JSON under `silkscreen.warnings` and are
+re-logged by the Python side with a `warning:` prefix, which the GUI colours
+orange. Two reasons: the Allegro console has usually scrolled past by the time
+anyone looks at the model, and the GUI is where the result is judged. They are
+logged even when silkscreen is switched off - the object is wrong in the board
+regardless of what this build draws.
+
+A module-level accumulator (`S3D_SilkWarnings`) rather than a return value:
+the collector already returns layer groups, and threading a second channel
+through it and through the clipper would obscure both for the sake of a message.
+Cleared per export, not per side, so both sides report together.
+
+### Verified here
+Greying: both sides on leaves everything enabled; switching bottom off disables
+only its boxes; tick states are byte-identical before and after; None skips the
+disabled side; switching back on re-enables. Warnings: carried through the JSON,
+logged with the prefix that colours them, and still logged with silkscreen off.
+Writer transliteration extended to emit the warnings array - all seven JSON
+shapes still parse. Full suite and all three SKILL checks clean.
+
+## Update 2026-07-23 (round 17) — severity colouring in the Allegro console
+
+The user pointed at a Cadence forum thread on colouring SKILL output. The link
+returns 403 to a fetch, but the answer is in the local reference:
+`axlUIWPrint( r_window [s_msg_level] t_format [args] )`.
+
+### What the API actually offers
+
+Five levels, and that is the whole set:
+
+| level | effect |
+|---|---|
+| `'info0` | informational, not journalled |
+| `'info1` | informational (the default) |
+| `'warn` | warning colour, `*WARNING*` prefix |
+| `'error` | red, `*Error*` prefix, beeps |
+| `'fatal` | beeps; behaviour beyond that not documented here |
+
+So orange warnings and red errors are available and now used. **Green is not.**
+There is no "success" severity, so a completed export prints in the ordinary
+colour; the GUI log already shows its own completion line in green, and that is
+where the result is judged. Said plainly in the README rather than approximated
+with something that is not green.
+
+### How it is wired
+
+One wrapper, `s3dSay( s_level t_message )`, with `s3dWarn` and `s3dErr` over
+it - so the decision about HOW to print lives in exactly one place, and adding
+a green route later (if the forum has one) is a one-line change.
+
+Two details in it that matter:
+
+- The message is passed as a `%s` ARGUMENT, never as the format string. A layer
+  name or path containing a per-cent sign would otherwise be read as a
+  conversion.
+- It falls back to `printf` when `axlUIWPrint` is unavailable or refuses. A
+  message must not be lost to the attempt at colouring it.
+
+Messages no longer spell their own severity: Allegro adds `*WARNING*` /
+`*Error*`, and saying it twice reads as a mistake. `Simple 3D: warning - no such
+layer` became `Simple 3D: no such layer`.
+
+17 messages converted: 14 in makeVariant3dIntermediates.il, 3 in simple3d.il.
+`print( "Export complete!" )` also became a proper printf - `print` quotes its
+argument and adds no newline, which is for dumping values, not for talking to a
+person.
+
+### The patch script asserted every replacement
+
+After three rounds lost to scripted find-and-replace that missed silently, this
+one counts each anchor, asserts exactly one match, and writes nothing unless
+every replacement applied. That is the shape these scripts should have had all
+along, and it is cheaper than the editor for seventeen sites.
+
+### Verified here
+All three SKILL checks clean on both files; no warning or error printf remains;
+the full Python suite unchanged.
+
+### NOT verified here
+That `axlUIWPrint(nil ...)` lands in the scrolling command window rather than a
+one-line status area - the reference says a nil window "dumps output to main
+window", which is where the existing `*WARNING*` lines appear, so it should. If
+the messages turn up somewhere less useful, the wrapper is the single place to
+change back.

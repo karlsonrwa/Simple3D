@@ -165,6 +165,12 @@ def main(argv: list[str] | None = None) -> int:
              f"two do not flicker (default: {core.DEFAULT_FLAT_HEIGHT})",
     )
     parser.add_argument(
+        "--silk-layer-off", action="append", default=[], metavar="LAYER",
+        help="leave this silkscreen layer out of the build; repeatable. The "
+             "export collects every layer the config lists and tags each "
+             "polygon, so this needs no re-export",
+    )
+    parser.add_argument(
         "--silk-color", default=DEFAULT_SILK,
         help=f"silkscreen colour: {' or '.join(SILK_ORDER)} (default: {DEFAULT_SILK})",
     )
@@ -230,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
                 silk_color=silk_color,
                 silk_flat=args.flat_silkscreen,
                 silk_flat_height=args.silk_flat_height,
+                silk_layers_off=set(args.silk_layer_off),
                 # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
                 minimize_size=not args.no_minimize,
                 srgb_color=not args.legacy_color,

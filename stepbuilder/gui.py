@@ -77,6 +77,7 @@ class BuildSettings:
     silk_color: tuple[int, int, int] | None
     silk_flat: bool
     silk_flat_height: float
+    silk_layers_off: frozenset[str]
     minimize: bool
     brd_name: str | None
     dated_name: bool
@@ -120,6 +121,16 @@ class StepBuilderApp(tk.Tk):
         self._dated_name: bool = False
         self._config_problem: str | None = None
         self._paths_from_launcher = False
+        # Layers switched OFF, by name. Exclusions rather than inclusions: a
+        # layer this build has never seen must default to ON, or a layer that
+        # appears on a new board would silently go missing.
+        self._layers_off: set[str] = set()
+        self._layer_vars: dict[str, tk.BooleanVar] = {}
+        # Which side each checkbox belongs to, so switching a side off can grey
+        # its layers out WITHOUT changing them - the ticks are still what gets
+        # saved and what applies again when the side comes back.
+        self._layer_rows: dict[str, list] = {"top": [], "bottom": []}
+        self._layer_refresh_job = None
 
         self._load_config()
         self._build_ui()
@@ -220,8 +231,53 @@ class StepBuilderApp(tk.Tk):
         )
         self.silk_flat_check.pack(side="left", padx=(12, 0))
 
+        # --- silkscreen layers ---
+        # Checkbuttons, not a multi-select Listbox: a highlighted row reads as
+        # "current item", a tick reads as "included", and included is the
+        # question. The list is built from the JSON that will actually be
+        # built, so it can never offer a layer that would do nothing, and each
+        # row carries its polygon count - that is what explains a large file.
+        layers_frame = ttk.LabelFrame(opts, text="Silkscreen layers", padding=4)
+        layers_frame.grid(row=3, column=0, columnspan=5, sticky="ew", pady=(6, 0))
+        layers_frame.columnconfigure(0, weight=1)
+
+        self._layers_canvas = tk.Canvas(layers_frame, height=96, highlightthickness=0)
+        self._layers_canvas.grid(row=0, column=0, sticky="ew")
+        layers_scroll = ttk.Scrollbar(layers_frame, orient="vertical",
+                                      command=self._layers_canvas.yview)
+        layers_scroll.grid(row=0, column=1, sticky="ns")
+        self._layers_canvas.configure(yscrollcommand=layers_scroll.set)
+        self._layers_inner = ttk.Frame(self._layers_canvas)
+        self._layers_window = self._layers_canvas.create_window(
+            (0, 0), window=self._layers_inner, anchor="nw")
+        self._layers_inner.bind(
+            "<Configure>",
+            lambda e: self._layers_canvas.configure(
+                scrollregion=self._layers_canvas.bbox("all")))
+        self._layers_canvas.bind(
+            "<Configure>",
+            lambda e: self._layers_canvas.itemconfigure(self._layers_window,
+                                                        width=e.width))
+
+        # The wheel over the panel must scroll it. Binding the canvas alone is
+        # not enough: the pointer is nearly always over a Checkbutton or the
+        # inner frame, and those consume the event, so the wheel only worked on
+        # the scrollbar itself. Binding every child is worse - the list is
+        # rebuilt constantly. So grab the wheel while the pointer is inside the
+        # panel and release it on the way out, which leaves the wheel alone
+        # everywhere else in the window.
+        self._layers_canvas.bind("<Enter>", self._grab_wheel)
+        self._layers_canvas.bind("<Leave>", self._release_wheel)
+
+        layer_buttons = ttk.Frame(layers_frame)
+        layer_buttons.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        ttk.Button(layer_buttons, text="All", width=6,
+                   command=lambda: self._set_all_layers(True)).pack(side="left")
+        ttk.Button(layer_buttons, text="None", width=6,
+                   command=lambda: self._set_all_layers(False)).pack(side="left", padx=(4, 0))
+
         checks = ttk.Frame(opts)
-        checks.grid(row=3, column=0, columnspan=5, sticky="w", pady=(6, 0))
+        checks.grid(row=4, column=0, columnspan=5, sticky="w", pady=(6, 0))
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # ttk.Checkbutton(checks, text="Append MFRPN to instance names",
         #                 variable=self.mfr_pn_in_name).pack(side="left")
@@ -261,6 +317,10 @@ class StepBuilderApp(tk.Tk):
         self._update_swatch()
         self._update_rim_entry()
         self._update_silk_row()
+        # Typing, pasting, Browse and the Allegro prefill all land in this one
+        # variable, so one trace covers every way the JSON can change.
+        self.json_file.trace_add("write", self._schedule_layer_refresh)
+        self._refresh_layers()
 
     def _build_actions(self) -> None:
         """All action buttons live here. Add new ones alongside Generate."""
@@ -286,9 +346,142 @@ class StepBuilderApp(tk.Tk):
         state = "normal" if self.rim_choice.get() == RIM_CUSTOM else "disabled"
         self.rim_entry.configure(state=state)
 
+    # ------------------------------------------------------- silk layers -- #
+
+    def _grab_wheel(self, _event=None) -> None:
+        self.bind_all("<MouseWheel>", self._on_layers_wheel)
+        # X11 reports the wheel as buttons 4 and 5; harmless on Windows.
+        self.bind_all("<Button-4>", self._on_layers_wheel)
+        self.bind_all("<Button-5>", self._on_layers_wheel)
+
+    def _release_wheel(self, _event=None) -> None:
+        self.unbind_all("<MouseWheel>")
+        self.unbind_all("<Button-4>")
+        self.unbind_all("<Button-5>")
+
+    def _on_layers_wheel(self, event) -> None:
+        # Nothing to scroll when the list already fits: without this the canvas
+        # rubber-bands the content out of view on a short list.
+        region = self._layers_canvas.bbox("all")
+        if not region or region[3] - region[1] <= self._layers_canvas.winfo_height():
+            return
+        if getattr(event, "num", None) == 4:
+            step = -1
+        elif getattr(event, "num", None) == 5:
+            step = 1
+        else:
+            step = -1 if event.delta > 0 else 1
+        self._layers_canvas.yview_scroll(step, "units")
+
+    def _schedule_layer_refresh(self, *_args) -> None:
+        """Rebuild the layer list shortly after the JSON path settles.
+
+        Debounced: the field changes on every keystroke when a path is typed,
+        and each refresh reads and parses the JSON.
+        """
+        if self._layer_refresh_job is not None:
+            self.after_cancel(self._layer_refresh_job)
+        self._layer_refresh_job = self.after(400, self._refresh_layers)
+
+    def _refresh_layers(self) -> None:
+        """Read the queued JSON(s) and redraw the checkbox list."""
+        self._layer_refresh_job = None
+        for child in self._layers_inner.winfo_children():
+            child.destroy()
+
+        field = self.json_file.get().strip()
+        found: dict[str, dict[str, int]] = {}
+        if field:
+            jobs, _ = core.resolve_json_jobs(Path(field))
+            # Several variants build in one press, so the list is their union:
+            # a layer present in any of them is a layer you can switch off.
+            for job in jobs:
+                for side, counts in core.silkscreen_layers(job).items():
+                    into = found.setdefault(side, {})
+                    for layer, n in counts.items():
+                        into[layer] = into.get(layer, 0) + n
+
+        if not found:
+            # grid, like the side columns below: pack and grid cannot both
+            # manage children of one container, and this label shares
+            # _layers_inner with them.
+            ttk.Label(self._layers_inner, foreground="#777",
+                      text="No layer information in this JSON — the whole "
+                           "legend is built. Re-export to choose layers.").grid(
+                row=0, column=0, sticky="w", padx=4, pady=2)
+            self._layer_vars = {}
+            self._layer_rows = {"top": [], "bottom": []}
+            return
+
+        # Keep the ticks the user already set for layers that are still here,
+        # so a refresh does not undo a selection.
+        previous = {name: var.get() for name, var in self._layer_vars.items()}
+        self._layer_vars = {}
+
+        # Side by side, not stacked: a board's two sides rarely have many
+        # layers each, so two short columns fit where one long list would
+        # scroll, and the sides stay comparable at a glance. Columns are
+        # allocated only to sides that have layers, so a top-only board does
+        # not leave a gap where Bottom would have been.
+        self._layer_rows = {"top": [], "bottom": []}
+        column = 0
+        for side in ("top", "bottom"):
+            if side not in found:
+                continue
+            side_frame = ttk.Frame(self._layers_inner)
+            side_frame.grid(row=0, column=column, sticky="nw", padx=(0, 18))
+            column += 1
+            ttk.Label(side_frame, text=side.capitalize(),
+                      foreground="#555").pack(anchor="w", padx=2, pady=(2, 0))
+            for layer in sorted(found[side]):
+                # A layer already switched off in the config starts unticked;
+                # one this build has never seen starts ON. Storing exclusions
+                # rather than inclusions is what makes that the default - a
+                # layer that appears on a new board must not go missing
+                # silently.
+                state = previous.get(layer, layer not in self._layers_off)
+                var = tk.BooleanVar(value=state)
+                self._layer_vars[layer] = var
+                box = ttk.Checkbutton(
+                    side_frame, variable=var,
+                    text=f"{layer}   ({found[side][layer]})",
+                )
+                box.pack(anchor="w", padx=(16, 4))
+                self._layer_rows[side].append((layer, var, box))
+
+        # A side switched off greys its layers out immediately, not on the next
+        # refresh.
+        self._update_silk_row()
+
+    def _side_wanted(self, side: str) -> bool:
+        return self.silk_top.get() if side == "top" else self.silk_bottom.get()
+
+    def _set_all_layers(self, state: bool) -> None:
+        """All / None, but only for sides that are switched on.
+
+        A greyed-out side keeps its ticks. Changing them from here would edit a
+        selection whose effect is not visible, and it is that same selection
+        which gets saved to the config.
+        """
+        for side, rows in self._layer_rows.items():
+            if not self._side_wanted(side):
+                continue
+            for _layer, var, _box in rows:
+                var.set(state)
+
+    def _current_layers_off(self) -> set[str]:
+        """Layer names currently unticked."""
+        return {name for name, var in self._layer_vars.items() if not var.get()}
+
     def _update_silk_row(self) -> None:
         """Keep the ink swatch and the enabled state in step with the checkboxes."""
         on = self.silk_top.get() or self.silk_bottom.get()
+        # Grey the layers of a side that is off. State only - the variables are
+        # untouched, so the ticks come back exactly as they were.
+        for side, rows in self._layer_rows.items():
+            state = "normal" if self._side_wanted(side) else "disabled"
+            for _layer, _var, box in rows:
+                box.configure(state=state)
         self.silk_box.configure(state="readonly" if on else "disabled")
         self.silk_flat_check.configure(state="normal" if on else "disabled")
         rgb = SILK_COLORS.get(self.silk_color.get(), (128, 128, 128))
@@ -411,6 +604,7 @@ class StepBuilderApp(tk.Tk):
             silk_color=SILK_COLORS.get(self.silk_color.get()),
             silk_flat=self.silk_flat.get(),
             silk_flat_height=self.silk_flat_height,
+            silk_layers_off=frozenset(self._current_layers_off()),
             minimize=self.minimize.get(),
             brd_name=self._brd_name,
             dated_name=self._dated_name,
@@ -498,6 +692,7 @@ class StepBuilderApp(tk.Tk):
                     silk_color=settings.silk_color,
                     silk_flat=settings.silk_flat,
                     silk_flat_height=settings.silk_flat_height,
+                    silk_layers_off=settings.silk_layers_off,
                     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
                     minimize_size=settings.minimize,
                     log=lambda m: self._queue.put(("log", m)),
@@ -656,6 +851,8 @@ class StepBuilderApp(tk.Tk):
         self.silk_bottom.set(gui.get("silkscreenBottom", True))
         self.silk_color.set(gui.get("silkColor", DEFAULT_SILK))
         self.silk_flat.set(gui.get("silkscreenFlat", False))
+        off = gui.get("silkscreenLayersOff")
+        self._layers_off = set(off) if isinstance(off, list) else set()
         try:
             self.silk_flat_height = abs(float(gui.get("silkscreenFlatHeight",
                                                       DEFAULT_FLAT_HEIGHT)))
@@ -718,6 +915,10 @@ class StepBuilderApp(tk.Tk):
             "silkColor": self.silk_color.get(),
             "silkscreenFlat": self.silk_flat.get(),
             "silkscreenFlatHeight": self.silk_flat_height,
+            # Only overwrite the remembered exclusions once a list has actually
+            # been shown; an old JSON with no layers must not wipe them.
+            "silkscreenLayersOff": sorted(
+                self._current_layers_off() if self._layer_vars else self._layers_off),
             # MFRPN DISABLED (kept for future):
             # "mfrPnInName": self.mfr_pn_in_name.get(),
             "minimizeFileSize": self.minimize.get(),

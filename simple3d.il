@@ -106,8 +106,8 @@ procedure( s3dLoadSettings()
                 value = s3dJsonGet( allegro "commandName" )
                 when( stringp( value )  S3D_CommandName = value )
             else
-                printf( "Simple 3D: warning - could not parse %s; using built-in settings.\n"
-                        S3D_ConfigFile )
+                s3dWarn( sprintf( nil "Simple 3D: could not parse %s; using built-in settings."
+                                  S3D_ConfigFile ) )
             )
         )
         t
@@ -478,7 +478,7 @@ errset( axlTriggerClear( 'menu 's3dMenuTrigger ) )
 axlTriggerSet( 'menu 's3dMenuTrigger )
 
 when( axlVersion( 'version ) != 24.1
-    printf( "!WARNING - simple3d.il was tested under Allegro 24.1\n" )
+    s3dWarn( "Simple 3D: simple3d.il was tested under Allegro 24.1" )
 )
 
 ; Self-test: confirm we can read the working directory. getWorkingDir is the
@@ -487,8 +487,7 @@ when( axlVersion( 'version ) != 24.1
 let( ( ( ok nil ) )
     errset( ok = getWorkingDir() )
     unless( ok
-        printf( "!WARNING - simple3d.il: getWorkingDir() failed. Edit s3dDesignDir()\n" )
-        printf( "           to use your install's working-directory function.\n" )
+        s3dWarn( "Simple 3D: getWorkingDir() failed. Edit s3dDesignDir() to use your install's working-directory function." )
     )
 )
 

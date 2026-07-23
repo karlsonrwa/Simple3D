@@ -43,6 +43,47 @@
 ;  otherwise the built-in defaults apply.
 ;=====================================================================
 
+;=====================================================================
+;  CONSOLE MESSAGES
+;
+;  axlUIWPrint carries a severity, and the Allegro console colours by it:
+;  warnings in its warning colour, errors in red, both with the *WARNING* /
+;  *Error* prefix Allegro puts on its own messages. So these lines do NOT
+;  spell the severity out themselves - Allegro says it, and saying it twice
+;  reads as a mistake.
+;
+;  The documented levels are 'info0, 'info1, 'warn, 'error and 'fatal. There is
+;  no "success" level, so a green completion line cannot be had this way; the
+;  GUI log does colour its own success line green, and that is where the result
+;  is judged. 'fatal is deliberately unused - it beeps and its behaviour beyond
+;  that is not documented here.
+;
+;  The message is passed as a %s ARGUMENT rather than as the format string: a
+;  layer name or a path containing a per-cent sign would otherwise be read as a
+;  conversion and either print wrongly or fault.
+;
+;  Falls back to printf when axlUIWPrint is unavailable or refuses the call, so
+;  no message is ever lost to the attempt at colouring it.
+;=====================================================================
+
+procedure( s3dSay( s_level t_message )
+    let( ( ok )
+        ok = nil
+        errset( ok = axlUIWPrint( nil s_level "%s" t_message ) )
+        unless( ok
+            printf( "%s\n" t_message )
+        )
+    )
+)
+
+procedure( s3dWarn( t_message )
+    s3dSay( 'warn t_message )
+)
+
+procedure( s3dErr( t_message )
+    s3dSay( 'error t_message )
+)
+
 ; s3dMakeDirs( t_path ) -> create every missing level of a directory path.
 ; createDir makes only one level at a time; a path like ".../A1/cad" where an
 ; intermediate level is missing needs each segment created in turn.
@@ -887,7 +928,7 @@ procedure( makePcbContour( dsn )
         ; line instead of reporting an empty outline. Same fault class as the
         ; unbound `cuts` at the makePcb call site.
         unless( boundp( 'edges )
-            printf( "Simple 3D: warning - the design outline produced no segments.\n" )
+            s3dWarn( "Simple 3D: the design outline produced no segments." )
             edges = nil
         )
 
@@ -1435,14 +1476,14 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
                         ( "SQUARE"   endCap = 'SQUARE )
                         ( "OCTAGON"  endCap = 'OCTAGON )
                         ( t
-                            printf( "Simple 3D: warning - unknown endCapType %L in %s; using ROUND.\n"
-                                    s3dJsonGet( settings "endCapType" ) t_file )
+                            s3dWarn( sprintf( nil "Simple 3D: unknown endCapType %L in %s; using ROUND."
+                                              s3dJsonGet( settings "endCapType" ) t_file ) )
                         )
                     )
                 )
             else
-                printf( "Simple 3D: warning - could not parse %s; using built-in silkscreen defaults.\n"
-                        t_file )
+                s3dWarn( sprintf( nil "Simple 3D: could not parse %s; using built-in silkscreen defaults."
+                                  t_file ) )
             )
         else
             printf( "Simple 3D: no silkscreen config at %s; using built-in defaults.\n" t_file )
@@ -1478,8 +1519,7 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
             if( isFirst then
                 isFirst = nil
             else
-                fprintf( p_port ",
-" )
+                fprintf( p_port ",\n" )
             )
             xy = car( vertex )
             rad = cadr( vertex )
@@ -1500,6 +1540,81 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
 ; polygon with ?line2poly (verbatim the idiom in the axlText2Lines docs).
 ; True-type text has no text block and is converted directly instead - that is
 ; how exportJson tells the two apart as well.
+; Messages about objects that were found but could not be exported. Collected
+; while sweeping and carried into the JSON so the Python side can show them too
+; - the Allegro console scrolls away, the GUI log does not, and it colours a
+; line beginning with "warning" orange.
+;
+; A module-level accumulator rather than a return value: the collector already
+; returns layer groups, and threading a second channel through it and through
+; the clipper would obscure both for the sake of a message.
+S3D_SilkWarnings = nil
+
+; t if this object has no plotted width, and so would vanish in the artwork.
+;
+; A zero-width line or a text block with zero pen width is a design mistake -
+; Allegro's own plot has nothing to draw with either - but axlPolyFromDB does
+; not object: it returns nil, or a degenerate polygon that fails later with a
+; message about geometry rather than about width. Catching it here lets the
+; report name the layer and the place.
+;
+; Shapes are filled areas with no width to speak of, and true-type text is a
+; filled outline with no pen, so neither can be zero-width.
+procedure( s3dZeroWidth( o_dbid )
+    let( ( w tb ( allZero nil ) segments )
+        cond(
+            ( o_dbid->objType == "text"
+                tb = nil
+                when( o_dbid->textBlock
+                    errset( tb = axlGetParam( strcat( "paramTextBlock:" o_dbid->textBlock ) ) )
+                )
+                when( tb
+                    w = tb->photoWidth
+                    w && (abs( w ) < 1.0e-9)
+                )
+            )
+            ( o_dbid->objType == "shape"  nil )
+            ( t
+                w = nil
+                errset( w = o_dbid->width )
+                if( w then
+                    abs( w ) < 1.0e-9
+                else
+                    ; A path can carry its width per segment instead. Only
+                    ; call it zero when there ARE segments and every one of
+                    ; them is zero - with nothing to look at, say nothing.
+                    segments = nil
+                    errset( segments = o_dbid->segments )
+                    when( segments
+                        allZero = t
+                        foreach( seg segments
+                            when( seg->width && (abs( seg->width ) > 1.0e-9)
+                                allZero = nil
+                            )
+                        )
+                        allZero
+                    )
+                )
+            )
+        )
+    )
+)
+
+; "text on REF DES/SILKSCREEN_TOP at (12.500, 4.000)" - enough to find it.
+procedure( s3dDescribeObject( o_dbid t_layer )
+    let( ( box corner )
+        box = nil
+        errset( box = o_dbid->bBox )
+        corner = when( box  car( box ) )
+        if( corner then
+            sprintf( nil "%s on %s at (%.3f, %.3f)"
+                     o_dbid->objType t_layer xCoord( corner ) yCoord( corner ) )
+        else
+            sprintf( nil "%s on %s" o_dbid->objType t_layer )
+        )
+    )
+)
+
 ; A multi-segment path is converted ONE SEGMENT AT A TIME, and that is the
 ; whole point rather than an optimisation.
 ;
@@ -1564,8 +1679,8 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
                 ; with its own area. So say it here. One segment may yield more
                 ; than one polygon, hence "fewer than".
                 when( segments && (length( polys ) < length( segments ))
-                    printf( "Simple 3D: warning - a silkscreen line has %d segment(s) but produced only %d polygon(s).\n"
-                            length( segments ) length( polys ) )
+                    s3dWarn( sprintf( nil "Simple 3D: a silkscreen line has %d segment(s) but produced only %d polygon(s)."
+                                      length( segments ) length( polys ) ) )
                 )
                 ; Single-segment paths, or a path whose segments will not
                 ; convert on their own, still have to come out somehow.
@@ -1583,7 +1698,12 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
     )
 )
 
-; All silkscreen polygons on the given layers.
+; All silkscreen polygons on the given layers, GROUPED BY LAYER.
+;
+; Grouping is what lets the GUI offer the layers as checkboxes: the exporter
+; collects every layer the config lists, and which of them actually reach the
+; model is then chosen per build, with no re-export. The config answers "what
+; exists", the checkboxes answer "what to draw".
 ;
 ; One sweep covers both component legends and free board geometry: with the
 ; silkscreen layers as the only visible ones, axlAddSelectAll returns the
@@ -1593,9 +1713,11 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
 ; The visibility and find-filter state is snapshotted and restored, per the
 ; programming model in the axlVisibleDesign documentation. Without that the
 ; user is left staring at a blank board after an export.
-procedure( s3dCollectSilkPolys( l_layers s_endCap )
-    let( ( saveVis saveEnabled saveOn elems polys out )
+procedure( s3dCollectSilkByLayer( l_layers s_endCap )
+    let( ( saveVis saveEnabled saveOn elems polys out key groups order zero message ( nBad 0 ) )
         out = nil
+        groups = makeTable( "s3dSilkGroups" nil )
+        order = tconc( nil nil )
         when( l_layers
             saveVis = axlVisibleGet()
             saveEnabled = axlGetFindFilter( t )
@@ -1604,7 +1726,7 @@ procedure( s3dCollectSilkPolys( l_layers s_endCap )
             axlVisibleDesign( nil )
             foreach( layer l_layers
                 unless( axlVisibleLayer( layer t )
-                    printf( "Simple 3D: warning - no such layer: %s\n" layer )
+                    s3dWarn( sprintf( nil "Simple 3D: no such layer: %s" layer ) )
                 )
             )
             axlClearSelSet()
@@ -1629,15 +1751,74 @@ procedure( s3dCollectSilkPolys( l_layers s_endCap )
             )
 
             foreach( elem elems
-                polys = s3dPolysFromDbid( elem s_endCap )
+                ; Bucket by the SOURCE object's layer, before conversion: a
+                ; polygon has no layer of its own, and text loses even the dbid
+                ; once axlText2Lines has vectorised it. Still one sweep per
+                ; side - sweeping once per layer would multiply the visibility
+                ; churn for nothing.
+                key = nil
+                errset( key = elem->layer )
+                unless( stringp( key )  key = sprintf( nil "%L" key ) )
+
+                ; Zero-width objects are reported and skipped rather than fed
+                ; to the converter, which would either drop them silently or
+                ; fail later with a message about geometry instead of width.
+                zero = nil
+                errset( zero = s3dZeroWidth( elem ) )
+                when( zero
+                    message = strcat( "zero width: " s3dDescribeObject( elem key )
+                                      " - skipped, it cannot be plotted" )
+                    s3dWarn( sprintf( nil "Simple 3D: %s." message ) )
+                    S3D_SilkWarnings = cons( message S3D_SilkWarnings )
+                )
+
+                ; Per element, so one object the converter cannot handle costs
+                ; that object and not the whole side. Before this, a single
+                ; failure anywhere in the sweep propagated out of
+                ; s3dMakeSilkscreen, was swallowed by the errset at the call
+                ; site, and the export finished with no silkscreen at all and
+                ; nothing on screen to say why.
+                polys = nil
+                unless( zero || errset( polys = s3dPolysFromDbid( elem s_endCap ) )
+                    nBad = nBad + 1
+                    when( nBad == 1
+                        s3dWarn( sprintf( nil "Simple 3D: a %s object on %s could not be converted; skipping it (further ones are counted only)."
+                                          elem->objType key ) )
+                    )
+                )
                 foreach( poly polys
                     when( poly && !poly->isHole
-                        out = cons( poly out )
+                        unless( groups[key]
+                            groups[key] = tconc( nil nil )
+                            tconc( order key )
+                        )
+                        tconc( groups[key] poly )
                     )
                 )
             )
         )
-        reverse( out )
+
+        when( nBad > 0
+            s3dWarn( sprintf( nil "Simple 3D: %d silkscreen object(s) could not be converted and were skipped." nBad ) )
+        )
+
+        ; -> ( (layer polys) (layer polys) ... ), layers in the order Allegro
+        ; first mentioned them, which keeps the GUI's list stable between runs.
+        out = tconc( nil nil )
+        foreach( key cdr( car( order ) )
+            tconc( out list( key cdr( car( groups[key] ) ) ) )
+        )
+        cdr( car( out ) )
+    )
+)
+
+; Total polygon count across a side's groups, for the console summary.
+procedure( s3dGroupCount( l_groups )
+    let( ( ( n 0 ) )
+        foreach( group l_groups
+            n = n + length( cadr( group ) )
+        )
+        n
     )
 )
 
@@ -1666,16 +1847,16 @@ procedure( s3dBoardPoly()
                     if( res then
                         polys = remd( nil res )
                     else
-                        printf( "Simple 3D: warning - could not subtract cutouts from the board outline; silkscreen is clipped to the outline only.\n" )
+                        s3dWarn( "Simple 3D: could not subtract cutouts from the board outline; silkscreen is clipped to the outline only." )
                     )
                 )
                 polys
             else
-                printf( "Simple 3D: warning - could not convert the design outline to a polygon; silkscreen will not be clipped.\n" )
+                s3dWarn( "Simple 3D: could not convert the design outline to a polygon; silkscreen will not be clipped." )
                 nil
             )
         else
-            printf( "Simple 3D: warning - no design outline; silkscreen will not be clipped.\n" )
+            s3dWarn( "Simple 3D: no design outline; silkscreen will not be clipped." )
             nil
         )
     )
@@ -1704,8 +1885,8 @@ procedure( s3dClipChunk( l_chunk l_board )
         if( res then
             remd( nil res )
         else
-            printf( "Simple 3D: warning - silkscreen clip failed for %d polygon(s); kept unclipped.\n"
-                    length( l_chunk ) )
+            s3dWarn( sprintf( nil "Simple 3D: silkscreen clip failed for %d polygon(s); kept unclipped."
+                              length( l_chunk ) ) )
             l_chunk
         )
     )
@@ -1764,6 +1945,26 @@ procedure( s3dClipPolys( l_polys l_board )
 ;  Top level
 ;---------------------------------------------------------------------
 
+; Clip each layer's polygons separately.
+;
+; Clipping a whole side at once would be marginally cheaper, but axlPolyOperation
+; unions overlapping polygons, so polygons from different layers would come back
+; merged into single regions with no layer left to speak of. Groups that clip to
+; nothing are dropped, so a layer that lies entirely off the board does not
+; appear in the GUI as an empty choice.
+procedure( s3dClipGroups( l_groups l_board )
+    let( ( out clipped )
+        out = tconc( nil nil )
+        foreach( group l_groups
+            clipped = s3dClipPolys( cadr( group ) l_board )
+            when( clipped
+                tconc( out list( car( group ) clipped ) )
+            )
+        )
+        cdr( car( out ) )
+    )
+)
+
 ; Collect the whole silkscreen once for the design.
 ; -> list( f_thickness l_topPolys l_bottomPolys )  or nil if disabled/empty.
 procedure( s3dMakeSilkscreen( l_config )
@@ -1777,24 +1978,38 @@ procedure( s3dMakeSilkscreen( l_config )
 
         when( doExport
             printf( "Simple 3D: collecting silkscreen...\n" )
-            topPolys = s3dCollectSilkPolys( top endCap )
-            botPolys = s3dCollectSilkPolys( bottom endCap )
+            ; Cleared per export, not per side, so both sides report together.
+            S3D_SilkWarnings = nil
+            ; Both sides come back as ( (layer polys) ... ), so everything from
+            ; here on works in groups: s3dGroupCount to count across them and
+            ; s3dClipGroups to clip each layer on its own.
+            topPolys = s3dCollectSilkByLayer( top endCap )
+            botPolys = s3dCollectSilkByLayer( bottom endCap )
             printf( "Simple 3D: silkscreen polygons - top %d, bottom %d\n"
-                    length( topPolys ) length( botPolys ) )
+                    s3dGroupCount( topPolys ) s3dGroupCount( botPolys ) )
+            foreach( group append( topPolys botPolys )
+                printf( "Simple 3D:   %s - %d polygon(s)\n"
+                        car( group ) length( cadr( group ) ) )
+            )
 
             when( clip && (topPolys || botPolys)
                 board = s3dBoardPoly()
                 when( board
                     printf( "Simple 3D: clipping silkscreen to the board outline...\n" )
-                    topPolys = s3dClipPolys( topPolys board )
-                    botPolys = s3dClipPolys( botPolys board )
+                    topPolys = s3dClipGroups( topPolys board )
+                    botPolys = s3dClipGroups( botPolys board )
                     printf( "Simple 3D: after clipping - top %d, bottom %d\n"
-                            length( topPolys ) length( botPolys ) )
+                            s3dGroupCount( topPolys ) s3dGroupCount( botPolys ) )
                 )
             )
 
+            when( S3D_SilkWarnings
+                s3dWarn( sprintf( nil "Simple 3D: %d silkscreen object(s) were skipped; see the warnings above and the GUI log."
+                                  length( S3D_SilkWarnings ) ) )
+            )
+
             when( topPolys || botPolys
-                list( thickness topPolys botPolys )
+                list( thickness topPolys botPolys reverse( S3D_SilkWarnings ) )
             )
         )
     )
@@ -1806,15 +2021,22 @@ procedure( s3dMakeSilkscreen( l_config )
 ; to tens of thousands of primitives, and building that with repeated strcat is
 ; quadratic and hits the same "insufficient memory" wall the component section
 ; already has a note about.
-procedure( s3dWriteSilkPolys( p_port l_polys )
-    let( ( ( firstPoly t ) holes ( firstHole t ) area )
-        foreach( poly l_polys
+procedure( s3dWriteSilkPolys( p_port l_groups )
+    let( ( ( firstPoly t ) holes ( firstHole t ) area layer )
+        foreach( group l_groups
+        layer = car( group )
+        foreach( poly cadr( group )
             if( firstPoly then
                 firstPoly = nil
             else
                 fprintf( p_port ",\n" )
             )
             fprintf( p_port "\t\t\t{\n" )
+
+            ; Which layer this polygon came from. The array stays FLAT - one
+            ; object per polygon, exactly as before - so a reader that ignores
+            ; this key still builds the whole legend.
+            fprintf( p_port "\t\t\t\t\"layer\": \"%s\",\n" layer )
 
             ; Allegro's own area for this polygon, already net of its holes.
             ; This is the reference the Python side resolves the arc convention
@@ -1849,18 +2071,36 @@ procedure( s3dWriteSilkPolys( p_port l_polys )
             )
             fprintf( p_port "\n\t\t\t}" )
         )
+        )
     )
 )
 
 ; The whole "silkscreen" object, written straight to the open file.
 procedure( s3dWriteSilkscreen( p_port l_silk )
-    let( ( thickness topPolys botPolys )
+    let( ( thickness topPolys botPolys warnings ( firstWarn t ) )
         thickness = nth( 0 l_silk )
         topPolys = nth( 1 l_silk )
         botPolys = nth( 2 l_silk )
+        warnings = nth( 3 l_silk )
 
         fprintf( p_port "\t\"silkscreen\": {\n" )
         fprintf( p_port "\t\t\"thickness\": %f,\n" thickness )
+
+        ; What was found and could not be exported. Carried across so the GUI
+        ; can repeat it: the Allegro console has scrolled past by the time
+        ; anyone looks at the model.
+        when( warnings
+            fprintf( p_port "\t\t\"warnings\": [\n" )
+            foreach( message warnings
+                if( firstWarn then
+                    firstWarn = nil
+                else
+                    fprintf( p_port ",\n" )
+                )
+                fprintf( p_port "\t\t\t\"%s\"" message )
+            )
+            fprintf( p_port "\n\t\t],\n" )
+        )
         fprintf( p_port "\t\t\"top\": [\n" )
         s3dWriteSilkPolys( p_port topPolys )
         fprintf( p_port "\n\t\t],\n" )
@@ -1914,12 +2154,14 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; NOTE: no embedded \t here - the line writer below prefixes every line
         ; with one tab, so embedding another would double-indent these keys
         ; (still valid JSON, but inconsistent with the rest of the file).
-        ; format_version 2 adds the optional "silkscreen" object. Readers that
-        ; only know version 1 ignore it; this reader treats it as optional, so
-        ; a version-1 file still builds.
+        ; format_version 2 added the optional "silkscreen" object; 3 tags every
+        ; silkscreen polygon with the layer it came from, so the layers can be
+        ; switched on and off when the model is built instead of at export
+        ; time. Both additions are optional to a reader - an older file simply
+        ; has no layers to choose from and builds whole.
         name = strcat(
             "\"format\": \"simple3d\",\n"
-            "\"format_version\": 2,\n"
+            "\"format_version\": 3,\n"
             "\"name\": \"" variantName "\""
         )
 
@@ -2025,8 +2267,18 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
         ; of a DNP part is still physically on the board. Every variant JSON
         ; therefore carries the same silkscreen (and, like edgeCuts, it costs
         ; one collection pass no matter how many variants there are).
+        ; errset with a second argument PRINTS the SKILL error before
+        ; returning nil, and errset itself returns nil only on failure. The
+        ; bare errset this replaces hid every silkscreen fault behind an empty
+        ; legend: the export finished, the JSON had no "silkscreen" key, and
+        ; the console said nothing at all. A swallowed error is worse than a
+        ; loud one - the board still exports either way.
         silk = nil
-        errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) ) )
+        unless( errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) ) t )
+            s3dErr( "Simple 3D: silkscreen collection failed (message above)." )
+            s3dErr( "Simple 3D: the board and its components are still exported; only the legend is missing." )
+            silk = nil
+        )
 
         if( isFile( variantFile ) then
             ; Read / parse variant list
@@ -2096,7 +2348,16 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                     create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName silk )
                 )
 
-                print( "Export complete!" )
+                ; print() quotes its argument and adds no newline; this is a
+                ; message to a person, not a value being dumped.
+                ;
+                ; No green: axlUIWPrint's severities are info0, info1, warn,
+                ; error and fatal, and none of them is "success". A completion
+                ; line therefore prints in the console's ordinary colour. The
+                ; GUI log does colour its own completion line green, and that
+                ; is where the result is actually judged.
+                printf( "Simple 3D: export complete - %d variant(s) written.\n"
+                        variantCount )
             else
                 error( "No variant information could be read!" )
             )
