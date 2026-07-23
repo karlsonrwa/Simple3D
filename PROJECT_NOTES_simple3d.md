@@ -346,7 +346,7 @@ documented in addIndent (harmless: generator never emits empty lines, byte-verif
 First written 2026-07-18, when all six were implemented. Unlike the dated round
 entries below, this table is **not** a historical snapshot: revise a row in place
 whenever a later round changes that requirement's state, and name the round that
-changed it so the trail stays followable. Last revised: round 13 (2026-07-23).
+changed it so the trail stays followable. Last revised: round 17 (2026-07-23).
 
 Delivered files (as of 2026-07-18; the `exportstep_fixes.il` overlay was folded
 into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
@@ -365,6 +365,7 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
 | 7 | silkscreen export (user, 2026-07-22) | **done and confirmed on the user's boards** (rounds 10–12). `format_version: 2`; polygons carry Allegro's own area and the reader resolves the vertex-radius reading against it (settled: axis / positive-sits-left / first-radius-closes). Solid or flat, per side, White/Black, clipped to outline−cutouts. Flat faces are unioned; solid ones deliberately are not. |
 | 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11. Export list comes from the design, the variant table only subtracts, so a symbol Variants.lst does not mention is exported in every variant. `NO_STEP_EXPORT` excludes outright and is logged by refdes. Not yet confirmed live that `axlDBGetProperties` sees the property. |
+| 10 | silkscreen layers chosen in the GUI (user, 2026-07-23) | done in rounds 14-17; `format_version: 3`. Every polygon carries its layer, the panel offers what the JSON contains, exclusions are persisted, a side switched off greys its layers. Zero-width objects reported by layer and position. Console coloured by severity via `axlUIWPrint` — no green severity exists. |
 | 9 | one settings file (user, 2026-07-22) | done in round 10h. `simple3d_config.json` holds every user setting, read by both halves; only `S3D_ScriptDir` stays in SKILL source, for bootstrap. Rounds 12–13 fixed two ways the GUI could damage it. |
 
 ### Verification done here
