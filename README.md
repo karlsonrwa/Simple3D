@@ -121,6 +121,17 @@ section, the GUI takes `gui`, and the exporter takes `silkscreen` and
 whatever you last typed into it is what the next run starts with — and the rest
 of the file is left untouched.
 
+If the file cannot be read — missing, or edited into invalid JSON — the GUI
+loads nothing and **writes nothing**, leaving your file exactly as it is, and
+says so in its log. The line naming the settings file appears on every start:
+
+```
+Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
+```
+
+so when a field comes up unexpectedly empty, the log says which file was read
+and whether it parsed. A byte-order mark left by an editor is tolerated.
+
 | Section | Key | What it does |
 |---|---|---|
 | `allegro` | `python` | Python executable. `"python"` if on PATH, else a full path like `"c:/Python312/python.exe"`. |
@@ -262,6 +273,12 @@ Three levers, in order of effect:
 1. **Flat.** A solid costs one face per polygon edge plus a top and a bottom; a
    surface costs one face. What you give up: the ink is a surface, not a solid -
    no thickness to measure, and nothing downstream can do boolean work with it.
+
+   Overlapping polygons are boolean-unioned into one shape first. Silkscreen
+   strokes really do overlap, and as coplanar faces at one z that renders as a
+   flickering blend rather than as ink. The union also makes the file slightly
+   smaller (measured: 117 faces → 112, 599 kB → 548 kB), which is the opposite
+   of what fusing the *solid* legend does.
 
    The face is lifted off the board by `gui.silkscreenFlatHeight`, 1 µm by
    default. Exactly coplanar faces *do* flicker against each other in a viewer
@@ -504,6 +521,18 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 GUI записывает секцию `gui` обратно, поэтому следующий запуск начинается с того,
 что вы ввели в прошлый раз, — а остальная часть файла остаётся нетронутой.
 
+Если файл не читается — отсутствует или отредактирован в невалидный JSON — GUI
+ничего не загружает и **ничего не пишет**, оставляя ваш файл как есть, и
+сообщает об этом в своём логе. Строка с именем файла настроек выводится при
+каждом запуске:
+
+```
+Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
+```
+
+так что если поле неожиданно пустое — в логе видно, какой файл прочитан и
+разобрался ли он. Метка порядка байт (BOM), оставленная редактором, допускается.
+
 | Секция | Ключ | Что делает |
 |---|---|---|
 | `allegro` | `python` | Исполняемый Python. `"python"`, если на PATH, иначе полный путь вроде `"c:/Python312/python.exe"`. |
@@ -647,6 +676,12 @@ silkscreen_top: 214 polygon(s) match Allegro's areas (arc reading: ...)
 1. **Flat.** Тело стоит по грани на каждое ребро полигона плюс верх и низ;
    поверхность — одну грань. Чем платите: краска становится поверхностью, а не
    телом — толщину не измерить и булевы операции с ней невозможны.
+
+   Перекрывающиеся полигоны сначала объединяются булевой операцией. Штрихи
+   шелкографии реально перекрываются, и как компланарные грани на одном z это
+   рисуется мерцающим слипанием, а не краской. Объединение заодно немного
+   уменьшает файл (замерено: 117 граней → 112, 599 КБ → 548 КБ) —
+   противоположно тому, что даёт объединение *объёмной* легенды.
 
    Грань приподнята над платой на `gui.silkscreenFlatHeight`, по умолчанию
    1 мкм. Строго совпадающие плоскости действительно рябят друг о друга в

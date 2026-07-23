@@ -1597,3 +1597,65 @@ point of the three-level check is that the level it lives on is the uncertain
 part. If a marked symbol still comes through, the per-symbol log line will be
 absent, which says immediately that the property was not seen rather than that
 the filter misfired.
+
+## Update 2026-07-23 (round 12) — config destroyed on close; flat faces flicker
+
+Three reports against the merged build. The first two are one defect.
+
+### The settings file came back holding only "gui"
+
+`_read_config_file` returned `{}` for a file it could not read, and
+`_save_config` then merged the gui section into that empty document and wrote
+it. So any failure to READ the config turned into silent destruction of it -
+`allegro`, `silkscreen` and `settings` gone - and the empty path fields
+(report 1) are the same failure seen from the other side.
+
+The comment above `_save_config` described preserving the other sections, and
+the code defeated it two lines later. Guarding the merge inside `gui` last
+round was the same mistake one level down, and this one was already latent
+then: fixing a symptom at one level does not make the level above it right.
+
+Now `_read_config_file` returns `(document, problem)` and **nothing is written
+unless the file was understood**: missing, unparsable, not an object - each
+refuses the save and leaves the file alone. Read as `utf-8-sig`, because a BOM
+from an editor is enough on its own to make `json.loads` fail on otherwise
+valid JSON. Written through a temp file plus `os.replace`, so a crash cannot
+truncate a file that now carries the SKILL side's settings too.
+
+The GUI also states, on every start, which settings file it used:
+`Settings loaded from <path>`, or a warning naming the problem and saying the
+file will not be saved. That line is what was missing - "why is this field
+empty" had no answer anywhere on screen.
+
+### Flat silkscreen blended where solid did not
+
+Measured on the user's board: of 8 polygon pairs with overlapping bounding
+boxes, 5 overlap by real area - 0.16 mm2 double-counted across the top side.
+Silkscreen strokes genuinely overlap. As solids that is harmless
+interpenetration; as flat faces it is two coincident coplanar faces at one z,
+which no depth buffer can order.
+
+Flat faces are now boolean-unioned per side (general fuse +
+`ShapeUpgrade_UnifySameDomain`). Measured on that board's 117 top faces: 0.08 s,
+117 faces -> 112, area 209.4717 -> 209.3116 (exactly the double count), STEP
+599 kB -> 548 kB.
+
+**This contradicts round 10g without contradicting its measurement.** Fusing the
+SOLID legend cost 154% of the file size, because a solid union builds side walls
+and swaps analytic surfaces for general ones. A coplanar union of faces only
+removes geometry. Same word, opposite result - which is why it was worth
+measuring again instead of citing the old number as settled.
+
+Whole-board sizes now: no silkscreen 98,731; solid 2,661,832; flat 754,698.
+
+### A test bug worth recording
+The first flat-vs-solid comparison reported sizes six bytes apart. The loop
+built a kwargs dict and never passed `**kw`, so both runs were solid. Two runs
+that agree that closely are not a result, they are a symptom - check the
+harness before the code.
+
+### Verified here
+Config: a valid file keeps all four sections and the hand-written comment; a BOM
+parses; broken JSON, a truncated file, a JSON array and a missing file each
+leave the file untouched and report a problem. Both modes build the user's
+board. Full suite and shadow scan clean.
