@@ -255,6 +255,16 @@ class StepBuilderApp(tk.Tk):
             lambda e: self._layers_canvas.itemconfigure(self._layers_window,
                                                         width=e.width))
 
+        # The wheel over the panel must scroll it. Binding the canvas alone is
+        # not enough: the pointer is nearly always over a Checkbutton or the
+        # inner frame, and those consume the event, so the wheel only worked on
+        # the scrollbar itself. Binding every child is worse - the list is
+        # rebuilt constantly. So grab the wheel while the pointer is inside the
+        # panel and release it on the way out, which leaves the wheel alone
+        # everywhere else in the window.
+        self._layers_canvas.bind("<Enter>", self._grab_wheel)
+        self._layers_canvas.bind("<Leave>", self._release_wheel)
+
         layer_buttons = ttk.Frame(layers_frame)
         layer_buttons.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
         ttk.Button(layer_buttons, text="All", width=6,
@@ -334,6 +344,31 @@ class StepBuilderApp(tk.Tk):
 
     # ------------------------------------------------------- silk layers -- #
 
+    def _grab_wheel(self, _event=None) -> None:
+        self.bind_all("<MouseWheel>", self._on_layers_wheel)
+        # X11 reports the wheel as buttons 4 and 5; harmless on Windows.
+        self.bind_all("<Button-4>", self._on_layers_wheel)
+        self.bind_all("<Button-5>", self._on_layers_wheel)
+
+    def _release_wheel(self, _event=None) -> None:
+        self.unbind_all("<MouseWheel>")
+        self.unbind_all("<Button-4>")
+        self.unbind_all("<Button-5>")
+
+    def _on_layers_wheel(self, event) -> None:
+        # Nothing to scroll when the list already fits: without this the canvas
+        # rubber-bands the content out of view on a short list.
+        region = self._layers_canvas.bbox("all")
+        if not region or region[3] - region[1] <= self._layers_canvas.winfo_height():
+            return
+        if getattr(event, "num", None) == 4:
+            step = -1
+        elif getattr(event, "num", None) == 5:
+            step = 1
+        else:
+            step = -1 if event.delta > 0 else 1
+        self._layers_canvas.yview_scroll(step, "units")
+
     def _schedule_layer_refresh(self, *_args) -> None:
         """Rebuild the layer list shortly after the JSON path settles.
 
@@ -363,10 +398,13 @@ class StepBuilderApp(tk.Tk):
                         into[layer] = into.get(layer, 0) + n
 
         if not found:
+            # grid, like the side columns below: pack and grid cannot both
+            # manage children of one container, and this label shares
+            # _layers_inner with them.
             ttk.Label(self._layers_inner, foreground="#777",
                       text="No layer information in this JSON — the whole "
-                           "legend is built. Re-export to choose layers.").pack(
-                anchor="w", padx=4, pady=2)
+                           "legend is built. Re-export to choose layers.").grid(
+                row=0, column=0, sticky="w", padx=4, pady=2)
             self._layer_vars = {}
             return
 
@@ -374,10 +412,20 @@ class StepBuilderApp(tk.Tk):
         # so a refresh does not undo a selection.
         previous = {name: var.get() for name, var in self._layer_vars.items()}
         self._layer_vars = {}
+
+        # Side by side, not stacked: a board's two sides rarely have many
+        # layers each, so two short columns fit where one long list would
+        # scroll, and the sides stay comparable at a glance. Columns are
+        # allocated only to sides that have layers, so a top-only board does
+        # not leave a gap where Bottom would have been.
+        column = 0
         for side in ("top", "bottom"):
             if side not in found:
                 continue
-            ttk.Label(self._layers_inner, text=side.capitalize(),
+            side_frame = ttk.Frame(self._layers_inner)
+            side_frame.grid(row=0, column=column, sticky="nw", padx=(0, 18))
+            column += 1
+            ttk.Label(side_frame, text=side.capitalize(),
                       foreground="#555").pack(anchor="w", padx=2, pady=(2, 0))
             for layer in sorted(found[side]):
                 # A layer already switched off in the config starts unticked;
@@ -389,7 +437,7 @@ class StepBuilderApp(tk.Tk):
                 var = tk.BooleanVar(value=state)
                 self._layer_vars[layer] = var
                 ttk.Checkbutton(
-                    self._layers_inner, variable=var,
+                    side_frame, variable=var,
                     text=f"{layer}   ({found[side][layer]})",
                 ).pack(anchor="w", padx=(16, 4))
 

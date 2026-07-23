@@ -1946,3 +1946,43 @@ Every one of these three rounds traces back to a patch that did not apply and
 did not say so. When a replacement must apply, either use the editor, or make
 the script fail loudly on a miss - and then verify by reading the result, not
 by trusting the exit code.
+
+## Update 2026-07-23 (round 15) — layer panel: wheel scrolling, two columns
+
+Two refinements to the panel from round 14, both reported after live use.
+
+### The wheel only worked on the scrollbar
+
+Binding `<MouseWheel>` to the canvas is not enough: the pointer is almost always
+over a Checkbutton or the inner frame, and those consume the event before the
+canvas sees it. Binding every child would work but the list is rebuilt on every
+JSON change, so the bindings would have to be re-applied each time.
+
+Instead the panel grabs the wheel with `bind_all` on `<Enter>` and releases it
+on `<Leave>`, so the wheel scrolls the layer list while the pointer is inside it
+and behaves normally everywhere else in the window. `<Button-4>`/`<Button-5>`
+are bound too - X11's wheel encoding, harmless on Windows.
+
+Guarded against scrolling a list that already fits: without the check the canvas
+rubber-bands a short list out of view, which looks broken.
+
+### Bottom beside Top, not under it
+
+Each side now gets its own column in the inner frame. Two short columns fit
+where one long list scrolled, and the two sides stay comparable at a glance.
+Columns are allocated only to sides that actually have layers, so a top-only
+board leaves no gap.
+
+One hazard this introduced and closed immediately: `_layers_inner` now manages
+its children with `grid`, and the "no layer information" label in the same
+container was still using `pack`. Tkinter refuses both managers in one
+container. They never coexist (the label path returns early, and every refresh
+destroys the children first), but that is an accident of control flow rather
+than a guarantee, so the label moved to `grid` as well.
+
+### Verified here
+Two columns on the same grid row with the right layers in each; 24 layers
+overflow the 96 px panel and the wheel moves the view down and back exactly;
+a short list does not move; grab/release leaves no stray bindings; the
+empty-state label renders without a geometry-manager clash. Full suite and all
+three SKILL checks clean.

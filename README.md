@@ -268,15 +268,16 @@ came from, so which of them actually reach the model is decided in the GUI, per
 build:
 
 ```
-┌─ Silkscreen layers ──────────────────────────── [All] [None] ─┐
-│ Top                                                           │
-│   ☑ BOARD GEOMETRY/SILKSCREEN_TOP            (34)             │
-│   ☑ MANUFACTURING/AUTOSILK_TOP               (83)             │
-│   ☐ REF DES/SILKSCREEN_TOP                  (412)             │
-│ Bottom                                                        │
-│   ☑ BOARD GEOMETRY/SILKSCREEN_BOTTOM          (9)             │
-└───────────────────────────────────────────────────────────────┘
+┌─ Silkscreen layers ─────────────────────────────────────────────────────┐
+│ Top                                    Bottom                           │
+│   ☑ BOARD GEOMETRY/SILKSCREEN_TOP (34)   ☑ BOARD GEOMETRY/SILK_BOT (9)  │
+│   ☑ MANUFACTURING/AUTOSILK_TOP    (83)   ☐ REF DES/SILKSCREEN_BOT (61)  │
+│   ☐ REF DES/SILKSCREEN_TOP       (412)                                  │
+└─ [All] [None] ──────────────────────────────────────────────────────────┘
 ```
+
+The two sides sit side by side, and the mouse wheel scrolls the panel wherever
+the pointer is inside it.
 
 Export once, then try combinations by ticking and pressing Generate — the
 counts show what each layer costs before you decide. The list is built from the
@@ -707,15 +708,16 @@ silkscreen_top: 214 polygon(s) match Allegro's areas (arc reading: ...)
 каждую сборку:
 
 ```
-┌─ Silkscreen layers ──────────────────────────── [All] [None] ─┐
-│ Top                                                           │
-│   ☑ BOARD GEOMETRY/SILKSCREEN_TOP            (34)             │
-│   ☑ MANUFACTURING/AUTOSILK_TOP               (83)             │
-│   ☐ REF DES/SILKSCREEN_TOP                  (412)             │
-│ Bottom                                                        │
-│   ☑ BOARD GEOMETRY/SILKSCREEN_BOTTOM          (9)             │
-└───────────────────────────────────────────────────────────────┘
+┌─ Silkscreen layers ─────────────────────────────────────────────────────┐
+│ Top                                    Bottom                           │
+│   ☑ BOARD GEOMETRY/SILKSCREEN_TOP (34)   ☑ BOARD GEOMETRY/SILK_BOT (9)  │
+│   ☑ MANUFACTURING/AUTOSILK_TOP    (83)   ☐ REF DES/SILKSCREEN_BOT (61)  │
+│   ☐ REF DES/SILKSCREEN_TOP       (412)                                  │
+└─ [All] [None] ──────────────────────────────────────────────────────────┘
 ```
+
+Стороны расположены рядом, а колесо мыши прокручивает панель в любом её месте,
+не только на полосе прокрутки.
 
 Экспортируете один раз, дальше пробуете комбинации галочками и кнопкой Generate
 — число полигонов рядом показывает цену слоя до того, как вы решите. Список
