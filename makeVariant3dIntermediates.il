@@ -1850,19 +1850,26 @@ procedure( s3dMakeSilkscreen( l_config )
 
         when( doExport
             printf( "Simple 3D: collecting silkscreen...\n" )
-            topPolys = s3dCollectSilkPolys( top endCap )
-            botPolys = s3dCollectSilkPolys( bottom endCap )
+            ; Both sides come back as ( (layer polys) ... ), so everything from
+            ; here on works in groups: s3dGroupCount to count across them and
+            ; s3dClipGroups to clip each layer on its own.
+            topPolys = s3dCollectSilkByLayer( top endCap )
+            botPolys = s3dCollectSilkByLayer( bottom endCap )
             printf( "Simple 3D: silkscreen polygons - top %d, bottom %d\n"
-                    length( topPolys ) length( botPolys ) )
+                    s3dGroupCount( topPolys ) s3dGroupCount( botPolys ) )
+            foreach( group append( topPolys botPolys )
+                printf( "Simple 3D:   %s - %d polygon(s)\n"
+                        car( group ) length( cadr( group ) ) )
+            )
 
             when( clip && (topPolys || botPolys)
                 board = s3dBoardPoly()
                 when( board
                     printf( "Simple 3D: clipping silkscreen to the board outline...\n" )
-                    topPolys = s3dClipPolys( topPolys board )
-                    botPolys = s3dClipPolys( botPolys board )
+                    topPolys = s3dClipGroups( topPolys board )
+                    botPolys = s3dClipGroups( botPolys board )
                     printf( "Simple 3D: after clipping - top %d, bottom %d\n"
-                            length( topPolys ) length( botPolys ) )
+                            s3dGroupCount( topPolys ) s3dGroupCount( botPolys ) )
                 )
             )
 

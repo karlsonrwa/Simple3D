@@ -1905,3 +1905,44 @@ across a line break. Two found, both from the same cause, both fixed.
 **Lesson worth keeping:** heredocs through the Bash tool mangle backslash
 escapes often enough that generated SKILL needs a mechanical check afterwards.
 Paren balance was already checked; string literals now are too.
+
+## Update 2026-07-23 (round 14b) — the swallowed error, named
+
+The reporting added in 14a paid for itself on the first run:
+
+```
+*Error* eval: undefined function - s3dCollectSilkPolys
+Simple 3D: ERROR - silkscreen collection failed (message above).
+```
+
+`s3dCollectSilkPolys` was renamed to `s3dCollectSilkByLayer` in round 14. The
+DEFINITION was renamed; the two call sites in `s3dMakeSilkscreen` were not,
+because the scripted patch that was supposed to update them did not match and
+said nothing. `s3dClipPolys` -> `s3dClipGroups` and the two `length()` ->
+`s3dGroupCount()` in the same block were missed the same way. Fixed with the
+editor rather than a script, and verified by reading the block back.
+
+### Why nothing caught it
+
+SKILL resolves function names at CALL time, so a file with a stale call loads
+without complaint. Paren balance was clean, the string check was clean, and
+every Python test passed - none of them execute SKILL. The only thing that
+could have caught it is a check on the SKILL sources themselves.
+
+`check_calls.py` now does that: it collects every `procedure( name(` definition
+across both .il files and flags any call to a project-shaped name (`s3d*`,
+`make*`, `add*`, `symbolReturn*`, ...) that is defined nowhere, ignoring
+Allegro's `axl*` and the SKILL builtins that match those shapes. Verified by
+reintroducing the exact bug: it reports the line and exits 1.
+
+**Three mechanical checks on the SKILL sources now, and each exists because
+something got past the previous two:** paren balance, string literals broken by
+a real newline, and calls to undefined procedures. Run all three after any
+scripted edit.
+
+### The wider lesson, worth stating plainly
+Scripted find-and-replace over source that fails to match is silent by default.
+Every one of these three rounds traces back to a patch that did not apply and
+did not say so. When a replacement must apply, either use the editor, or make
+the script fail loudly on a miss - and then verify by reading the result, not
+by trusting the exit code.
