@@ -1583,7 +1583,12 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
     )
 )
 
-; All silkscreen polygons on the given layers.
+; All silkscreen polygons on the given layers, GROUPED BY LAYER.
+;
+; Grouping is what lets the GUI offer the layers as checkboxes: the exporter
+; collects every layer the config lists, and which of them actually reach the
+; model is then chosen per build, with no re-export. The config answers "what
+; exists", the checkboxes answer "what to draw".
 ;
 ; One sweep covers both component legends and free board geometry: with the
 ; silkscreen layers as the only visible ones, axlAddSelectAll returns the
@@ -1593,9 +1598,11 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
 ; The visibility and find-filter state is snapshotted and restored, per the
 ; programming model in the axlVisibleDesign documentation. Without that the
 ; user is left staring at a blank board after an export.
-procedure( s3dCollectSilkPolys( l_layers s_endCap )
-    let( ( saveVis saveEnabled saveOn elems polys out )
+procedure( s3dCollectSilkByLayer( l_layers s_endCap )
+    let( ( saveVis saveEnabled saveOn elems polys out key groups order )
         out = nil
+        groups = makeTable( "s3dSilkGroups" nil )
+        order = tconc( nil nil )
         when( l_layers
             saveVis = axlVisibleGet()
             saveEnabled = axlGetFindFilter( t )
@@ -1629,15 +1636,43 @@ procedure( s3dCollectSilkPolys( l_layers s_endCap )
             )
 
             foreach( elem elems
+                ; Bucket by the SOURCE object's layer, before conversion: a
+                ; polygon has no layer of its own, and text loses even the dbid
+                ; once axlText2Lines has vectorised it. Still one sweep per
+                ; side - sweeping once per layer would multiply the visibility
+                ; churn for nothing.
+                key = elem->layer
+                unless( stringp( key )  key = sprintf( nil "%L" key ) )
                 polys = s3dPolysFromDbid( elem s_endCap )
                 foreach( poly polys
                     when( poly && !poly->isHole
-                        out = cons( poly out )
+                        unless( groups[key]
+                            groups[key] = tconc( nil nil )
+                            tconc( order key )
+                        )
+                        tconc( groups[key] poly )
                     )
                 )
             )
         )
-        reverse( out )
+
+        ; -> ( (layer polys) (layer polys) ... ), layers in the order Allegro
+        ; first mentioned them, which keeps the GUI's list stable between runs.
+        out = tconc( nil nil )
+        foreach( key cdr( car( order ) )
+            tconc( out list( key cdr( car( groups[key] ) ) ) )
+        )
+        cdr( car( out ) )
+    )
+)
+
+; Total polygon count across a side's groups, for the console summary.
+procedure( s3dGroupCount( l_groups )
+    let( ( ( n 0 ) )
+        foreach( group l_groups
+            n = n + length( cadr( group ) )
+        )
+        n
     )
 )
 
@@ -1764,6 +1799,26 @@ procedure( s3dClipPolys( l_polys l_board )
 ;  Top level
 ;---------------------------------------------------------------------
 
+; Clip each layer's polygons separately.
+;
+; Clipping a whole side at once would be marginally cheaper, but axlPolyOperation
+; unions overlapping polygons, so polygons from different layers would come back
+; merged into single regions with no layer left to speak of. Groups that clip to
+; nothing are dropped, so a layer that lies entirely off the board does not
+; appear in the GUI as an empty choice.
+procedure( s3dClipGroups( l_groups l_board )
+    let( ( out clipped )
+        out = tconc( nil nil )
+        foreach( group l_groups
+            clipped = s3dClipPolys( cadr( group ) l_board )
+            when( clipped
+                tconc( out list( car( group ) clipped ) )
+            )
+        )
+        cdr( car( out ) )
+    )
+)
+
 ; Collect the whole silkscreen once for the design.
 ; -> list( f_thickness l_topPolys l_bottomPolys )  or nil if disabled/empty.
 procedure( s3dMakeSilkscreen( l_config )
@@ -1806,15 +1861,22 @@ procedure( s3dMakeSilkscreen( l_config )
 ; to tens of thousands of primitives, and building that with repeated strcat is
 ; quadratic and hits the same "insufficient memory" wall the component section
 ; already has a note about.
-procedure( s3dWriteSilkPolys( p_port l_polys )
-    let( ( ( firstPoly t ) holes ( firstHole t ) area )
-        foreach( poly l_polys
+procedure( s3dWriteSilkPolys( p_port l_groups )
+    let( ( ( firstPoly t ) holes ( firstHole t ) area layer )
+        foreach( group l_groups
+        layer = car( group )
+        foreach( poly cadr( group )
             if( firstPoly then
                 firstPoly = nil
             else
                 fprintf( p_port ",\n" )
             )
             fprintf( p_port "\t\t\t{\n" )
+
+            ; Which layer this polygon came from. The array stays FLAT - one
+            ; object per polygon, exactly as before - so a reader that ignores
+            ; this key still builds the whole legend.
+            fprintf( p_port "\t\t\t\t\"layer\": \"%s\",\n" layer )
 
             ; Allegro's own area for this polygon, already net of its holes.
             ; This is the reference the Python side resolves the arc convention
@@ -1848,6 +1910,7 @@ procedure( s3dWriteSilkPolys( p_port l_polys )
                 fprintf( p_port "\n\t\t\t\t]" )
             )
             fprintf( p_port "\n\t\t\t}" )
+        )
         )
     )
 )
@@ -1914,12 +1977,14 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; NOTE: no embedded \t here - the line writer below prefixes every line
         ; with one tab, so embedding another would double-indent these keys
         ; (still valid JSON, but inconsistent with the rest of the file).
-        ; format_version 2 adds the optional "silkscreen" object. Readers that
-        ; only know version 1 ignore it; this reader treats it as optional, so
-        ; a version-1 file still builds.
+        ; format_version 2 added the optional "silkscreen" object; 3 tags every
+        ; silkscreen polygon with the layer it came from, so the layers can be
+        ; switched on and off when the model is built instead of at export
+        ; time. Both additions are optional to a reader - an older file simply
+        ; has no layers to choose from and builds whole.
         name = strcat(
             "\"format\": \"simple3d\",\n"
-            "\"format_version\": 2,\n"
+            "\"format_version\": 3,\n"
             "\"name\": \"" variantName "\""
         )
 

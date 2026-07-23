@@ -1774,3 +1774,74 @@ session, closed) - stepDir survives and all four sections survive. An Allegro
 export leaves jsonFile and outputDir untouched while still saving a real
 preference changed in the same session. A standalone run still remembers both.
 Full suite clean.
+
+## Update 2026-07-23 (round 14) — silkscreen layers chosen in the GUI
+
+Branch `silk_multiple_choice`. The user was tired of rewriting the config to
+change which layers the legend uses.
+
+### The constraint that shaped it
+
+The GUI runs AFTER the export. By the time the window is up, the JSON exists and
+the polygons are collected, so "tick layers in the GUI" cannot drive collection.
+Only two designs are possible: collect everything and filter at build time, or
+ask before collecting (a SKILL form in Allegro).
+
+Chose the first. The second puts a modal dialog in front of every export and
+still cannot change the choice without re-exporting, which is the actual
+complaint.
+
+### Division of labour, now explicit
+
+- `simple3d_config.json` says which layers are **collected** — that still costs
+  Allegro time, so an expensive layer left out of the lists is still the way to
+  avoid paying for it.
+- The GUI says which of the collected layers are **built** — free, per press of
+  Generate.
+
+`format_version` 3: every silkscreen polygon carries `"layer"`. The array stays
+flat, so a reader that ignores the key builds the whole legend, and a
+version-2 file is never filtered (there is nothing to match on).
+
+### Two things that needed care
+
+**Grouping had to happen at collection, not after.** A polygon has no layer of
+its own and text loses even its dbid once `axlText2Lines` has vectorised it, so
+elements are bucketed by `elem->layer` inside the existing sweep. Still one
+sweep per side - sweeping once per layer would multiply the visibility churn for
+nothing.
+
+**Clipping had to move per layer.** `axlPolyOperation` unions overlapping
+polygons, so clipping a whole side at once returned regions merged across layers
+with no layer left to speak of. `s3dClipGroups` clips each group separately;
+groups that clip to nothing are dropped, so a layer entirely off the board does
+not appear in the GUI as an empty choice.
+
+### The GUI
+
+Checkbuttons in a scrolled canvas, grouped Top/Bottom, each row showing the
+polygon count - that number is what explains a large file, and it is the thing
+you want before deciding. Not a multi-select Listbox: a highlighted row reads as
+"current item", a tick reads as "included", and included is the question.
+
+The list is built from the JSON that will be built, not from the config, so it
+cannot offer a layer that would do nothing; with several variants queued it is
+their union. A `trace_add` on the JSON field with a 400 ms debounce covers
+typing, pasting, Browse and the Allegro prefill in one place.
+
+**Exclusions are persisted, not inclusions** (`gui.silkscreenLayersOff`). A
+layer appearing on a board for the first time then defaults to ON. Storing
+inclusions would make a new layer silently missing - data present, geometry
+absent, nothing on screen to say why.
+
+The save only overwrites the remembered exclusions when a list has actually been
+shown, so opening an old layerless JSON does not wipe them.
+
+### Verified here
+Layer listing and counts; filtering drops exactly the right polygons; an unknown
+layer name changes nothing; version-2 polygons are never filtered; the GUI lists
+every layer, honours the remembered exclusions, defaults an unseen layer to on,
+All/None work, the new exclusion is saved and the other config sections survive;
+a layerless JSON leaves the exclusions alone. Writer transliteration extended
+with the layer key and an empty group - all seven shapes still parse. Full suite
+and shadow scan clean.

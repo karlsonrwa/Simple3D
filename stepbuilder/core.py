@@ -809,6 +809,37 @@ def is_simple3d_json(path: str | Path) -> bool:
     return isinstance(data, dict) and data.get("format") == FORMAT_MARKER
 
 
+def silkscreen_layers(path: str | Path) -> dict[str, dict[str, int]]:
+    """{"top": {layer: polygon count}, "bottom": {...}} for one intermediate.
+
+    What the GUI builds its checkbox list from. Taken from the file rather than
+    from the config on purpose: the config says which layers were COLLECTED,
+    this says which ones actually produced geometry on this board, so the list
+    can never offer a layer that would do nothing.
+
+    Empty for a format_version 2 file, whose polygons carry no layer - those
+    build whole, as they always did.
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    silk = data.get("silkscreen")
+    if not isinstance(silk, dict):
+        return {}
+
+    out: dict[str, dict[str, int]] = {}
+    for side in ("top", "bottom"):
+        counts: dict[str, int] = {}
+        for polygon in silk.get(side) or []:
+            layer = polygon.get("layer")
+            if layer:
+                counts[layer] = counts.get(layer, 0) + 1
+        if counts:
+            out[side] = counts
+    return out
+
+
 def dated_output_name(base: str, output_dir: str | Path) -> str:
     """<base>_simple_DD_MM_YYYY, with a trailing _ per existing collision.
 
@@ -920,6 +951,7 @@ def generate(
     silk_color: tuple[int, int, int] | None = None,
     silk_flat: bool = False,
     silk_flat_height: float = DEFAULT_FLAT_HEIGHT,
+    silk_layers_off: set[str] | frozenset[str] | None = None,
     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
     minimize_size: bool = True,
     srgb_color: bool = True,
@@ -949,6 +981,12 @@ def generate(
     silk_flat_height:
         Clearance in mm between the board face and a flat legend, so the two
         are not coplanar and do not flicker. Ignored in solid mode.
+    silk_layers_off:
+        Layer names whose polygons are left out of this build. The export
+        collects every layer the config lists and tags each polygon with its
+        own, so which of them reach the model is decided here, per build, with
+        no re-export. Polygons with no layer (format_version 2) are never
+        filtered - there is nothing to match them against.
     minimize_size:
         Set write.surfacecurve.mode = 0 (about half the file size, geometry
         unchanged) and share one part per distinct model.
@@ -1052,6 +1090,7 @@ def generate(
 
         # The ink sits ON the outer face of each side and grows away from the
         # board, so it never intersects the solid it is printed on.
+        excluded = set(silk_layers_off or ())
         for wanted, side, polygons, z, sign in (
             (silk_top, "silkscreen_top", silk_data.get("top") or [], board_top_z, 1.0),
             (silk_bottom, "silkscreen_bot", silk_data.get("bottom") or [],
@@ -1059,6 +1098,15 @@ def generate(
         ):
             if not wanted or not polygons:
                 continue
+            if excluded:
+                total = len(polygons)
+                polygons = [p for p in polygons
+                            if p.get("layer") not in excluded]
+                dropped = total - len(polygons)
+                if dropped:
+                    log(f"{side}: {dropped} polygon(s) left out by layer")
+                if not polygons:
+                    continue
             log(f"Building {side} ({len(polygons)} polygons)")
             compound, built, skipped = build_silkscreen(
                 polygons, z, sign * ink_thickness, log=log, side=side,
