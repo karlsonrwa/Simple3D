@@ -121,13 +121,26 @@ section, the GUI takes `gui`, and the exporter takes `silkscreen` and
 whatever you last typed into it is what the next run starts with — and the rest
 of the file is left untouched.
 
+If the file cannot be read — missing, or edited into invalid JSON — the GUI
+loads nothing and **writes nothing for the rest of that session**, leaving your
+file exactly as it is even if you repair it while the window is open. The
+fields on screen are defaults at that point, not your settings, and writing
+them back would overwrite the file you just fixed. It says so in its log. The line naming the settings file appears on every start:
+
+```
+Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
+```
+
+so when a field comes up unexpectedly empty, the log says which file was read
+and whether it parsed. A byte-order mark left by an editor is tolerated.
+
 | Section | Key | What it does |
 |---|---|---|
 | `allegro` | `python` | Python executable. `"python"` if on PATH, else a full path like `"c:/Python312/python.exe"`. |
 | | `pythonw` | Console-less launcher (`pythonw.exe`). When set, the GUI opens with **no console window**. `""` uses `python` instead. |
 | | `menuLabel` / `commandName` | Menu item text and internal command name. Read at load time, so changing them needs a SKILL reload. |
 | `gui` | `stepDir` | Folder holding the footprint STEP models (referenced by `PKGDEF_STEP_FILE`) — the "STEP files" field. |
-| | `outputDir`, `jsonFile` | Last used paths. The Allegro launcher overrides both for the board being exported. |
+| | `outputDir`, `jsonFile` | The last paths you picked **in the GUI**. An export launched from Allegro fills these fields for the board being built but does not record them here — they describe a board, not a preference. |
 | | `boardColor`, `boardEdge`, `boardEdgeCustom` | Board and rim colour. |
 | | `zDatum` | `"top"` or `"bottom"`. |
 | | `silkscreenTop`, `silkscreenBottom` | Which sides of the legend to build. |
@@ -263,6 +276,12 @@ Three levers, in order of effect:
    surface costs one face. What you give up: the ink is a surface, not a solid -
    no thickness to measure, and nothing downstream can do boolean work with it.
 
+   Overlapping polygons are boolean-unioned into one shape first. Silkscreen
+   strokes really do overlap, and as coplanar faces at one z that renders as a
+   flickering blend rather than as ink. The union also makes the file slightly
+   smaller (measured: 117 faces → 112, 599 kB → 548 kB), which is the opposite
+   of what fusing the *solid* legend does.
+
    The face is lifted off the board by `gui.silkscreenFlatHeight`, 1 µm by
    default. Exactly coplanar faces *do* flicker against each other in a viewer
    that resolves depth per pixel — this was confirmed on a real board — and a
@@ -279,6 +298,41 @@ Fusing the legend into one solid was measured and is *counterproductive*: a
 boolean union replaces analytic planes and cylinders with general surfaces, and
 after clipping the strokes barely overlap, so there is nothing much for it to
 remove. It makes the file half again as large and takes longer.
+
+## What gets exported
+
+Every symbol in the design that has a reference designator, minus two
+exclusions.
+
+**`NO_STEP_EXPORT` wins over everything.** Attach that property to a symbol —
+or to a component or component definition, to drop every instance of a part —
+and it is left out of the STEP, even if `Variants.lst` lists it as installed.
+Each one is named in the Allegro console:
+
+```
+Simple 3D: FID2 - NOT exported: the symbol carries the NO_STEP_EXPORT property.
+Simple 3D: 3 symbol(s) excluded by NO_STEP_EXPORT.
+```
+
+Excluded symbols are also kept out of the "no 3D model" pre-flight list, which
+is for parts that *would* be exported if they had a model.
+
+**A variant can only remove.** With a `Variants.lst` present, a refdes the
+variant table mentions somewhere but not in the variant being built is treated
+as not installed and skipped. A refdes the table never mentions at all is not
+variant-controlled, so it is exported in every variant.
+
+That last rule is what makes **mechanical components work**. A part with
+`Component Class: MECHANICAL` — a connector, a mounting hole, a bracket — is a
+real symbol with a real `PKGDEF_STEP_FILE`, but it has no electrical
+connections, and whether it turns up in the parsed variant list is not something
+to depend on. Because the export list is built from the design and the variant
+table only subtracts from it, such a part is exported either way. The console
+says how many were in that position:
+
+```
+Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.
+```
 
 ## Board thickness
 
@@ -469,13 +523,27 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 GUI записывает секцию `gui` обратно, поэтому следующий запуск начинается с того,
 что вы ввели в прошлый раз, — а остальная часть файла остаётся нетронутой.
 
+Если файл не читается — отсутствует или отредактирован в невалидный JSON — GUI
+ничего не загружает и **ничего не пишет до конца сеанса**, оставляя ваш файл как
+есть, даже если вы почините его при открытом окне. Поля на экране в этот момент
+содержат умолчания, а не ваши настройки, и запись их обратно затёрла бы только
+что исправленный файл. Об этом сообщается в логе. Строка с именем файла настроек выводится при
+каждом запуске:
+
+```
+Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
+```
+
+так что если поле неожиданно пустое — в логе видно, какой файл прочитан и
+разобрался ли он. Метка порядка байт (BOM), оставленная редактором, допускается.
+
 | Секция | Ключ | Что делает |
 |---|---|---|
 | `allegro` | `python` | Исполняемый Python. `"python"`, если на PATH, иначе полный путь вроде `"c:/Python312/python.exe"`. |
 | | `pythonw` | Запуск без консоли (`pythonw.exe`). Когда задан, окно GUI открывается **без окна консоли**. `""` — использовать `python`. |
 | | `menuLabel` / `commandName` | Текст пункта меню и внутреннее имя команды. Читаются при загрузке, поэтому их изменение требует перезагрузки SKILL. |
 | `gui` | `stepDir` | Папка с STEP-моделями посадочных мест (по `PKGDEF_STEP_FILE`) — поле «STEP files». |
-| | `outputDir`, `jsonFile` | Последние использованные пути. Запуск из Allegro переопределяет оба под экспортируемую плату. |
+| | `outputDir`, `jsonFile` | Последние пути, выбранные **в самом окне**. Экспорт из Allegro заполняет эти поля под собираемую плату, но в файл их не записывает — они описывают плату, а не настройку. |
 | | `boardColor`, `boardEdge`, `boardEdgeCustom` | Цвет платы и торца. |
 | | `zDatum` | `"top"` или `"bottom"`. |
 | | `silkscreenTop`, `silkscreenBottom` | Какие стороны легенды строить. |
@@ -613,6 +681,12 @@ silkscreen_top: 214 polygon(s) match Allegro's areas (arc reading: ...)
    поверхность — одну грань. Чем платите: краска становится поверхностью, а не
    телом — толщину не измерить и булевы операции с ней невозможны.
 
+   Перекрывающиеся полигоны сначала объединяются булевой операцией. Штрихи
+   шелкографии реально перекрываются, и как компланарные грани на одном z это
+   рисуется мерцающим слипанием, а не краской. Объединение заодно немного
+   уменьшает файл (замерено: 117 граней → 112, 599 КБ → 548 КБ) —
+   противоположно тому, что даёт объединение *объёмной* легенды.
+
    Грань приподнята над платой на `gui.silkscreenFlatHeight`, по умолчанию
    1 мкм. Строго совпадающие плоскости действительно рябят друг о друга в
    просмотрщике, разрешающем глубину попиксельно — это подтвердилось на реальной
@@ -629,6 +703,41 @@ silkscreen_top: 214 polygon(s) match Allegro's areas (arc reading: ...)
 булева операция заменяет аналитические плоскости и цилиндры общими
 поверхностями, а после обрезки штрихи почти не перекрываются, так что удалять
 ей особо нечего. Файл вырастает в полтора раза, и это дольше.
+
+## Что попадает в экспорт
+
+Все символы проекта, у которых есть позиционное обозначение, за вычетом двух
+исключений.
+
+**`NO_STEP_EXPORT` сильнее всего остального.** Повесьте это свойство на символ —
+либо на компонент или его определение, чтобы убрать все экземпляры детали, — и
+он не попадёт в STEP, даже если `Variants.lst` числит его установленным. Каждый
+такой символ называется в консоли Allegro:
+
+```
+Simple 3D: FID2 - NOT exported: the symbol carries the NO_STEP_EXPORT property.
+Simple 3D: 3 symbol(s) excluded by NO_STEP_EXPORT.
+```
+
+Исключённые символы не попадают и в предварительный список «нет 3D-модели» — он
+про детали, которые экспортировались бы, будь у них модель.
+
+**Вариант умеет только убирать.** Если `Variants.lst` есть, позиционное
+обозначение, которое таблица вариантов где-то упоминает, но не в собираемом
+варианте, считается неустановленным и пропускается. Обозначение, которого в
+таблице нет вовсе, вариантами не управляется — и экспортируется во всех.
+
+Именно это правило заставляет работать **механические компоненты**. Деталь с
+`Component Class: MECHANICAL` — разъём, монтажное отверстие, кронштейн — это
+настоящий символ с настоящим `PKGDEF_STEP_FILE`, но электрических подключений у
+неё нет, и полагаться на то, попадёт ли она в разобранный список варианта,
+нельзя. Поскольку список на экспорт строится от проекта, а таблица вариантов
+только вычитает, такая деталь экспортируется в любом случае. Сколько их было,
+видно в консоли:
+
+```
+Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.
+```
 
 ## Толщина платы
 

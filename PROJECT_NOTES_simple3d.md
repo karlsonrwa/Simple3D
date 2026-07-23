@@ -3,6 +3,79 @@
 Working memo for the "File → Export → Simple 3D" toolchain. Keep updated as work proceeds.
 Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
+---
+
+## READ THIS FIRST — state as of 2026-07-23
+
+The rest of this memo is a round-by-round record, oldest first, and it is long.
+Everything needed to pick the work up is here. Read a dated round only when you
+need the reasoning behind a specific decision; the round headings say what each
+one settled.
+
+### Where things are
+
+| | |
+|---|---|
+| Repo (this working copy) | `D:\Projects\AI\Claude\Test` — branch `main` |
+| The user's install | `d:/Projects/OrCAD/Scripts/Simple3D/` — files are copied there by hand |
+| Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
+| `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
+
+Three pieces ship: `makeVariant3dIntermediates.il` (reads Allegro, writes JSON),
+`simple3d.il` (menu item + launcher), `stepbuilder/` (Python + OpenCASCADE,
+writes the STEP). Plus `simple3d_config.json`, which holds **every** user
+setting and is read by both halves. Only `S3D_ScriptDir` remains in SKILL
+source, because the config is found relative to it.
+
+### What works, verified on the user's real boards
+
+- Board solid at true finished thickness, cutouts, drill holes, component STEP
+  models placed from the Allegro STEP mapping table.
+- **Silkscreen**, `format_version: 2`. Collected as filled polygons
+  (`axlPolyFromDB`, text via `axlText2Lines`, paths converted a segment at a
+  time so joins are round), clipped to outline minus cutouts, built as thin
+  solids or flat surfaces, either or both sides, White or Black.
+- **The vertex-radius sign convention is settled by measurement**, not by
+  reading the docs: `axis / positive-sits-left / first-radius-closes`. The JSON
+  carries each polygon's own `area` from Allegro and the reader scores all
+  eight candidate readings against it. Do not "simplify" that away — it is what
+  proved the geometry correct, and it will catch a different Allegro version.
+- Mechanical components and `NO_STEP_EXPORT`, both by rule rather than by
+  special case: the export list comes from the design and the variant table only
+  subtracts from it.
+
+### Load-bearing decisions that look like they could be simplified, but cannot
+
+- **Do not fuse the SOLID legend.** Measured at 154% of the file size. But DO
+  union the FLAT faces — measured smaller, and required, because coplanar
+  coincident faces flicker. Same word, opposite results (rounds 10g, 12).
+- **Area agreement is necessary, not sufficient.** It cannot see compensating
+  errors (two caps inverted opposite ways) or geometry faithfully reproduced
+  from a source that is itself wrong (a mitred join). Both were caught by
+  rasterising a face to text with `BRepClass_FaceClassifier` — cheap, and the
+  first thing to reach for when a shape looks wrong but the numbers agree.
+- **The settings file may only be written if it was understood at load AND at
+  save.** Two separate rounds of data loss came from getting this wrong.
+
+### Not verified outside Allegro
+
+- Whether `axlDBGetProperties` reports `NO_STEP_EXPORT` on a live symbol. Three
+  levels are checked (symbol, component, component definition) precisely because
+  the level it lives on is the uncertain part. If a marked symbol still exports,
+  the per-symbol log line will be missing — that says the property was not seen,
+  not that the filter misfired.
+- Per-segment path conversion producing round joins on a live board. The SKILL
+  side warns if a path yields fewer polygons than it has segments.
+- Runtime and the 400-polygon clip batch size on a dense board.
+
+### Working method that has paid off repeatedly
+
+Ask for the actual exported JSON. Reasoning from the SKILL documentation
+produced three wrong rounds on the arc-sign question; the user's file settled it
+in one, because the two round caps of a single stroke carry opposite signs and
+that is visible in six lines of data. When a doc sentence admits two readings,
+get the data.
+
 ## Environment (established)
 
 - Allegro PCB Editor **17.4**, user tests live, gives console output / screenshots.
@@ -273,7 +346,7 @@ documented in addIndent (harmless: generator never emits empty lines, byte-verif
 First written 2026-07-18, when all six were implemented. Unlike the dated round
 entries below, this table is **not** a historical snapshot: revise a row in place
 whenever a later round changes that requirement's state, and name the round that
-changed it so the trail stays followable. Last revised: round 10 (2026-07-22).
+changed it so the trail stays followable. Last revised: round 13 (2026-07-23).
 
 Delivered files (as of 2026-07-18; the `exportstep_fixes.il` overlay was folded
 into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
@@ -290,7 +363,9 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | 4 | symbols_top/bot, unique names `refdes_<jsonname>` | **PARTIAL** — groups and shared parts done (part = model file). The `refdes_<jsonname>` instance naming this requirement asks for was **removed in round 8** as over-complication, so no reference designator survives into the STEP at all. The requirement itself was never withdrawn: either restore the naming or amend requirement 4. |
 | 5 | minimise size / reuse | done; surfacecurve.mode=0 (~49% smaller) + one shared part per model |
 | 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
-| 7 | silkscreen export (user, 2026-07-22) | done in round 10; `format_version: 2`. Filled polys from `axlPolyFromDB`, clipped to outline−cutouts, extruded 25 µm into `silkscreen_top`/`silkscreen_bot` parts. Layers + ink settings in `simple3d_config.json`. GUI checkbox + White/Black dropdown. Variant-independent by requirement. **Round 10a**: first live run skipped every polygon (vertex list carries no closing edge, and `poly->segments` returns the source centreline for line-derived polys) — both fixed, awaiting a re-run. |
+| 7 | silkscreen export (user, 2026-07-22) | **done and confirmed on the user's boards** (rounds 10–12). `format_version: 2`; polygons carry Allegro's own area and the reader resolves the vertex-radius reading against it (settled: axis / positive-sits-left / first-radius-closes). Solid or flat, per side, White/Black, clipped to outline−cutouts. Flat faces are unioned; solid ones deliberately are not. |
+| 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11. Export list comes from the design, the variant table only subtracts, so a symbol Variants.lst does not mention is exported in every variant. `NO_STEP_EXPORT` excludes outright and is logged by refdes. Not yet confirmed live that `axlDBGetProperties` sees the property. |
+| 9 | one settings file (user, 2026-07-22) | done in round 10h. `simple3d_config.json` holds every user setting, read by both halves; only `S3D_ScriptDir` stays in SKILL source, for bootstrap. Rounds 12–13 fixed two ways the GUI could damage it. |
 
 ### Verification done here
 - Core geometry still bit-for-bit vs C++ (V=12073.309477, 5054 ents) with mask zeroed.
@@ -1519,3 +1594,183 @@ depth buffer.
 Flat top +0.001, flat bottom -0.001 (sign follows the side), 0.01 honoured,
 solid unchanged at 0.0 .. 0.025; GUI loads the value, snapshots it, and
 preserves the comment across a save; full suite and shadow scan clean.
+
+## Update 2026-07-22 (round 11) — mechanical symbols in, NO_STEP_EXPORT out
+
+Branch `mech-export`. Two requirements from the user's F4 dumps:
+
+1. Mechanical components (`Component Class: MECHANICAL`, e.g. a MOLEX connector
+   with a real `PKGDEF_STEP_FILE` but no electrical connections) are in the
+   schematic and in Variants.lst, yet never reach the export.
+2. A symbol carrying `NO_STEP_EXPORT` must be excluded even when Variants.lst
+   lists it, and the log must name the symbol AND the reason.
+
+### The reversal that fixes (1)
+
+The export list WAS the parsed variant list:
+
+```skill
+symbols = variantSymbolList[variant]
+```
+
+so a symbol `gdsysGetVariantInfo` did not hand back could not be exported at
+all - there was no other path into the loop. Whether the parser drops
+mechanical entries, or Allegro writes them somewhere the state machine does not
+reach, could not be determined from here and **does not need to be**: the list
+now comes from `axlDBGetDesign()->symbols` and the variant table only ever
+subtracts.
+
+The rule that falls out of that is the useful one:
+
+- refdes mentioned by the variant table, but not in THIS variant -> not
+  installed, skip;
+- refdes the table never mentions -> not variant-controlled, export it in every
+  variant.
+
+Mechanical parts are the second case whether or not they appear in the file, so
+the fix holds under either explanation. Deliberately keyed on "the variant
+table has never heard of it" rather than on `Component Class == MECHANICAL`:
+the general rule covers mechanical parts and anything else the variant
+machinery does not track, and needs no list of blessed classes.
+
+### (2) NO_STEP_EXPORT
+
+Read with `axlDBGetProperties`, testing for the NAME's presence - it is a flag
+with no value, so anything value-based would miss it. Property names come back
+as symbols, hence the `%L` coercion (the idiom the disabled MFRPN helper
+already used). Checked on the symbol instance, where the F4 dump shows it, and
+also on the component and its definition, so it can be attached once to drop
+every fiducial.
+
+The earlier MFRPN trouble is not evidence against this: that was about which
+object carries the property, which is exactly why three levels are checked.
+
+Excluded symbols are also filtered out of the `s3dCheckMfrPn` "no 3D model"
+pre-flight list, which otherwise reported deliberate exclusions as missing
+models - the user's FID1/FID2/FID3 were in that list for precisely that reason.
+
+### Also removed: a lookup that could not succeed
+
+`symbolReturn3DElements` took a refdes STRING and resolved it with
+`axlDBFindByName( 'refdes ... )` -> component instance -> `->symbol`. Two
+lookups, each able to return nil, for a symbol the caller already had in hand.
+It now takes the dbid (a string is still accepted, three lines, keeps the old
+call shape). One fewer way for a part to vanish between the design and the JSON.
+
+### Verified here
+The selection logic transliterated and run over a decision table: mechanical
+part exported in every variant both when Variants.lst lists it and when it does
+not; an uninstalled part stays out of its variant and appears in the other; a
+NO_STEP_EXPORT symbol is excluded in all five configurations INCLUDING when the
+variant lists it, and the log names it every time; refdes matching is
+case-insensitive in both directions; a symbol with no refdes is skipped. Paren
+balance and the rest of the suite unchanged.
+
+### NOT verified here
+That `axlDBGetProperties` reports NO_STEP_EXPORT on a live symbol - the whole
+point of the three-level check is that the level it lives on is the uncertain
+part. If a marked symbol still comes through, the per-symbol log line will be
+absent, which says immediately that the property was not seen rather than that
+the filter misfired.
+
+## Update 2026-07-23 (round 12) — config destroyed on close; flat faces flicker
+
+Three reports against the merged build. The first two are one defect.
+
+### The settings file came back holding only "gui"
+
+`_read_config_file` returned `{}` for a file it could not read, and
+`_save_config` then merged the gui section into that empty document and wrote
+it. So any failure to READ the config turned into silent destruction of it -
+`allegro`, `silkscreen` and `settings` gone - and the empty path fields
+(report 1) are the same failure seen from the other side.
+
+The comment above `_save_config` described preserving the other sections, and
+the code defeated it two lines later. Guarding the merge inside `gui` last
+round was the same mistake one level down, and this one was already latent
+then: fixing a symptom at one level does not make the level above it right.
+
+Now `_read_config_file` returns `(document, problem)` and **nothing is written
+unless the file was understood**: missing, unparsable, not an object - each
+refuses the save and leaves the file alone. Read as `utf-8-sig`, because a BOM
+from an editor is enough on its own to make `json.loads` fail on otherwise
+valid JSON. Written through a temp file plus `os.replace`, so a crash cannot
+truncate a file that now carries the SKILL side's settings too.
+
+The GUI also states, on every start, which settings file it used:
+`Settings loaded from <path>`, or a warning naming the problem and saying the
+file will not be saved. That line is what was missing - "why is this field
+empty" had no answer anywhere on screen.
+
+### Flat silkscreen blended where solid did not
+
+Measured on the user's board: of 8 polygon pairs with overlapping bounding
+boxes, 5 overlap by real area - 0.16 mm2 double-counted across the top side.
+Silkscreen strokes genuinely overlap. As solids that is harmless
+interpenetration; as flat faces it is two coincident coplanar faces at one z,
+which no depth buffer can order.
+
+Flat faces are now boolean-unioned per side (general fuse +
+`ShapeUpgrade_UnifySameDomain`). Measured on that board's 117 top faces: 0.08 s,
+117 faces -> 112, area 209.4717 -> 209.3116 (exactly the double count), STEP
+599 kB -> 548 kB.
+
+**This contradicts round 10g without contradicting its measurement.** Fusing the
+SOLID legend cost 154% of the file size, because a solid union builds side walls
+and swaps analytic surfaces for general ones. A coplanar union of faces only
+removes geometry. Same word, opposite result - which is why it was worth
+measuring again instead of citing the old number as settled.
+
+Whole-board sizes now: no silkscreen 98,731; solid 2,661,832; flat 754,698.
+
+### A test bug worth recording
+The first flat-vs-solid comparison reported sizes six bytes apart. The loop
+built a kwargs dict and never passed `**kw`, so both runs were solid. Two runs
+that agree that closely are not a result, they are a symptom - check the
+harness before the code.
+
+### Verified here
+Config: a valid file keeps all four sections and the hand-written comment; a BOM
+parses; broken JSON, a truncated file, a JSON array and a missing file each
+leave the file untouched and report a problem. Both modes build the user's
+board. Full suite and shadow scan clean.
+
+## Update 2026-07-23 (round 13) — stepDir wiped after a config warning; path churn
+
+### 1. The save guard was on the wrong moment
+
+Round 12 refused to write a config the GUI could not read. It re-read the file
+at save time and refused if THAT failed. But what gets written comes from the
+WIDGETS, and the widgets are populated at LOAD time - so:
+
+- open: config unreadable -> warning, widgets hold defaults;
+- the user repairs the file while the window is open (exactly what was asked of
+  them last round);
+- close: the save-time re-read succeeds, the guard passes, and the defaults are
+  written over the repaired file. `stepDir` comes out `""`.
+
+Which is what happened: their file had `allegro`, `silkscreen` and `settings`
+intact - proof the save read it successfully - and an empty `stepDir`.
+
+The fix is one condition, but the lesson is the shape of it: **a guard has to
+be on the same moment as the data it is guarding.** The data was loaded at
+startup; the guard was checking the file at shutdown. Now the save requires the
+file to have been understood BOTH at load and at save.
+
+### 2. jsonFile / outputDir were being recorded as settings
+
+They are not settings. They come from Allegro for one board, they are
+overwritten by the next export of a different board, and they made a settings
+file churn on every run. `prefill_jobs` now marks that the paths came from the
+launcher, and the save leaves those two keys alone in that case. A standalone
+run - where the user actually picked them in the window - still records them.
+
+`stepDir` is the opposite case and stays: a model library is stable across
+boards, which is exactly what a setting is.
+
+### Verified here
+The wipe sequence reproduced end to end (unreadable at open, repaired mid-
+session, closed) - stepDir survives and all four sections survive. An Allegro
+export leaves jsonFile and outputDir untouched while still saving a real
+preference changed in the same session. A standalone run still remembers both.
+Full suite clean.

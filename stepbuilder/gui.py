@@ -13,6 +13,7 @@ the command line, or by setting them via the config file the SKILL side writes.
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
 import tkinter as tk
@@ -117,11 +118,25 @@ class StepBuilderApp(tk.Tk):
         # from the JSON field at Generate time (see _generate).
         self._brd_name: str | None = None      # base name for dated output
         self._dated_name: bool = False
+        self._config_problem: str | None = None
+        self._paths_from_launcher = False
 
         self._load_config()
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(100, self._drain_queue)
+        # Say which settings file was used, always. When a path field comes up
+        # unexpectedly empty, the first question is which file was read and
+        # whether it parsed, and the answer used to be nowhere on screen.
+        if self._config_problem:
+            self.after(150, lambda: self._append_log(
+                f"warning: {self._config_problem}. "
+                f"Settings were not loaded, and will NOT be saved - the file is "
+                f"left untouched. Restore simple3d_config.json from the "
+                f"installation to fix this."))
+        else:
+            self.after(150, lambda: self._append_log(
+                f"Settings loaded from {self._show_path(self.config_path)}"))
 
     # ----------------------------------------------------------------- UI -- #
 
@@ -310,6 +325,13 @@ class StepBuilderApp(tk.Tk):
         """
         self._brd_name = brd_name
         self._dated_name = dated_name
+        # Paths that came from Allegro describe the board being exported, not a
+        # preference, so they are not written back to the settings file - see
+        # _save_config. Without this every export of a different board rewrote
+        # jsonFile and outputDir, churning a file that is meant to hold
+        # settings and losing to the next export anyway.
+        if json_dir or json_file or output_dir:
+            self._paths_from_launcher = True
 
         if output_dir:
             self.output_dir.set(self._show_path(output_dir))
@@ -592,16 +614,35 @@ class StepBuilderApp(tk.Tk):
 
     # -------------------------------------------------------------- config - #
 
-    def _read_config_file(self) -> dict:
-        """The whole config document, or {} if it is missing or unreadable."""
+    def _read_config_file(self) -> tuple[dict, str | None]:
+        """(document, problem). *problem* is None only when the file read cleanly.
+
+        The distinction matters more than it looks: treating "could not read" as
+        "empty" is what let a save write a document containing nothing but the
+        "gui" section, destroying the silkscreen layer lists and the Allegro
+        settings alongside it. Nothing may be written unless the existing file
+        was understood first.
+
+        Read as utf-8-sig, so a file an editor saved with a BOM still parses -
+        that alone is enough to make json.loads fail on otherwise valid JSON.
+        """
+        if not self.config_path.exists():
+            return {}, f"settings file not found: {self.config_path}"
         try:
-            data = json.loads(self.config_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
-        return data if isinstance(data, dict) else {}
+            text = self.config_path.read_text(encoding="utf-8-sig")
+        except OSError as exc:
+            return {}, f"cannot read {self.config_path}: {exc}"
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            return {}, f"{self.config_path.name} is not valid JSON: {exc}"
+        if not isinstance(data, dict):
+            return {}, f"{self.config_path.name} does not hold a JSON object"
+        return data, None
 
     def _load_config(self) -> None:
-        gui = self._read_config_file().get("gui")
+        data, self._config_problem = self._read_config_file()
+        gui = data.get("gui")
         if not isinstance(gui, dict):
             return
         self.step_dir.set(gui.get("stepDir", ""))
@@ -630,12 +671,33 @@ class StepBuilderApp(tk.Tk):
         Read-modify-write rather than a fresh document: the same file carries
         the silkscreen layer lists and the Allegro-side settings, and losing
         those on window close would be a great deal worse than forgetting a
-        path. A file that cannot be read is treated as empty, so a first run
-        with no config still saves; a file that cannot be WRITTEN is ignored,
-        exactly as before - a read-only install directory must not turn closing
-        the window into an error dialog.
+        path.
+
+        If the file cannot be read - missing, unparsable, whatever - NOTHING is
+        written. That is the whole point. The previous version treated an
+        unreadable file as an empty one and cheerfully wrote back a document
+        holding only "gui", which is exactly how a user's settings file came
+        back with every other section gone. A settings file this build does not
+        understand is a file it has no business rewriting.
+
+        A file that cannot be WRITTEN is still ignored silently: a read-only
+        install directory must not turn closing the window into an error dialog.
         """
-        data = self._read_config_file()
+        # Two separate conditions, and missing the first one wiped a user's
+        # stepDir. The file is re-read here, but what would be written comes
+        # from the WIDGETS - and if the load failed at startup the widgets hold
+        # defaults, not settings. So a config that was unreadable when the
+        # window opened and readable by the time it closed (the user repaired
+        # it meanwhile, which is exactly what happened) passed the save-time
+        # check and wrote empty fields over good values.
+        #
+        # Nothing may be written unless the file was understood BOTH when it
+        # was loaded and now.
+        if self._config_problem is not None:
+            return
+        data, problem = self._read_config_file()
+        if problem is not None:
+            return
         # Merge into the existing section, do not replace it. The file is
         # hand-edited, so "gui" can hold keys this build does not know -
         # comments, a setting added by a later version, a value someone parked
@@ -647,8 +709,6 @@ class StepBuilderApp(tk.Tk):
             gui = {}
         gui.update({
             "stepDir": self.step_dir.get(),
-            "jsonFile": self.json_file.get(),
-            "outputDir": self.output_dir.get(),
             "zDatum": self.z_datum.get(),
             "boardColor": self.theme.get(),
             "boardEdge": self.rim_choice.get(),
@@ -662,14 +722,26 @@ class StepBuilderApp(tk.Tk):
             # "mfrPnInName": self.mfr_pn_in_name.get(),
             "minimizeFileSize": self.minimize.get(),
         })
+        # The board being exported is not a setting. When Allegro supplied
+        # these, whatever the file already holds is left as it is; only a
+        # standalone run - where the user picked the paths - records them.
+        if not self._paths_from_launcher:
+            gui["jsonFile"] = self.json_file.get()
+            gui["outputDir"] = self.output_dir.get()
         data["gui"] = gui
+        # Written to a temporary file and renamed into place. This file now
+        # carries the SKILL side's configuration as well, so it must never be
+        # left half written if the process dies mid-save.
+        tmp = self.config_path.with_suffix(self.config_path.suffix + ".tmp")
         try:
-            self.config_path.write_text(
-                json.dumps(data, indent=4, ensure_ascii=False) + "\n",
-                encoding="utf-8",
-            )
+            tmp.write_text(json.dumps(data, indent=4, ensure_ascii=False) + "\n",
+                           encoding="utf-8")
+            os.replace(tmp, self.config_path)
         except OSError:
-            pass
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
     def _on_close(self) -> None:
         self._save_config()

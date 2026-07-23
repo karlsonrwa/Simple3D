@@ -27,6 +27,12 @@
 ;      polygons, and clipping to the board area.
 ;    * create3dIntermediateFormat - guarded the case where no component has
 ;      a STEP mapping (car of an unbound marker faulted).
+;    * WHAT GETS EXPORTED - the symbol list is built from the design and the
+;      variant table only removes from it, so a symbol the Variants.lst
+;      parser does not return (mechanical components) is no longer lost.
+;      NO_STEP_EXPORT excludes a symbol outright, and says so by name.
+;    * symbolReturn3DElements - takes the symbol dbid the caller already
+;      holds instead of resolving a refdes string through two lookups.
 ;
 ;  USAGE
 ;    makeVariant3dIntermediates( outputDir [ pcbColor ] [ configFile ] )
@@ -152,6 +158,141 @@ procedure( addIndent( t_string @optional ( x_levels 1 ) )
 ;     )
 ; )
 
+;=====================================================================
+;  WHAT GETS EXPORTED  (NEW - simple3d)
+;
+;  Two rules, and the second is the reason this section exists at all.
+;
+;  1. A symbol carrying NO_STEP_EXPORT is never exported, whatever else says
+;     otherwise - including its presence in Variants.lst. Each one is named in
+;     the console, because a part silently missing from a 3D model is a bug
+;     report waiting to happen and the user has no way to tell "excluded on
+;     purpose" from "lost".
+;
+;  2. The list of symbols to export is built from the DESIGN, not from the
+;     parsed Variants.lst. That is a reversal: the variant list used to BE the
+;     export list, so anything the parser did not hand back simply vanished -
+;     which is what happened to mechanical components (Component Class
+;     MECHANICAL: real symbols, real PKGDEF_STEP_FILE, no electrical
+;     connections). Now the variant table can only ever REMOVE a symbol, never
+;     be the sole source of one, and a refdes the table has never heard of is
+;     present in every variant. Mechanical parts are exactly that case, and so
+;     is anything else the variant machinery does not track.
+;=====================================================================
+
+S3D_NoExportProp = "NO_STEP_EXPORT"
+
+; t if the named property is attached to this object.
+;
+; Presence is the test, not the value: NO_STEP_EXPORT is a flag with no value,
+; so a value-based check would miss it. axlDBGetProperties is used rather than
+; the generic ->prop attribute because it hands back a plain assoc list that can
+; be walked with a runtime name; property names come back as symbols, hence the
+; %L coercion.
+procedure( s3dObjectHasProp( o_dbid t_name )
+    let( ( props key ( want nil ) ( found nil ) )
+        want = upperCase( t_name )
+        when( o_dbid
+            props = nil
+            errset( props = axlDBGetProperties( o_dbid ) )
+            foreach( entry props
+                when( entry
+                    key = if( listp( entry ) then car( entry ) else entry )
+                    unless( stringp( key )  key = sprintf( nil "%L" key ) )
+                    when( upperCase( key ) == want  found = t )
+                )
+            )
+        )
+        found
+    )
+)
+
+; t if this symbol is marked NO_STEP_EXPORT.
+;
+; Checked on the symbol instance (where the F4 dump shows it), and also on the
+; component and its definition: putting it on a definition to drop every
+; instance of a part - every fiducial, say - is the obvious thing to want, and
+; costs nothing to support.
+procedure( s3dNoStepExport( o_sym )
+    let( ( comp )
+        comp = nil
+        errset( comp = o_sym->component )
+        s3dObjectHasProp( o_sym S3D_NoExportProp ) ||
+        (comp && s3dObjectHasProp( comp S3D_NoExportProp )) ||
+        (comp && comp->compdef && s3dObjectHasProp( comp->compdef S3D_NoExportProp ))
+    )
+)
+
+; Every refdes the variant table mentions anywhere, upper-cased.
+; A refdes in here but missing from the current variant is deliberately not
+; installed. A refdes the table never mentions is not variant-controlled at all.
+procedure( s3dVariantKnownRefdes( g_variantSymbolList )
+    let( ( known )
+        known = makeTable( "s3dKnownRefdes" nil )
+        when( g_variantSymbolList
+            foreach( variant g_variantSymbolList
+                foreach( refdes g_variantSymbolList[variant]
+                    when( stringp( refdes )  known[upperCase( refdes )] = t )
+                )
+            )
+        )
+        known
+    )
+)
+
+; The symbol dbids to export for one variant (or for the whole design when
+; there is no variant table). Returns dbids, not names: iterating the design
+; already has the symbol in hand, so nothing has to be looked up again by
+; refdes - which is one less way for a symbol to go missing.
+procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
+    let( ( out known installed refdes ( nNoExport 0 ) ( nNotInVariant 0 ) ( nUntracked 0 ) )
+        out = tconc( nil nil )
+        known = s3dVariantKnownRefdes( g_variantSymbolList )
+        installed = makeTable( "s3dInstalled" nil )
+        when( g_variantSymbolList && t_variant
+            foreach( refdes g_variantSymbolList[t_variant]
+                when( stringp( refdes )  installed[upperCase( refdes )] = t )
+            )
+        )
+
+        foreach( sym axlDBGetDesign()->symbols
+            refdes = sym->refdes
+            when( refdes
+                cond(
+                    ( s3dNoStepExport( sym )
+                        nNoExport = nNoExport + 1
+                        printf( "Simple 3D: %s - NOT exported: the symbol carries the %s property.\n"
+                                refdes S3D_NoExportProp )
+                    )
+                    ( g_variantSymbolList && known[upperCase( refdes )] &&
+                      !installed[upperCase( refdes )]
+                        nNotInVariant = nNotInVariant + 1
+                    )
+                    ( t
+                        unless( g_variantSymbolList && known[upperCase( refdes )]
+                            nUntracked = nUntracked + 1
+                        )
+                        tconc( out sym )
+                    )
+                )
+            )
+        )
+
+        when( nNoExport > 0
+            printf( "Simple 3D: %d symbol(s) excluded by %s.\n" nNoExport S3D_NoExportProp )
+        )
+        when( nNotInVariant > 0
+            printf( "Simple 3D: %d component(s) not installed in variant %s.\n"
+                    nNotInVariant t_variant )
+        )
+        when( nUntracked > 0
+            printf( "Simple 3D: %d symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.\n"
+                    nUntracked )
+        )
+        cdr( car( out ) )
+    )
+)
+
 ; Pre-flight check for the Simple 3D menu. Returns
 ;   ( refDesWithoutMfrPn  refDesWithoutStepModel ).
 ; Only components that would be exported (refdes + STEP mapping) are checked.
@@ -160,7 +301,10 @@ procedure( s3dCheckMfrPn()
         noMfrPn = tconc( nil nil )
         noModel = tconc( nil nil )
         foreach( sym axlDBGetDesign()->symbols
-            when( sym->refdes
+            ; Symbols excluded on purpose must not be reported as missing a 3D
+            ; model - that list is for parts that WOULD be exported if they had
+            ; one, and padding it with deliberate exclusions makes it useless.
+            when( sym->refdes && !s3dNoStepExport( sym )
                 mapping = nil
                 errset( mapping = axlStepGet( nil nil sym ) )
                 if( mapping && mapping->step_name then
@@ -752,20 +896,28 @@ procedure( makePcbContour( dsn )
     )
 )
 
-procedure( symbolReturn3DElements( refDes )
-    let( ( stepPackageMapping dbid sym mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole mfrPn ( holes 'unbound ) )
+; FIX (simple3d 2026-07-22): takes the SYMBOL dbid, not a refdes string.
+;
+; It used to take a name and resolve it with axlDBFindByName( 'refdes ... ),
+; which returns a component instance, whose ->symbol is then the symbol. Two
+; lookups that can each come back empty, for a symbol the caller was already
+; holding. Callers now iterate the design, so the dbid is passed straight
+; through and refdes is read off it. A string is still accepted, because it
+; costs three lines and keeps the old call shape working.
+procedure( symbolReturn3DElements( g_symbol )
+    let( ( stepPackageMapping refDes dbid sym mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole mfrPn ( holes 'unbound ) )
 
         stepPackageMapping = nil
 
-        ; Defensive: the caller appends  alternateParts[variant]~>?  to the base
-        ; refdes list, and that expression does NOT yield refdes (see below), so
-        ; non-string junk can arrive here. Coerce with the stringp/%L idiom used
-        ; elsewhere in this file, then let the guard below report it by name.
-        unless( stringp( refDes )  refDes = sprintf( nil "%L" refDes ) )
-
-        ; get symbol (dbid)
-        dbid = axlDBFindByName( 'refdes refDes )
-        sym = dbid->symbol
+        if( stringp( g_symbol ) then
+            refDes = g_symbol
+            dbid = axlDBFindByName( 'refdes refDes )
+            sym = dbid->symbol
+        else
+            sym = g_symbol
+            refDes = sym->refdes
+            unless( stringp( refDes )  refDes = sprintf( nil "%L" refDes ) )
+        )
 
         ; step package mappingData
         ; Guard the call: an unresolved refdes used to reach axlStepGet(nil nil
@@ -1929,7 +2081,15 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                     ; (The old boundp('alternateParts) test was dead anyway - a
                     ; plain let local assigned unconditionally above, so always
                     ; bound. Noted as "Minor" back in round 2.)
-                    symbols = variantSymbolList[variant]
+                    ;
+                    ; FIX (simple3d 2026-07-22): was
+                    ;   symbols = variantSymbolList[variant]
+                    ; i.e. the parsed variant list WAS the export list, so a
+                    ; symbol the parser did not return could not be exported at
+                    ; all - which is how mechanical components went missing.
+                    ; The list now comes from the design and the variant table
+                    ; only removes from it. See s3dSymbolsToExport.
+                    symbols = s3dSymbolsToExport( variantSymbolList variant )
 
                     variantName = lowerCase( strcat( dsnName "_" variant ) )
                     fileName = lowerCase( strcat( dir "/" variantName ".json" ) )
@@ -1944,11 +2104,9 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
             ; export all symbols, if no variant.lst can be found
             warn( "No variant information present!\n Exporting all components!" )
 
-            ; get all symbols
-            symbols = mapcar( lambda( ( symbol ) when( symbol->refdes symbol->refdes ) ) dsn->symbols )
-
-            ; remove nils
-            symbols = remd( nil symbols )
+            ; Same routine as the variant path, with no variant table: every
+            ; symbol that has a refdes and is not marked NO_STEP_EXPORT.
+            symbols = s3dSymbolsToExport( nil nil )
 
             variantName = lowerCase( dsnName )
             fileName = strcat( dir "/" variantName ".json" )
