@@ -1659,3 +1659,43 @@ Config: a valid file keeps all four sections and the hand-written comment; a BOM
 parses; broken JSON, a truncated file, a JSON array and a missing file each
 leave the file untouched and report a problem. Both modes build the user's
 board. Full suite and shadow scan clean.
+
+## Update 2026-07-23 (round 13) — stepDir wiped after a config warning; path churn
+
+### 1. The save guard was on the wrong moment
+
+Round 12 refused to write a config the GUI could not read. It re-read the file
+at save time and refused if THAT failed. But what gets written comes from the
+WIDGETS, and the widgets are populated at LOAD time - so:
+
+- open: config unreadable -> warning, widgets hold defaults;
+- the user repairs the file while the window is open (exactly what was asked of
+  them last round);
+- close: the save-time re-read succeeds, the guard passes, and the defaults are
+  written over the repaired file. `stepDir` comes out `""`.
+
+Which is what happened: their file had `allegro`, `silkscreen` and `settings`
+intact - proof the save read it successfully - and an empty `stepDir`.
+
+The fix is one condition, but the lesson is the shape of it: **a guard has to
+be on the same moment as the data it is guarding.** The data was loaded at
+startup; the guard was checking the file at shutdown. Now the save requires the
+file to have been understood BOTH at load and at save.
+
+### 2. jsonFile / outputDir were being recorded as settings
+
+They are not settings. They come from Allegro for one board, they are
+overwritten by the next export of a different board, and they made a settings
+file churn on every run. `prefill_jobs` now marks that the paths came from the
+launcher, and the save leaves those two keys alone in that case. A standalone
+run - where the user actually picked them in the window - still records them.
+
+`stepDir` is the opposite case and stays: a model library is stable across
+boards, which is exactly what a setting is.
+
+### Verified here
+The wipe sequence reproduced end to end (unreadable at open, repaired mid-
+session, closed) - stepDir survives and all four sections survive. An Allegro
+export leaves jsonFile and outputDir untouched while still saving a real
+preference changed in the same session. A standalone run still remembers both.
+Full suite clean.

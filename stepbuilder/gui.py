@@ -119,6 +119,7 @@ class StepBuilderApp(tk.Tk):
         self._brd_name: str | None = None      # base name for dated output
         self._dated_name: bool = False
         self._config_problem: str | None = None
+        self._paths_from_launcher = False
 
         self._load_config()
         self._build_ui()
@@ -324,6 +325,13 @@ class StepBuilderApp(tk.Tk):
         """
         self._brd_name = brd_name
         self._dated_name = dated_name
+        # Paths that came from Allegro describe the board being exported, not a
+        # preference, so they are not written back to the settings file - see
+        # _save_config. Without this every export of a different board rewrote
+        # jsonFile and outputDir, churning a file that is meant to hold
+        # settings and losing to the next export anyway.
+        if json_dir or json_file or output_dir:
+            self._paths_from_launcher = True
 
         if output_dir:
             self.output_dir.set(self._show_path(output_dir))
@@ -675,6 +683,18 @@ class StepBuilderApp(tk.Tk):
         A file that cannot be WRITTEN is still ignored silently: a read-only
         install directory must not turn closing the window into an error dialog.
         """
+        # Two separate conditions, and missing the first one wiped a user's
+        # stepDir. The file is re-read here, but what would be written comes
+        # from the WIDGETS - and if the load failed at startup the widgets hold
+        # defaults, not settings. So a config that was unreadable when the
+        # window opened and readable by the time it closed (the user repaired
+        # it meanwhile, which is exactly what happened) passed the save-time
+        # check and wrote empty fields over good values.
+        #
+        # Nothing may be written unless the file was understood BOTH when it
+        # was loaded and now.
+        if self._config_problem is not None:
+            return
         data, problem = self._read_config_file()
         if problem is not None:
             return
@@ -689,8 +709,6 @@ class StepBuilderApp(tk.Tk):
             gui = {}
         gui.update({
             "stepDir": self.step_dir.get(),
-            "jsonFile": self.json_file.get(),
-            "outputDir": self.output_dir.get(),
             "zDatum": self.z_datum.get(),
             "boardColor": self.theme.get(),
             "boardEdge": self.rim_choice.get(),
@@ -704,6 +722,12 @@ class StepBuilderApp(tk.Tk):
             # "mfrPnInName": self.mfr_pn_in_name.get(),
             "minimizeFileSize": self.minimize.get(),
         })
+        # The board being exported is not a setting. When Allegro supplied
+        # these, whatever the file already holds is left as it is; only a
+        # standalone run - where the user picked the paths - records them.
+        if not self._paths_from_launcher:
+            gui["jsonFile"] = self.json_file.get()
+            gui["outputDir"] = self.output_dir.get()
         data["gui"] = gui
         # Written to a temporary file and renamed into place. This file now
         # carries the SKILL side's configuration as well, so it must never be
