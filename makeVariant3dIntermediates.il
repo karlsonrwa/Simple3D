@@ -43,6 +43,47 @@
 ;  otherwise the built-in defaults apply.
 ;=====================================================================
 
+;=====================================================================
+;  CONSOLE MESSAGES
+;
+;  axlUIWPrint carries a severity, and the Allegro console colours by it:
+;  warnings in its warning colour, errors in red, both with the *WARNING* /
+;  *Error* prefix Allegro puts on its own messages. So these lines do NOT
+;  spell the severity out themselves - Allegro says it, and saying it twice
+;  reads as a mistake.
+;
+;  The documented levels are 'info0, 'info1, 'warn, 'error and 'fatal. There is
+;  no "success" level, so a green completion line cannot be had this way; the
+;  GUI log does colour its own success line green, and that is where the result
+;  is judged. 'fatal is deliberately unused - it beeps and its behaviour beyond
+;  that is not documented here.
+;
+;  The message is passed as a %s ARGUMENT rather than as the format string: a
+;  layer name or a path containing a per-cent sign would otherwise be read as a
+;  conversion and either print wrongly or fault.
+;
+;  Falls back to printf when axlUIWPrint is unavailable or refuses the call, so
+;  no message is ever lost to the attempt at colouring it.
+;=====================================================================
+
+procedure( s3dSay( s_level t_message )
+    let( ( ok )
+        ok = nil
+        errset( ok = axlUIWPrint( nil s_level "%s" t_message ) )
+        unless( ok
+            printf( "%s\n" t_message )
+        )
+    )
+)
+
+procedure( s3dWarn( t_message )
+    s3dSay( 'warn t_message )
+)
+
+procedure( s3dErr( t_message )
+    s3dSay( 'error t_message )
+)
+
 ; s3dMakeDirs( t_path ) -> create every missing level of a directory path.
 ; createDir makes only one level at a time; a path like ".../A1/cad" where an
 ; intermediate level is missing needs each segment created in turn.
@@ -887,7 +928,7 @@ procedure( makePcbContour( dsn )
         ; line instead of reporting an empty outline. Same fault class as the
         ; unbound `cuts` at the makePcb call site.
         unless( boundp( 'edges )
-            printf( "Simple 3D: warning - the design outline produced no segments.\n" )
+            s3dWarn( "Simple 3D: the design outline produced no segments." )
             edges = nil
         )
 
@@ -1435,14 +1476,14 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
                         ( "SQUARE"   endCap = 'SQUARE )
                         ( "OCTAGON"  endCap = 'OCTAGON )
                         ( t
-                            printf( "Simple 3D: warning - unknown endCapType %L in %s; using ROUND.\n"
-                                    s3dJsonGet( settings "endCapType" ) t_file )
+                            s3dWarn( sprintf( nil "Simple 3D: unknown endCapType %L in %s; using ROUND."
+                                              s3dJsonGet( settings "endCapType" ) t_file ) )
                         )
                     )
                 )
             else
-                printf( "Simple 3D: warning - could not parse %s; using built-in silkscreen defaults.\n"
-                        t_file )
+                s3dWarn( sprintf( nil "Simple 3D: could not parse %s; using built-in silkscreen defaults."
+                                  t_file ) )
             )
         else
             printf( "Simple 3D: no silkscreen config at %s; using built-in defaults.\n" t_file )
@@ -1638,8 +1679,8 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
                 ; with its own area. So say it here. One segment may yield more
                 ; than one polygon, hence "fewer than".
                 when( segments && (length( polys ) < length( segments ))
-                    printf( "Simple 3D: warning - a silkscreen line has %d segment(s) but produced only %d polygon(s).\n"
-                            length( segments ) length( polys ) )
+                    s3dWarn( sprintf( nil "Simple 3D: a silkscreen line has %d segment(s) but produced only %d polygon(s)."
+                                      length( segments ) length( polys ) ) )
                 )
                 ; Single-segment paths, or a path whose segments will not
                 ; convert on their own, still have to come out somehow.
@@ -1685,7 +1726,7 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap )
             axlVisibleDesign( nil )
             foreach( layer l_layers
                 unless( axlVisibleLayer( layer t )
-                    printf( "Simple 3D: warning - no such layer: %s\n" layer )
+                    s3dWarn( sprintf( nil "Simple 3D: no such layer: %s" layer ) )
                 )
             )
             axlClearSelSet()
@@ -1727,7 +1768,7 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap )
                 when( zero
                     message = strcat( "zero width: " s3dDescribeObject( elem key )
                                       " - skipped, it cannot be plotted" )
-                    printf( "Simple 3D: WARNING - %s.\n" message )
+                    s3dWarn( sprintf( nil "Simple 3D: %s." message ) )
                     S3D_SilkWarnings = cons( message S3D_SilkWarnings )
                 )
 
@@ -1741,8 +1782,8 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap )
                 unless( zero || errset( polys = s3dPolysFromDbid( elem s_endCap ) )
                     nBad = nBad + 1
                     when( nBad == 1
-                        printf( "Simple 3D: warning - a %s object on %s could not be converted; skipping it (further ones are counted only).\n"
-                                elem->objType key )
+                        s3dWarn( sprintf( nil "Simple 3D: a %s object on %s could not be converted; skipping it (further ones are counted only)."
+                                          elem->objType key ) )
                     )
                 )
                 foreach( poly polys
@@ -1758,7 +1799,7 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap )
         )
 
         when( nBad > 0
-            printf( "Simple 3D: warning - %d silkscreen object(s) could not be converted and were skipped.\n" nBad )
+            s3dWarn( sprintf( nil "Simple 3D: %d silkscreen object(s) could not be converted and were skipped." nBad ) )
         )
 
         ; -> ( (layer polys) (layer polys) ... ), layers in the order Allegro
@@ -1806,16 +1847,16 @@ procedure( s3dBoardPoly()
                     if( res then
                         polys = remd( nil res )
                     else
-                        printf( "Simple 3D: warning - could not subtract cutouts from the board outline; silkscreen is clipped to the outline only.\n" )
+                        s3dWarn( "Simple 3D: could not subtract cutouts from the board outline; silkscreen is clipped to the outline only." )
                     )
                 )
                 polys
             else
-                printf( "Simple 3D: warning - could not convert the design outline to a polygon; silkscreen will not be clipped.\n" )
+                s3dWarn( "Simple 3D: could not convert the design outline to a polygon; silkscreen will not be clipped." )
                 nil
             )
         else
-            printf( "Simple 3D: warning - no design outline; silkscreen will not be clipped.\n" )
+            s3dWarn( "Simple 3D: no design outline; silkscreen will not be clipped." )
             nil
         )
     )
@@ -1844,8 +1885,8 @@ procedure( s3dClipChunk( l_chunk l_board )
         if( res then
             remd( nil res )
         else
-            printf( "Simple 3D: warning - silkscreen clip failed for %d polygon(s); kept unclipped.\n"
-                    length( l_chunk ) )
+            s3dWarn( sprintf( nil "Simple 3D: silkscreen clip failed for %d polygon(s); kept unclipped."
+                              length( l_chunk ) ) )
             l_chunk
         )
     )
@@ -1963,8 +2004,8 @@ procedure( s3dMakeSilkscreen( l_config )
             )
 
             when( S3D_SilkWarnings
-                printf( "Simple 3D: %d silkscreen object(s) were skipped; see the warnings above and the GUI log.\n"
-                        length( S3D_SilkWarnings ) )
+                s3dWarn( sprintf( nil "Simple 3D: %d silkscreen object(s) were skipped; see the warnings above and the GUI log."
+                                  length( S3D_SilkWarnings ) ) )
             )
 
             when( topPolys || botPolys
@@ -2234,8 +2275,8 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
         ; loud one - the board still exports either way.
         silk = nil
         unless( errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) ) t )
-            printf( "Simple 3D: ERROR - silkscreen collection failed (message above).\n" )
-            printf( "Simple 3D: the board and its components are still exported; only the legend is missing.\n" )
+            s3dErr( "Simple 3D: silkscreen collection failed (message above)." )
+            s3dErr( "Simple 3D: the board and its components are still exported; only the legend is missing." )
             silk = nil
         )
 
@@ -2307,7 +2348,16 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                     create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName silk )
                 )
 
-                print( "Export complete!" )
+                ; print() quotes its argument and adds no newline; this is a
+                ; message to a person, not a value being dumped.
+                ;
+                ; No green: axlUIWPrint's severities are info0, info1, warn,
+                ; error and fatal, and none of them is "success". A completion
+                ; line therefore prints in the console's ordinary colour. The
+                ; GUI log does colour its own completion line green, and that
+                ; is where the result is actually judged.
+                printf( "Simple 3D: export complete - %d variant(s) written.\n"
+                        variantCount )
             else
                 error( "No variant information could be read!" )
             )

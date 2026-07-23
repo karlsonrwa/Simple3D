@@ -178,6 +178,14 @@ needs changing if you deliberately keep the config somewhere else.
 Log messages are colour-coded: **orange** for warnings, **dark red** for errors,
 green for success.
 
+The Allegro console is colour-coded too. Messages go through `axlUIWPrint` with
+a severity, so warnings appear in Allegro's warning colour and errors in red,
+carrying the same `*WARNING*` / `*Error*` prefixes as Allegro's own messages.
+There is no green: the documented severities are `info0`, `info1`, `warn`,
+`error` and `fatal`, and none of them means success, so a completed export
+prints in the ordinary colour. The GUI log is where a successful build shows
+green.
+
 ## Assembly structure
 
 ```
@@ -633,6 +641,14 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 
 Сообщения в логе раскрашены: **оранжевый** — предупреждения, **тёмно-красный** —
 ошибки, зелёный — успех.
+
+Консоль Allegro тоже раскрашена. Сообщения идут через `axlUIWPrint` с уровнем
+важности, поэтому предупреждения выводятся цветом предупреждений Allegro, а
+ошибки красным — с теми же префиксами `*WARNING*` / `*Error*`, что и у
+собственных сообщений Allegro. Зелёного нет: документированные уровни — `info0`,
+`info1`, `warn`, `error` и `fatal`, и ни один не означает успех, поэтому
+завершённый экспорт печатается обычным цветом. Зелёным успешная сборка видна в
+логе окна.
 
 ## Структура сборки
 

@@ -2040,3 +2040,68 @@ disabled side; switching back on re-enables. Warnings: carried through the JSON,
 logged with the prefix that colours them, and still logged with silkscreen off.
 Writer transliteration extended to emit the warnings array - all seven JSON
 shapes still parse. Full suite and all three SKILL checks clean.
+
+## Update 2026-07-23 (round 17) — severity colouring in the Allegro console
+
+The user pointed at a Cadence forum thread on colouring SKILL output. The link
+returns 403 to a fetch, but the answer is in the local reference:
+`axlUIWPrint( r_window [s_msg_level] t_format [args] )`.
+
+### What the API actually offers
+
+Five levels, and that is the whole set:
+
+| level | effect |
+|---|---|
+| `'info0` | informational, not journalled |
+| `'info1` | informational (the default) |
+| `'warn` | warning colour, `*WARNING*` prefix |
+| `'error` | red, `*Error*` prefix, beeps |
+| `'fatal` | beeps; behaviour beyond that not documented here |
+
+So orange warnings and red errors are available and now used. **Green is not.**
+There is no "success" severity, so a completed export prints in the ordinary
+colour; the GUI log already shows its own completion line in green, and that is
+where the result is judged. Said plainly in the README rather than approximated
+with something that is not green.
+
+### How it is wired
+
+One wrapper, `s3dSay( s_level t_message )`, with `s3dWarn` and `s3dErr` over
+it - so the decision about HOW to print lives in exactly one place, and adding
+a green route later (if the forum has one) is a one-line change.
+
+Two details in it that matter:
+
+- The message is passed as a `%s` ARGUMENT, never as the format string. A layer
+  name or path containing a per-cent sign would otherwise be read as a
+  conversion.
+- It falls back to `printf` when `axlUIWPrint` is unavailable or refuses. A
+  message must not be lost to the attempt at colouring it.
+
+Messages no longer spell their own severity: Allegro adds `*WARNING*` /
+`*Error*`, and saying it twice reads as a mistake. `Simple 3D: warning - no such
+layer` became `Simple 3D: no such layer`.
+
+17 messages converted: 14 in makeVariant3dIntermediates.il, 3 in simple3d.il.
+`print( "Export complete!" )` also became a proper printf - `print` quotes its
+argument and adds no newline, which is for dumping values, not for talking to a
+person.
+
+### The patch script asserted every replacement
+
+After three rounds lost to scripted find-and-replace that missed silently, this
+one counts each anchor, asserts exactly one match, and writes nothing unless
+every replacement applied. That is the shape these scripts should have had all
+along, and it is cheaper than the editor for seventeen sites.
+
+### Verified here
+All three SKILL checks clean on both files; no warning or error printf remains;
+the full Python suite unchanged.
+
+### NOT verified here
+That `axlUIWPrint(nil ...)` lands in the scrolling command window rather than a
+one-line status area - the reference says a nil window "dumps output to main
+window", which is where the existing `*WARNING*` lines appear, so it should. If
+the messages turn up somewhere less useful, the wrapper is the single place to
+change back.
