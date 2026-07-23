@@ -1081,6 +1081,12 @@ def generate(
     silk_built = 0
     silk_skipped = 0
     want_silk = silk_top or silk_bottom
+    if silk_data:
+        # Reported even when the legend is switched off: the objects are still
+        # wrong in the board, and the Allegro console that first said so has
+        # long scrolled away by the time anyone opens the model.
+        for message in silk_data.get("warnings") or []:
+            log(f"warning: {message}")
     if want_silk and silk_data:
         from .colors import SILK_COLORS
 

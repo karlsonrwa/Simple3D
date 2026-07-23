@@ -1986,3 +1986,57 @@ overflow the 96 px panel and the wheel moves the view down and back exactly;
 a short list does not move; grab/release leaves no stray bindings; the
 empty-state label renders without a geometry-manager clash. Full suite and all
 three SKILL checks clean.
+
+## Update 2026-07-23 (round 16) — side switches grey their layers; zero-width objects reported
+
+### Switching a side off now greys its layers
+
+They stayed live and clickable, so you could edit a selection that had no
+effect. The layer rows are now kept per side as `(layer, var, widget)` triples,
+and `_update_silk_row` sets widget STATE only - the variables are never touched,
+so the ticks are exactly as they were when the side comes back, and they are
+what gets saved either way.
+
+All / None follows the same rule and skips a greyed side. Changing ticks the
+user cannot see the effect of, and then persisting them, is the same defect from
+the other direction.
+
+### Zero-width lines and text
+
+A line with no width, or text whose text block has zero pen width, has nothing
+to plot with - Allegro's own artwork cannot draw it either. `axlPolyFromDB` does
+not object: it returns nil, or a degenerate polygon that fails much later with a
+message about geometry rather than about width. So it was being dropped
+silently, or blamed on the wrong thing.
+
+`s3dZeroWidth` checks before conversion: for text, the text block's
+`photoWidth`; otherwise the figure's `width`, falling back to the per-segment
+widths of a path. Deliberately conservative - a shape is a filled area and
+true-type text is a filled outline, so neither can be zero-width, and a path
+with no segments to inspect is not accused of anything.
+
+Reported by layer AND position, which is what makes it actionable:
+
+```
+Simple 3D: WARNING - zero width: text on REF DES/SILKSCREEN_TOP at (12.500, 4.000) - skipped, it cannot be plotted.
+```
+
+The messages also travel into the JSON under `silkscreen.warnings` and are
+re-logged by the Python side with a `warning:` prefix, which the GUI colours
+orange. Two reasons: the Allegro console has usually scrolled past by the time
+anyone looks at the model, and the GUI is where the result is judged. They are
+logged even when silkscreen is switched off - the object is wrong in the board
+regardless of what this build draws.
+
+A module-level accumulator (`S3D_SilkWarnings`) rather than a return value:
+the collector already returns layer groups, and threading a second channel
+through it and through the clipper would obscure both for the sake of a message.
+Cleared per export, not per side, so both sides report together.
+
+### Verified here
+Greying: both sides on leaves everything enabled; switching bottom off disables
+only its boxes; tick states are byte-identical before and after; None skips the
+disabled side; switching back on re-enables. Warnings: carried through the JSON,
+logged with the prefix that colours them, and still logged with silkscreen off.
+Writer transliteration extended to emit the warnings array - all seven JSON
+shapes still parse. Full suite and all three SKILL checks clean.

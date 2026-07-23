@@ -277,7 +277,9 @@ build:
 ```
 
 The two sides sit side by side, and the mouse wheel scrolls the panel wherever
-the pointer is inside it.
+the pointer is inside it. Switching **Top** or **Bottom** off greys that side's
+layers out without changing them — the ticks are still there when you switch it
+back on, and they are what gets saved.
 
 Export once, then try combinations by ticking and pressing Generate — the
 counts show what each layer costs before you decide. The list is built from the
@@ -291,6 +293,21 @@ time, keeping it in buys the choice.
 
 Older JSON files, from before layers were tagged, carry no layer information.
 They build whole, and the panel says so.
+
+### Zero-width objects
+
+A line with no width, or text whose text block has zero pen width, cannot be
+plotted — Allegro's own artwork has nothing to draw with either — so it is
+skipped and reported by layer and position, both in the Allegro console and,
+in orange, in the GUI log:
+
+```
+Simple 3D: WARNING - zero width: text on REF DES/SILKSCREEN_TOP at (12.500, 4.000) - skipped, it cannot be plotted.
+```
+
+The report is repeated in the GUI because the Allegro console has usually
+scrolled past by the time you look at the model, and it appears even when
+silkscreen is switched off — the object is wrong in the board either way.
 
 ### Silkscreen file size
 
@@ -717,7 +734,9 @@ silkscreen_top: 214 polygon(s) match Allegro's areas (arc reading: ...)
 ```
 
 Стороны расположены рядом, а колесо мыши прокручивает панель в любом её месте,
-не только на полосе прокрутки.
+не только на полосе прокрутки. Выключение **Top** или **Bottom** делает слои
+этой стороны серыми, не меняя их: галочки останутся такими же, когда сторону
+включите обратно, и именно они сохраняются в конфиг.
 
 Экспортируете один раз, дальше пробуете комбинации галочками и кнопкой Generate
 — число полигонов рядом показывает цену слоя до того, как вы решите. Список
@@ -732,6 +751,21 @@ silkscreen_top: 214 polygon(s) match Allegro's areas (arc reading: ...)
 
 Старые JSON, сделанные до появления меток, слоёв не несут. Они строятся целиком,
 и панель об этом сообщает.
+
+### Объекты нулевой ширины
+
+Линия без ширины или текст, у которого в текстовом блоке нулевая толщина пера,
+не может быть отпечатан — у самого Allegro в фотошаблоне тоже нечем рисовать, —
+поэтому такой объект пропускается, а о нём сообщается с указанием слоя и
+координат: и в консоли Allegro, и оранжевым в логе окна:
+
+```
+Simple 3D: WARNING - zero width: text on REF DES/SILKSCREEN_TOP at (12.500, 4.000) - skipped, it cannot be plotted.
+```
+
+Сообщение повторяется в окне, потому что консоль Allegro к моменту просмотра
+модели обычно уже прокручена, и выводится даже при выключенной шелкографии —
+объект в плате неверен в любом случае.
 
 ### Размер файла и шелкография
 

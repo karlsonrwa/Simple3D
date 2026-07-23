@@ -126,6 +126,10 @@ class StepBuilderApp(tk.Tk):
         # appears on a new board would silently go missing.
         self._layers_off: set[str] = set()
         self._layer_vars: dict[str, tk.BooleanVar] = {}
+        # Which side each checkbox belongs to, so switching a side off can grey
+        # its layers out WITHOUT changing them - the ticks are still what gets
+        # saved and what applies again when the side comes back.
+        self._layer_rows: dict[str, list] = {"top": [], "bottom": []}
         self._layer_refresh_job = None
 
         self._load_config()
@@ -406,6 +410,7 @@ class StepBuilderApp(tk.Tk):
                            "legend is built. Re-export to choose layers.").grid(
                 row=0, column=0, sticky="w", padx=4, pady=2)
             self._layer_vars = {}
+            self._layer_rows = {"top": [], "bottom": []}
             return
 
         # Keep the ticks the user already set for layers that are still here,
@@ -418,6 +423,7 @@ class StepBuilderApp(tk.Tk):
         # scroll, and the sides stay comparable at a glance. Columns are
         # allocated only to sides that have layers, so a top-only board does
         # not leave a gap where Bottom would have been.
+        self._layer_rows = {"top": [], "bottom": []}
         column = 0
         for side in ("top", "bottom"):
             if side not in found:
@@ -436,14 +442,32 @@ class StepBuilderApp(tk.Tk):
                 state = previous.get(layer, layer not in self._layers_off)
                 var = tk.BooleanVar(value=state)
                 self._layer_vars[layer] = var
-                ttk.Checkbutton(
+                box = ttk.Checkbutton(
                     side_frame, variable=var,
                     text=f"{layer}   ({found[side][layer]})",
-                ).pack(anchor="w", padx=(16, 4))
+                )
+                box.pack(anchor="w", padx=(16, 4))
+                self._layer_rows[side].append((layer, var, box))
+
+        # A side switched off greys its layers out immediately, not on the next
+        # refresh.
+        self._update_silk_row()
+
+    def _side_wanted(self, side: str) -> bool:
+        return self.silk_top.get() if side == "top" else self.silk_bottom.get()
 
     def _set_all_layers(self, state: bool) -> None:
-        for var in self._layer_vars.values():
-            var.set(state)
+        """All / None, but only for sides that are switched on.
+
+        A greyed-out side keeps its ticks. Changing them from here would edit a
+        selection whose effect is not visible, and it is that same selection
+        which gets saved to the config.
+        """
+        for side, rows in self._layer_rows.items():
+            if not self._side_wanted(side):
+                continue
+            for _layer, var, _box in rows:
+                var.set(state)
 
     def _current_layers_off(self) -> set[str]:
         """Layer names currently unticked."""
@@ -452,6 +476,12 @@ class StepBuilderApp(tk.Tk):
     def _update_silk_row(self) -> None:
         """Keep the ink swatch and the enabled state in step with the checkboxes."""
         on = self.silk_top.get() or self.silk_bottom.get()
+        # Grey the layers of a side that is off. State only - the variables are
+        # untouched, so the ticks come back exactly as they were.
+        for side, rows in self._layer_rows.items():
+            state = "normal" if self._side_wanted(side) else "disabled"
+            for _layer, _var, box in rows:
+                box.configure(state=state)
         self.silk_box.configure(state="readonly" if on else "disabled")
         self.silk_flat_check.configure(state="normal" if on else "disabled")
         rgb = SILK_COLORS.get(self.silk_color.get(), (128, 128, 128))
