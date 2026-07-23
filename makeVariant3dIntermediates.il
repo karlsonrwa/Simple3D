@@ -1478,8 +1478,7 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
             if( isFirst then
                 isFirst = nil
             else
-                fprintf( p_port ",
-" )
+                fprintf( p_port ",\n" )
             )
             xy = car( vertex )
             rad = cadr( vertex )
@@ -1599,7 +1598,7 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
 ; programming model in the axlVisibleDesign documentation. Without that the
 ; user is left staring at a blank board after an export.
 procedure( s3dCollectSilkByLayer( l_layers s_endCap )
-    let( ( saveVis saveEnabled saveOn elems polys out key groups order )
+    let( ( saveVis saveEnabled saveOn elems polys out key groups order ( nBad 0 ) )
         out = nil
         groups = makeTable( "s3dSilkGroups" nil )
         order = tconc( nil nil )
@@ -1641,9 +1640,24 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap )
                 ; once axlText2Lines has vectorised it. Still one sweep per
                 ; side - sweeping once per layer would multiply the visibility
                 ; churn for nothing.
-                key = elem->layer
+                key = nil
+                errset( key = elem->layer )
                 unless( stringp( key )  key = sprintf( nil "%L" key ) )
-                polys = s3dPolysFromDbid( elem s_endCap )
+
+                ; Per element, so one object the converter cannot handle costs
+                ; that object and not the whole side. Before this, a single
+                ; failure anywhere in the sweep propagated out of
+                ; s3dMakeSilkscreen, was swallowed by the errset at the call
+                ; site, and the export finished with no silkscreen at all and
+                ; nothing on screen to say why.
+                polys = nil
+                unless( errset( polys = s3dPolysFromDbid( elem s_endCap ) )
+                    nBad = nBad + 1
+                    when( nBad == 1
+                        printf( "Simple 3D: warning - a %s object on %s could not be converted; skipping it (further ones are counted only).\n"
+                                elem->objType key )
+                    )
+                )
                 foreach( poly polys
                     when( poly && !poly->isHole
                         unless( groups[key]
@@ -1654,6 +1668,10 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap )
                     )
                 )
             )
+        )
+
+        when( nBad > 0
+            printf( "Simple 3D: warning - %d silkscreen object(s) could not be converted and were skipped.\n" nBad )
         )
 
         ; -> ( (layer polys) (layer polys) ... ), layers in the order Allegro
@@ -2090,8 +2108,18 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
         ; of a DNP part is still physically on the board. Every variant JSON
         ; therefore carries the same silkscreen (and, like edgeCuts, it costs
         ; one collection pass no matter how many variants there are).
+        ; errset with a second argument PRINTS the SKILL error before
+        ; returning nil, and errset itself returns nil only on failure. The
+        ; bare errset this replaces hid every silkscreen fault behind an empty
+        ; legend: the export finished, the JSON had no "silkscreen" key, and
+        ; the console said nothing at all. A swallowed error is worse than a
+        ; loud one - the board still exports either way.
         silk = nil
-        errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) ) )
+        unless( errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) ) t )
+            printf( "Simple 3D: ERROR - silkscreen collection failed (message above).\n" )
+            printf( "Simple 3D: the board and its components are still exported; only the legend is missing.\n" )
+            silk = nil
+        )
 
         if( isFile( variantFile ) then
             ; Read / parse variant list

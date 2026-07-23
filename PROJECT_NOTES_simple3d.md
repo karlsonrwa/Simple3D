@@ -1845,3 +1845,63 @@ All/None work, the new exclusion is saved and the other config sections survive;
 a layerless JSON leaves the exclusions alone. Writer transliteration extended
 with the layer key and an empty group - all seven shapes still parse. Full suite
 and shadow scan clean.
+
+## Update 2026-07-23 (round 14a) — a silent silkscreen failure, made loud
+
+Board `my_test_board2`: the JSON came out with no `"silkscreen"` key at all, and
+the user reasonably read that as "silkscreen not found".
+
+### Reading the console
+
+```
+Simple 3D: collecting silkscreen...
+Simple 3D: 22 symbol(s) are not listed in any variant ...
+```
+
+The line that should sit between those two — `silkscreen polygons - top N,
+bottom N` — is missing, and so is the new per-layer breakdown. Both print
+unconditionally right after collection. So execution left `s3dMakeSilkscreen`
+between the two `s3dCollectSilkByLayer` calls and the count: it raised, and
+
+```skill
+errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) ) )
+```
+
+swallowed it whole. `format_version: 3` in the file proves the new code was
+loaded, so this is not a stale install.
+
+### The defect is the errset, not whatever raised
+
+That bare `errset` was added in round 10 so a silkscreen fault could not cost
+the user the board export. The intent was right and the execution was not: it
+turned every possible silkscreen error into an empty legend with **nothing on
+the console at all**. There is no way to tell that from "this board has no
+silkscreen", which is exactly the confusion it produced.
+
+Two changes, both about making a failure survivable AND visible:
+
+- The call site now uses `errset( expr t )`, whose second argument prints the
+  SKILL error, and reports in its own words that the legend is missing while
+  the board is fine. A swallowed error is worse than a loud one.
+- `s3dCollectSilkByLayer` wraps the conversion of EACH element, so one object
+  the converter cannot handle costs that object rather than the whole side. The
+  first failure names the object type and its layer; the rest are counted.
+
+I could not determine the root cause from here - it needs the message that was
+being swallowed. The per-element guard covers the likely case (a single object
+on `MANUFACTURING/AUTOSILK_TOP`, a layer new to this config, that
+`s3dPolysFromDbid` cannot convert); if something bigger is wrong, the next run
+prints it.
+
+### Also found: string literals broken by a real newline
+
+`s3dWriteVertexList` had `fprintf( p_port "," <newline> " )` — a printf format
+split across two source lines by heredoc escaping in an earlier round. Harmless
+(a literal newline inside the string emits the same bytes as `\n`) but invisible
+in review and one careless edit away from mattering. Added `check_strings.py`
+to the scratch suite: it walks the source and flags any string literal that runs
+across a line break. Two found, both from the same cause, both fixed.
+
+**Lesson worth keeping:** heredocs through the Bash tool mangle backslash
+escapes often enough that generated SKILL needs a mechanical check afterwards.
+Paren balance was already checked; string literals now are too.
