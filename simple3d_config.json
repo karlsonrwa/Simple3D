@@ -19,6 +19,8 @@
         "silkscreenFlat": false,
         "_comment_silkscreenFlatHeight": "Distance in mm from the board surface to the surface of a FLAT silkscreen, so that graphics do not flicker where the two would otherwise be coplanar. Not the ink thickness - that is settings.silkscreenThickness, and it applies to solid silkscreen only. 1 um is invisible at board scale; raise it to 0.005-0.01 if a particular viewer still flickers. Ignored when silkscreenFlat is false.",
         "silkscreenFlatHeight": 0.001,
+        "_comment_silkscreenLayersOff": "Silkscreen layers left out of the build, by name, as ticked in the GUI's Silkscreen layers panel. Exclusions rather than inclusions on purpose: a layer that turns up on a board for the first time is drawn, instead of going missing with nothing on screen to say why. Empty means every collected layer is built.",
+        "silkscreenLayersOff": [],
         "minimizeFileSize": true
     },
     "silkscreen": {

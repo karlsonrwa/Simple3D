@@ -169,9 +169,9 @@ needs changing if you deliberately keep the config somewhere else.
 | **Board edge** | Rim / side-wall colour: same as board, cream dielectric, or a custom `r,g,b` / `#rrggbb`. |
 | **Z = 0 at** | Which board face is the datum: top or bottom. Parts sit on the soldermask of their side (real pads carry solder that lifts the part to mask level). |
 | **Silkscreen: Top / Bottom** | Which sides of the printed legend to build. Both off skips silkscreen entirely and makes a noticeably smaller file. |
-| **Silkscreen layers** | A tick per layer found in the loaded JSON, with its polygon count, grouped by side. Untick a layer to leave it out of this build — no re-export needed. **All** / **None** set them together. |
-| **Colour** (next to it) | Silkscreen ink: **White** or **Black**. Those are the two colours legend ink actually comes in, so it is a closed choice. |
-| **Flat** | Draw the legend as surfaces instead of thin solids: about a quarter of the silkscreen's file size. Their height above the board is `gui.silkscreenFlatHeight`. See *Silkscreen file size* below. |
+| **Colour** (same row) | Silkscreen ink: **White** or **Black**. Those are the two colours legend ink actually comes in, so it is a closed choice. |
+| **Flat** (same row) | Draw the legend as surfaces instead of thin solids: about a quarter of the silkscreen's file size. Their height above the board is `gui.silkscreenFlatHeight`. See *Silkscreen file size* below. |
+| **Silkscreen layers** | A tick per layer found in the loaded JSON, with its polygon count, the two sides side by side. Untick a layer to leave it out of this build — no re-export needed. **All** / **None** set them together, skipping a side that is switched off. |
 | **Minimise file size** | Drops parametric surface curves (`write.surfacecurve.mode = 0`), roughly halving the file with identical geometry. |
 | **Generate** | Builds one file, or every queued variant. |
 
@@ -212,12 +212,14 @@ green.
 
 ## Silkscreen
 
-Enabled by default. The legend is exported as real geometry: filled regions
-extruded into thin solids that sit on the outer face of each side and grow away
-from the board, so they never intersect it.
+Both sides are built by default. The legend is exported as real geometry —
+filled regions, either extruded into thin solids standing on the board face, or
+drawn as flat surfaces just clear of it. Which one is the **Flat** checkbox; see
+*Silkscreen file size* for what it costs and what it buys.
 
 **Which layers count** is set in `simple3d_config.json`, next to the two `.il`
-files — edit that, not the source, if your layer naming differs:
+files — edit that, not the source, if your layer naming differs. These are two
+of the file's four sections; `allegro` and `gui` are described under *Settings*:
 
 ```json
 {
@@ -426,12 +428,16 @@ which is wrong for those boards. Support may be added later.
 board itself is dominated by those models; "Minimise file size" cannot shrink
 geometry that lives inside them.
 
-**Silkscreen solids are not fused into one.** The legend is thousands of
-overlapping strokes and glyphs; a boolean union of that many thin prisms costs
-minutes of solver time and can fail outright, while buying nothing visible. Each
-side is therefore a compound of separate solids — correct to look at, export and
-render, but not a single manifold solid if you intend to do boolean work on the
-ink itself.
+**Silkscreen solids are not fused into one.** This is about **solid** mode: the
+legend is thousands of overlapping strokes and glyphs, and a boolean union of
+that many thin prisms costs solver time and makes the file *larger* (measured at
+154%), while buying nothing visible. Each side is therefore a compound of
+separate solids — correct to look at, export and render, but not a single
+manifold solid if you intend to do boolean work on the ink itself.
+
+**Flat** mode is the opposite case and *is* unioned: coplanar faces at one z
+would flicker against each other where strokes overlap, and unioning them
+removes that and shrinks the file at the same time.
 
 **Silkscreen is not subtracted where holes are.** Clipping follows the board
 outline and its cutouts, not the drill holes. In practice legend is not printed
@@ -633,9 +639,9 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 | **Board edge** | Цвет торца / боковых стенок: как плата, кремовый диэлектрик или свой `r,g,b` / `#rrggbb`. |
 | **Z = 0 at** | Какая грань платы — ноль: верхняя или нижняя. Компоненты садятся на маску своей стороны (на площадках реально есть припой, поднимающий деталь до уровня маски). |
 | **Silkscreen: Top / Bottom** | Какие стороны легенды строить. Обе выключены — шелкографии нет вовсе, файл заметно меньше. |
-| **Silkscreen layers** | Галочка на каждый слой, найденный в загруженном JSON, с числом полигонов, сгруппированные по сторонам. Снимите галочку — слой не попадёт в эту сборку, повторный экспорт не нужен. **All** / **None** переключают все сразу. |
-| **Colour** (рядом) | Цвет краски: **White** или **Black**. Это те два цвета, которыми шелкография реально печатается, поэтому выбор закрытый. |
-| **Flat** | Рисовать легенду поверхностями вместо тонких тел: примерно вчетверо меньший вклад в размер файла. Высота над платой задаётся `gui.silkscreenFlatHeight`. См. «Размер файла и шелкография» ниже. |
+| **Colour** (в той же строке) | Цвет краски: **White** или **Black**. Это те два цвета, которыми шелкография реально печатается, поэтому выбор закрытый. |
+| **Flat** (в той же строке) | Рисовать легенду поверхностями вместо тонких тел: примерно вчетверо меньший вклад в размер файла. Высота над платой задаётся `gui.silkscreenFlatHeight`. См. «Размер файла и шелкография» ниже. |
+| **Silkscreen layers** | Галочка на каждый слой, найденный в загруженном JSON, с числом полигонов; стороны расположены рядом. Снимите галочку — слой не попадёт в эту сборку, повторный экспорт не нужен. **All** / **None** переключают все сразу, пропуская выключенную сторону. |
 | **Minimise file size** | Убирает параметрические кривые поверхностей (`write.surfacecurve.mode = 0`), примерно вдвое уменьшая файл при идентичной геометрии. |
 | **Generate** | Собирает один файл или все варианты из очереди. |
 
@@ -676,13 +682,16 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 
 ## Шелкография
 
-Включена по умолчанию. Легенда экспортируется настоящей геометрией: залитые
-области выдавливаются в тонкие тела, лежащие на внешней грани каждой стороны и
-растущие наружу от платы, так что они с ней не пересекаются.
+По умолчанию строятся обе стороны. Легенда экспортируется настоящей
+геометрией — залитыми областями, которые либо выдавливаются в тонкие тела,
+стоящие на грани платы, либо рисуются плоскими поверхностями чуть выше неё.
+Выбор — галочка **Flat**; чем это оборачивается, см. «Размер файла и
+шелкография».
 
 **Какие слои считать шелкографией**, задаётся в `simple3d_config.json` рядом с
 двумя `.il`-файлами — правьте его, а не исходник, если у вас другое именование
-слоёв:
+слоёв. Ниже — две из четырёх секций файла; `allegro` и `gui` описаны в разделе
+«Настройки»:
 
 ```json
 {
@@ -892,12 +901,17 @@ Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); 
 сверх самой платы определяется этими моделями; «Minimise file size» не может
 уменьшить геометрию, которая лежит внутри них.
 
-**Тела шелкографии не объединяются в одно.** Легенда — это тысячи
-пересекающихся штрихов и глифов; булево объединение такого количества тонких
-призм стоит минут работы солвера и может вовсе не сойтись, не давая при этом
-ничего видимого. Поэтому каждая сторона — компаунд отдельных тел: корректный для
-просмотра, экспорта и рендера, но не единое манифолдное тело, если вы
-собираетесь делать булевы операции с самой краской.
+**Тела шелкографии не объединяются в одно.** Речь про **объёмный** режим:
+легенда — это тысячи пересекающихся штрихов и глифов, и булево объединение
+такого количества тонких призм стоит времени солвера и делает файл *больше*
+(замерено: 154%), не давая при этом ничего видимого. Поэтому каждая сторона —
+компаунд отдельных тел: корректный для просмотра, экспорта и рендера, но не
+единое манифолдное тело, если вы собираетесь делать булевы операции с самой
+краской.
+
+Режим **Flat** — противоположный случай, и там объединение **выполняется**:
+компланарные грани на одном z рябили бы друг о друга там, где штрихи
+перекрываются; объединение это убирает и заодно уменьшает файл.
 
 **Шелкография не вычитается по отверстиям.** Обрезка идёт по контуру платы и её
 вырезам, но не по сверловке. На практике легенду поверх отверстий и не печатают,
@@ -934,6 +948,40 @@ stepbuilder/
 ---
 
 ## Changelog / История изменений
+
+- **2026-07-23** — Silkscreen layers are now chosen in the GUI instead of by
+  editing the config (intermediate format `format_version: 3`): the exporter
+  collects every layer the config lists and tags each polygon with the layer it
+  came from, so a **Silkscreen layers** panel offers them as ticks — with
+  polygon counts, the two sides side by side — and the choice applies on the
+  next Generate with no re-export. Silkscreen gained separate **Top** and
+  **Bottom** checkboxes, which grey out their side's layers without changing
+  them, and a **Flat** mode that draws the legend as surfaces for about a
+  quarter of the file size (`gui.silkscreenFlatHeight` lifts them clear of the
+  board so the two planes do not flicker). Mechanical components are exported
+  even though `Variants.lst` may not list them, and any symbol carrying
+  `NO_STEP_EXPORT` is left out and named in the log. Zero-width lines and text
+  are reported by layer and position instead of vanishing. Every user setting
+  moved into `simple3d_config.json`, read by both halves of the tool, and the
+  GUI now refuses to rewrite a settings file it could not read. Allegro console
+  messages carry a severity, so warnings print in Allegro's warning colour and
+  errors in red. / Слои шелкографии теперь выбираются в окне, а не правкой
+  конфига (формат `format_version: 3`): экспортёр собирает все слои из конфига
+  и помечает каждый полигон его слоем, поэтому панель **Silkscreen layers**
+  предлагает их галочками — с числом полигонов, стороны рядом, — и выбор
+  применяется по кнопке Generate без повторного экспорта. У шелкографии
+  появились отдельные галочки **Top** и **Bottom**, которые делают слои своей
+  стороны серыми, не меняя их, и режим **Flat**: легенда рисуется
+  поверхностями и занимает вчетверо меньше (`gui.silkscreenFlatHeight`
+  приподнимает их над платой, чтобы плоскости не рябили). Механические
+  компоненты экспортируются, даже если их нет в `Variants.lst`, а любой символ
+  со свойством `NO_STEP_EXPORT` исключается и называется в логе. Объекты
+  нулевой ширины сообщаются с указанием слоя и координат вместо тихого
+  исчезновения. Все пользовательские настройки переехали в
+  `simple3d_config.json`, который читают обе половины инструмента, а GUI больше
+  не перезаписывает файл настроек, который не смог прочитать. Сообщения в
+  консоли Allegro несут уровень важности: предупреждения выводятся цветом
+  предупреждений Allegro, ошибки — красным.
 
 - **2026-07-22** — Silkscreen export (intermediate format bumped to
   `format_version: 2`). The legend is collected in Allegro as filled polygons

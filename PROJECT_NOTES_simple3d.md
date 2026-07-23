@@ -2106,3 +2106,68 @@ one-line status area - the reference says a nil window "dumps output to main
 window", which is where the existing `*WARNING*` lines appear, so it should. If
 the messages turn up somewhere less useful, the wrapper is the single place to
 change back.
+
+## Update 2026-07-23 (round 18) — README audit against the code
+
+Asked to check the README against reality. Mechanical claims were compared
+programmatically (`audit_readme.py` in the scratch dir); prose was read.
+
+### What the audit checks
+
+CLI flags in `__main__.py` vs flags named in the README, both directions; every
+key of the shipped `simple3d_config.json` mentioned somewhere; every key the
+README names actually existing; shipped files present in the layout listing;
+`format_version` as written by the exporter; the four assembly labels produced
+by `core` vs documented; and the two defaults (ink thickness, flat height).
+
+It found four things, two of them its own fault. Worth recording both kinds:
+
+- **False positive**: `--mfr-pn-in-name`, which is commented out. The scanner
+  was reading disabled lines. Fixed to strip comments - a disabled flag is not
+  a flag.
+- **False positive**: `silkscreen` reported as an unknown config key; it is a
+  top-level SECTION. Fixed by naming the four sections.
+
+### Four real defects, fixed
+
+1. **The silkscreen intro described solid mode as if it were the only mode.**
+   Written before Flat existed and never revisited: "extruded into thin solids
+   that sit on the outer face". Now says filled regions are built either as
+   solids or as flat surfaces, and points at the checkbox.
+2. **The config snippet looked like the whole file.** It shows `silkscreen` and
+   `settings`; the file has four sections. Now labelled as two of four, with a
+   pointer to *Settings* for the others.
+3. **"Silkscreen solids are not fused" no longer told the whole truth.** True
+   of solid mode, and the opposite of what flat mode now does - flat faces ARE
+   unioned, and must be, or coplanar overlaps flicker. The limitation now says
+   which mode it is about and states the flat case beside it.
+4. **`silkscreenLayersOff` was documented but absent from the shipped config.**
+   It only appeared after the GUI first saved. A user reading the file to learn
+   what it holds would not have seen it. Added as `[]` with a comment key
+   explaining why exclusions are stored rather than inclusions.
+
+Plus one omission that was not a wrong statement but a gap: **the changelog
+stopped at 2026-07-22**. Everything from rounds 11-17 - mechanical symbols,
+NO_STEP_EXPORT, per-side control, flat mode and its height, the settings
+consolidation and the two data-loss fixes under it, the layer chooser,
+zero-width reporting, console severity colouring - was undocumented for users.
+One entry added covering all of it, in both languages.
+
+The GUI table also listed its rows in an order the window does not use (layers
+before Colour/Flat, which share the Top/Bottom row). Reordered.
+
+### The pattern in all four
+
+Every one is a statement that was TRUE WHEN WRITTEN and was not revisited when
+the behaviour around it changed. None of them is a typo or a misunderstanding.
+That is the failure mode documentation actually has, and it is why the
+mechanical audit is worth keeping: it cannot catch prose that went stale, but it
+pins down every claim that can be enumerated, which leaves less prose to read.
+
+**Whenever a behaviour changes, grep the README for the old behaviour, not just
+for the feature name.**
+
+### Verified here
+Audit clean in both directions; the config parses in both readers and still has
+four sections; the GUI loads the new key; layer, config-save and config-safety
+suites unchanged.
