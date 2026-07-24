@@ -66,7 +66,7 @@ class BuildSettings:
     later widget edit cannot change the build already in flight.
     """
 
-    step_dir: str
+    step_dirs: tuple[str, ...]
     json_file: str
     output_dir: str
     z_datum: str
@@ -93,7 +93,12 @@ class StepBuilderApp(tk.Tk):
         self._queue: queue.Queue = queue.Queue()
         self._worker: threading.Thread | None = None
 
-        self.step_dir = tk.StringVar()
+        # The STEP folders are a Text widget, not a StringVar, and _load_config
+        # runs BEFORE _build_ui - so reads and writes buffer here until the
+        # widget exists. Without this, loading the config would touch a widget
+        # that has not been created yet.
+        self._step_text: tk.Text | None = None
+        self._pending_step_dirs: list[str] = []
         self.json_file = tk.StringVar()
         self.output_dir = tk.StringVar()
         self.status = tk.StringVar(value="Ready")
@@ -159,7 +164,7 @@ class StepBuilderApp(tk.Tk):
         paths = ttk.LabelFrame(self, text="Input", padding=8)
         paths.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
         paths.columnconfigure(1, weight=1)
-        self._path_row(paths, 0, "STEP files", self.step_dir, self._pick_step_dir)
+        self._step_dirs_row(paths, 0)
         self._path_row(paths, 1, "JSON file", self.json_file, self._pick_json_file)
         self._path_row(paths, 2, "Output", self.output_dir, self._pick_output_dir)
 
@@ -332,6 +337,59 @@ class StepBuilderApp(tk.Tk):
             self._actions, text="Generate", command=self.on_generate
         )
         self.generate_button.pack(side="left", padx=4)
+
+    def _step_dirs_row(self, parent, row: int) -> None:
+        """The STEP folders: an ordered search path, one folder per line.
+
+        Multi-line rather than one field, because this is a precedence list and
+        the order has to be visible AND editable: the first folder holding a
+        given filename wins, which is how a project-local folder overrides the
+        shared library. Editing the text is a faster way to reorder than any
+        pair of up/down buttons, and pasting several paths at once works.
+
+        Browse APPENDS instead of replacing - replacing would make adding a
+        second folder require retyping the first.
+        """
+        ttk.Label(parent, text="STEP files").grid(row=row, column=0, sticky="nw", pady=3)
+        box = ttk.Frame(parent)
+        box.grid(row=row, column=1, sticky="ew", padx=6, pady=3)
+        box.columnconfigure(0, weight=1)
+        self._step_text = tk.Text(box, height=3, wrap="none", undo=True)
+        self._step_text.grid(row=0, column=0, sticky="ew")
+        # Flush whatever _load_config buffered before this widget existed.
+        self.set_step_dirs(self._pending_step_dirs)
+        bar = ttk.Scrollbar(box, command=self._step_text.yview)
+        bar.grid(row=0, column=1, sticky="ns")
+        self._step_text.configure(yscrollcommand=bar.set)
+        # Inside the box, under the text - not in the parent grid, where it
+        # would land in the cell the text box already occupies.
+        ttk.Label(box, foreground="#777",
+                  text="one folder per line; the first one holding a model wins").grid(
+            row=1, column=0, sticky="w", pady=(2, 0))
+        ttk.Button(parent, text="Add...", command=self._pick_step_dir).grid(
+            row=row, column=2, sticky="n", pady=3)
+
+    def step_dirs(self) -> list[str]:
+        """The folders as an ordered list, blank lines dropped."""
+        if self._step_text is None:
+            return list(self._pending_step_dirs)
+        raw = self._step_text.get("1.0", "end").splitlines()
+        return [line.strip() for line in raw if line.strip()]
+
+    def set_step_dirs(self, paths) -> None:
+        values = [str(p) for p in paths]
+        if self._step_text is None:
+            self._pending_step_dirs = values
+            return
+        self._step_text.delete("1.0", "end")
+        self._step_text.insert("1.0", "\n".join(values))
+
+    def add_step_dir(self, path: str) -> None:
+        """Append one folder, unless it is already listed."""
+        current = self.step_dirs()
+        if path in current:
+            return
+        self.set_step_dirs(current + [path])
 
     def _path_row(self, parent, row: int, label: str, var: tk.StringVar, command) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=3)
@@ -563,8 +621,8 @@ class StepBuilderApp(tk.Tk):
     # ------------------------------------------------------------ pickers -- #
 
     def _pick_step_dir(self) -> None:
-        if path := filedialog.askdirectory(title="Directory with footprint STEP files"):
-            self.step_dir.set(path)
+        if path := filedialog.askdirectory(title="Add a directory of footprint STEP files"):
+            self.add_step_dir(path)
 
     def _pick_json_file(self) -> None:
         path = filedialog.askopenfilename(
@@ -599,7 +657,7 @@ class StepBuilderApp(tk.Tk):
         as the early validation on_generate wants.
         """
         return BuildSettings(
-            step_dir=self.step_dir.get(),
+            step_dirs=tuple(self.step_dirs()),
             json_file=self.json_file.get(),
             output_dir=self.output_dir.get(),
             z_datum=self.z_datum.get(),
@@ -617,9 +675,10 @@ class StepBuilderApp(tk.Tk):
         )
 
     def on_generate(self) -> None:
-        if not self.step_dir.get() or not self.json_file.get() or not self.output_dir.get():
+        if not self.step_dirs() or not self.json_file.get() or not self.output_dir.get():
             messagebox.showwarning(
-                "Missing input", "Please set the STEP directory, JSON file and output directory."
+                "Missing input",
+                "Please set at least one STEP folder, the JSON file and the output directory."
             )
             return
         try:
@@ -686,7 +745,7 @@ class StepBuilderApp(tk.Tk):
                 output_name = (core.dated_output_name(base, settings.output_dir)
                                if settings.dated_name else None)
                 result = core.generate(
-                    settings.step_dir,
+                    list(settings.step_dirs),
                     jf,
                     settings.output_dir,
                     output_name=output_name,
@@ -846,7 +905,15 @@ class StepBuilderApp(tk.Tk):
         gui = data.get("gui")
         if not isinstance(gui, dict):
             return
-        self.step_dir.set(gui.get("stepDir", ""))
+        # stepDirs (a list) is the current shape; stepDir (a single string) is
+        # what older installs hold, and is still read so an existing settings
+        # file keeps working untouched.
+        dirs = gui.get("stepDirs")
+        if isinstance(dirs, list):
+            self.set_step_dirs([str(d).strip() for d in dirs if str(d).strip()])
+        else:
+            single = str(gui.get("stepDir", "")).strip()
+            self.set_step_dirs([single] if single else [])
         self.json_file.set(gui.get("jsonFile", ""))
         self.output_dir.set(gui.get("outputDir", ""))
         self.z_datum.set(gui.get("zDatum", "top"))
@@ -910,8 +977,13 @@ class StepBuilderApp(tk.Tk):
         gui = data.get("gui")
         if not isinstance(gui, dict):
             gui = {}
+        dirs = self.step_dirs()
         gui.update({
-            "stepDir": self.step_dir.get(),
+            "stepDirs": dirs,
+            # Kept in step with the first entry so an older build of this tool,
+            # which knows only the single-folder key, still opens with a usable
+            # library instead of an empty field.
+            "stepDir": dirs[0] if dirs else "",
             "zDatum": self.z_datum.get(),
             "boardColor": self.theme.get(),
             "boardEdge": self.rim_choice.get(),

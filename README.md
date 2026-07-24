@@ -149,7 +149,8 @@ and whether it parsed. A byte-order mark left by an editor is tolerated.
 | `allegro` | `python` | Python executable. `"python"` if on PATH, else a full path like `"c:/Python312/python.exe"`. |
 | | `pythonw` | Console-less launcher (`pythonw.exe`). When set, the GUI opens with **no console window**. `""` uses `python` instead. |
 | | `menuLabel` / `commandName` | Menu item text and internal command name. Read at load time, so changing them needs a SKILL reload. |
-| `gui` | `stepDir` | Folder holding the footprint STEP models (referenced by `PKGDEF_STEP_FILE`) — the "STEP files" field. |
+| `gui` | `stepDirs` | Folders holding the footprint STEP models (referenced by `PKGDEF_STEP_FILE`) — the "STEP files" field. A **list, searched in order: the first folder holding a given model file wins**, so a project-local folder listed above the shared library overrides individual models. Each is searched recursively, so subfolders need no entry. |
+| `gui` | `stepDir` | The older single-folder key. Still read when `stepDirs` is absent, and kept in step with the first entry so an older build of the tool still opens with a usable library. `stepDirs` wins when both are present. |
 | | `outputDir`, `jsonFile` | The last paths you picked **in the GUI**. An export launched from Allegro fills these fields for the board being built but does not record them here — they describe a board, not a preference. |
 | | `boardColor`, `boardEdge`, `boardEdgeCustom` | Board and rim colour. |
 | | `zDatum` | `"top"` or `"bottom"`. |
@@ -172,7 +173,7 @@ needs changing if you deliberately keep the config somewhere else.
 
 | Control | Purpose |
 |---|---|
-| **STEP files** | Folder with the footprint STEP models (`gui.stepDir` in the config). |
+| **STEP files** | Folders with the footprint STEP models, **one per line** (`gui.stepDirs`). Searched in order — the first folder holding a model file wins, so a project-local folder above the shared library overrides individual models. Each is searched recursively. **Add...** appends a folder; reorder by editing the text. A name found in more than one folder is reported in the log with the path that won. |
 | **JSON file** | The intermediate JSON, or a folder of variant JSONs. Only files tagged `"format": "simple3d"` are used; others are ignored and logged. |
 | **Output** | Where the `.step` is written (the `cad` folder). |
 | **Board colour** | The eight Allegro 3D-canvas themes, with a colour swatch. |
@@ -638,7 +639,8 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 | `allegro` | `python` | Исполняемый Python. `"python"`, если на PATH, иначе полный путь вроде `"c:/Python312/python.exe"`. |
 | | `pythonw` | Запуск без консоли (`pythonw.exe`). Когда задан, окно GUI открывается **без окна консоли**. `""` — использовать `python`. |
 | | `menuLabel` / `commandName` | Текст пункта меню и внутреннее имя команды. Читаются при загрузке, поэтому их изменение требует перезагрузки SKILL. |
-| `gui` | `stepDir` | Папка с STEP-моделями посадочных мест (по `PKGDEF_STEP_FILE`) — поле «STEP files». |
+| `gui` | `stepDirs` | Папки с STEP-моделями посадочных мест (по `PKGDEF_STEP_FILE`) — поле «STEP files». **Список, просматриваемый по порядку: побеждает первая папка, где есть нужный файл**, поэтому проектная папка выше общей библиотеки переопределяет отдельные модели. Каждая просматривается рекурсивно, подпапки перечислять не нужно. |
+| `gui` | `stepDir` | Старый ключ на одну папку. Читается, если `stepDirs` нет, и держится равным первой записи, чтобы старая версия инструмента открывалась с рабочей библиотекой. При наличии обоих побеждает `stepDirs`. |
 | | `outputDir`, `jsonFile` | Последние пути, выбранные **в самом окне**. Экспорт из Allegro заполняет эти поля под собираемую плату, но в файл их не записывает — они описывают плату, а не настройку. |
 | | `boardColor`, `boardEdge`, `boardEdgeCustom` | Цвет платы и торца. |
 | | `zDatum` | `"top"` или `"bottom"`. |
@@ -662,7 +664,7 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 
 | Элемент | Назначение |
 |---|---|
-| **STEP files** | Папка с STEP-моделями посадочных мест (`gui.stepDir` в конфигурации). |
+| **STEP files** | Папки с STEP-моделями посадочных мест, **по одной на строку** (`gui.stepDirs`). Просматриваются по порядку — побеждает первая, где есть нужный файл, поэтому проектная папка выше общей библиотеки переопределяет отдельные модели. Каждая просматривается рекурсивно. **Add...** дописывает папку в конец; порядок правится прямо текстом. Имя, найденное в нескольких папках, отмечается в логе с указанием победившего пути. |
 | **JSON file** | Промежуточный JSON или папка с JSON-вариантами. Берутся только файлы с меткой `"format": "simple3d"`, остальные игнорируются с записью в лог. |
 | **Output** | Куда пишется `.step` (папка `cad`). |
 | **Board colour** | Восемь тем 3D-канвы Allegro, с образцом цвета. |
@@ -989,6 +991,25 @@ stepbuilder/
 ---
 
 ## Changelog / История изменений
+
+- **2026-07-24** — The **STEP files** field takes several folders, one per line,
+  and is now an ordered search path: the first folder holding a given model file
+  wins, so a project-local folder listed above the shared library overrides
+  individual models. Each folder is still searched recursively. **Add...** appends
+  rather than replacing, a name found in more than one folder is reported in the
+  log with the path that won, and a folder that does not exist is warned about
+  and skipped instead of failing the build. Config key `gui.stepDirs` (a list);
+  the old `gui.stepDir` is still read and kept in step with the first entry. CLI:
+  the positional folder accepts a `;`-separated list and `--step-dir` adds more.
+  / Поле **STEP files** принимает несколько папок, по одной на строку, и стало
+  упорядоченным путём поиска: побеждает первая папка, где есть нужный файл, —
+  так проектная папка выше общей библиотеки переопределяет отдельные модели.
+  Каждая по-прежнему просматривается рекурсивно. **Add...** дописывает, а не
+  замещает; имя, найденное в нескольких папках, отмечается в логе с победившим
+  путём; несуществующая папка вызывает предупреждение и пропускается, а не
+  роняет сборку. Ключ конфигурации `gui.stepDirs` (список); старый
+  `gui.stepDir` читается и держится равным первой записи. CLI: позиционный
+  аргумент принимает список через `;`, а `--step-dir` добавляет ещё.
 
 - **2026-07-24** — Mechanical symbols that carry a STEP model
   (`PKGDEF_STEP_FILE`) but no reference designator are now exported; before, the

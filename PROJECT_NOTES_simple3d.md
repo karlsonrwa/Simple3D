@@ -2398,6 +2398,86 @@ tracked file became ignored.
   is still wrong (repo root, now 1100). It sits inside a dated round entry, and
   this memo's convention is that those are historical record.
 
+## Update 2026-07-24 (round 22) — several model folders, as an ordered search path
+
+User: models sometimes have to come from more than one folder. Asked how to do
+it in the interface.
+
+### The design question was precedence, not the widget
+
+`rglob` was already recursive, so subfolders of one root worked. What was needed
+was *disjoint* roots — a shared company library plus a project-local folder. And
+the moment there are two, the real question is which one wins.
+
+`StepFileIndex` already answered it accidentally: `dict.setdefault` over the
+walk, so first-wins — but the order `rglob` walks in is arbitrary, so a
+duplicate filename resolved **unpredictably and in silence**. The change makes
+the roots an explicit ordered list, so precedence becomes *declared* rather than
+accidental, and a name found in more than one root is now reported with the path
+that won. A silently substituted model is otherwise something you discover in
+the CAD viewer.
+
+Chosen (user picked both recommendations): **ordered search path, first match
+wins**, and **report the shadowed name**.
+
+### Interface: one folder per line
+
+The "STEP files" row became a 3-line `tk.Text` instead of an `Entry`. Reasons,
+in the order they mattered: the order has to be *editable*, and editing text
+beats any pair of ▲▼ buttons; pasting several paths at once works; it stays the
+same idiom as the other two path rows (free text + a button); the window grows
+by two lines instead of gaining four buttons. **Add...** appends rather than
+replaces — replacing would make adding a second folder mean retyping the first.
+
+A listbox with Add/Remove/▲▼ was the alternative, and is the better answer only
+if hand-typed paths should be impossible. They already are possible in the JSON
+and Output rows, so forbidding them here would be inconsistent.
+
+### Two ordering traps hit while building it
+
+1. **`_load_config()` runs BEFORE `_build_ui()`.** The old `step_dir` was a
+   `StringVar` created in `__init__`, so loading it early was fine; a Text
+   widget does not exist yet at that point. Fixed by making `step_dirs()` /
+   `set_step_dirs()` buffer into `_pending_step_dirs` while `_step_text` is
+   None, and flushing when the widget is built. Order-independent, rather than
+   moving the two calls and hoping nothing else depended on the order.
+2. **`argparse` maps `--step-dir` to the same dest as the positional
+   `step_dir`.** One clobbers the other. The optional now carries an explicit
+   `dest="extra_step_dirs"`.
+
+### Shape of it
+- `core.StepFileIndex(roots, log=...)` takes a str/Path or a sequence; missing
+  roots are warned about and skipped, and only having none left is fatal. One
+  mistyped entry out of four must not cost the build.
+- `find()` now falls back to `Path(name).name`, so a mapping carrying a path
+  component ("subdir/model.step") resolves instead of missing a file that is
+  sitting right there. Latent before; more likely with several libraries.
+- `gui.stepDirs` (list) is the config key; `gui.stepDir` is still read when
+  `stepDirs` is absent and is kept equal to the first entry, so an older build
+  of the tool still opens with a usable library rather than an empty field.
+- CLI: the positional folder accepts a `;`-separated list, `--step-dir` adds
+  more, both flattened in order with duplicates dropped.
+- **SKILL is untouched.** It never passed the model folder — that has come from
+  the config since round 10h.
+
+### Verified here
+- 17 index assertions: precedence follows list order and flips when the order
+  does, union across roots, recursion within one, shadowed name reported once
+  with the winner, missing root warns and continues, all-missing raises with the
+  paths named, single str/Path still works, path-component lookup.
+- GUI suite now 31 assertions: append, duplicate refused, blank lines and
+  padding dropped, snapshot carries a tuple, `stepDirs` written with `stepDir`
+  in step, a legacy `stepDir`-only config loads, an empty `gui` section does not
+  crash.
+- End-to-end through the real CLI with two folders holding the same filename:
+  the log names the winner, and swapping the order swaps it. `;` form works.
+  Missing folder warns and still writes the STEP; all-missing fails with both
+  paths in the message.
+- Core geometry regression still 12073.309477 / 5054 entities.
+- Docs audit clean, after it caught one genuine drift of its own: the docs
+  called the button "Add…" (U+2026) while the widget says "Add..." — the same
+  three ASCII dots as the neighbouring "Browse...". Docs now match the widget.
+
 ### The four mechanical SKILL checks now
 Paren balance; string literals broken by a real newline; calls to procedures
 defined nowhere; call arity. Each exists because something got past the previous

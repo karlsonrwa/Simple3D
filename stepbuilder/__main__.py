@@ -17,6 +17,23 @@ from . import core
 from .colors import DEFAULT_SILK, SILK_ORDER, resolve_board_color, resolve_silk_color
 
 
+def _split_dirs(values) -> list[str]:
+    """Flatten repeated --step-dir values, each possibly ';'-separated.
+
+    Order is preserved and duplicates are dropped: the list is a search path,
+    so the position of a folder is what decides which model wins.
+    """
+    if isinstance(values, str):
+        values = [values]
+    out: list[str] = []
+    for value in values or []:
+        for part in str(value).split(";"):
+            part = part.strip()
+            if part and part not in out:
+                out.append(part)
+    return out
+
+
 def _gui_prefill(argv: list[str]) -> int:
     """Open the GUI with paths and options prefilled from the Allegro launcher.
 
@@ -25,7 +42,7 @@ def _gui_prefill(argv: list[str]) -> int:
     """
     p = argparse.ArgumentParser(prog="stepbuilder --gui", add_help=False)
     p.add_argument("--gui", action="store_true")
-    p.add_argument("--step-dir", default="")
+    p.add_argument("--step-dir", action="append", default=[])
     p.add_argument("--json-dir", default="")
     p.add_argument("--json-file", default="")
     p.add_argument("--output-dir", default="")
@@ -45,7 +62,9 @@ def _gui_prefill(argv: list[str]) -> int:
     try:
         app = StepBuilderApp(Path(args.config) if args.config else None)
         if args.step_dir:
-            app.step_dir.set(args.step_dir)
+            # Repeatable, and each value may itself be a ;-separated list, so a
+            # launcher can pass a whole search path in one argument.
+            app.set_step_dirs(_split_dirs(args.step_dir))
         if args.color:
             app.theme.set(args.color)
             app._update_swatch()
@@ -112,7 +131,21 @@ def main(argv: list[str] | None = None) -> int:
         description="Build a STEP assembly from an Allegro intermediate JSON file. "
         "Run without arguments to open the GUI.",
     )
-    parser.add_argument("step_dir", help="directory containing the footprint STEP files")
+    parser.add_argument(
+        "step_dir",
+        help="directory containing the footprint STEP files; may be a ';'-separated "
+             "list, and --step-dir adds more. Searched in order, first match wins",
+    )
+    parser.add_argument(
+        # dest is explicit: argparse would otherwise map this to `step_dir`,
+        # the same attribute as the positional above, and one would clobber the
+        # other.
+        "--step-dir", action="append", default=[], metavar="DIR",
+        dest="extra_step_dirs",
+        help="an additional STEP folder, searched after the positional one; "
+             "repeatable. The first folder holding a given model file wins, so "
+             "a project-local folder listed first overrides the shared library",
+    )
     parser.add_argument("json_file", help="intermediate .json (or a directory, with --batch)")
     parser.add_argument("output_dir", help="directory to write the .step assembly into")
     parser.add_argument(
@@ -198,6 +231,9 @@ def main(argv: list[str] | None = None) -> int:
     rim_color = resolve_board_color(args.rim_color) if args.rim_color else None
     silk_color = resolve_silk_color(args.silk_color) if args.silk_color else None
 
+    # The positional folder first, then any --step-dir, in the order given.
+    step_dirs = _split_dirs([args.step_dir] + list(args.extra_step_dirs))
+
     json_path = Path(args.json_file)
     output_dir = Path(args.output_dir)
 
@@ -224,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
             output_name = (core.dated_output_name(base, output_dir)
                            if args.dated_name else None)
             result = core.generate(
-                args.step_dir,
+                step_dirs,
                 jf,
                 output_dir,
                 output_name=output_name,

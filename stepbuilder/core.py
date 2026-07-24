@@ -716,23 +716,85 @@ def component_transform(
 # --------------------------------------------------------------------------- #
 
 class StepFileIndex:
-    """Filename -> path index, built once.
+    """Filename -> path index over one or more model folders, built once.
 
     The C++ version ran a recursive_directory_iterator for every cache miss,
     which is O(components x files). One walk is enough.
+
+    Several roots form an ORDERED SEARCH PATH, like PATH or an include path:
+    the first root that holds a given filename wins. That makes it possible to
+    keep a shared company library and let a project-local folder listed above it
+    override individual models. Each root is still walked recursively, so
+    subfolders need no listing of their own.
+
+    First-wins was already the behaviour within a single root (dict.setdefault
+    over rglob), but the order rglob happens to walk in is arbitrary, so a
+    duplicate resolved unpredictably and in silence. With explicit roots the
+    precedence is declared, and a name found in more than one root is reported
+    with the path that won - a silent substitution of the wrong model is a
+    thing you find out about at the CAD stage otherwise.
+
+    A root that does not exist is reported and skipped; only having no usable
+    root at all is fatal. One mistyped entry in a list of four should not cost
+    the build.
     """
 
-    def __init__(self, root: Path):
-        self.root = Path(root)
-        if not self.root.is_dir():
-            raise StepBuilderError(f"STEP directory does not exist: {self.root}")
+    def __init__(self, roots, log: LogFn = _noop_log):
+        if isinstance(roots, (str, Path)):
+            roots = [roots]
+        self.roots: list[Path] = []
+        missing: list[Path] = []
+        for entry in roots:
+            entry = str(entry).strip()
+            if not entry:
+                continue
+            path = Path(entry)
+            (self.roots if path.is_dir() else missing).append(path)
+
+        for path in missing:
+            log(f"warning: STEP folder does not exist, skipped: {path}")
+
+        if not self.roots:
+            if missing:
+                raise StepBuilderError(
+                    "None of the STEP folders exist: "
+                    + ", ".join(str(p) for p in missing)
+                )
+            raise StepBuilderError("No STEP folder was given")
+
         self._index: dict[str, Path] = {}
-        for path in self.root.rglob("*"):
-            if path.is_file():
-                self._index.setdefault(path.name, path)
+        shadowed = 0
+        for root in self.roots:
+            for path in root.rglob("*"):
+                if not path.is_file():
+                    continue
+                winner = self._index.setdefault(path.name, path)
+                # Only across roots: two files of one name inside a single root
+                # cannot be told apart by precedence, and reporting the walk
+                # order would suggest a meaning it does not have.
+                if winner != path and not _same_root(winner, root):
+                    shadowed += 1
+                    if shadowed <= 10:
+                        log(f"{path.name}: using {winner} (also in {root})")
+        if shadowed > 10:
+            log(f"({shadowed - 10} further name(s) found in more than one folder)")
 
     def find(self, name: str) -> Path | None:
-        return self._index.get(name)
+        hit = self._index.get(name)
+        if hit is None and name:
+            # The index is keyed on the bare filename; a mapping that carries a
+            # path component ("subdir/model.step") would otherwise miss a file
+            # that is sitting right there.
+            hit = self._index.get(Path(name).name)
+        return hit
+
+
+def _same_root(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
 # --------------------------------------------------------------------------- #
@@ -938,7 +1000,7 @@ def _sanitize(name: str) -> str:
 
 
 def generate(
-    step_dir: str | Path,
+    step_dir: str | Path | Iterable[str | Path],
     json_file: str | Path,
     output_dir: str | Path,
     *,
@@ -960,6 +1022,11 @@ def generate(
 ) -> BuildResult:
     """Build the STEP assembly described by *json_file*.
 
+    step_dir:
+        One model folder, or several as an ordered search path - the first that
+        holds a given filename wins, so a project-local folder listed ahead of
+        the shared library overrides individual models. Each is walked
+        recursively. See StepFileIndex.
     output_name:
         Base filename (without .step). Defaults to the JSON's `name` field.
     z_datum:
@@ -1003,7 +1070,7 @@ def generate(
     if not json_file.is_file():
         raise StepBuilderError(f"Input file does not exist: {json_file}")
 
-    index = StepFileIndex(step_dir)
+    index = StepFileIndex(step_dir, log=log)
 
     log(f"Reading {json_file.name}")
     try:
