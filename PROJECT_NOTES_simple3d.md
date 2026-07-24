@@ -364,7 +364,7 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | 5 | minimise size / reuse | done; surfacecurve.mode=0 (~49% smaller) + one shared part per model |
 | 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
 | 7 | silkscreen export (user, 2026-07-22) | **done and confirmed on the user's boards** (rounds 10–12). `format_version: 2`; polygons carry Allegro's own area and the reader resolves the vertex-radius reading against it (settled: axis / positive-sits-left / first-radius-closes). Solid or flat, per side, White/Black, clipped to outline−cutouts. Flat faces are unioned; solid ones deliberately are not. |
-| 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11. Export list comes from the design, the variant table only subtracts, so a symbol Variants.lst does not mention is exported in every variant. `NO_STEP_EXPORT` excludes outright and is logged by refdes. Not yet confirmed live that `axlDBGetProperties` sees the property. |
+| 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11; **extended in round 19 and confirmed live 2026-07-24** to mechanical symbols that carry a STEP model (`PKGDEF_STEP_FILE`) but have **no refdes** — they were silently dropped by the refdes gate before, now they export (`axlStepGet` on a mechanical instance returns the mapping; no `sym->definition` fallback needed). Export list comes from the design, the variant table only subtracts, so a symbol Variants.lst does not mention is exported in every variant. `NO_STEP_EXPORT` excludes outright and is logged by refdes. Still not confirmed live that `axlDBGetProperties` sees `NO_STEP_EXPORT`. |
 | 10 | silkscreen layers chosen in the GUI (user, 2026-07-23) | done in rounds 14-17; `format_version: 3`. Every polygon carries its layer, the panel offers what the JSON contains, exclusions are persisted, a side switched off greys its layers. Zero-width objects reported by layer and position. Console coloured by severity via `axlUIWPrint` — no green severity exists. |
 | 9 | one settings file (user, 2026-07-22) | done in round 10h. `simple3d_config.json` holds every user setting, read by both halves; only `S3D_ScriptDir` stays in SKILL source, for bootstrap. Rounds 12–13 fixed two ways the GUI could damage it. |
 
@@ -2208,3 +2208,65 @@ mechanical audit cannot see these - it checks that names exist, not that advice
 still applies. The user found this one by reading. Worth re-reading the
 Installation and Why-this-exists sections whenever the shape of the project
 changes, since those describe context rather than API and nothing checks them.
+
+## Update 2026-07-24 (round 19) — mechanical symbols with a STEP model but no refdes
+
+User reported a symbol (a CR2032 holder) whose F4 shows only `Symbol name:
+CR2032` and `PKGDEF_STEP_FILE = CR2032.step` on the **symbol definition**, with
+**no reference designator**. Asked whether it exports. It did not, and it failed
+silently.
+
+### Root cause — two refdes gates
+
+1. **Selection.** `s3dSymbolsToExport` iterated `axlDBGetDesign()->symbols` under
+   `when( sym->refdes ...)`, so a symbol with `refdes == nil` (docs, confirmed:
+   *"Reference designator nil if no associated component (for example,
+   mechanical)"*, `skill_db_attributes.txt`) was skipped — not counted, not
+   logged.
+2. **Naming.** Even admitted, `symbolReturn3DElements` keyed the JSON by
+   `sym->refdes`, coercing nil to the string `"nil"`. Several no-refdes symbols
+   would collapse onto one duplicate JSON key; `json.load` keeps only the last,
+   silently dropping the rest.
+
+### The fix — SKILL only, Python untouched
+
+- **New `s3dHasStepModel( sym )`** — `errset( axlStepGet( nil nil sym ) )` and
+  test `->step_name`. This is self-selecting: FORMAT/DRAFTING/plain-graphic
+  symbols have no STEP association and return nil, so no symbol-type filter is
+  needed. `PKGDEF_STEP_FILE` on the symdef IS what `axlStepGet` reports (round 8
+  fact, re-confirmed against the `axlStepGet` doc page).
+- **Selection gate** widened to `when( refdes || s3dHasStepModel( sym ) )`. The
+  short-circuit keeps the extra probe off refdes-bearing symbols, so their path
+  and runtime are unchanged. Both `known[upperCase(refdes)]` lookups are now
+  guarded with `refdes &&` (else `upperCase(nil)` throws), and the NO_STEP_EXPORT
+  message falls back to `sym->name` when there is no refdes. A no-refdes
+  mechanical is by definition "untracked" — the variant table keys on refdes —
+  so it exports in every variant, exactly the round-11 principle.
+- **Synthetic key** in `symbolReturn3DElements`: `sprintf(nil "%s_MECH%d"
+  sym->name S3D_MechSeq)` → `CR2032_MECH1`, `CR2032_MECH2`, … `S3D_MechSeq` is a
+  module var reset at the top of `create3dIntermediateFormat` (per variant),
+  same pattern as `S3D_SilkWarnings`. Keys are unique, readable in logs, and
+  cannot collide with a real refdes.
+
+**Why Python needs no change:** the JSON key is only a dict key + a log label;
+the instance in the tree is named after its STEP file, not the key (round 8
+flattening, `core.py:1167-1236`). Verified: the synthetic keys do NOT appear in
+the STEP; `cap_D8x10mm` (the model file) does.
+
+### Verified here
+- Three mechanical SKILL checks (paren balance, strings broken across a real
+  newline, calls to undefined project procedures) clean on both `.il` files. The
+  checker was self-tested against injected defects — it catches all three; it is
+  in scratch as `skill_checks.py` (still not committed to the repo — the standing
+  suggestion from round 14b to add it holds).
+- `core.generate` on a synthetic board with two no-refdes mechanical entries
+  (`CR2032_MECH1` top, `CR2032_MECH2` bottom, same model): both placed, one under
+  `symbols_top` and one under `symbols_bot`, part shared, STEP written.
+
+### Confirmed live by the user (Allegro, 2026-07-24)
+- **The mechanical export works end to end.** The CR2032-style symbol with a
+  `PKGDEF_STEP_FILE` and no refdes now exports. This settles the one uncertainty
+  the change carried: `axlStepGet( nil nil <mechanical instance> )` *does* return
+  the mapping, so the `sym->definition` fallback was not needed and is not in the
+  code. The instance path (`axlStepGet` with an instance rather than a symdef)
+  behaves the same for a mechanical symbol as for an ordinary component.

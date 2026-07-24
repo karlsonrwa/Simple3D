@@ -223,6 +223,11 @@ procedure( addIndent( t_string @optional ( x_levels 1 ) )
 
 S3D_NoExportProp = "NO_STEP_EXPORT"
 
+; Per-export sequence for synthesising unique JSON keys for symbols that carry a
+; STEP model but no refdes (mechanical parts). Reset at the top of every
+; create3dIntermediateFormat so each variant numbers its mechanicals from 1.
+S3D_MechSeq = 0
+
 ; t if the named property is attached to this object.
 ;
 ; Presence is the test, not the value: NO_STEP_EXPORT is a flag with no value,
@@ -264,6 +269,20 @@ procedure( s3dNoStepExport( o_sym )
     )
 )
 
+; t if this symbol has a STEP model association (PKGDEF_STEP_FILE on its symbol
+; definition) - which is exactly what axlStepGet reports. Used to admit a
+; mechanical symbol that carries a 3D model but has no refdes: those are dropped
+; by the refdes gate in s3dSymbolsToExport otherwise. Anything without a STEP
+; association (FORMAT, DRAFTING, plain graphics) returns nil and is not admitted,
+; so this needs no separate symbol-type filter.
+procedure( s3dHasStepModel( o_sym )
+    let( ( m )
+        m = nil
+        errset( m = axlStepGet( nil nil o_sym ) )
+        m && m->step_name && t
+    )
+)
+
 ; Every refdes the variant table mentions anywhere, upper-cased.
 ; A refdes in here but missing from the current variant is deliberately not
 ; installed. A refdes the table never mentions is not variant-controlled at all.
@@ -286,7 +305,7 @@ procedure( s3dVariantKnownRefdes( g_variantSymbolList )
 ; already has the symbol in hand, so nothing has to be looked up again by
 ; refdes - which is one less way for a symbol to go missing.
 procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
-    let( ( out known installed refdes ( nNoExport 0 ) ( nNotInVariant 0 ) ( nUntracked 0 ) )
+    let( ( out known installed refdes label ( nNoExport 0 ) ( nNotInVariant 0 ) ( nUntracked 0 ) )
         out = tconc( nil nil )
         known = s3dVariantKnownRefdes( g_variantSymbolList )
         installed = makeTable( "s3dInstalled" nil )
@@ -298,19 +317,27 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
 
         foreach( sym axlDBGetDesign()->symbols
             refdes = sym->refdes
-            when( refdes
+            ; Admit a symbol that has a refdes (a placed component) OR one that
+            ; carries a STEP model but no refdes (a mechanical part, e.g. a
+            ; CR2032 holder). Short-circuit keeps the extra axlStepGet probe off
+            ; the refdes-bearing symbols, so their path is unchanged.
+            when( refdes || s3dHasStepModel( sym )
                 cond(
                     ( s3dNoStepExport( sym )
                         nNoExport = nNoExport + 1
+                        label = if( refdes then refdes else sym->name )
                         printf( "Simple 3D: %s - NOT exported: the symbol carries the %s property.\n"
-                                refdes S3D_NoExportProp )
+                                label S3D_NoExportProp )
                     )
-                    ( g_variantSymbolList && known[upperCase( refdes )] &&
+                    ; The variant table only subtracts, and it keys on refdes; a
+                    ; no-refdes mechanical symbol can never be "not installed",
+                    ; so guard both key lookups against a nil refdes.
+                    ( refdes && g_variantSymbolList && known[upperCase( refdes )] &&
                       !installed[upperCase( refdes )]
                         nNotInVariant = nNotInVariant + 1
                     )
                     ( t
-                        unless( g_variantSymbolList && known[upperCase( refdes )]
+                        unless( refdes && g_variantSymbolList && known[upperCase( refdes )]
                             nUntracked = nUntracked + 1
                         )
                         tconc( out sym )
@@ -957,7 +984,17 @@ procedure( symbolReturn3DElements( g_symbol )
         else
             sym = g_symbol
             refDes = sym->refdes
-            unless( stringp( refDes )  refDes = sprintf( nil "%L" refDes ) )
+            ; A mechanical symbol has no refdes (docs: "nil if no associated
+            ; component"). Synthesise a unique, readable JSON key from the symbol
+            ; name plus a per-export sequence (CR2032_MECH1, CR2032_MECH2, ...),
+            ; so several of them cannot collapse onto one duplicate JSON key -
+            ; json.load keeps only the last, which would silently drop the rest.
+            unless( stringp( refDes )
+                S3D_MechSeq = S3D_MechSeq + 1
+                refDes = sprintf( nil "%s_MECH%d"
+                                  if( sym->name then sym->name else "MECH" )
+                                  S3D_MechSeq )
+            )
         )
 
         ; step package mappingData
@@ -2113,6 +2150,9 @@ procedure( s3dWriteSilkscreen( p_port l_silk )
 
 procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName @optional ( silk nil ) )
     let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) body )
+        ; Number each variant's no-refdes mechanicals from 1 (see symbolReturn3DElements).
+        S3D_MechSeq = 0
+
         ; reset base board contour
         when( car( edgeCuts )
             edges = car( edgeCuts )

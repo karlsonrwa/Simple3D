@@ -372,8 +372,9 @@ remove. It makes the file half again as large and takes longer.
 
 ## What gets exported
 
-Every symbol in the design that has a reference designator, minus two
-exclusions.
+Every symbol in the design that has a reference designator, plus any symbol that
+carries a STEP model (`PKGDEF_STEP_FILE`) but no reference designator — a purely
+mechanical part placed straight onto the board — minus two exclusions.
 
 **`NO_STEP_EXPORT` wins over everything.** Attach that property to a symbol —
 or to a component or component definition, to drop every instance of a part —
@@ -404,6 +405,15 @@ says how many were in that position:
 ```
 Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.
 ```
+
+**A mechanical symbol needs no reference designator.** A part placed straight
+onto the board — a battery holder, a bracket — often has a `PKGDEF_STEP_FILE` on
+its symbol definition but no refdes at all (Allegro leaves the refdes nil when
+there is no associated component). It is exported on the strength of its STEP
+model, counted in the "not listed in any variant" line above, and its instance
+is keyed internally as `<SymbolName>_MECH1`, `_MECH2`, … (unique per export). The
+key is not shown in the tree — the placed instance carries its STEP file's name,
+like every other component.
 
 ## Board thickness
 
@@ -855,7 +865,9 @@ Simple 3D: WARNING - zero width: text on REF DES/SILKSCREEN_TOP at (12.500, 4.00
 
 ## Что попадает в экспорт
 
-Все символы проекта, у которых есть позиционное обозначение, за вычетом двух
+Все символы проекта, у которых есть позиционное обозначение, плюс любой символ,
+несущий STEP-модель (`PKGDEF_STEP_FILE`), но без позиционного обозначения —
+чисто механическая деталь, поставленная прямо на плату, — за вычетом двух
 исключений.
 
 **`NO_STEP_EXPORT` сильнее всего остального.** Повесьте это свойство на символ —
@@ -887,6 +899,15 @@ Simple 3D: 3 symbol(s) excluded by NO_STEP_EXPORT.
 ```
 Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.
 ```
+
+**Механическому символу позиционное обозначение не нужно.** Деталь, поставленная
+прямо на плату — держатель батарейки, кронштейн, — часто несёт `PKGDEF_STEP_FILE`
+на определении символа, но позиционного обозначения не имеет вовсе (Allegro
+оставляет refdes пустым, когда связанного компонента нет). Она экспортируется на
+основании своей STEP-модели, попадает в строку «not listed in any variant» выше,
+а её экземпляр внутри ключуется как `<ИмяСимвола>_MECH1`, `_MECH2`, … (уникально
+на каждый экспорт). В дереве этот ключ не виден — размещённый экземпляр носит имя
+своего STEP-файла, как и любой другой компонент.
 
 ## Толщина платы
 
@@ -968,6 +989,19 @@ stepbuilder/
 ---
 
 ## Changelog / История изменений
+
+- **2026-07-24** — Mechanical symbols that carry a STEP model
+  (`PKGDEF_STEP_FILE`) but no reference designator are now exported; before, the
+  export list was gated on the reference designator and such parts were dropped
+  silently. Their instances are keyed internally as `<SymbolName>_MECH1`,
+  `_MECH2`, … `NO_STEP_EXPORT` and the variant rules apply to them unchanged.
+  SKILL-only change; the STEP output for boards without such parts is identical.
+  / Механические символы, несущие STEP-модель (`PKGDEF_STEP_FILE`), но без
+  позиционного обозначения, теперь экспортируются; раньше список на экспорт
+  фильтровался по позиционному обозначению, и такие детали молча терялись. Их
+  вхождения ключуются внутри как `<ИмяСимвола>_MECH1`, `_MECH2`, … Правила
+  `NO_STEP_EXPORT` и вариантов действуют для них без изменений. Изменение только
+  в SKILL; для плат без таких деталей STEP-файл идентичен прежнему.
 
 - **2026-07-23** — Silkscreen layers are now chosen in the GUI instead of by
   editing the config (intermediate format `format_version: 3`): the exporter
