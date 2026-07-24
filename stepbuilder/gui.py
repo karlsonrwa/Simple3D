@@ -184,13 +184,17 @@ class StepBuilderApp(tk.Tk):
         self._swatch.pack(side="left", padx=(6, 0))
         theme_box.bind("<<ComboboxSelected>>", lambda e: self._update_swatch())
 
-        ttk.Label(opts, text="Board edge").grid(row=0, column=3, sticky="e", padx=(12, 6))
+        ttk.Label(opts, text="Board edge colour").grid(row=0, column=3, sticky="e", padx=(12, 6))
         rim_box = ttk.Combobox(
             opts, textvariable=self.rim_choice,
             values=[RIM_SAME, RIM_CREAM, RIM_CUSTOM], state="readonly", width=18
         )
         rim_box.grid(row=0, column=4, sticky="w")
         rim_box.bind("<<ComboboxSelected>>", lambda e: self._update_rim_entry())
+        # HEX label sits directly left of the custom-colour field and greys out
+        # with it, so it is obvious the field is only live for the Custom choice.
+        self.rim_hex_label = ttk.Label(opts, text="HEX colour")
+        self.rim_hex_label.grid(row=1, column=3, sticky="e", padx=(12, 6))
         self.rim_entry = ttk.Entry(opts, textvariable=self.rim_custom, width=12)
         self.rim_entry.grid(row=1, column=4, sticky="w", pady=(2, 0))
 
@@ -343,8 +347,10 @@ class StepBuilderApp(tk.Tk):
         self._swatch.configure(bg="#%02x%02x%02x" % rgb)
 
     def _update_rim_entry(self) -> None:
-        state = "normal" if self.rim_choice.get() == RIM_CUSTOM else "disabled"
-        self.rim_entry.configure(state=state)
+        active = self.rim_choice.get() == RIM_CUSTOM
+        self.rim_entry.configure(state="normal" if active else "disabled")
+        # Grey the HEX label in step with the field it labels.
+        self.rim_hex_label.state(["!disabled"] if active else ["disabled"])
 
     # ------------------------------------------------------- silk layers -- #
 

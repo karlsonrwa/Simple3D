@@ -59,11 +59,6 @@ source, because the config is found relative to it.
 
 ### Not verified outside Allegro
 
-- Whether `axlDBGetProperties` reports `NO_STEP_EXPORT` on a live symbol. Three
-  levels are checked (symbol, component, component definition) precisely because
-  the level it lives on is the uncertain part. If a marked symbol still exports,
-  the per-symbol log line will be missing — that says the property was not seen,
-  not that the filter misfired.
 - Per-segment path conversion producing round joins on a live board. The SKILL
   side warns if a path yields fewer polygons than it has segments.
 - Runtime and the 400-polygon clip batch size on a dense board.
@@ -364,7 +359,7 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | 5 | minimise size / reuse | done; surfacecurve.mode=0 (~49% smaller) + one shared part per model |
 | 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
 | 7 | silkscreen export (user, 2026-07-22) | **done and confirmed on the user's boards** (rounds 10–12). `format_version: 2`; polygons carry Allegro's own area and the reader resolves the vertex-radius reading against it (settled: axis / positive-sits-left / first-radius-closes). Solid or flat, per side, White/Black, clipped to outline−cutouts. Flat faces are unioned; solid ones deliberately are not. |
-| 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11; **extended in round 19 and confirmed live 2026-07-24** to mechanical symbols that carry a STEP model (`PKGDEF_STEP_FILE`) but have **no refdes** — they were silently dropped by the refdes gate before, now they export (`axlStepGet` on a mechanical instance returns the mapping; no `sym->definition` fallback needed). Export list comes from the design, the variant table only subtracts, so a symbol Variants.lst does not mention is exported in every variant. `NO_STEP_EXPORT` excludes outright and is logged by refdes. Still not confirmed live that `axlDBGetProperties` sees `NO_STEP_EXPORT`. |
+| 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11; **extended in round 19 and confirmed live 2026-07-24** to mechanical symbols that carry a STEP model (`PKGDEF_STEP_FILE`) but have **no refdes** — they were silently dropped by the refdes gate before, now they export (`axlStepGet` on a mechanical instance returns the mapping; no `sym->definition` fallback needed). Export list comes from the design, the variant table only subtracts, so a symbol Variants.lst does not mention is exported in every variant. `NO_STEP_EXPORT` excludes outright and is logged by refdes — **confirmed live 2026-07-24: `axlDBGetProperties` sees the property and marked symbols are excluded.** |
 | 10 | silkscreen layers chosen in the GUI (user, 2026-07-23) | done in rounds 14-17; `format_version: 3`. Every polygon carries its layer, the panel offers what the JSON contains, exclusions are persisted, a side switched off greys its layers. Zero-width objects reported by layer and position. Console coloured by severity via `axlUIWPrint` — no green severity exists. |
 | 9 | one settings file (user, 2026-07-22) | done in round 10h. `simple3d_config.json` holds every user setting, read by both halves; only `S3D_ScriptDir` stays in SKILL source, for bootstrap. Rounds 12–13 fixed two ways the GUI could damage it. |
 
@@ -2270,3 +2265,27 @@ the STEP; `cap_D8x10mm` (the model file) does.
   the mapping, so the `sym->definition` fallback was not needed and is not in the
   code. The instance path (`axlStepGet` with an instance rather than a symdef)
   behaves the same for a mechanical symbol as for an ordinary component.
+
+## Update 2026-07-24 (round 20) — GUI wording, HEX label, NO_STEP_EXPORT confirmed, quick-start
+
+Small round on user feedback after the round-19 export landed.
+
+- **`NO_STEP_EXPORT` confirmed live.** The user reports it "works perfectly", so
+  the last standing live-verification item on it is closed: `axlDBGetProperties`
+  does see the property and marked symbols are excluded. Removed from the
+  "Not verified outside Allegro" list at the top and marked confirmed in the
+  requirement-8 row. (Nothing else in that list changed.)
+- **GUI: `Board edge` → `Board edge colour`.** The dropdown sets a colour, so the
+  label now says so (`gui.py` `_build_ui`).
+- **GUI: an explicit `HEX colour` label** now sits directly left of the custom
+  rim-colour entry, and greys out in step with the field via
+  `rim_hex_label.state(["disabled"])` in `_update_rim_entry` — same greying
+  discipline as the silk layer rows in round 16, so a user cannot mistake the
+  disabled `#RRGGBB` field for something to fill in. Verified: `py_compile`
+  clean and the `ttk.Label.state()` toggle sets/clears the disabled flag. Full
+  App not instantiated (no display here) — layout is code-review only, as in
+  round 8.
+- **New `QUICKSTART.md`** — a short, Russian, history-free how-to: menu path, the
+  Input/Options fields, the output name, and the load-bearing rules (thickness,
+  mechanical parts, `NO_STEP_EXPORT`, variants, silkscreen). The full bilingual
+  README stays the reference; this is the one-screen version the user asked for.
