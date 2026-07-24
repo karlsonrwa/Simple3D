@@ -2478,6 +2478,72 @@ and Output rows, so forbidding them here would be inconsistent.
   called the button "Add…" (U+2026) while the widget says "Add..." — the same
   three ASCII dots as the neighbouring "Browse...". Docs now match the widget.
 
+## Update 2026-07-24 (round 23) — the window reopens where you left it
+
+User asked where the window appears and whether the position could be
+remembered, especially across monitors, centring on the main screen for a first
+run.
+
+### Measured first, rather than guessed
+
+`geometry()` was never called, so Tk placed the window at its own default:
+**+160+157** from the top-left of the primary display, identically every launch
+— and on a multi-monitor desk always on the primary, wherever you had it last.
+Natural size 1038x876. (Tk runs here, per round 21, so this was measured.)
+
+### Multi-monitor is the whole difficulty
+
+`winfo_screenwidth/height` describe the **primary display only**. A window
+legitimately sitting on a second monitor is off-screen by those numbers — which
+is precisely the case being supported, so validating against them would defeat
+the feature. `_virtual_screen()` asks Windows for the whole virtual desktop via
+`ctypes` + `GetSystemMetrics(76..79)` (`SM_[XY]VIRTUALSCREEN`,
+`SM_C[XY]VIRTUALSCREEN`); a monitor left of the primary gives a **negative
+origin**, which is why the saved X can be negative and must not be treated as
+corrupt. Falls back to the Tk primary metrics if that call is unavailable, so
+it degrades to single-monitor behaviour instead of failing.
+
+The restore is *validated*, not trusted: `_geometry_is_reachable` requires the
+title bar not to be above every screen and at least 120x40 of the window to
+intersect the desktop. The case that matters is closing on a second monitor
+that is then unplugged — restoring those coordinates puts the window somewhere
+invisible with no way to drag it back, which reads as the program failing to
+start. Refused positions centre on the primary and say so in the log.
+
+### Two things that only showed up once it was tested
+
+1. **Maximizing was recorded as a normal geometry.** `<Configure>` fires during
+   the transition while `state()` can still report `"normal"`, so the maximized
+   rect was stored as the restored one — reopening then un-maximizing would give
+   a screen-sized window that is not maximized. `_remember_geometry` now also
+   rejects a rect as large as the screen. Belt and braces, deliberately.
+2. **Closing left a pending `after`.** `_drain_queue` reschedules itself every
+   100 ms; on `destroy()` the last one fired against a dead widget and Tk
+   printed `invalid command name "..._drain_queue"`. Invisible under `pythonw`,
+   console noise under `python`. `_on_close` now cancels both it and the layer
+   refresh. Found because the test harness closes windows in a loop — a real
+   defect surfaced by a test artifact, which is worth the note.
+
+### A testing trap worth remembering
+The first version of these tests used `withdraw()`, as the earlier GUI tests do,
+and **six assertions failed against correct code**: on an unmapped window
+`winfo_x/width` report the requested size, not where the window is, and
+`geometry()` returns the requested size with the set position. Placement can
+only be asserted on a **mapped** window (`deiconify()`), so `test_geom.py` maps
+them. The probe that settled it printed what `_center_on_primary` actually
+computed — `1038x876+441+102`, exactly right — which is how the code was
+cleared and the test blamed.
+
+### Verified here
+22 placement assertions: centred on a first run and not at Tk's default; a saved
+reachable position restored exactly; a full close-and-reopen round trip; an
+off-screen position refused and centred; a simulated dual-monitor layout (left
+monitor, negative X) accepted, the same spot refused once that monitor is
+"unplugged", a 120px sliver allowed and a 70px one not; maximized saving the
+restored rect and reopening maximized; five malformed values falling back to
+centring. Plus: closing three windows through the real `_on_close` path with no
+Tk noise. All other suites and the geometry regression unchanged.
+
 ### The four mechanical SKILL checks now
 Paren balance; string literals broken by a real newline; calls to procedures
 defined nowhere; call arity. Each exists because something got past the previous

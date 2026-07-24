@@ -152,6 +152,7 @@ and whether it parsed. A byte-order mark left by an editor is tolerated.
 | `gui` | `stepDirs` | Folders holding the footprint STEP models (referenced by `PKGDEF_STEP_FILE`) — the "STEP files" field. A **list, searched in order: the first folder holding a given model file wins**, so a project-local folder listed above the shared library overrides individual models. Each is searched recursively, so subfolders need no entry. |
 | `gui` | `stepDir` | The older single-folder key. Still read when `stepDirs` is absent, and kept in step with the first entry so an older build of the tool still opens with a usable library. `stepDirs` wins when both are present. |
 | | `outputDir`, `jsonFile` | The last paths you picked **in the GUI**. An export launched from Allegro fills these fields for the board being built but does not record them here — they describe a board, not a preference. |
+| | `windowGeometry`, `windowState` | Where the window was when it was last closed (`WIDTHxHEIGHT+X+Y`) and whether it was maximized. Restored on the next run, so on a multi-monitor desk it comes back **on the same screen** — `X` is negative for a monitor left of the primary. If that position is no longer reachable (usually the monitor was disconnected) it is ignored, the window is centred on the main screen and the log says so. Empty on a first run, which also centres it. |
 | | `boardColor`, `boardEdge`, `boardEdgeCustom` | Board and rim colour. |
 | | `zDatum` | `"top"` or `"bottom"`. |
 | | `silkscreenTop`, `silkscreenBottom` | Which sides of the legend to build. |
@@ -642,6 +643,7 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 | `gui` | `stepDirs` | Папки с STEP-моделями посадочных мест (по `PKGDEF_STEP_FILE`) — поле «STEP files». **Список, просматриваемый по порядку: побеждает первая папка, где есть нужный файл**, поэтому проектная папка выше общей библиотеки переопределяет отдельные модели. Каждая просматривается рекурсивно, подпапки перечислять не нужно. |
 | `gui` | `stepDir` | Старый ключ на одну папку. Читается, если `stepDirs` нет, и держится равным первой записи, чтобы старая версия инструмента открывалась с рабочей библиотекой. При наличии обоих побеждает `stepDirs`. |
 | | `outputDir`, `jsonFile` | Последние пути, выбранные **в самом окне**. Экспорт из Allegro заполняет эти поля под собираемую плату, но в файл их не записывает — они описывают плату, а не настройку. |
+| | `windowGeometry`, `windowState` | Где было окно при последнем закрытии (`ШИРИНАxВЫСОТА+X+Y`) и было ли оно развёрнуто. Восстанавливается при следующем запуске, поэтому на нескольких мониторах окно возвращается **на тот же экран** — для монитора левее главного `X` отрицателен. Если позиция стала недостижимой (обычно монитор отключили), она игнорируется, окно центрируется на главном экране, и в лог пишется почему. При первом запуске пусто — окно тоже центрируется. |
 | | `boardColor`, `boardEdge`, `boardEdgeCustom` | Цвет платы и торца. |
 | | `zDatum` | `"top"` или `"bottom"`. |
 | | `silkscreenTop`, `silkscreenBottom` | Какие стороны легенды строить. |
@@ -991,6 +993,21 @@ stepbuilder/
 ---
 
 ## Changelog / История изменений
+
+- **2026-07-24** — The window now **reopens where you left it**, on the same
+  monitor: its position and size are saved on close (`gui.windowGeometry`,
+  `gui.windowState`) and restored next time, maximized included. A position
+  that is no longer reachable — typically the monitor it was on has been
+  unplugged — is ignored and the window is centred on the main screen, with a
+  line in the log saying so. On a first run it is centred. Closing the window
+  no longer leaves a pending timer that printed a Tk error to the console.
+  / Окно теперь **открывается там, где вы его закрыли**, на том же мониторе:
+  положение и размер сохраняются при закрытии (`gui.windowGeometry`,
+  `gui.windowState`) и восстанавливаются при следующем запуске, вместе с
+  развёрнутым состоянием. Недостижимая позиция — обычно монитор отключили —
+  игнорируется, окно центрируется на главном экране, и в лог пишется почему.
+  При первом запуске окно центрируется. Закрытие окна больше не оставляет
+  висящий таймер, печатавший ошибку Tk в консоль.
 
 - **2026-07-24** — The **STEP files** field takes several folders, one per line,
   and is now an ordered search path: the first folder holding a given model file

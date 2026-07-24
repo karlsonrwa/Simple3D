@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import threading
 import tkinter as tk
 import traceback
@@ -136,11 +137,24 @@ class StepBuilderApp(tk.Tk):
         # saved and what applies again when the side comes back.
         self._layer_rows: dict[str, list] = {"top": [], "bottom": []}
         self._layer_refresh_job = None
+        self._drain_job = None
+
+        # Window placement, remembered across runs. Filled by _load_config
+        # (which runs before the widgets exist) and applied by
+        # _restore_geometry once they do.
+        self._saved_geometry: str | None = None
+        self._saved_state: str = "normal"
+        # The geometry to save is the NON-maximized one: self.geometry() on a
+        # maximized window reports the maximized rect, and restoring that as a
+        # normal window would come back full-screen-sized but not maximized.
+        self._last_normal_geometry: str | None = None
 
         self._load_config()
         self._build_ui()
+        self._restore_geometry()
+        self.bind("<Configure>", self._remember_geometry)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.after(100, self._drain_queue)
+        self._drain_job = self.after(100, self._drain_queue)
         # Say which settings file was used, always. When a path field comes up
         # unexpectedly empty, the first question is which file was read and
         # whether it parsed, and the answer used to be nowhere on screen.
@@ -330,6 +344,92 @@ class StepBuilderApp(tk.Tk):
         # variable, so one trace covers every way the JSON can change.
         self.json_file.trace_add("write", self._schedule_layer_refresh)
         self._refresh_layers()
+
+    # --------------------------------------------------- window placement -- #
+
+    def _virtual_screen(self) -> tuple[int, int, int, int]:
+        """(x, y, w, h) covering EVERY monitor, not just the primary one.
+
+        Tk's winfo_screenwidth/height describe the primary display only, so a
+        window legitimately sitting on a second monitor looks off-screen by
+        those numbers - which is exactly the case this feature exists for.
+        Windows reports the whole virtual desktop through GetSystemMetrics
+        (SM_[XY]VIRTUALSCREEN / SM_C[XY]VIRTUALSCREEN), and a monitor left of
+        the primary gives a negative origin.
+
+        Falls back to the primary display if that call is unavailable, so this
+        degrades to single-monitor behaviour rather than failing.
+        """
+        try:
+            import ctypes
+
+            metrics = ctypes.windll.user32.GetSystemMetrics
+            x, y, w, h = (metrics(i) for i in (76, 77, 78, 79))
+            if w > 0 and h > 0:
+                return x, y, w, h
+        except Exception:
+            pass
+        return 0, 0, self.winfo_screenwidth(), self.winfo_screenheight()
+
+    def _geometry_is_reachable(self, w: int, h: int, x: int, y: int) -> bool:
+        """Can the user actually see and grab a window placed here?
+
+        The case that matters: the window was last closed on a second monitor
+        that is no longer attached. Restoring those coordinates puts it
+        somewhere invisible with no way to drag it back, which reads as the
+        program failing to start.
+        """
+        vx, vy, vw, vh = self._virtual_screen()
+        if y < vy:
+            return False                      # title bar above every screen
+        visible_w = max(0, min(x + w, vx + vw) - max(x, vx))
+        visible_h = max(0, min(y + h, vy + vh) - max(y, vy))
+        return visible_w >= 120 and visible_h >= 40
+
+    def _center_on_primary(self) -> None:
+        """First run, or a remembered position that is no longer usable."""
+        self.update_idletasks()
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        x = max(0, (self.winfo_screenwidth() - w) // 2)
+        y = max(0, (self.winfo_screenheight() - h) // 2)
+        self.geometry(f"+{x}+{y}")
+
+    def _restore_geometry(self) -> None:
+        if self._saved_geometry:
+            # Tk writes a negative coordinate as "+-1920", so the sign sits
+            # after the plus. A bare "-1920" in a geometry string means
+            # something else entirely (an offset from the right edge), which is
+            # why this matches the "+" form only and centres on anything else.
+            match = re.match(r"^(\d+)x(\d+)\+(-?\d+)\+(-?\d+)$",
+                             self._saved_geometry.strip())
+            if match:
+                w, h, x, y = (int(g) for g in match.groups())
+                if self._geometry_is_reachable(w, h, x, y):
+                    self.geometry(f"{w}x{h}+{x}+{y}")
+                    if self._saved_state == "zoomed":
+                        self.state("zoomed")
+                    return
+                self.after(200, lambda: self._append_log(
+                    "The remembered window position is off-screen (a monitor may "
+                    "have been disconnected); centred on the main screen instead."))
+        self._center_on_primary()
+
+    def _remember_geometry(self, _event=None) -> None:
+        """Keep the last non-maximized geometry. Bound to <Configure>.
+
+        Two filters, and the second one is not redundant: maximizing arrives as
+        a Configure whose event can still be seen while state() reports
+        "normal", so the maximized rect would be recorded as if the user had
+        sized the window that way, and un-maximizing on the next run would give
+        back a screen-sized window that is not maximized.
+        """
+        if self.state() != "normal":
+            return
+        near_screen = (self.winfo_width() >= self.winfo_screenwidth() - 20
+                       and self.winfo_height() >= self.winfo_screenheight() - 80)
+        if near_screen:
+            return
+        self._last_normal_geometry = self.geometry()
 
     def _build_actions(self) -> None:
         """All action buttons live here. Add new ones alongside Generate."""
@@ -840,7 +940,7 @@ class StepBuilderApp(tk.Tk):
                     messagebox.showerror("StepBuilder", payload.strip().splitlines()[-1])
         except queue.Empty:
             pass
-        self.after(100, self._drain_queue)
+        self._drain_job = self.after(100, self._drain_queue)
 
     def _set_busy(self, busy: bool) -> None:
         for child in self._actions.winfo_children():
@@ -934,6 +1034,10 @@ class StepBuilderApp(tk.Tk):
         # MFRPN DISABLED (kept for future):
         # self.mfr_pn_in_name.set(gui.get("mfrPnInName", False))
         self.minimize.set(gui.get("minimizeFileSize", True))
+        geometry = gui.get("windowGeometry")
+        self._saved_geometry = geometry if isinstance(geometry, str) else None
+        self._saved_state = ("zoomed" if gui.get("windowState") == "zoomed"
+                             else "normal")
 
     def _save_config(self) -> None:
         """Write the "gui" section back, leaving the rest of the file alone.
@@ -1000,6 +1104,12 @@ class StepBuilderApp(tk.Tk):
             # MFRPN DISABLED (kept for future):
             # "mfrPnInName": self.mfr_pn_in_name.get(),
             "minimizeFileSize": self.minimize.get(),
+            # Where the window was, so the next run comes up in the same place -
+            # on the same monitor, which is the point on a multi-screen desk.
+            # The non-maximized rect is stored even when closing maximized, so
+            # un-maximizing later gives back a sane window.
+            "windowGeometry": self._last_normal_geometry or self.geometry(),
+            "windowState": "zoomed" if self.state() == "zoomed" else "normal",
         })
         # The board being exported is not a setting. When Allegro supplied
         # these, whatever the file already holds is left as it is; only a
@@ -1024,6 +1134,18 @@ class StepBuilderApp(tk.Tk):
 
     def _on_close(self) -> None:
         self._save_config()
+        # The queue drain reschedules itself every 100 ms. Left pending, it
+        # fires once more against a destroyed widget and Tk prints
+        # 'invalid command name "..._drain_queue"' - invisible under pythonw,
+        # but noise on the console for anyone running the GUI with python.
+        for job in (self._drain_job, self._layer_refresh_job):
+            if job is not None:
+                try:
+                    self.after_cancel(job)
+                except Exception:
+                    pass
+        self._drain_job = None
+        self._layer_refresh_job = None
         self.destroy()
 
 
