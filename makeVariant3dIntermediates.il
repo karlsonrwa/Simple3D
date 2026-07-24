@@ -325,7 +325,16 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
                 cond(
                     ( s3dNoStepExport( sym )
                         nNoExport = nNoExport + 1
-                        label = if( refdes then refdes else sym->name )
+                        ; %s on nil throws ("format spec. incompatible with
+                        ; data"), which would kill the whole export from inside
+                        ; a message. sym->name is documented as a string, but
+                        ; this branch exists precisely for symbols in unusual
+                        ; states - and symbolReturn3DElements already guards the
+                        ; same read the same way.
+                        label = if( refdes then
+                                    refdes
+                                else
+                                    if( sym->name then sym->name else "(unnamed symbol)" ) )
                         printf( "Simple 3D: %s - NOT exported: the symbol carries the %s property.\n"
                                 label S3D_NoExportProp )
                     )

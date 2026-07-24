@@ -73,7 +73,11 @@ get the data.
 
 ## Environment (established)
 
-- Allegro PCB Editor **17.4**, user tests live, gives console output / screenshots.
+- Allegro PCB Editor **24.1**, user tests live, gives console output / screenshots.
+  (This line read 17.4 until round 21. The user moved to 24.1 at round 4 and every
+  live confirmation since — rounds 9, 19, 20 — was on 24.1; `simple3d.il` has said
+  24.1 all along. Round 8 spotted the contradiction and left it "pending
+  confirmation", where it sat for thirteen rounds.)
 - SKILL scripts live in `d:\Projects\OrCAD\Scripts\`.
 - Project tree: `root\rev\pcb` (brd lives here, = cwd for SKILL) and `root\rev\cad`.
   Folder case varies — must match case-insensitively.
@@ -145,13 +149,18 @@ ReadFile/Write status; error on open contours.
 
 Not yet done: soldermask thickness is read from JSON and ignored.
 
-## Open issue
+## Settled: "No module named stepbuilder"
 
-`python -m stepbuilder` -> "No module named stepbuilder" on the user's machine. Cause is
-almost certainly cwd/layout (the `-m` form needs the *parent* of the package on sys.path),
-which will also bite when Allegro's `shell()` launches it with cwd = the design dir.
-Fix direction: proper packaging (pyproject + console script) or an explicit-path launcher.
-Must be settled as part of task 3, since the SKILL script has to invoke it reliably.
+**Closed — kept because the reasoning still explains the launcher's shape.**
+`python -m stepbuilder` failed on the user's machine because the `-m` form needs
+the *parent* of the package on `sys.path`, and Allegro's `shell()` launches with
+cwd = the design dir. Settled by `S3D_ScriptDir` plus a `cd /d` into it in the
+generated bat, so the interpreter always starts from the install folder. No
+packaging (pyproject / console script) was needed.
+
+(Round 9 recorded this as settled; the heading here still said "Open issue" for
+nine rounds afterwards, which is the exact failure mode round 18 named — a
+statement true when written and never revisited. Corrected in round 21.)
 
 ## Requirements (user, 2026-07-18)
 
@@ -2289,3 +2298,109 @@ Small round on user feedback after the round-19 export landed.
   Input/Options fields, the output name, and the load-bearing rules (thickness,
   mechanical parts, `NO_STEP_EXPORT`, variants, silkscreen). The full bilingual
   README stays the reference; this is the one-screen version the user asked for.
+
+## Update 2026-07-24 (round 21) — full project review
+
+Whole-repo review: ~9000 lines (2 SKILL files, 4 Python, 3 docs, the config).
+
+### The finding that changes the top of this memo: Tk RUNS HERE
+
+Every GUI change since round 8 was recorded as "code review only, no display
+available". That is **wrong on Windows** — `tkinter` needs no X server, and
+`tk.Tk()` comes up (8.6.13) in this environment. Twenty-two GUI assertions now
+run for real: the round-20 HEX label greys and ungreys on the actual widget,
+`_rim_color` resolves all four cases, the **two config data-loss regressions
+(rounds 12-13) are executable tests** rather than prose, and `_snapshot` is
+confirmed frozen and complete.
+
+**Stop writing "GUI not verifiable here."** It is. `test_gui.py` in scratch is
+the harness; it copies the config first so the repo's file is never written.
+
+### One real defect, in round 19's own code
+
+`s3dSymbolsToExport` built the NO_STEP_EXPORT message with
+`label = if( refdes then refdes else sym->name )` and passed it to `%s`. `%s` on
+nil throws ("format spec. incompatible with data"), which would kill the whole
+export from inside a log line. `symbolReturn3DElements` guards the identical
+read three hundred lines away (`if( sym->name then sym->name else "MECH" )`) —
+so the hazard was known and the guard simply was not carried across. Now
+`"(unnamed symbol)"`. Low likelihood (`name` is documented `string`, not
+`string/nil`), but the branch exists precisely for symbols in odd states.
+
+### A fourth mechanical SKILL check: call arity
+
+The class of defect it catches already happened here (`makeSlot` called
+`makeCircle( x y d )`; `makeCircle` takes 2). Nothing looked for it. `check_arity.py`
+reads every `procedure(` signature — honouring `@optional`/`@key`/`@rest` — and
+compares each call's positional count. Clean on both files; re-injecting the
+historical `makeCircle` bug reproduces the report.
+
+**It found one thing first, and it was wrong:** `headList( parts n - 1 )` looked
+like 4 arguments. SKILL uses infix arithmetic inside argument lists, so that is
+two. The checker learned about infix; the code was right. Recorded because the
+same shape (`nth( n - 1 parts )`) is used elsewhere and will trip the next
+person reading it.
+
+### What was verified, not just read
+
+- **Core geometry still matches the C++ reference exactly**: 12073.309477 and
+  5054 entities, with masks zeroed as that baseline was originally measured.
+  (Run with masks live it is 12743.166893 — the whole difference is board area x
+  0.06 mm of mask. A future run should zero them before comparing, or it will
+  look like drift.)
+- Silkscreen exercised **as a package import**, which the mechanical test did not
+  do: `core` reaches `from .colors import SILK_COLORS` only on that path. 20
+  assertions — areas reproduced, layer exclusion, flat mode smaller than solid
+  and unioned without warning, JSON warnings re-logged with the colouring prefix
+  even when the legend is switched off, one bad polygon skipped not fatal.
+- **Config contract across the SKILL/Python boundary**: every key each side reads
+  exists in the shipped file, all four sections and both `_comment_` keys survive
+  a save. Every flag the launcher passes (`--config --json-dir --output-dir
+  --brd-name --dated-name`) exists in the GUI parser — worth checking because
+  `_gui_prefill` uses `parse_known_args`, which swallows an unknown flag in
+  silence.
+- Docs audited mechanically again; **no findings** after two scanner fixes of its
+  own (the README writes flags as `` `--z-datum {top,bottom}` ``, argument inside
+  the backticks, so anchoring on a closing backtick missed sixteen of them; and it
+  was reading commented-out Python again — the exact round-18 false positive).
+
+### Doc debt finally paid
+
+Two live pointers the memo had been carrying for many rounds, both in the
+orientation sections rather than a dated round, so both fair game:
+
+- **"## Open issue: No module named stepbuilder"** — settled back in round 9 by
+  `S3D_ScriptDir` + `cd /d`, still headed "Open issue" nine rounds later.
+- **Environment said Allegro 17.4** — the user moved to 24.1 at round 4 and every
+  live confirmation since has been on 24.1. Round 8 spotted it and left it
+  "pending confirmation"; it sat for thirteen rounds.
+
+Both are the failure mode round 18 named. The lesson there was about the README;
+it applies to this memo just as much, and this memo is the thing a new session
+reads first.
+
+### `.gitignore` had no Allegro section
+
+Stock Python template, so `allegro.jrl`, `dangling_lines.rpt` and `signoise.run/`
+showed up as untracked noise in every session — and the tool's own scratch files
+(`_simple3d_launch.bat`, `_simple3d_preflight.bat/.txt`, the config `.tmp`) were
+not ignored either, in a folder the tool writes to. Added, and verified that no
+tracked file became ignored.
+
+### Deliberately not changed
+- The `--gui` prefill flags (`--step-dir --json-dir --json-file --output-dir
+  --config`) are undocumented in the README. They are launcher plumbing that a
+  user never types. Noted, not "fixed" — adding five internal flags to a user
+  manual is noise. Say so if you disagree.
+- `.claude/` is still untracked. Harness settings, not project files; the user's
+  call whether it belongs in the repo.
+- The round-9 note that the README is "at `stepbuilder-py/README.md`, 422 lines"
+  is still wrong (repo root, now 1100). It sits inside a dated round entry, and
+  this memo's convention is that those are historical record.
+
+### The four mechanical SKILL checks now
+Paren balance; string literals broken by a real newline; calls to procedures
+defined nowhere; call arity. Each exists because something got past the previous
+ones. Run all four after any scripted edit — they live in scratch
+(`skill_checks.py`, `check_arity.py`) and are still not in the repo, which is now
+a standing suggestion three rounds old.

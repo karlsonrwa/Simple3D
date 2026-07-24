@@ -205,3 +205,23 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ---------------------------------------------------------------------------
+# Allegro / Simple 3D
+# ---------------------------------------------------------------------------
+# Files Allegro drops beside a board while it is being worked on.
+*.jrl
+*.rpt
+signoise.run/
+*.dbg
+
+# Scratch files this tool itself writes into the design folder.
+# (simple3d_crash.log is already covered by the *.log rule above.)
+_simple3d_launch.bat
+_simple3d_preflight.bat
+_simple3d_preflight.txt
+simple3d_config.json.tmp
+
+# Exported output. The demo's checked-in inputs (demo.brd, demo.json, the
+# reference .stp) stay tracked; generated assemblies do not.
+*_simple_*.step
