@@ -2544,6 +2544,62 @@ restored rect and reopening maximized; five malformed values falling back to
 centring. Plus: closing three windows through the real `_on_close` path with no
 Tk noise. All other suites and the geometry regression unchanged.
 
+## Update 2026-07-25 (round 24) — `stepDir` removed, and what the question exposed
+
+User asked why the config carried both `stepDirs` and `stepDir`, then pushed
+harder: why keep it at all, given that pulling from origin overwrites the config
+anyway?
+
+### The compatibility key was not worth it
+
+Round 22 wrote `stepDir` back on every save, kept equal to `stepDirs[0]`, so an
+older build of the tool run against a new config would still find a library.
+That bought a narrow scenario and cost a permanent duplicate: `stepDirs` always
+wins, so hand-editing `stepDir` does nothing and is silently overwritten on the
+next close. The user asking the question **is** the evidence that it misleads.
+
+Now: `stepDir` is read once, to migrate a settings file written before
+multi-folder support, and `_save_config` **removes** it. After one close the
+file holds one key. Explicitly noted in the code that this is not a breach of
+the "preserve keys we do not understand" rule from rounds 12-13 — that rule
+protects keys belonging to someone else; this one is ours and superseded, and
+dropping it *is* the migration.
+
+### The premise was wrong, and the truth is worse — NOT ACTED ON
+
+"Pulling from origin overwrites the config" — measured, it does not. Git aborts
+the whole pull:
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+	simple3d_config.json
+Aborting
+```
+
+Settings survive; **the update does not arrive at all**. And this is not an edge
+case: the GUI rewrites the config on every window close, and since round 23
+`windowGeometry` changes on literally every session, so the file is always dirty.
+For anyone who follows the README ("clone the repository, its root already is
+the layout"), `git pull` will fail on this file every single time.
+
+**The real fix, offered and deferred by the user (only `stepDir` was wanted):**
+ship `simple3d_config.default.json` as a template, gitignore the live
+`simple3d_config.json`, create it from the template when missing. Migration
+hazard to state in the changelog when it is done: untracking a file means the
+commit deletes it, so an existing clone either loses the file on pull (the app
+recreates it) or refuses to merge if it is modified. Rough once, clean after.
+
+This is now the largest known defect in the project. It is not in the code —
+it is in how the tool is shipped.
+
+### Verified here
+GUI suite extended: `stepDir` gone from the file after a save; an old
+`stepDir`-only config migrates into `stepDirs`, drops the key, leaves other
+sections untouched, and the setting survives a reopen. All other suites and the
+geometry regression unchanged. The docs audit needed a `MIGRATION_ONLY` set —
+a key read only to migrate is deliberately absent from the shipped config, and
+flagging that as an error would push it back in.
+
 ### The four mechanical SKILL checks now
 Paren balance; string literals broken by a real newline; calls to procedures
 defined nowhere; call arity. Each exists because something got past the previous

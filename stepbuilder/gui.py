@@ -1005,9 +1005,10 @@ class StepBuilderApp(tk.Tk):
         gui = data.get("gui")
         if not isinstance(gui, dict):
             return
-        # stepDirs (a list) is the current shape; stepDir (a single string) is
-        # what older installs hold, and is still read so an existing settings
-        # file keeps working untouched.
+        # stepDirs (a list) is the shape. stepDir (a single string) is what a
+        # config written before multi-folder support holds; it is read ONCE so
+        # that setting survives the upgrade, and _save_config then drops it -
+        # see there for why it is not mirrored back.
         dirs = gui.get("stepDirs")
         if isinstance(dirs, list):
             self.set_step_dirs([str(d).strip() for d in dirs if str(d).strip()])
@@ -1081,13 +1082,19 @@ class StepBuilderApp(tk.Tk):
         gui = data.get("gui")
         if not isinstance(gui, dict):
             gui = {}
+        # The superseded single-folder key is REMOVED, not kept in step with the
+        # first entry. Mirroring it would leave two keys meaning one thing
+        # forever: stepDirs always wins, so a hand-edit of stepDir does nothing
+        # and is silently overwritten on the next close. The read above has
+        # already migrated any value it held.
+        #
+        # This is not the "preserve keys we do not understand" rule from the
+        # config-safety work: that protects keys belonging to someone else. This
+        # one is ours and superseded, and dropping it is the migration.
+        gui.pop("stepDir", None)
         dirs = self.step_dirs()
         gui.update({
             "stepDirs": dirs,
-            # Kept in step with the first entry so an older build of this tool,
-            # which knows only the single-folder key, still opens with a usable
-            # library instead of an empty field.
-            "stepDir": dirs[0] if dirs else "",
             "zDatum": self.z_datum.get(),
             "boardColor": self.theme.get(),
             "boardEdge": self.rim_choice.get(),

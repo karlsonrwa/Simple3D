@@ -6,11 +6,10 @@
         "commandName": "simple_3d_export"
     },
     "gui": {
-        "_comment_stepDirs": "Folders holding the component STEP models, searched IN ORDER - the first one that holds a given model file wins. So a project-local folder listed above the shared library overrides individual models. Each folder is searched recursively, so subfolders need no entry of their own. Edit here or in the GUI, one folder per line. stepDir below is the older single-folder key, kept in step with the first entry so an older build of the tool still works; stepDirs wins when both are present.",
+        "_comment_stepDirs": "Folders holding the component STEP models, searched IN ORDER - the first one that holds a given model file wins. So a project-local folder listed above the shared library overrides individual models. Each folder is searched recursively, so subfolders need no entry of their own. Edit here or in the GUI, one folder per line.",
         "stepDirs": [
             "d:/Projects/OrCAD/CIS/3D"
         ],
-        "stepDir": "d:/Projects/OrCAD/CIS/3D",
         "jsonFile": "",
         "outputDir": "",
         "zDatum": "top",
