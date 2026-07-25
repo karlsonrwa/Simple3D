@@ -1670,6 +1670,27 @@ def generate(
     levels = None
     shift = 0.0
 
+    # An ordinary board has one stackup and no zones, because there is nothing
+    # to divide. "Body stitching" still means something there - the layers are
+    # known - so the whole outline becomes one implicit zone and every mode
+    # works everywhere. Only for the modes that need it: plain "Solid" keeps the
+    # single-prism path, which is what the C++-verified regression measures.
+    if not zones and board_mode != "solid":
+        contours = data["pcb"].get("edges") or []
+        if stackups and len(stackups) == 1 and contours:
+            only = next(iter(stackups))
+            zones = [{"name": "board", "stackup": only, "contour": contours[0]}]
+            log(f"Single-stackup board: building it as one zone on stackup "
+                f"{only!r} so the body stitching applies")
+        else:
+            # An intermediate written before format_version 6 carries no
+            # stackup layers, so there is nothing to stitch by. Say so: the
+            # setting quietly doing nothing is exactly what this is here to
+            # stop.
+            log(f"warning: body stitching {board_mode!r} needs the stackup "
+                f"layers and this JSON does not carry them - re-export from "
+                f"Allegro. Building one plain solid instead.")
+
     if stackups and ignore_soldermask:
         stackups = drop_soldermask(stackups, log)
 

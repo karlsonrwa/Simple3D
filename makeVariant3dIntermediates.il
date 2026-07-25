@@ -1287,11 +1287,11 @@ procedure( s3dZoneList()
 ; 86.763 mm2 at the stiffener height while a zone prism puts 171.761 there,
 ; because the stiffener is a drawn shape smaller than the zone. Layers with no
 ; shapes - conductors, the dielectric, the soldermask - do span the whole zone.
-procedure( s3dStackupJson( t_stackup )
+procedure( s3dStackupJson( t_name g_stackup )
     let( ( layers span thk total ( above 0.0 ) ( cum 0.0 ) ( i 0 )
            zTop zBot shapes body out ( first t ) )
         layers = nil
-        errset( layers = axlXSectionGet( t_stackup 'all ) )
+        errset( layers = axlXSectionGet( g_stackup 'all ) )
         span = s3dConductorSpan( layers )
         unless( span  layers = nil )
 
@@ -1303,9 +1303,9 @@ procedure( s3dStackupJson( t_stackup )
         )
 
         total = nil
-        errset( total = axlXSectionGet( t_stackup 'thickness ) )
+        errset( total = axlXSectionGet( g_stackup 'thickness ) )
 
-        out = strcat( s3dJsonQuote( t_stackup ) ": {\n"
+        out = strcat( s3dJsonQuote( t_name ) ": {\n"
                       "\t\"thickness\": "
                       sprintf( nil "%f" if( total && numberp( total ) then total else 0.0 ) )
                       ",\n\t\"layers\": [\n" )
@@ -1354,12 +1354,24 @@ procedure( s3dStackupsJson()
                 when( stringp( s )
                     unless( first  out = strcat( out ",\n" ) )
                     first = nil
-                    out = strcat( out addIndent( s3dStackupJson( s ) ) )
+                    out = strcat( out addIndent( s3dStackupJson( s s ) ) )
                 )
             )
             strcat( out "\n}" )
         else
-            "\"stackups\": {}"
+            ; An ORDINARY board has no named stackups, but it does have a cross
+            ; section, and axlXSectionGet( nil 'all ) returns it. Emitting that
+            ; under the name Allegro itself uses for the default - Primary -
+            ; lets the reader build a plain board layer by layer too, so "Body
+            ; stitching" stops being a setting that silently does nothing on
+            ; every board that is not rigid-flex.
+            ;
+            ; nil is safe as the query ONLY because there are no named stackups
+            ; here: on a rigid-flex design nil 'all returns the combined "All
+            ; Stackups" view, which is not any real stackup (round 27).
+            strcat( "\"stackups\": {\n"
+                    addIndent( s3dStackupJson( "Primary" nil ) )
+                    "\n}" )
         )
     )
 )

@@ -46,10 +46,18 @@ CREAM_DIELECTRIC = (253, 255, 215)
 
 # Silkscreen ink. Real legend ink comes in exactly these two in practice, so
 # this is a closed choice rather than a free color: white on dark masks, black
-# on white/yellow ones. Neither is a pure 255/0 - printed ink never is, and a
-# pure white next to a pure white mask disappears.
+# on white/yellow ones.
+#
+# White was 242 rather than 255 on the reasoning that printed ink is never pure
+# and that pure white would vanish against a white mask. Changed to 255 after
+# the user pointed out the obvious: 242 reads plainly GREY next to the window's
+# white entry fields, and the swatch is meant to show what you will get. The
+# 13-point difference never saved the white-on-white case anyway.
+#
+# Black stays off pure zero: a true 0,0,0 renders as a hole rather than a
+# surface in several viewers, and nothing about it looks wrong in the swatch.
 SILK_COLORS: dict[str, tuple[int, int, int]] = {
-    "White": (242, 242, 242),
+    "White": (255, 255, 255),
     "Black": (26, 26, 26),
 }
 

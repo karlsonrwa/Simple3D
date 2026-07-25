@@ -281,7 +281,9 @@ class StepBuilderApp(tk.Tk):
         self._build_board_mode_row(opts)
         # Leaves the mask out of the board however the design defines it, and
         # closes the stack toward the core by what was removed.
-        ttk.Checkbutton(opts, text="Ignore soldermask layers",
+        ttk.Checkbutton(opts,
+                        text=("Do not include soldermask layers\n"
+                              "(check total thickness!)"),
                         variable=self.ignore_soldermask).grid(
             row=4, column=0, columnspan=6, sticky="w", pady=(6, 0))
 

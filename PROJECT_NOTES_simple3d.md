@@ -2971,6 +2971,46 @@ deliberate manufacturing overlap left by the trim, and the fuse absorbs them.
 - Whether `layerFunction` alone is enough to decide polarity without the name
   list - `probe_func.il` was written to answer that and has not been run yet.
 
+## Update 2026-07-25 (round 33) — stitching on plain boards, and two labels
+
+### Body stitching used to do nothing unless the board was rigid-flex
+The setting was there on every board and silently ignored on most of them.
+Fixed by making the ordinary case a case rather than an exception:
+
+- **SKILL**: a board with no named stackups now emits its cross section anyway,
+  under the name Allegro itself uses for the default - `Primary`. `nil` is safe
+  as the query there ONLY because there are no named stackups; on rigid-flex,
+  `nil 'all` returns the combined "All Stackups" view, which is no real stackup
+  (round 27). `s3dStackupJson` took the name and the query as one argument, so
+  it now takes them separately.
+- **Python**: with one stackup, no zones and a non-solid mode, the board outline
+  becomes one implicit zone and every mode works everywhere. Plain "Solid" still
+  takes the single-prism path - that is what the C++ regression measures.
+- An intermediate written before format_version 6 has no layers to stitch by,
+  and now **says so** instead of quietly building a plain solid.
+
+Verified: on a plain 2-layer board all three modes give the same volume and the
+same 1.104 mm Z extent; "Not stitched" separates it into layer parts; the old
+JSON warns and falls back.
+
+### Two labels
+- **Silk White was 242, not 255**, on the reasoning that printed ink is never
+  pure and pure white vanishes against a white mask. The user pointed out it
+  reads plainly grey beside the window's white entry fields - and the swatch is
+  meant to show what you get. Now 255. The 13 points never saved the
+  white-on-white case anyway. Black stays at 26: a true zero renders as a hole
+  rather than a surface in several viewers, and nothing looks wrong about it.
+- "Ignore soldermask layers" -> **"Do not include soldermask layers / (check
+  total thickness!)"**, two lines. `ttk.Checkbutton` takes a newline in its text
+  and lays it out on two lines (46 px against 23), no wraplength needed.
+
+### The heredoc trap, fourth time in three rounds
+A scripted edit carrying `
+` was mangled again, and this time it asserted on
+its fourth substitution - which meant the file was never written and the three
+earlier substitutions were lost with it. Accidentally atomic, but only by luck.
+**Anything containing a backslash goes through the editor, not a Bash heredoc.**
+
 ## Update 2026-07-25 (round 32) — two console/layout nits
 
 - **Ten `axlDBGetShapes` warnings per export, gone.** The layer shapes were
