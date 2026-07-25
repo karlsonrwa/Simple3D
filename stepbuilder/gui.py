@@ -81,6 +81,7 @@ class BuildSettings:
     silk_layers_off: frozenset[str]
     minimize: bool
     debug_layers: bool
+    ignore_soldermask: bool
     brd_name: str | None
     dated_name: bool
 
@@ -121,6 +122,7 @@ class StepBuilderApp(tk.Tk):
         # self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
         self.debug_layers = tk.BooleanVar(value=False)
+        self.ignore_soldermask = tk.BooleanVar(value=False)
 
         # Prefill state, set by prefill_jobs() when launched from Allegro.
         # Note: there is deliberately NO cached job list - jobs are resolved
@@ -314,6 +316,10 @@ class StepBuilderApp(tk.Tk):
         # board apart by eye.
         ttk.Checkbutton(checks, text="Inspect layers (unfused, coloured)",
                         variable=self.debug_layers).pack(side="left", padx=(12, 0))
+        # Leaves the mask out of the board however the design defines it, and
+        # closes the stack toward the core by what was removed.
+        ttk.Checkbutton(checks, text="Ignore soldermask layers",
+                        variable=self.ignore_soldermask).pack(side="left", padx=(12, 0))
 
         # --- log ---
         log_frame = ttk.LabelFrame(self, text="Log", padding=4)
@@ -779,6 +785,7 @@ class StepBuilderApp(tk.Tk):
             silk_layers_off=frozenset(self._current_layers_off()),
             minimize=self.minimize.get(),
             debug_layers=self.debug_layers.get(),
+            ignore_soldermask=self.ignore_soldermask.get(),
             brd_name=self._brd_name,
             dated_name=self._dated_name,
         )
@@ -870,6 +877,7 @@ class StepBuilderApp(tk.Tk):
                     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
                     minimize_size=settings.minimize,
                     debug_layers=settings.debug_layers,
+                    ignore_soldermask=settings.ignore_soldermask,
                     log=lambda m: self._queue.put(("log", m)),
                     progress=lambda i, n: self._queue.put(("progress", (i, n))),
                 )
@@ -1050,6 +1058,7 @@ class StepBuilderApp(tk.Tk):
         # self.mfr_pn_in_name.set(gui.get("mfrPnInName", False))
         self.minimize.set(gui.get("minimizeFileSize", True))
         self.debug_layers.set(gui.get("debugLayers", False))
+        self.ignore_soldermask.set(gui.get("ignoreSoldermask", False))
         geometry = gui.get("windowGeometry")
         self._saved_geometry = geometry if isinstance(geometry, str) else None
         self._saved_state = ("zoomed" if gui.get("windowState") == "zoomed"
@@ -1127,6 +1136,7 @@ class StepBuilderApp(tk.Tk):
             # "mfrPnInName": self.mfr_pn_in_name.get(),
             "minimizeFileSize": self.minimize.get(),
             "debugLayers": self.debug_layers.get(),
+            "ignoreSoldermask": self.ignore_soldermask.get(),
             # Where the window was, so the next run comes up in the same place -
             # on the same monitor, which is the point on a multi-screen desk.
             # The non-maximized rect is stored even when closing maximized, so

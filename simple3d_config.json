@@ -29,7 +29,9 @@
         "windowGeometry": "",
         "windowState": "normal",
         "_comment_debugLayers": "Inspection build for multi-stackup / rigid-flex boards: every stackup layer is written as its own part, named <zone>__<layer>, given its own contrasting colour, and NOT fused into one board solid. For checking a stackup against Allegro's cross-section editor by eye. Files are several times larger and the board is no longer a single solid, so leave it false for normal exports. Does nothing on an ordinary single-stackup board.",
-        "debugLayers": false
+        "debugLayers": false,
+        "_comment_ignoreSoldermask": "Leave the soldermask out of the board entirely, however the design defines it, and close the stack up toward the core by exactly the thickness removed - on each side independently. Components then rest on the copper rather than on the mask, and the board is that much thinner. Applies both to a multi-stackup board's layers and to a plain board's soldermask_top/soldermask_bottom. The GUI checkbox is 'Ignore soldermask layers'; the decision is made when the model is built, so it needs no re-export.",
+        "ignoreSoldermask": false
     },
     "silkscreen": {
         "top": [

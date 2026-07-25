@@ -152,6 +152,67 @@ def _open_wire_detail(wire: TopoDS_Wire) -> str:
         return ""
 
 
+# A layer counts as soldermask if this survives in its name or IPC function
+# once everything but letters and digits is stripped - so SOLDERMASK_TOP,
+# "Solder Mask" and SOLDER-MASK-BOTTOM all match.
+SOLDERMASK_MARKER = "SOLDERMASK"
+
+
+def _is_soldermask(layer: dict) -> bool:
+    probe = f"{layer.get('name') or ''} {layer.get('function') or ''}".upper()
+    return SOLDERMASK_MARKER in "".join(c for c in probe if c.isalnum())
+
+
+def restack(layers: list[dict]) -> list[dict]:
+    """Recompute every layer's z from its thickness, core top back at 0.
+
+    The same walk the exporter does: everything outside the top conductor is
+    summed, and each layer then hangs off that. Re-running it after layers have
+    been removed is what closes the gap - the stack settles toward the core by
+    exactly the thickness taken out, above and below independently.
+
+    List order is the physical order (`layer->position` is not - it duplicates
+    and indexes the combined All-Stackups view), so this walks the list.
+    """
+    first = next((i for i, lay in enumerate(layers)
+                  if str(lay.get("type") or "").upper() in ("CONDUCTOR", "PLANE")),
+                 None)
+    if first is None:
+        return layers
+
+    above = sum(float(lay["thickness"]) for lay in layers[:first])
+    out, cum = [], 0.0
+    for lay in layers:
+        thickness = float(lay["thickness"])
+        z_top = above - cum
+        cum += thickness
+        out.append({**lay, "z_top": z_top, "z_bottom": z_top - thickness})
+    return out
+
+
+def drop_soldermask(stackups: dict, log: LogFn = _noop_log) -> dict:
+    """Every stackup with its soldermask layers removed and the rest re-stacked.
+
+    Removing a layer is not enough on its own: the layers outside it would keep
+    their old heights and float, leaving a gap where the mask used to be. So
+    the survivors are re-walked, which settles them toward the core.
+    """
+    out, dropped = {}, []
+    for name, stackup in stackups.items():
+        layers = stackup.get("layers") or []
+        keep = [lay for lay in layers if not _is_soldermask(lay)]
+        dropped += [str(lay.get("name")) for lay in layers if _is_soldermask(lay)]
+        out[name] = {**stackup, "layers": restack(keep)}
+
+    if dropped:
+        seen = sorted(set(dropped))
+        log(f"Ignoring soldermask: {len(dropped)} layer(s) removed from the "
+            f"stack ({', '.join(seen)}); the rest closes up toward the core")
+    else:
+        log("Ignoring soldermask: this design has none in its stackups")
+    return out
+
+
 def stackup_levels(stackups: dict, zones: list[dict],
                    z_datum: str) -> tuple[dict, float, float, float]:
     """Zone faces, board extent and the datum shift, from the per-layer data.
@@ -1429,6 +1490,7 @@ def generate(
     minimize_size: bool = True,
     srgb_color: bool = True,
     debug_layers: bool = False,
+    ignore_soldermask: bool = False,
     log: LogFn = _noop_log,
     progress: ProgressFn = _noop_progress,
 ) -> BuildResult:
@@ -1478,6 +1540,12 @@ def generate(
         into one board solid. For checking a stackup against the cross-section
         editor by eye. Bigger files, and the board is no longer one solid.
         Ignored on an ordinary single-stackup board.
+    ignore_soldermask:
+        Leave the soldermask out of the board entirely, however the design
+        defines it, and close the stack up toward the core by exactly the
+        thickness removed - on both sides, independently. Components then sit
+        on the copper rather than on the mask. Applies to a multi-stackup
+        board's layers and to a plain board's pcb.thickness alike.
     """
     json_file = Path(json_file)
     output_dir = Path(output_dir)
@@ -1500,7 +1568,12 @@ def generate(
 
     pcb_name = data["name"]
     json_stem = output_name or pcb_name
-    thickness = total_board_thickness(data["pcb"]["thickness"])
+    if ignore_soldermask:
+        # The plain-board path keeps its masks in pcb.thickness rather than as
+        # stackup layers, so it is the same decision expressed twice.
+        thickness = float(data["pcb"]["thickness"]["board"])
+    else:
+        thickness = total_board_thickness(data["pcb"]["thickness"])
 
     # Multi-stackup: a rigid-flex board is several zones of different
     # thickness. An empty or absent list means an ordinary board and every
@@ -1511,6 +1584,9 @@ def generate(
     stackups = stackups if isinstance(stackups, dict) and stackups else None
     levels = None
     shift = 0.0
+
+    if stackups and ignore_soldermask:
+        stackups = drop_soldermask(stackups, log)
 
     if zones:
         if stackups:

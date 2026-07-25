@@ -213,6 +213,11 @@ def main(argv: list[str] | None = None) -> int:
     #     help="append MFRPN to each instance name",
     # )
     parser.add_argument(
+        "--ignore-soldermask", action="store_true",
+        help="leave the soldermask out of the board entirely and close the "
+             "stack up toward the core by the thickness removed",
+    )
+    parser.add_argument(
         "--debug-layers", action="store_true",
         help="multi-stackup boards only: keep every stackup layer as its own "
              "coloured part instead of fusing the board, for inspecting a "
@@ -283,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
                 minimize_size=not args.no_minimize,
                 srgb_color=not args.legacy_color,
                 debug_layers=args.debug_layers,
+                ignore_soldermask=args.ignore_soldermask,
                 log=log,
             )
         except core.StepBuilderError as exc:

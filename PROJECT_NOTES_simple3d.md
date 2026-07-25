@@ -2916,8 +2916,35 @@ Three failures along the way were all in the tests, not the code: a wrong
 a hardcoded snapshot field count. The last is now a set of field NAMES, so it
 says which field is missing instead of "16 != 15".
 
+### "Ignore soldermask layers" (user, 2026-07-25)
+
+A GUI checkbox, `gui.ignoreSoldermask`, `--ignore-soldermask`. The mask is left
+out of the board however the design defines it, **and the rest of the stack
+closes up toward the core** by exactly the thickness removed, each side
+independently.
+
+Two things worth keeping:
+
+- **Removing a layer is not enough on its own.** The survivors keep their old
+  heights and a gap opens where the mask was. `restack()` re-runs the same walk
+  the exporter does - sum everything outside the top conductor, then hang each
+  layer off that - which settles them toward the core. Verified on the real
+  STIFFENER2: the top half drops exactly 0.025, the bottom half rises exactly
+  0.025, the core does not move, and no gap opens at either copper face.
+- **Decided at BUILD time, not at export.** Same principle as the silkscreen
+  layer chooser (round 14): the exporter collects everything, the GUI decides
+  what to build, so toggling needs no re-export.
+
+A layer counts as soldermask if `SOLDERMASK` survives in its name or its IPC
+function once non-alphanumerics are stripped, so `SOLDER_MASK_TOP` and a layer
+named `SM_TOP` with function "Solder Mask" both match. The plain-board path
+takes the same decision on `pcb.thickness`, since there the mask is two numbers
+rather than two layers.
+
 ### Still open on this branch
 - Bends are not folded; the board is exported flat.
+- **Zones nested inside zones**: Allegro supports it, this does not. Raised by
+  the user 2026-07-25 and deliberately deferred - the test board has none.
 - Whether `layerFunction` alone is enough to decide polarity without the name
   list - `probe_func.il` was written to answer that and has not been run yet.
 
