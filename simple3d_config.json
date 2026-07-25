@@ -49,6 +49,12 @@
         "exportSilkscreen": true,
         "silkscreenThickness": 0.025,
         "clipToBoardOutline": true,
-        "endCapType": "ROUND"
+        "endCapType": "ROUND",
+        "_comment_negativeLayers": "Stackup layers whose drawn shapes are OPENINGS rather than material, matched case-insensitively as a prefix of the layer name. Coverlay, soldermask and pastemask are drawn this way by convention (IPC-2581): a shape on them marks where the sheet is ABSENT, so the material is the zone minus those shapes. Stiffener, adhesive and epoxy are the opposite - their shapes ARE the material. Allegro's negativeArtwork flag does not answer this (it is about film generation and reads nil on every layer), so the polarity is taken from layerFunction when the design carries one and from this list otherwise. Add a layer here if its bodies come out inverted in the layer inspection build.",
+        "negativeLayers": [
+            "COVERLAY",
+            "SOLDERMASK",
+            "PASTEMASK"
+        ]
     }
 }

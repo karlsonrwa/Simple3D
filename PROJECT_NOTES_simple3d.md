@@ -2806,6 +2806,121 @@ dotted pair. Open in this memo since 2026-07-18 and visible plainly in the probe
 output: `((FIXED t) (IDX_BEND_TYPE_INFO "TYPE=..."))`. Both shapes are still
 handled in `s3dObjectHasProp`, which is fine, but the question is settled.
 
+## Update 2026-07-25 (round 27) — per-layer build, on branch `feature/per-layer-stackup`
+
+Round 26's zone prisms were still wrong, and the user caught it by comparing
+against Allegro's own export: at the stiffener height Allegro has **86.763 mm2**
+where our prism put **171.761**, and the board body came to 598.85 mm3 against
+268.47. A zone is not a uniform slab.
+
+### Third rigid-flex reference, and it is the good one
+
+`D:\Projects\AI\Claude\Allegro_DOC\algroRigidFlex\` — 14 HTML pages on zones,
+stackups, bend areas and the Mask Layer Site File. Extracted to text in scratch.
+This is where the polarity answer came from; the `axl*` reference does not have
+it. See also [[allegro-rigidflex-docs]].
+
+### Layers, not zones
+
+Each stackup layer now carries its own extent and its own drawn shapes:
+
+- **no shapes** → spans the whole zone (conductors, dielectric). The user
+  confirmed independently: Inventor shows Allegro's dielectric as exactly four
+  bodies, one per zone.
+- **positive shapes** → the material IS those shapes, clipped to the zone,
+  `voids` becoming holes (ADHESIVE_TOP has 7, STIFFENER_TOP and ADHESIVE_TOP2
+  six each).
+- **negative shapes** → the shapes are OPENINGS; material is the zone minus
+  them.
+
+### Polarity: three wrong answers before the right one
+
+1. **`negativeArtwork`** — reads **nil on every layer** of a real board. It is
+   about film generation. Do not reach for it again.
+2. **"everything is positive"** — my reading of the shape geometry, and wrong.
+   The user built it and saw the coverlay come out inverted.
+3. **The right source is `layerFunction`** — the IPC-2581 Layer Function Type
+   the Mask Layer Site File assigns, per the rigid-flex docs: *"The assignment
+   of IPC Layer Function Type as defined by IPC-2581."*
+
+The convention: coverlay / soldermask / pastemask are drawn as **openings**;
+stiffener / adhesive / epoxy are drawn as **material**. Matching the user's own
+notes (`Adhesive_top - pos, Coverlay_top - neg, Stiffener_top - pos`).
+
+**The geometry said so all along and I read it backwards.** COVERLAY_TOP has a
+shape matching the FLEX1 zone outline exactly. As material that would be the
+only coverlay patch on a board needing it everywhere; as an *opening* it is a
+flex tail with its contacts exposed, which is completely ordinary. Likewise the
+six small COVERLAY_TOP shapes sit exactly in the six voids of STIFFENER_TOP —
+windows through both, not islands of coverlay.
+
+Implemented as `settings.negativeLayers` (substring match against the layer name
+AND its function), defaulting to COVERLAY / SOLDERMASK / PASTEMASK, because this
+is fabricator convention rather than something the database states outright.
+
+### Layer ORDER: use the list, never `position`
+
+`layer->position` **duplicates** (6 is both SOLDERMASK_TOP and the dielectric,
+10 is both SOLDERMASK_BOTTOM and the bottom surface) and is not monotonic - it
+indexes the combined "All Stackups" view. The order `axlXSectionGet(<name>
+'all)` returns IS the physical order, checked line by line against the
+cross-section editor.
+
+Round 26's `s3dStackupProfile` compared positions and put SOLDERMASK_TOP inside
+the core: **the total still matched**, so nothing looked broken, but the core -
+the datum every zone aligns on - sat 0.025 mm low on one stackup. The kind of
+defect a sum check cannot see.
+
+Also: `axlXSectionGet(nil 'all)` returns the ALL-STACKUPS union (13 entries,
+2.54) while `axlXSectionGet(nil 'thickness)` returns ONE stackup's 0.49. `nil`
+is internally inconsistent on a multi-stackup board; never use it there.
+
+### Fusing: measured, and the opposite of the silkscreen result
+
+34 layer solids, non-overlapping zones so any loss would show:
+
+| | size | faces | volume |
+|---|---|---|---|
+| compound | 564,659 | 204 | 711.7258 |
+| fused | **144,509** | 142 | 711.7258 |
+
+**25.6%**, volume identical to nine decimals. Stacked layers share large
+coplanar faces and each solid costs its own product definition in AP214. The
+silkscreen fuse came to 154% because thousands of thin prisms barely touch after
+clipping - same word, opposite result, for the second time in this project.
+
+`BRepAlgoAPI_BuilderAlgo` was tried first: it computes the boolean but leaves
+the pieces as separate solids (18 out, one expected). The multi-argument
+`BRepAlgoAPI_Fuse` plus `ShapeUpgrade_UnifySameDomain` is what works.
+
+### Layer inspection build
+`gui.debugLayers` / `--debug-layers` / a checkbox. Every layer stays its own
+part named `<zone>__<layer>`, coloured from a 12-entry contrasting palette keyed
+on the layer NAME so one sheet keeps one colour across zones. Cutouts applied
+per layer. About 10x the file size; off by default. This is what let the user
+see the inverted coverlay.
+
+### Live confirmation
+Ran on the real board. The stiffener level now reads **86.763 mm2, matching
+Allegro exactly**; board body 389.2 against Allegro's 394.1 (was 598.9 vs
+268.5).
+
+### Verified here
+19 assertions on negative/positive polarity (including the transliterated SKILL
+matcher against all twelve real layer names), 12 on the inspection build, 12 on
+the per-layer build, plus every earlier suite, the four SKILL checks, the docs
+audit and the C++ geometry regression.
+
+Three failures along the way were all in the tests, not the code: a wrong
+`GetColor` signature, arithmetic using 2.44 where the built stack was 2.39, and
+a hardcoded snapshot field count. The last is now a set of field NAMES, so it
+says which field is missing instead of "16 != 15".
+
+### Still open on this branch
+- Bends are not folded; the board is exported flat.
+- Whether `layerFunction` alone is enough to decide polarity without the name
+  list - `probe_func.il` was written to answer that and has not been run yet.
+
 ### The four mechanical SKILL checks now
 Paren balance; string literals broken by a real newline; calls to procedures
 defined nowhere; call arity. Each exists because something got past the previous

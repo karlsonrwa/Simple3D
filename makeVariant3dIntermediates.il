@@ -1098,6 +1098,47 @@ procedure( s3dContourJson( o_dbid )
     )
 )
 
+; Layer-name prefixes whose drawn shapes are OPENINGS, not material.
+; Overridden from settings.negativeLayers in simple3d_config.json.
+S3D_NegativeLayers = list( "COVERLAY" "SOLDERMASK" "PASTEMASK" )
+
+; t if this layer's shapes are openings rather than material.
+;
+; Determined by IPC-2581 layer FUNCTION where the design carries one -
+; layerFunction is what the Mask Layer Site File assigns, per the rigid-flex
+; documentation - and by name prefix otherwise.
+;
+; NOT by negativeArtwork: that flag is about film generation and reads nil on
+; every layer of a real rigid-flex board, including the coverlay, which is
+; unambiguously drawn as openings. Believing it produced a board with the
+; coverlay inverted - material where the windows should be.
+procedure( s3dLayerIsNegative( o_layer )
+    let( ( nm fn ( neg nil ) probe )
+        nm = nil
+        errset( nm = o_layer->name )
+        fn = nil
+        errset( fn = o_layer->layerFunction )
+
+        ; the function name, when there is one, carries the same words
+        probe = ""
+        when( stringp( fn )  probe = upperCase( fn ) )
+        when( stringp( nm )  probe = strcat( probe " " upperCase( nm ) ) )
+
+        foreach( key S3D_NegativeLayers
+            when( stringp( key ) && (strlen( key ) > 0)
+                ; substring search, so COVERLAY matches COVERLAY_TOP and a
+                ; function spelled "Coverlay" alike
+                for( i 1 (strlen( probe ) - strlen( key ) + 1)
+                    when( substring( probe i strlen( key ) ) == upperCase( key )
+                        neg = t
+                    )
+                )
+            )
+        )
+        neg
+    )
+)
+
 ; One drawn shape as { "outline": [...], "voids": [ [...], ... ] }.
 ;
 ; Voids are the holes punched in a layer - ADHESIVE_TOP has 7 of them on the
@@ -1239,6 +1280,10 @@ procedure( s3dStackupJson( t_stackup )
                     "\t\"thickness\": " sprintf( nil "%f" thk ) ",\n"
                     "\t\"z_top\": " sprintf( nil "%f" zTop ) ",\n"
                     "\t\"z_bottom\": " sprintf( nil "%f" zBot ) ",\n"
+                    "\t\"negative\": " if( s3dLayerIsNegative( layer ) then "true" else "false" ) ",\n"
+                    "\t\"function\": " if( stringp( layer->layerFunction ) then
+                                           strcat( "\"" layer->layerFunction "\"" )
+                                       else "null" ) ",\n"
                     "\t\"shapes\": " if( shapes then addIndent( shapes ) else "null" ) "\n"
                     "}"
                 )
@@ -1937,6 +1982,16 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
                 )
                 when( s3dJsonHas( settings "exportSilkscreen" )
                     doExport = s3dJsonGet( settings "exportSilkscreen" )
+                )
+
+                ; Which stackup layers are drawn as openings. Read here rather
+                ; than left hardcoded because it is fabricator/site convention,
+                ; not something the database states: negativeArtwork reads nil
+                ; on every layer even where the polarity is unambiguous.
+                when( s3dJsonList( settings "negativeLayers" )
+                    S3D_NegativeLayers = s3dJsonList( settings "negativeLayers" )
+                    printf( "Simple 3D: negative (opening) layers: %L\n"
+                            S3D_NegativeLayers )
                 )
                 when( stringp( s3dJsonGet( settings "endCapType" ) )
                     ; only the three Allegro end-cap keywords are accepted; a

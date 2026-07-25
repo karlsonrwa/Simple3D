@@ -196,15 +196,31 @@ def _shape_face(shape: dict, z: float):
 def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
     """The material of one layer inside one zone, as a face or compound.
 
-    Two cases, and the difference is what this whole per-layer model exists
-    for. A layer with drawn shapes (stiffener, coverlay, adhesive) occupies
-    only those shapes - Allegro's own export puts 86.763 mm2 at the stiffener
-    height where a plain zone prism puts 171.761. A layer with none
-    (conductors, dielectric, soldermask) spans the whole zone; the dielectric
-    shows up in Allegro's tree as exactly one body per zone, which is the same
-    statement.
+    Three cases:
 
-    Shapes are design-wide, so they are intersected with the zone: one
+    **No shapes** - the layer spans the whole zone. Conductors and the
+    dielectric are like this; Allegro's own tree shows the dielectric as
+    exactly one body per zone, which is the same statement.
+
+    **Positive shapes** - the material IS those shapes. Stiffener, adhesive
+    and epoxy are drawn this way, and it is what this per-layer model exists
+    for: Allegro puts 86.763 mm2 at the stiffener height where a plain zone
+    prism puts 171.761, because the stiffener is a drawn shape smaller than
+    the zone.
+
+    **Negative shapes** - the shapes are OPENINGS and the material is the zone
+    minus them. Coverlay, soldermask and pastemask are drawn this way by
+    IPC-2581 convention. On the test board COVERLAY_TOP has a shape matching
+    the FLEX1 zone outline exactly - as an opening that is a flex tail with
+    its contacts exposed, which is ordinary; as material it would have been
+    the only coverlay patch on a board that needs it everywhere.
+
+    `negativeArtwork` does NOT answer this - it is about film generation and
+    reads nil on every layer of a real board. Polarity comes from
+    `layer["negative"]` when the exporter could determine it, and from the
+    caller's name list otherwise.
+
+    Shapes are design-wide, so they are always intersected with the zone: one
     ADHESIVE_TOP shape covers most of the board and belongs to three zones at
     once, each at its own height.
     """
@@ -220,21 +236,29 @@ def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
         except (StepBuilderError, RuntimeError, KeyError, TypeError, IndexError) as exc:
             log(f"warning: shape {i + 1} of layer {layer.get('name')} skipped ({exc})")
     if not faces:
-        return None
+        return zone_face if layer.get("negative") else None
 
-    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common, BRepAlgoAPI_Cut
 
     builder = BRep_Builder()
-    material = TopoDS_Compound()
-    builder.MakeCompound(material)
+    drawn = TopoDS_Compound()
+    builder.MakeCompound(drawn)
     for face in faces:
-        builder.Add(material, face)
+        builder.Add(drawn, face)
 
-    common = BRepAlgoAPI_Common(material, zone_face)
+    if layer.get("negative"):
+        cut = BRepAlgoAPI_Cut(zone_face, drawn)
+        if not cut.IsDone():
+            log(f"warning: could not open layer {layer.get('name')} in its zone; "
+                f"leaving it solid")
+            return zone_face
+        return cut.Shape()
+
+    common = BRepAlgoAPI_Common(drawn, zone_face)
     if not common.IsDone():
         log(f"warning: could not clip layer {layer.get('name')} to zone; "
             f"using it unclipped")
-        return material
+        return drawn
     return common.Shape()
 
 
