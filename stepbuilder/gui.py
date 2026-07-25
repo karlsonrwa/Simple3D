@@ -49,9 +49,9 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "simple3d_config.
 # the three are alternatives, and "inspect + layer colours" ticked together
 # would have to mean something, which it does not.
 BOARD_MODES = [
-    ("solid",   "Solid (one colour)"),
-    ("layers",  "Layer colours"),
-    ("inspect", "Inspect layers (separate parts)"),
+    ("solid",   "Solid"),
+    ("layers",  "Solid colored layers"),
+    ("inspect", "Not stitched"),
 ]
 
 
@@ -199,7 +199,7 @@ class StepBuilderApp(tk.Tk):
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(3, weight=1)          # the log takes what is left
 
         # --- paths ---
         paths = ttk.LabelFrame(self, text="Input", padding=8)
@@ -209,8 +209,11 @@ class StepBuilderApp(tk.Tk):
         self._path_row(paths, 1, "JSON file", self.json_file, self._pick_json_file)
         self._path_row(paths, 2, "Output", self.output_dir, self._pick_output_dir)
 
-        # --- options ---
-        opts = ttk.LabelFrame(self, text="Options", padding=8)
+        # --- board ---
+        # Everything about the board body in one place, and everything about the
+        # legend in the next. They were one "Options" block, which meant the two
+        # unrelated halves of the window looked like one list of settings.
+        opts = ttk.LabelFrame(self, text="Board options", padding=8)
         opts.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
         opts.columnconfigure(1, weight=1)
         opts.columnconfigure(3, weight=1)
@@ -236,13 +239,14 @@ class StepBuilderApp(tk.Tk):
             values=[RIM_SAME, RIM_CREAM, RIM_CUSTOM], state="readonly", width=18
         )
         rim_box.grid(row=0, column=4, sticky="w")
-        rim_box.bind("<<ComboboxSelected>>", lambda e: self._update_rim_entry())
-        # HEX label sits directly left of the custom-colour field and greys out
-        # with it, so it is obvious the field is only live for the Custom choice.
-        self.rim_hex_label = ttk.Label(opts, text="HEX colour")
-        self.rim_hex_label.grid(row=1, column=3, sticky="e", padx=(12, 6))
-        self.rim_entry = ttk.Entry(opts, textvariable=self.rim_custom, width=12)
-        self.rim_entry.grid(row=1, column=4, sticky="w", pady=(2, 0))
+        rim_box.bind("<<ComboboxSelected>>", lambda e: self._update_rim_swatch())
+        # A picker, not a typed hex string: the same idiom as every other colour
+        # in the window, and it cannot be given a value that does not parse.
+        # Greyed until Custom is chosen, so it is obvious when it does nothing.
+        self._rim_swatch = tk.Canvas(opts, width=22, height=22, highlightthickness=1,
+                                     highlightbackground="#888")
+        self._rim_swatch.grid(row=0, column=5, sticky="w", padx=(6, 0))
+        self._rim_swatch.bind("<Button-1>", lambda e: self._pick_rim_color())
 
         ttk.Label(opts, text="Z = 0 at").grid(row=1, column=0, sticky="w", pady=3)
         zrow = ttk.Frame(opts)
@@ -252,12 +256,23 @@ class StepBuilderApp(tk.Tk):
         ttk.Radiobutton(zrow, text="Bottom of board", variable=self.z_datum,
                         value="bottom").pack(side="left", padx=(10, 0))
 
+        self._build_board_mode_row(opts)
+        # Leaves the mask out of the board however the design defines it, and
+        # closes the stack toward the core by what was removed.
+        ttk.Checkbutton(opts, text="Ignore soldermask layers",
+                        variable=self.ignore_soldermask).grid(
+            row=3, column=0, columnspan=6, sticky="w", pady=(6, 0))
+
         # --- silkscreen ---
-        # The colour is a closed two-item choice, not the free entry the board
+        silk = ttk.LabelFrame(self, text="Silk options", padding=8)
+        silk.grid(row=2, column=0, sticky="ew", padx=8, pady=4)
+        silk.columnconfigure(0, weight=1)
+
+        # The colour is a closed two-item choice, not the free picker the board
         # rim gets: legend ink is white or black and nothing else, so offering
-        # a hex field here would only invite a value no fab can print.
-        silk_row = ttk.Frame(opts)
-        silk_row.grid(row=2, column=0, columnspan=5, sticky="w", pady=(6, 0))
+        # a free colour here would only invite a value no fab can print.
+        silk_row = ttk.Frame(silk)
+        silk_row.grid(row=0, column=0, sticky="w")
         ttk.Label(silk_row, text="Silkscreen").pack(side="left")
         ttk.Checkbutton(silk_row, text="Top", variable=self.silk_top,
                         command=self._update_silk_row).pack(side="left", padx=(8, 0))
@@ -277,7 +292,7 @@ class StepBuilderApp(tk.Tk):
         # surfaces. Offered as a checkbox rather than done silently because it
         # is a real trade: the ink stops being a solid.
         self.silk_flat_check = ttk.Checkbutton(
-            silk_row, text="Flat (about 1/4 the size)", variable=self.silk_flat
+            silk_row, text="Make surface (minimum file size)", variable=self.silk_flat
         )
         self.silk_flat_check.pack(side="left", padx=(12, 0))
 
@@ -287,8 +302,10 @@ class StepBuilderApp(tk.Tk):
         # question. The list is built from the JSON that will actually be
         # built, so it can never offer a layer that would do nothing, and each
         # row carries its polygon count - that is what explains a large file.
-        layers_frame = ttk.LabelFrame(opts, text="Silkscreen layers", padding=4)
-        layers_frame.grid(row=3, column=0, columnspan=5, sticky="ew", pady=(6, 0))
+        ttk.Separator(silk, orient="horizontal").grid(
+            row=1, column=0, sticky="ew", pady=(8, 6))
+        layers_frame = ttk.LabelFrame(silk, text="Layers", padding=4)
+        layers_frame.grid(row=2, column=0, sticky="ew")
         layers_frame.columnconfigure(0, weight=1)
 
         self._layers_canvas = tk.Canvas(layers_frame, height=96, highlightthickness=0)
@@ -326,27 +343,20 @@ class StepBuilderApp(tk.Tk):
         ttk.Button(layer_buttons, text="None", width=6,
                    command=lambda: self._set_all_layers(False)).pack(side="left", padx=(4, 0))
 
-        checks = ttk.Frame(opts)
-        checks.grid(row=4, column=0, columnspan=5, sticky="w", pady=(6, 0))
+        # Neither a board setting nor a legend one - it shrinks the whole file,
+        # component models included - so it sits on its own between the groups
+        # and the log rather than being filed under one of them.
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # ttk.Checkbutton(checks, text="Append MFRPN to instance names",
         #                 variable=self.mfr_pn_in_name).pack(side="left")
+        checks = ttk.Frame(self, padding=(8, 0))
+        checks.grid(row=3, column=0, sticky="w")
         ttk.Checkbutton(checks, text="Minimise file size",
                         variable=self.minimize).pack(side="left")
-        # Inspection mode. Only does anything on a multi-stackup board, and it
-        # is deliberately not hidden away in the config file: it is the thing
-        # you reach for when a stackup looks wrong and you want to take the
-        # board apart by eye.
-        # Leaves the mask out of the board however the design defines it, and
-        # closes the stack toward the core by what was removed.
-        ttk.Checkbutton(checks, text="Ignore soldermask layers",
-                        variable=self.ignore_soldermask).pack(side="left", padx=(12, 0))
-
-        self._build_board_mode_row(opts)
 
         # --- log ---
         log_frame = ttk.LabelFrame(self, text="Log", padding=4)
-        log_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=4)
+        log_frame.grid(row=4, column=0, sticky="nsew", padx=8, pady=4)
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
         # wrap="word": build messages carry full paths and OCCT errors, which
@@ -363,7 +373,7 @@ class StepBuilderApp(tk.Tk):
 
         # --- bottom ---
         bottom = ttk.Frame(self, padding=(8, 4, 8, 8))
-        bottom.grid(row=3, column=0, sticky="ew")
+        bottom.grid(row=5, column=0, sticky="ew")
         bottom.columnconfigure(0, weight=1)
         self.progress = ttk.Progressbar(bottom, mode="determinate")
         self.progress.grid(row=0, column=0, sticky="ew", padx=(0, 8))
@@ -375,7 +385,7 @@ class StepBuilderApp(tk.Tk):
         )
 
         self._update_swatch()
-        self._update_rim_entry()
+        self._update_rim_swatch()
         self._update_silk_row()
         # Typing, pasting, Browse and the Allegro prefill all land in this one
         # variable, so one trace covers every way the JSON can change.
@@ -476,9 +486,9 @@ class StepBuilderApp(tk.Tk):
         that appears and disappears makes the window jump.
         """
         row = ttk.Frame(parent)
-        row.grid(row=4, column=0, columnspan=5, sticky="w", pady=(6, 0))
+        row.grid(row=2, column=0, columnspan=6, sticky="w", pady=(6, 0))
 
-        ttk.Label(row, text="Board").pack(side="left")
+        ttk.Label(row, text="Body stitching").pack(side="left")
         box = ttk.Combobox(row, textvariable=self.board_mode,
                            values=[label for _, label in BOARD_MODES],
                            state="readonly", width=28)
@@ -500,14 +510,16 @@ class StepBuilderApp(tk.Tk):
         self._update_layer_swatches()
 
     def _update_layer_swatches(self) -> None:
-        active = _mode_key(self.board_mode.get()) == "layers"
+        # Both "Solid colored layers" and "Not stitched" paint by layer kind;
+        # only plain "Solid" ignores these.
+        active = _mode_key(self.board_mode.get()) in ("layers", "inspect")
         for key, canvas in self._swatches.items():
             rgb = self.layer_colors.get(key, DEFAULT_LAYER_COLORS[key])
             canvas.configure(bg="#%02x%02x%02x" % rgb if active else "#d9d9d9",
                              cursor="hand2" if active else "")
 
     def _pick_layer_color(self, kind: str) -> None:
-        if _mode_key(self.board_mode.get()) != "layers":
+        if _mode_key(self.board_mode.get()) not in ("layers", "inspect"):
             return
         from tkinter import colorchooser
 
@@ -592,11 +604,29 @@ class StepBuilderApp(tk.Tk):
         rgb = BOARD_THEMES.get(self.theme.get(), (128, 128, 128))
         self._swatch.configure(bg="#%02x%02x%02x" % rgb)
 
-    def _update_rim_entry(self) -> None:
+    def _update_rim_swatch(self) -> None:
         active = self.rim_choice.get() == RIM_CUSTOM
-        self.rim_entry.configure(state="normal" if active else "disabled")
-        # Grey the HEX label in step with the field it labels.
-        self.rim_hex_label.state(["!disabled"] if active else ["disabled"])
+        colour = "#d9d9d9"
+        if active:
+            try:
+                colour = "#%02x%02x%02x" % parse_hex(self.rim_custom.get())
+            except ValueError:
+                colour = "#ffffff"
+        self._rim_swatch.configure(bg=colour, cursor="hand2" if active else "")
+
+    def _pick_rim_color(self) -> None:
+        if self.rim_choice.get() != RIM_CUSTOM:
+            return
+        from tkinter import colorchooser
+
+        try:
+            current = "#%02x%02x%02x" % parse_hex(self.rim_custom.get())
+        except ValueError:
+            current = "#ffffff"
+        rgb, _ = colorchooser.askcolor(color=current, title="Board edge colour")
+        if rgb:
+            self.rim_custom.set("#%02X%02X%02X" % tuple(int(c) for c in rgb))
+            self._update_rim_swatch()
 
     # ------------------------------------------------------- silk layers -- #
 

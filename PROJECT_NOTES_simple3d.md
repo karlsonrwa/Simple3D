@@ -2971,6 +2971,53 @@ deliberate manufacturing overlap left by the trim, and the fuse absorbs them.
 - Whether `layerFunction` alone is enough to decide polarity without the name
   list - `probe_func.il` was written to answer that and has not been run yet.
 
+## Update 2026-07-25 (round 30) — the window regrouped
+
+User's list, after using round 29 live. All done.
+
+### What changed
+- **One "Options" block became "Board options" and "Silk options"**, after
+  Input. The old block held the board and the legend in one list, so two
+  unrelated halves of the window read as one set of settings.
+- **The rim colour is a picker, not a typed hex string.** Same idiom as every
+  other colour in the window, and it cannot be handed a value that does not
+  parse. Greyed until Custom, like the field it replaces. `boardEdgeCustom`
+  still stores `#RRGGBB`, so existing configs are untouched.
+- **"Body stitching"**: Solid / Solid colored layers / Not stitched.
+- **"Not stitched" now uses the SAME per-kind palette** as the coloured mode
+  instead of the contrast palette round 29 gave it. The user asked for this and
+  it is the better answer: switching between the two now changes how the board
+  is put together and nothing else, so the two pictures are comparable. The
+  contrast palette (`LAYER_PALETTE`, `layer_color`, `_layer_order`) is gone.
+- **"Flat (about 1/4 the size)" → "Make surface (minimum file size)"**.
+- **"Minimise file size" stands on its own** between the groups and the log: it
+  shrinks the whole file, component models included, so it belongs to neither
+  group.
+- Silk layers stay a nested LabelFrame, now "Layers", with a separator above it.
+
+### Measured after the rework
+Groups land in order (Input 8, Board options 224, Silk options 414 with Layers
+nested at 72 inside it, Log 666). **Natural window height grew 876 -> 1004**,
+which is worth knowing: on a 1080p screen a first run now centres a window that
+nearly fills the height. Not fixed, listed below as a suggestion.
+
+### Suggestions put to the user (not implemented)
+1. Board options and Silk options side by side instead of stacked, or the silk
+   Layers panel down from 96 px to ~72 - either buys back the 128 px.
+2. "Minimise file size" and "Make surface (minimum file size)" both say size and
+   mean different things; one of them could be reworded.
+3. Board colour is 8 fixed themes while the rim and the layers are free pickers.
+   One idiom would be better than two.
+4. "Z = 0 at" is two radios on a row of its own; a dropdown would save a row.
+5. Silk options could grey wholesale when both Top and Bottom are off, the way
+   the layer list already does per side.
+
+### The audit earned its keep again
+It caught the quick-start still naming an "Options" frame and a "HEX colour"
+control, both gone. Two of its own rules needed widening for the new window -
+the group whitelist and the control list - which is the maintenance this kind
+of check costs and is still cheaper than re-reading the prose.
+
 ## Update 2026-07-25 (round 29) — three board modes, colour per layer kind
 
 User asked whether the board could be ONE solid and still show a colour per

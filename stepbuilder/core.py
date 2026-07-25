@@ -323,19 +323,6 @@ def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
     return common.Shape()
 
 
-def _layer_order(stackups: dict) -> list[str]:
-    """Layer names in stackup order, first appearance wins, deduplicated.
-
-    Drives the inspection colours, so a layer keeps one colour across every
-    stackup it appears in.
-    """
-    order: list[str] = []
-    for stackup in stackups.values():
-        for layer in stackup.get("layers") or []:
-            name = str(layer.get("name") or "")
-            if name and name not in order:
-                order.append(name)
-    return order
 
 
 def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
@@ -1761,10 +1748,14 @@ def generate(
             log(f"  {kind}: {count} face(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
 
     elif mode == "inspect":
-        # Inspection build: every stackup layer stays its own coloured part.
-        from .colors import layer_color
+        # Not stitched: every stackup layer stays its own named part. Colours
+        # come from the SAME per-kind palette the stitched-and-coloured mode
+        # uses, so switching between the two changes how the board is put
+        # together and nothing else - a second palette would have made the two
+        # pictures needlessly hard to compare.
+        from .colors import DEFAULT_LAYER_COLORS, layer_kind
 
-        order = _layer_order(stackups)
+        palette = {**DEFAULT_LAYER_COLORS, **(layer_colors or {})}
         parts = make_board_layer_parts(data["pcb"], stackups, zones, shift, log)
         group = shape_tool.NewShape()
         TDataStd_Name.Set_s(group,
@@ -1775,7 +1766,7 @@ def generate(
             layer_name = str(layer.get("name") or "?")
             label = shape_tool.NewShape()
             shape_tool.SetShape(label, solid)
-            rgb = layer_color(layer_name, order)
+            rgb = palette.get(layer_kind(layer), DEFAULT_LAYER_COLORS["other"])
             _set_color(color_tool, label,
                        (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0), srgb_color)
             TDataStd_Name.Set_s(
@@ -1783,10 +1774,8 @@ def generate(
                 TCollection_ExtendedString(_sanitize(f"{zone_name}__{layer_name}")))
             shape_tool.AddComponent(group, label, TopLoc_Location(gp_Trsf()))
 
-        log(f"Layer inspection: {len(parts)} part(s), unfused, one colour per layer")
-        for name in order:
-            rgb = layer_color(name, order)
-            log(f"  {name}: RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+        log(f"Not stitched: {len(parts)} separate layer part(s), "
+            f"coloured by layer kind")
         shape_tool.UpdateAssemblies()
         board = None
         pcb_label = None

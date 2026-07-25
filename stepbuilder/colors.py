@@ -85,41 +85,6 @@ def parse_hex(text: str) -> tuple[int, int, int]:
     return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
 
 
-# Inspection palette for the per-layer debug build. Chosen for maximum mutual
-# contrast rather than realism: the point is to tell one layer from the next by
-# eye in a viewer, including where two of them are 25 um apart. This is the
-# widely used "22 distinct colours" set, trimmed to its most separable dozen.
-LAYER_PALETTE: list[tuple[int, int, int]] = [
-    (230, 25, 75),     # red
-    (60, 180, 75),     # green
-    (0, 130, 200),     # blue
-    (245, 130, 48),    # orange
-    (145, 30, 180),    # purple
-    (70, 240, 240),    # cyan
-    (240, 50, 230),    # magenta
-    (210, 245, 60),    # lime
-    (250, 190, 212),   # pink
-    (0, 128, 128),     # teal
-    (170, 110, 40),    # brown
-    (255, 225, 25),    # yellow
-]
-
-
-def layer_color(name: str, order: list[str]) -> tuple[int, int, int]:
-    """A stable colour for one stackup layer.
-
-    Keyed on the layer NAME and its position in *order*, so COVERLAY_TOP is the
-    same colour in every zone it appears in - otherwise the same physical sheet
-    would change colour from zone to zone and the picture would mislead rather
-    than inform.
-    """
-    try:
-        index = order.index(name)
-    except ValueError:
-        index = len(order)
-    return LAYER_PALETTE[index % len(LAYER_PALETTE)]
-
-
 # --------------------------------------------------------------------------- #
 # stackup layer kinds, for the layer-coloured board
 # --------------------------------------------------------------------------- #
