@@ -2971,6 +2971,24 @@ deliberate manufacturing overlap left by the trim, and the fuse absorbs them.
 - Whether `layerFunction` alone is enough to decide polarity without the name
   list - `probe_func.il` was written to answer that and has not been run yet.
 
+## Update 2026-07-25 (round 32) — two console/layout nits
+
+- **Ten `axlDBGetShapes` warnings per export, gone.** The layer shapes were
+  asked for by name, once per stackup layer, so every conductor, the dielectric
+  and the soldermask - never drawn on the RIGID FLEX class - produced
+  `*WARNING* No match for subclass name`. Now the whole class is fetched once
+  and grouped by subclass: a miss cannot happen, because a layer absent from
+  the table simply has no shapes. Also 1 query per export instead of 11 per
+  stackup. Verified by transliterating the grouping against the real shape list
+  from the user's board - the 4 layers that warned are exactly the 4 with no
+  shapes.
+- **Widening the window now grows Silk, not Board.** Both columns had weight=1
+  and split the slack evenly, which only padded Board options with blank space:
+  it is a fixed set of dropdowns and swatches. Board is weight=0 now, so it
+  stays at its natural 638 px at any window width, and the silk layer list -
+  a column of names that really are long enough to clip - takes everything
+  else. Measured 1204..1900 px wide: Board 638 throughout, Layers 522 -> 1218.
+
 ## Update 2026-07-25 (round 31) — the round-30 suggestions, and one spelling
 
 User declined the preset picker (a mock-up, `picker_demo.py`, was built and

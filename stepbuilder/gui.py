@@ -224,7 +224,11 @@ class StepBuilderApp(tk.Tk):
         # grows sideways instead, where there is room.
         mid = ttk.Frame(self)
         mid.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
-        mid.columnconfigure(0, weight=1)
+        # Board keeps its natural width and no more; every extra pixel goes to
+        # Silk. Board options is a fixed set of dropdowns and swatches - widening
+        # it only adds blank space - while the silk layer list is a column of
+        # names that are routinely long enough to be cut off.
+        mid.columnconfigure(0, weight=0)
         mid.columnconfigure(1, weight=1)
 
         opts = ttk.LabelFrame(mid, text="Board options", padding=8)
