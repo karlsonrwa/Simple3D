@@ -1052,25 +1052,31 @@ procedure( s3dConductorSpan( l_layers )
     )
 )
 
-; ( above core below ) for one stackup, in design units.
-procedure( s3dStackupProfile( g_stackup )
-    let( ( layers span ( above 0.0 ) ( core 0.0 ) ( below 0.0 ) ( i 0 ) thk )
-        layers = nil
-        errset( layers = axlXSectionGet( g_stackup 'all ) )
-        span = s3dConductorSpan( layers )
-
-        when( span
-            foreach( layer layers
-                thk = s3dLayerThk( layer )
-                cond(
-                    ( i < car( span )   above = above + thk )
-                    ( i > cadr( span )  below = below + thk )
-                    ( t                 core  = core  + thk )
-                )
-                i = i + 1
+; A string, escaped and quoted for JSON.
+;
+; Layer, stackup and zone names go into the intermediate verbatim, and a single
+; quote or backslash in any of them would break the whole file - not one entry,
+; the whole export. Unlikely in a layer name, but a broken intermediate is a
+; total failure while escaping costs one pass over a short string.
+procedure( s3dJsonQuote( g_value )
+    let( ( out c )
+        if( stringp( g_value ) then
+            out = "\""
+            for( i 1 strlen( g_value )
+                c = substring( g_value i 1 )
+                out = strcat( out
+                    cond(
+                        ( c == "\""  "\\\"" )
+                        ( c == "\\"  "\\\\" )
+                        ( c == "\t"  "\\t" )
+                        ( c == "\n"  "\\n" )
+                        ( t          c )
+                    ) )
             )
+            strcat( out "\"" )
+        else
+            "null"
         )
-        list( above core below )
     )
 )
 
@@ -1256,7 +1262,7 @@ procedure( s3dStackupJson( t_stackup )
         total = nil
         errset( total = axlXSectionGet( t_stackup 'thickness ) )
 
-        out = strcat( "\"" t_stackup "\": {\n"
+        out = strcat( s3dJsonQuote( t_stackup ) ": {\n"
                       "\t\"thickness\": "
                       sprintf( nil "%f" if( total && numberp( total ) then total else 0.0 ) )
                       ",\n\t\"layers\": [\n" )
@@ -1275,15 +1281,13 @@ procedure( s3dStackupJson( t_stackup )
                 )
                 body = strcat(
                     "{\n"
-                    "\t\"name\": \"" if( layer->name then layer->name else "" ) "\",\n"
-                    "\t\"type\": \"" if( layer->layerType then layer->layerType else "" ) "\",\n"
+                    "\t\"name\": " s3dJsonQuote( if( layer->name then layer->name else "" ) ) ",\n"
+                    "\t\"type\": " s3dJsonQuote( if( layer->layerType then layer->layerType else "" ) ) ",\n"
                     "\t\"thickness\": " sprintf( nil "%f" thk ) ",\n"
                     "\t\"z_top\": " sprintf( nil "%f" zTop ) ",\n"
                     "\t\"z_bottom\": " sprintf( nil "%f" zBot ) ",\n"
                     "\t\"negative\": " if( s3dLayerIsNegative( layer ) then "true" else "false" ) ",\n"
-                    "\t\"function\": " if( stringp( layer->layerFunction ) then
-                                           strcat( "\"" layer->layerFunction "\"" )
-                                       else "null" ) ",\n"
+                    "\t\"function\": " s3dJsonQuote( layer->layerFunction ) ",\n"
                     "\t\"shapes\": " if( shapes then addIndent( shapes ) else "null" ) "\n"
                     "}"
                 )
@@ -1334,8 +1338,8 @@ procedure( s3dZonesJson()
                     first = nil
                     body = strcat(
                         "{\n"
-                        "\t\"name\": \"" car( z ) "\",\n"
-                        "\t\"stackup\": \"" cadr( z ) "\",\n"
+                        "\t\"name\": " s3dJsonQuote( car( z ) ) ",\n"
+                        "\t\"stackup\": " s3dJsonQuote( cadr( z ) ) ",\n"
                         "\t\"contour\": " addIndent( contour ) "\n"
                         "}"
                     )

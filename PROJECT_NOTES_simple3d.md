@@ -2941,12 +2941,88 @@ named `SM_TOP` with function "Solder Mask" both match. The plain-board path
 takes the same decision on `pcb.thickness`, since there the mask is two numbers
 rather than two layers.
 
+### Nested zones: there is no such thing — CORRECTION
+
+Recorded here earlier as "Allegro supports it, this does not", deferred. **That
+premise was wrong.** From `Creating_Multi-Stackup_Zones_in_the_Design_Drawing`:
+
+> "**Zones cannot be overlapped or nested.** If a zone is added and
+> intersects/overlaps with an existing zone, the newer zone will be trimmed to
+> the existing zone boundary."
+
+So what looks like a nested zone is, in the database, a **trimmed outline**: the
+newer zone is cut to the older boundary and the outer one keeps a hole. They
+reach us as disjoint polygons, which is why a flat list of zones is not merely
+adequate but correct. The user confirmed nested-looking zones build properly.
+
+Nothing to implement. The small overlaps we measured (0.14 mm at seams) are the
+deliberate manufacturing overlap left by the trim, and the fuse absorbs them.
+
 ### Still open on this branch
 - Bends are not folded; the board is exported flat.
-- **Zones nested inside zones**: Allegro supports it, this does not. Raised by
-  the user 2026-07-25 and deliberately deferred - the test board has none.
+- **Area not covered by any zone is not built.** Same doc page: *"Any area
+  within the DESIGN_OUTLINE that does not have a zone is defaulted to the
+  Primary Stackup."* `_stackup_board` walks zones only, so a board whose zones
+  do not tile the whole outline gets a hole there. The test board's four zones
+  evidently cover it, which is why this has not shown. The fix is to build
+  `design outline − union of zone outlines` with the Primary stackup; the
+  awkward part is identifying Primary, which this board does not have (its
+  three stackups are all zone-assigned).
 - Whether `layerFunction` alone is enough to decide polarity without the name
   list - `probe_func.il` was written to answer that and has not been run yet.
+
+## Update 2026-07-25 (round 28) — full review of the branch
+
+~920 lines added across 8 files. Every suite, all four SKILL checks, the docs
+audit and the C++ geometry regression clean before and after.
+
+### The one that mattered: a name collision the arity checker caught
+
+Adding a JSON escaper, I called it **`s3dJsonStr` - a name already taken** by the
+JSON READER's string parser (`s3dJsonStr( t_txt x_i )`, round 10, which is how
+`simple3d_config.json` is read). SKILL takes the last definition, so all six of
+my one-argument calls would have gone to the two-argument reader, breaking both
+the new emission and config loading.
+
+`check_arity.py` reported it immediately: *"s3dJsonStr( 1 args ) but defined to
+take 2"*. Renamed to `s3dJsonQuote`. **This is the second time that checker has
+paid for itself, and the first time it caught something before it ever ran.**
+Nothing else in the toolchain would have: paren balance was clean, the string
+check was clean, every Python test passed, and SKILL resolves names at call
+time so the file would have loaded happily.
+
+### Fixed
+- **Unescaped names in the intermediate.** Layer, stackup and zone names went
+  into the JSON verbatim. One quote or backslash in any of them breaks the whole
+  file - not one entry, the export. `s3dJsonQuote` now handles quote, backslash,
+  tab and newline, and returns `null` for a non-string. Verified by
+  transliteration against the `json` module on 9 hostile inputs plus the real
+  layer names. Note the round-25 model-name path still SKIPS such names rather
+  than escaping them; it could now be upgraded to use this.
+- **Dead code**: `s3dStackupProfile` survived the round-27 rewrite but nothing
+  calls it - the per-layer emission does its own walk. Removed. Its lesson lives
+  on in `s3dConductorSpan`, which is used.
+
+### Reviewed and found sound
+- Zone/stackup/layer plumbing, the negative-layer path, `restack`,
+  `drop_soldermask`, the inspection build, and the `format_version` 5 compat
+  path (`zone_levels` / `_zone_solid` are still reachable for a v5 file - not
+  dead).
+- GUI: three checkboxes fit the row with room to spare (right edge 601 px in a
+  1038 px window, measured, not eyeballed).
+- Component placement, silkscreen, cutouts and the rim path all behave the same
+  in the debug build, where `pcb_label` is None; every use of it is guarded.
+
+### Noted, not changed
+- The inspection build cuts each layer separately, so a dense board costs
+  cutouts x layer-parts booleans. Fine for inspection, which is what it is for.
+- `restack` trusts `thickness` to be present. The exporter always emits it; a
+  hand-edited intermediate could raise KeyError.
+
+### The heredoc trap, again
+Writing the escaper's test through a Bash heredoc mangled the backslashes and
+produced a Python SyntaxError - the round-14a lesson, arriving while testing an
+escaper. Written to a file instead.
 
 ### The four mechanical SKILL checks now
 Paren balance; string literals broken by a real newline; calls to procedures
