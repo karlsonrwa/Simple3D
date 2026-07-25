@@ -2971,6 +2971,43 @@ deliberate manufacturing overlap left by the trim, and the fuse absorbs them.
 - Whether `layerFunction` alone is enough to decide polarity without the name
   list - `probe_func.il` was written to answer that and has not been run yet.
 
+## Update 2026-07-25 (round 34) — silkscreen and paste were in the body
+
+Round 33 made a plain board emit its cross section as a `Primary` stackup so
+Body stitching would apply there. It emitted **every** entry
+`axlXSectionGet(... 'all)` returns, which on an ordinary board includes
+SILKSCREEN_TOP/BOTTOM and PASTEMASK_TOP/BOTTOM. Result on the user's
+my_test_board-a0: nine layers where there should be five, and a stated
+thickness of **1.204 mm against the board's real 1.104** - exactly four extra
+0.025 sheets.
+
+**This is requirement #1, from 2026-07-18**: dielectrics + planes + conductors
++ soldermask both sides, silkscreen and paste mask excluded.
+`calculateBoardThickness` has honoured it since round 2; the per-layer emission
+was written without it.
+
+Two distinct wrongs, not one:
+- the legend is already exported as its own geometry from the `silkscreen`
+  section, so keeping it in the stack drew it **twice**, and the stack copy was
+  a sheet over the whole board rather than the characters printed on it - which
+  is what the user described as "a plane instead of elements";
+- paste mask is a stencil aperture definition and is not on the finished board
+  at all.
+
+`s3dLayerInBody` now drops both before anything is measured, so the z walk
+closes the survivors up against the core and no gap is left. Thickness is the
+sum of what is kept rather than the API's `'thickness`, which counts
+everything.
+
+**Why it hid for two rounds:** the rigid-flex test board's three stackups carry
+no silkscreen or paste entries at all, so every check up to here passed. It
+took a plain board to show it.
+
+Verified by transliterating the filter against the user's actual Primary: 9
+layers -> 5, total 1.104 matching `pcb.thickness` exactly, top copper still at
+z=0, no gaps. Plus a check that SOLDERMASK is not swept up by the SOLDER_PASTE
+test.
+
 ## Update 2026-07-25 (round 33) — stitching on plain boards, and two labels
 
 ### Body stitching used to do nothing unless the board was rigid-flex

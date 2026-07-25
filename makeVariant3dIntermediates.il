@@ -1287,11 +1287,73 @@ procedure( s3dZoneList()
 ; 86.763 mm2 at the stiffener height while a zone prism puts 171.761 there,
 ; because the stiffener is a drawn shape smaller than the zone. Layers with no
 ; shapes - conductors, the dielectric, the soldermask - do span the whole zone.
+; nil for a cross-section entry that is NOT part of the finished board body.
+;
+; Silkscreen and paste mask are both layerType MASK and both appear in the
+; cross section, but neither belongs in the solid:
+;   - the legend is exported separately, as its own geometry, from the
+;     silkscreen section. Leaving it in the stack would draw it TWICE, and the
+;     stack copy would be a sheet covering the whole board rather than the
+;     characters actually printed on it.
+;   - paste mask is a stencil aperture definition. It is not on the finished
+;     board at all.
+;
+; This is requirement #1 from 2026-07-18 - "dielectrics + planes + conductors +
+; soldermask both sides; silkscreen and paste mask excluded" - which
+; calculateBoardThickness has always honoured. The per-layer emission did not,
+; and on a plain board that put four extra 0.025 sheets into the stack and
+; reported 1.204 mm where the board is 1.104. It never showed on the rigid-flex
+; test board because those stackups carry no silkscreen or paste layers.
+;
+; layerFunction is the reliable test (SILKSCREEN / SOLDER_PASTE); the name is
+; the fallback for a design that does not set one.
+procedure( s3dLayerInBody( o_layer )
+    let( ( probe )
+        probe = strcat(
+            if( o_layer->name then upperCase( o_layer->name ) else "" ) " "
+            if( stringp( o_layer->layerFunction ) then
+                upperCase( o_layer->layerFunction )
+            else
+                "" ) )
+        !( s3dContains( probe "SILKSCREEN" ) ||
+           s3dContains( probe "PASTEMASK" ) ||
+           s3dContains( probe "SOLDER_PASTE" ) ||
+           s3dContains( probe "SOLDERPASTE" ) )
+    )
+)
+
+; t if t_hay contains t_needle.
+procedure( s3dContains( t_hay t_needle )
+    let( ( ( n 0 ) ( found nil ) )
+        n = strlen( t_needle )
+        when( n > 0
+            for( i 1 strlen( t_hay ) - n + 1
+                when( substring( t_hay i n ) == t_needle  found = t )
+            )
+        )
+        found
+    )
+)
+
 procedure( s3dStackupJson( t_name g_stackup )
-    let( ( layers span thk total ( above 0.0 ) ( cum 0.0 ) ( i 0 )
-           zTop zBot shapes body out ( first t ) )
+    let( ( all layers span thk ( total 0.0 ) ( above 0.0 ) ( cum 0.0 ) ( i 0 )
+           ( nSkip 0 ) zTop zBot shapes body out ( first t ) )
+        all = nil
+        errset( all = axlXSectionGet( g_stackup 'all ) )
+
+        ; Drop what is not part of the body BEFORE anything is measured: the
+        ; z walk below closes the remaining layers up against the core, so a
+        ; dropped sheet leaves no gap where it used to be.
         layers = nil
-        errset( layers = axlXSectionGet( g_stackup 'all ) )
+        foreach( layer all
+            if( s3dLayerInBody( layer ) then
+                layers = cons( layer layers )
+            else
+                when( s3dLayerThk( layer ) > 0.0  nSkip = nSkip + 1 )
+            )
+        )
+        layers = reverse( layers )
+
         span = s3dConductorSpan( layers )
         unless( span  layers = nil )
 
@@ -1299,15 +1361,17 @@ procedure( s3dStackupJson( t_name g_stackup )
         i = 0
         foreach( layer layers
             when( i < car( span )  above = above + s3dLayerThk( layer ) )
+            total = total + s3dLayerThk( layer )
             i = i + 1
         )
 
-        total = nil
-        errset( total = axlXSectionGet( g_stackup 'thickness ) )
+        when( nSkip > 0
+            printf( "Simple 3D: stackup %s - %d silkscreen/paste layer(s) left out of the body.\n"
+                    t_name nSkip )
+        )
 
         out = strcat( s3dJsonQuote( t_name ) ": {\n"
-                      "\t\"thickness\": "
-                      sprintf( nil "%f" if( total && numberp( total ) then total else 0.0 ) )
+                      "\t\"thickness\": " sprintf( nil "%f" total )
                       ",\n\t\"layers\": [\n" )
 
         foreach( layer layers
