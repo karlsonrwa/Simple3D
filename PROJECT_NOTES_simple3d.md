@@ -2971,6 +2971,88 @@ deliberate manufacturing overlap left by the trim, and the fuse absorbs them.
 - Whether `layerFunction` alone is enough to decide polarity without the name
   list - `probe_func.il` was written to answer that and has not been run yet.
 
+## Update 2026-07-25 (round 29) — three board modes, colour per layer kind
+
+User asked whether the board could be ONE solid and still show a colour per
+layer on its rim, the way Inventor shows it. It can, and the answer is a single
+line of the pipeline.
+
+### UnifySameDomain is the thing that destroys it
+
+It is what makes the ordinary build small - it merges the coplanar faces every
+layer interface leaves behind - and merging them is exactly what welds the
+stack into one surface. Measured on the real STIFFENER2, eleven layer solids:
+
+| | solids | faces |
+|---|---|---|
+| compound | 11 | 66 |
+| fuse + UnifySameDomain | 1 | **11** |
+| fuse only | **1** | **47** |
+
+So: fuse, skip the unify, colour the faces. Volume identical, one solid on
+re-import, 11 distinct face colours survive the STEP round trip.
+
+**Which face came from which layer is taken from the boolean's own history**
+(`BRepAlgoAPI_Fuse.Modified`), not from geometry. A z-band lookup would be
+ambiguous the moment two zones put different layers at the same height, which
+is the normal case.
+
+### Cost, measured with ONE writer and all three coloured
+
+| mode | size | |
+|---|---|---|
+| solid (fuse+unify, one colour) | 12,589 | |
+| **layers** (fuse, colour per face) | **59,475** | 472% of solid, 67% of inspect |
+| inspect (separate parts) | 88,769 | |
+
+The first attempt at this comparison was wrong and worth remembering: `solid`
+and `inspect` were written with `STEPControl_Writer` (geometry only) and
+`layers` with `STEPCAFControl_Writer` (colours + structure), which made the new
+mode look 159% of a compound it was actually cheaper than. **Compare like with
+like, or do not compare.**
+
+### Three modes, one dropdown
+
+`gui.boardMode` = solid / layers / inspect, replacing the `debugLayers` boolean
+added in round 27 (read once for migration, then dropped from the file - same
+pattern as `stepDir`). A dropdown rather than more checkboxes because the three
+are alternatives: "inspect + layer colours" ticked together would have to mean
+something, and it does not.
+
+Beside it, a row of six clickable swatches - copper, base, coverlay, adhesive,
+stiffener, soldermask - opening the stdlib `colorchooser`. Greyed rather than
+hidden outside `layers` mode: a row that appears and disappears makes the
+window jump.
+
+**The defaults are Allegro's own material colours**, read off the test board's
+`3DX_APPEARANCE` attachment during the round-25 investigation
+(`3d_color_outer_conductor_material` 0xB87333, `_dielectric_` 0xFCFFD6,
+`_coverlay_` 0xF29440, `_soldermask_` 0x1A5924). So a layer-coloured export
+looks like the same board does in Allegro's canvas rather than like an
+arbitrary palette. Adhesive and stiffener have no Allegro entry; grey and FR4
+green.
+
+Layer kind is decided by type first, name second: a conductor is a conductor
+whatever it is called, while everything outside the core is a MASK layer and
+only its name distinguishes coverlay from adhesive.
+
+### Both non-solid modes now ignore the board and rim colours
+They have already decided every colour on the board. A whole-shape colour
+applied over the top would either be ignored or, worse, win - and paint the
+stack one colour, which is the one thing those modes exist to avoid. Says so in
+the log rather than silently.
+
+### Three self-inflicted stumbles, all caught by tests
+- `TopTools_ListIteratorOfListOfShape` does not exist in these bindings;
+  `TopTools_ListOfShape` is directly iterable in Python.
+- `make_board_layer_parts` returned the layer NAME where the colour code needed
+  the layer DICT (type and function decide the kind). Now carries the dict.
+- **A scripted edit to the test file replaced nothing and said so only because
+  the next run showed the block missing.** Then the anchor with `\n` in it
+  failed to match at all, because the heredoc mangled the backslash - the same
+  trap as round 14a and round 28, twice in two rounds. Rewrote it line-wise
+  with an assertion. *Anchor on text with no backslashes, and assert.*
+
 ## Update 2026-07-25 (round 28) — full review of the branch
 
 ~920 lines added across 8 files. Every suite, all four SKILL checks, the docs

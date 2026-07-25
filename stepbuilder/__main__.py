@@ -218,10 +218,11 @@ def main(argv: list[str] | None = None) -> int:
              "stack up toward the core by the thickness removed",
     )
     parser.add_argument(
-        "--debug-layers", action="store_true",
-        help="multi-stackup boards only: keep every stackup layer as its own "
-             "coloured part instead of fusing the board, for inspecting a "
-             "stackup by eye. Bigger files; the board is not one solid",
+        "--board-mode", choices=["solid", "layers", "inspect"], default="solid",
+        help="multi-stackup boards only. solid: one solid, one colour "
+             "(default, smallest). layers: one solid whose faces are coloured "
+             "by layer kind, so the rim shows the stack. inspect: every layer "
+             "a separate named part",
     )
     parser.add_argument(
         "--no-minimize", action="store_true",
@@ -287,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
                 # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
                 minimize_size=not args.no_minimize,
                 srgb_color=not args.legacy_color,
-                debug_layers=args.debug_layers,
+                board_mode=args.board_mode,
                 ignore_soldermask=args.ignore_soldermask,
                 log=log,
             )

@@ -26,12 +26,22 @@
         "silkscreenLayersOff": [],
         "minimizeFileSize": true,
         "_comment_windowGeometry": "Where the window was when it was last closed, as Tk's WIDTHxHEIGHT+X+Y. Restored on the next run, so on a multi-monitor desk it comes back on the same screen (X may be negative for a monitor left of the primary). If the position is no longer reachable - typically the monitor it was on has been disconnected - it is ignored and the window is centred on the main screen instead. Delete this key to get the centred first-run placement back. windowState remembers whether it was maximized.",
-        "windowGeometry": "",
+        "windowGeometry": "1038x876+441+102",
         "windowState": "normal",
-        "_comment_debugLayers": "Inspection build for multi-stackup / rigid-flex boards: every stackup layer is written as its own part, named <zone>__<layer>, given its own contrasting colour, and NOT fused into one board solid. For checking a stackup against Allegro's cross-section editor by eye. Files are several times larger and the board is no longer a single solid, so leave it false for normal exports. Does nothing on an ordinary single-stackup board.",
-        "debugLayers": false,
         "_comment_ignoreSoldermask": "Leave the soldermask out of the board entirely, however the design defines it, and close the stack up toward the core by exactly the thickness removed - on each side independently. Components then rest on the copper rather than on the mask, and the board is that much thinner. Applies both to a multi-stackup board's layers and to a plain board's soldermask_top/soldermask_bottom. The GUI checkbox is 'Ignore soldermask layers'; the decision is made when the model is built, so it needs no re-export.",
-        "ignoreSoldermask": false
+        "ignoreSoldermask": false,
+        "_comment_boardMode": "How the board body is built on a MULTI-STACKUP / rigid-flex design; ignored on an ordinary board. 'solid' - one solid in one colour, coplanar faces merged, smallest file. 'layers' - one solid whose layer interfaces are kept so every face can be coloured by the kind of layer it belongs to and the rim shows the stack; about 4.7x the size of 'solid'. 'inspect' - every layer of every zone as its own named part, for taking the board apart by eye; largest. The GUI calls this 'Board'.",
+        "boardMode": "solid",
+        "_comment_layerColors": "Colour per kind of stackup layer, used by boardMode 'layers'. Defaults are Allegro's own material colours, taken from a board's 3DX_APPEARANCE, so the export looks like the same board does in Allegro's 3D canvas. Set from the swatch row in the GUI or by hand as #RRGGBB.",
+        "layerColors": {
+            "copper": "#B87333",
+            "base": "#FCFFD6",
+            "coverlay": "#F29440",
+            "adhesive": "#C8C8C8",
+            "stiffener": "#5A8C5A",
+            "soldermask": "#1A5924",
+            "other": "#969696"
+        }
     },
     "silkscreen": {
         "top": [

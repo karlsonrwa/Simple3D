@@ -28,11 +28,14 @@ from .core import DEFAULT_FLAT_HEIGHT
 from .colors import (
     BOARD_THEMES,
     CREAM_DIELECTRIC,
+    DEFAULT_LAYER_COLORS,
     DEFAULT_SILK,
     DEFAULT_THEME,
+    LAYER_KINDS,
     SILK_COLORS,
     SILK_ORDER,
     THEME_ORDER,
+    parse_hex,
     resolve_board_color,
 )
 
@@ -41,6 +44,24 @@ from .colors import (
 # home directory. The launcher passes its path with --config; run standalone,
 # the package's own folder is the documented install layout.
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "simple3d_config.json"
+
+# How the board body is built. One dropdown rather than a pile of checkboxes:
+# the three are alternatives, and "inspect + layer colours" ticked together
+# would have to mean something, which it does not.
+BOARD_MODES = [
+    ("solid",   "Solid (one colour)"),
+    ("layers",  "Layer colours"),
+    ("inspect", "Inspect layers (separate parts)"),
+]
+
+
+def _mode_label(key: str) -> str:
+    return dict(BOARD_MODES).get(key, BOARD_MODES[0][1])
+
+
+def _mode_key(label: str) -> str:
+    return next((k for k, l in BOARD_MODES if l == label), BOARD_MODES[0][0])
+
 
 RIM_SAME = "Same as board"
 RIM_CREAM = "Cream (dielectric)"
@@ -80,7 +101,8 @@ class BuildSettings:
     silk_flat_height: float
     silk_layers_off: frozenset[str]
     minimize: bool
-    debug_layers: bool
+    board_mode: str
+    layer_colors: dict
     ignore_soldermask: bool
     brd_name: str | None
     dated_name: bool
@@ -121,7 +143,8 @@ class StepBuilderApp(tk.Tk):
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
-        self.debug_layers = tk.BooleanVar(value=False)
+        self.board_mode = tk.StringVar(value=BOARD_MODES[0][1])
+        self.layer_colors: dict[str, tuple[int, int, int]] = dict(DEFAULT_LAYER_COLORS)
         self.ignore_soldermask = tk.BooleanVar(value=False)
 
         # Prefill state, set by prefill_jobs() when launched from Allegro.
@@ -314,12 +337,12 @@ class StepBuilderApp(tk.Tk):
         # is deliberately not hidden away in the config file: it is the thing
         # you reach for when a stackup looks wrong and you want to take the
         # board apart by eye.
-        ttk.Checkbutton(checks, text="Inspect layers (unfused, coloured)",
-                        variable=self.debug_layers).pack(side="left", padx=(12, 0))
         # Leaves the mask out of the board however the design defines it, and
         # closes the stack toward the core by what was removed.
         ttk.Checkbutton(checks, text="Ignore soldermask layers",
                         variable=self.ignore_soldermask).pack(side="left", padx=(12, 0))
+
+        self._build_board_mode_row(opts)
 
         # --- log ---
         log_frame = ttk.LabelFrame(self, text="Log", padding=4)
@@ -444,6 +467,57 @@ class StepBuilderApp(tk.Tk):
         if near_screen:
             return
         self._last_normal_geometry = self.geometry()
+
+    def _build_board_mode_row(self, parent) -> None:
+        """How the board body is built, and the colour of each layer kind.
+
+        Both live on one row: the swatches only mean anything in "Layer
+        colours", so they are greyed out otherwise rather than hidden - a row
+        that appears and disappears makes the window jump.
+        """
+        row = ttk.Frame(parent)
+        row.grid(row=4, column=0, columnspan=5, sticky="w", pady=(6, 0))
+
+        ttk.Label(row, text="Board").pack(side="left")
+        box = ttk.Combobox(row, textvariable=self.board_mode,
+                           values=[label for _, label in BOARD_MODES],
+                           state="readonly", width=28)
+        box.pack(side="left", padx=(6, 0))
+        box.bind("<<ComboboxSelected>>", lambda e: self._update_layer_swatches())
+
+        self._swatches: dict[str, tk.Canvas] = {}
+        for key, label, _ in LAYER_KINDS:
+            if key == "other":            # not a layer anyone sets on purpose
+                continue
+            cell = ttk.Frame(row)
+            cell.pack(side="left", padx=(10, 0))
+            canvas = tk.Canvas(cell, width=18, height=18, highlightthickness=1,
+                               highlightbackground="#888", cursor="hand2")
+            canvas.pack(side="top")
+            canvas.bind("<Button-1>", lambda e, k=key: self._pick_layer_color(k))
+            ttk.Label(cell, text=label, foreground="#777").pack(side="top")
+            self._swatches[key] = canvas
+        self._update_layer_swatches()
+
+    def _update_layer_swatches(self) -> None:
+        active = _mode_key(self.board_mode.get()) == "layers"
+        for key, canvas in self._swatches.items():
+            rgb = self.layer_colors.get(key, DEFAULT_LAYER_COLORS[key])
+            canvas.configure(bg="#%02x%02x%02x" % rgb if active else "#d9d9d9",
+                             cursor="hand2" if active else "")
+
+    def _pick_layer_color(self, kind: str) -> None:
+        if _mode_key(self.board_mode.get()) != "layers":
+            return
+        from tkinter import colorchooser
+
+        current = self.layer_colors.get(kind, DEFAULT_LAYER_COLORS[kind])
+        rgb, _ = colorchooser.askcolor(
+            color="#%02x%02x%02x" % current,
+            title=f"Colour for {dict((k, l) for k, l, _ in LAYER_KINDS)[kind]}")
+        if rgb:
+            self.layer_colors[kind] = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+            self._update_layer_swatches()
 
     def _build_actions(self) -> None:
         """All action buttons live here. Add new ones alongside Generate."""
@@ -784,7 +858,8 @@ class StepBuilderApp(tk.Tk):
             silk_flat_height=self.silk_flat_height,
             silk_layers_off=frozenset(self._current_layers_off()),
             minimize=self.minimize.get(),
-            debug_layers=self.debug_layers.get(),
+            board_mode=_mode_key(self.board_mode.get()),
+            layer_colors=dict(self.layer_colors),
             ignore_soldermask=self.ignore_soldermask.get(),
             brd_name=self._brd_name,
             dated_name=self._dated_name,
@@ -876,7 +951,8 @@ class StepBuilderApp(tk.Tk):
                     silk_layers_off=settings.silk_layers_off,
                     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
                     minimize_size=settings.minimize,
-                    debug_layers=settings.debug_layers,
+                    board_mode=settings.board_mode,
+                    layer_colors=settings.layer_colors,
                     ignore_soldermask=settings.ignore_soldermask,
                     log=lambda m: self._queue.put(("log", m)),
                     progress=lambda i, n: self._queue.put(("progress", (i, n))),
@@ -1057,7 +1133,21 @@ class StepBuilderApp(tk.Tk):
         # MFRPN DISABLED (kept for future):
         # self.mfr_pn_in_name.set(gui.get("mfrPnInName", False))
         self.minimize.set(gui.get("minimizeFileSize", True))
-        self.debug_layers.set(gui.get("debugLayers", False))
+        # debugLayers was the previous shape of this setting: a single boolean
+        # meaning "inspect". Read once so an existing config keeps working, and
+        # dropped on save - see _save_config.
+        mode = gui.get("boardMode")
+        if not isinstance(mode, str) or mode not in dict(BOARD_MODES):
+            mode = "inspect" if gui.get("debugLayers") else "solid"
+        self.board_mode.set(_mode_label(mode))
+        saved = gui.get("layerColors")
+        if isinstance(saved, dict):
+            for key, value in saved.items():
+                if key in self.layer_colors:
+                    try:
+                        self.layer_colors[key] = parse_hex(str(value))
+                    except ValueError:
+                        pass
         self.ignore_soldermask.set(gui.get("ignoreSoldermask", False))
         geometry = gui.get("windowGeometry")
         self._saved_geometry = geometry if isinstance(geometry, str) else None
@@ -1116,6 +1206,8 @@ class StepBuilderApp(tk.Tk):
         # config-safety work: that protects keys belonging to someone else. This
         # one is ours and superseded, and dropping it is the migration.
         gui.pop("stepDir", None)
+        # Superseded by boardMode; the read above has already migrated it.
+        gui.pop("debugLayers", None)
         dirs = self.step_dirs()
         gui.update({
             "stepDirs": dirs,
@@ -1135,7 +1227,9 @@ class StepBuilderApp(tk.Tk):
             # MFRPN DISABLED (kept for future):
             # "mfrPnInName": self.mfr_pn_in_name.get(),
             "minimizeFileSize": self.minimize.get(),
-            "debugLayers": self.debug_layers.get(),
+            "boardMode": _mode_key(self.board_mode.get()),
+            "layerColors": {k: "#%02X%02X%02X" % v
+                            for k, v in self.layer_colors.items()},
             "ignoreSoldermask": self.ignore_soldermask.get(),
             # Where the window was, so the next run comes up in the same place -
             # on the same monitor, which is the point on a multi-screen desk.

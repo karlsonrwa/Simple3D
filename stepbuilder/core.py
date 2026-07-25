@@ -340,8 +340,11 @@ def _layer_order(stackups: dict) -> list[str]:
 
 def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
                            shift: float,
-                           log: LogFn = _noop_log) -> list[tuple[str, str, TopoDS_Shape]]:
-    """(zone, layer, solid) for every layer of every zone, NOT fused.
+                           log: LogFn = _noop_log) -> list[tuple[str, dict, TopoDS_Shape]]:
+    """(zone name, layer dict, solid) for every layer of every zone, NOT fused.
+
+    The LAYER ITSELF, not just its name: the layer-coloured build needs its
+    type and function to decide what kind of layer it is.
 
     The inspection build. Fusing is what the ordinary path does and what makes
     the file a quarter of the size, but it also welds the stack into one
@@ -351,7 +354,7 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
 
     Cutouts are applied to each layer separately, so holes stay visible.
     """
-    parts: list[tuple[str, str, TopoDS_Shape]] = []
+    parts: list[tuple[str, dict, TopoDS_Shape]] = []
     contours = pcb.get("edges") or []
     cutouts = contours[1:] if len(contours) > 1 else []
 
@@ -373,7 +376,7 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
             if cutouts:
                 solid = _cut_out(solid, cutouts, top + 0.01,
                                  gp_Vec(0, 0, -(height + 0.02)))
-            parts.append((str(zone["name"]), str(layer.get("name") or "?"), solid))
+            parts.append((str(zone["name"]), layer, solid))
 
     if not parts:
         raise StepBuilderError("No stackup layer produced a solid")
@@ -396,6 +399,94 @@ def _cut_out(shape: TopoDS_Shape, contours: list, cut_z: float,
     if not cut.IsDone():
         raise StepBuilderError("Boolean cut of board cutouts failed")
     return cut.Shape()
+
+
+def fuse_keeping_faces(parts: list[tuple[str, str, TopoDS_Shape]],
+                       log: LogFn = _noop_log):
+    """Fuse the layer solids into ONE solid whose faces stay per-layer.
+
+    Returns (solid, [(face, layer dict)]).
+
+    **UnifySameDomain is deliberately NOT applied here**, and that is the whole
+    trick. It is what makes the ordinary build small - it merges the coplanar
+    faces every layer interface leaves behind - but merging them is exactly what
+    destroys the stack on the rim: two layers with the same outline become one
+    face and the board loses its stripes. Measured on the real STIFFENER2:
+    eleven layer solids fuse to one solid with 47 faces, against 11 once
+    unified.
+
+    Which face came from which layer is taken from the boolean's own history
+    (`Modified`), not guessed from geometry: with several zones, two different
+    layers can occupy the same z, so a z-band lookup would be ambiguous.
+    """
+    if not parts:
+        raise StepBuilderError("No stackup layer produced a solid")
+
+    # Imported here, not at module scope, like every other OCCT helper in this
+    # file - and never as a local rebinding of a name that IS module-level, for
+    # the UnboundLocalError reason spelled out in _rim_faces.
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopTools import TopTools_DataMapOfShapeInteger, TopTools_ListOfShape
+
+    solids = [solid for _, _, solid in parts]
+    if len(solids) == 1:
+        faces = []
+        exp = TopExp_Explorer(solids[0], TopAbs_FACE)
+        while exp.More():
+            faces.append((TopoDS.Face_s(exp.Current()), parts[0][1]))
+            exp.Next()
+        return solids[0], faces
+
+    arguments = TopTools_ListOfShape()
+    arguments.Append(solids[0])
+    tools = TopTools_ListOfShape()
+    for solid in solids[1:]:
+        tools.Append(solid)
+
+    op = BRepAlgoAPI_Fuse()
+    op.SetArguments(arguments)
+    op.SetTools(tools)
+    op.SetRunParallel(True)
+    op.Build()
+    if not op.IsDone():
+        raise StepBuilderError("Could not fuse the stackup layers")
+    fused = op.Shape()
+    if fused.IsNull():
+        raise StepBuilderError("Fusing the stackup layers produced nothing")
+
+    # input face -> layer, followed through the boolean
+    owner = TopTools_DataMapOfShapeInteger()
+    for index, (_, layer, solid) in enumerate(parts):
+        exp = TopExp_Explorer(solid, TopAbs_FACE)
+        while exp.More():
+            face = exp.Current()
+            modified = op.Modified(face)
+            if modified.Size() == 0:
+                if not op.IsDeleted(face):
+                    owner.Bind(face, index)
+            else:
+                # OCP makes TopTools_ListOfShape iterable directly; there is no
+                # TopTools_ListIteratorOfListOfShape in these bindings.
+                for produced in modified:
+                    owner.Bind(produced, index)
+            exp.Next()
+
+    faces, unknown = [], 0
+    exp = TopExp_Explorer(fused, TopAbs_FACE)
+    while exp.More():
+        face = TopoDS.Face_s(exp.Current())
+        if owner.IsBound(face):
+            faces.append((face, parts[owner.Find(face)][1]))
+        else:
+            unknown += 1
+        exp.Next()
+
+    if unknown:
+        log(f"warning: {unknown} board face(s) could not be traced back to a "
+            f"layer and keep the default colour")
+    return fused, faces
 
 
 def _stackup_board(stackups: dict, zones: list[dict], shift: float,
@@ -1489,7 +1580,8 @@ def generate(
     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
     minimize_size: bool = True,
     srgb_color: bool = True,
-    debug_layers: bool = False,
+    board_mode: str = "solid",
+    layer_colors: dict | None = None,
     ignore_soldermask: bool = False,
     log: LogFn = _noop_log,
     progress: ProgressFn = _noop_progress,
@@ -1534,12 +1626,18 @@ def generate(
     srgb_color:
         Treat colours as sRGB (what you set is what you see). False reproduces
         the original C++ linear-RGB behaviour.
-    debug_layers:
-        Inspection build for multi-stackup boards: every stackup layer stays a
-        separate, individually coloured and named part instead of being fused
-        into one board solid. For checking a stackup against the cross-section
-        editor by eye. Bigger files, and the board is no longer one solid.
-        Ignored on an ordinary single-stackup board.
+    board_mode:
+        How a MULTI-STACKUP board is built. Ignored on an ordinary board.
+          "solid"   - one solid, one colour, coplanar faces merged. Smallest.
+          "layers"  - one solid, but the layer interfaces are kept and each
+                      face is coloured by what kind of layer it belongs to, so
+                      the rim shows the stack. About 4.7x "solid".
+          "inspect" - every layer a separate named part. For taking the board
+                      apart by eye; largest of the three.
+    layer_colors:
+        {kind: (r, g, b)} for board_mode="layers", kinds as in colors.LAYER_KINDS
+        (copper, base, coverlay, adhesive, stiffener, soldermask, other).
+        Missing kinds fall back to colors.DEFAULT_LAYER_COLORS.
     ignore_soldermask:
         Leave the soldermask out of the board entirely, however the design
         defines it, and close the stack up toward the core by exactly the
@@ -1629,7 +1727,40 @@ def generate(
     # ---- board ----------------------------------------------------------- #
     log("Building board geometry")
 
-    if debug_layers and zones and stackups:
+    multi = bool(zones and stackups)
+    mode = board_mode if multi else "solid"
+
+    if mode == "layers":
+        # One solid, but the layer interfaces survive and every face is
+        # coloured by the kind of layer it belongs to, so the rim shows the
+        # stack. See fuse_keeping_faces for why UnifySameDomain is skipped.
+        from .colors import DEFAULT_LAYER_COLORS, layer_kind
+
+        palette = {**DEFAULT_LAYER_COLORS, **(layer_colors or {})}
+        parts = make_board_layer_parts(data["pcb"], stackups, zones, shift, log)
+        board, faces = fuse_keeping_faces(parts, log)
+
+        pcb_label = shape_tool.NewShape()
+        shape_tool.SetShape(pcb_label, board)
+
+        used: dict[str, int] = {}
+        for face, layer in faces:
+            kind = layer_kind(layer)
+            rgb = palette.get(kind, DEFAULT_LAYER_COLORS["other"])
+            colour = Quantity_Color(
+                rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0,
+                Quantity_TypeOfColor.Quantity_TOC_sRGB if srgb_color
+                else Quantity_TypeOfColor.Quantity_TOC_RGB)
+            color_tool.SetColor(face, colour, XCAFDoc_ColorType.XCAFDoc_ColorSurf)
+            used[kind] = used.get(kind, 0) + 1
+
+        log(f"Layer-coloured board: one solid, {len(faces)} face(s) coloured "
+            f"by layer kind")
+        for kind, count in sorted(used.items()):
+            rgb = palette.get(kind, DEFAULT_LAYER_COLORS["other"])
+            log(f"  {kind}: {count} face(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+
+    elif mode == "inspect":
         # Inspection build: every stackup layer stays its own coloured part.
         from .colors import layer_color
 
@@ -1640,7 +1771,8 @@ def generate(
                             TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
         shape_tool.AddComponent(main_assembly, group, TopLoc_Location(gp_Trsf()))
 
-        for zone_name, layer_name, solid in parts:
+        for zone_name, layer, solid in parts:
+            layer_name = str(layer.get("name") or "?")
             label = shape_tool.NewShape()
             shape_tool.SetShape(label, solid)
             rgb = layer_color(layer_name, order)
@@ -1666,10 +1798,13 @@ def generate(
         pcb_label = shape_tool.NewShape()
         shape_tool.SetShape(pcb_label, board)
 
-    # The inspection build has already coloured and named every layer part, so
-    # there is no single board solid left to paint or to find a rim on.
-    if pcb_label is None and rim_color is not None:
-        log("warning: the rim colour is ignored in the layer inspection build")
+    # Both non-solid modes have already decided every colour on the board:
+    # "inspect" per part, "layers" per face. A board colour or a rim colour
+    # applied over the top would either be ignored by the viewer or, worse,
+    # win - and paint the stack a single colour, which is the one thing those
+    # modes exist to avoid.
+    if mode != "solid" and rim_color is not None:
+        log(f"warning: the rim colour is ignored in board mode {mode!r}")
 
     if board_color is None:
         rgb = data["pcb"]["color"]
@@ -1677,10 +1812,10 @@ def generate(
     else:
         board_rgb01 = (board_color[0] / 255.0, board_color[1] / 255.0, board_color[2] / 255.0)
 
-    if pcb_label is not None:
+    if pcb_label is not None and mode == "solid":
         _set_color(color_tool, pcb_label, board_rgb01, srgb_color)
 
-    if pcb_label is not None and rim_color is not None:
+    if pcb_label is not None and mode == "solid" and rim_color is not None:
         # Paint the rim (vertical side walls) separately. This needs per-face
         # colour, which costs a few extra entities but is what the user asked
         # for. The flat top/bottom keep the board colour.

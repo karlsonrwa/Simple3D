@@ -120,6 +120,52 @@ def layer_color(name: str, order: list[str]) -> tuple[int, int, int]:
     return LAYER_PALETTE[index % len(LAYER_PALETTE)]
 
 
+# --------------------------------------------------------------------------- #
+# stackup layer kinds, for the layer-coloured board
+# --------------------------------------------------------------------------- #
+
+# The kinds a flex / rigid-flex stackup is made of, in the order the swatch row
+# shows them. Defaults are Allegro's OWN material colours, read off a real
+# board's 3DX_APPEARANCE attachment - so a layer-coloured export looks like the
+# same board does in Allegro's 3D canvas rather than like an arbitrary palette.
+LAYER_KINDS: list[tuple[str, str, tuple[int, int, int]]] = [
+    ("copper",     "Copper",     (0xB8, 0x73, 0x33)),   # 3d_color_outer_conductor
+    ("base",       "Base",       (0xFC, 0xFF, 0xD6)),   # 3d_color_dielectric
+    ("coverlay",   "Coverlay",   (0xF2, 0x94, 0x40)),   # 3d_color_coverlay
+    ("adhesive",   "Adhesive",   (0xC8, 0xC8, 0xC8)),   # no Allegro entry; grey
+    ("stiffener",  "Stiffener",  (0x5A, 0x8C, 0x5A)),   # no Allegro entry; FR4 green
+    ("soldermask", "Soldermask", (0x1A, 0x59, 0x24)),   # 3d_color_soldermask
+    ("other",      "Other",      (0x96, 0x96, 0x96)),
+]
+
+DEFAULT_LAYER_COLORS: dict[str, tuple[int, int, int]] = {
+    key: rgb for key, _, rgb in LAYER_KINDS
+}
+
+
+def layer_kind(layer: dict) -> str:
+    """Which of LAYER_KINDS a stackup layer belongs to.
+
+    Type first, name second: a conductor is a conductor whatever it is called,
+    while everything outside the core is a MASK layer and can only be told apart
+    by its name. Same normalisation as the soldermask test in core - strip
+    everything but letters and digits - so SOLDER_MASK_TOP and "Solder Mask"
+    both land in the same place.
+    """
+    kind_of_type = {"CONDUCTOR": "copper", "PLANE": "copper", "DIELECTRIC": "base"}
+    by_type = kind_of_type.get(str(layer.get("type") or "").upper())
+    if by_type:
+        return by_type
+
+    probe = f"{layer.get('name') or ''} {layer.get('function') or ''}".upper()
+    probe = "".join(c for c in probe if c.isalnum())
+    for marker, kind in (("SOLDERMASK", "soldermask"), ("COVERLAY", "coverlay"),
+                         ("ADHESIVE", "adhesive"), ("STIFFENER", "stiffener")):
+        if marker in probe:
+            return kind
+    return "other"
+
+
 def resolve_board_color(theme: str) -> tuple[int, int, int]:
     """Theme name or a custom 'r,g,b' / '#rrggbb' string -> RGB 0-255."""
     if theme in BOARD_THEMES:
