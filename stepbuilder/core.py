@@ -152,6 +152,167 @@ def _open_wire_detail(wire: TopoDS_Wire) -> str:
         return ""
 
 
+def stackup_levels(stackups: dict, zones: list[dict],
+                   z_datum: str) -> tuple[dict, float, float, float]:
+    """Zone faces, board extent and the datum shift, from the per-layer data.
+
+    Returns ({zone: (top, bottom)}, board_top, board_bottom, shift).
+
+    Every layer arrives with its own z_top/z_bottom measured from the top of
+    the conductor core, which the exporter puts at 0 for every stackup. That
+    datum is the whole point: FLEX, STIFFENER1 and STIFFENER2 are 0.365, 0.49
+    and 2.44 thick but share a 0.215 core, so they can only be stacked
+    correctly by their copper - a stiffener grows outwards from it.
+
+    Verified against Allegro's own export of the same board, which spans
+    -0.315 .. 2.125 in exactly this frame.
+    """
+    tops, bottoms = {}, {}
+    for zone in zones:
+        layers = stackups.get(str(zone["stackup"]), {}).get("layers") or []
+        if not layers:
+            continue
+        name = str(zone["name"])
+        tops[name] = max(float(lay["z_top"]) for lay in layers)
+        bottoms[name] = min(float(lay["z_bottom"]) for lay in layers)
+
+    if not tops:
+        raise StepBuilderError("No zone resolved to a stackup with layers")
+
+    board_top = max(tops.values())
+    board_bottom = min(bottoms.values())
+    shift = -board_top if z_datum == "top" else -board_bottom
+    levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}
+    return levels, board_top + shift, board_bottom + shift, shift
+
+
+def _shape_face(shape: dict, z: float):
+    """One drawn layer shape as a face, its voids becoming holes."""
+    outer = build_contour(shape["outline"], z)
+    inner = [build_contour(v, z) for v in (shape.get("voids") or [])]
+    return _face_from_wires(outer, inner)
+
+
+def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
+    """The material of one layer inside one zone, as a face or compound.
+
+    Two cases, and the difference is what this whole per-layer model exists
+    for. A layer with drawn shapes (stiffener, coverlay, adhesive) occupies
+    only those shapes - Allegro's own export puts 86.763 mm2 at the stiffener
+    height where a plain zone prism puts 171.761. A layer with none
+    (conductors, dielectric, soldermask) spans the whole zone; the dielectric
+    shows up in Allegro's tree as exactly one body per zone, which is the same
+    statement.
+
+    Shapes are design-wide, so they are intersected with the zone: one
+    ADHESIVE_TOP shape covers most of the board and belongs to three zones at
+    once, each at its own height.
+    """
+    zone_face = _face_from_wires(build_contour(zone_contour, z), [])
+    shapes = layer.get("shapes")
+    if not shapes:
+        return zone_face
+
+    faces = []
+    for i, shape in enumerate(shapes):
+        try:
+            faces.append(_shape_face(shape, z))
+        except (StepBuilderError, RuntimeError, KeyError, TypeError, IndexError) as exc:
+            log(f"warning: shape {i + 1} of layer {layer.get('name')} skipped ({exc})")
+    if not faces:
+        return None
+
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
+
+    builder = BRep_Builder()
+    material = TopoDS_Compound()
+    builder.MakeCompound(material)
+    for face in faces:
+        builder.Add(material, face)
+
+    common = BRepAlgoAPI_Common(material, zone_face)
+    if not common.IsDone():
+        log(f"warning: could not clip layer {layer.get('name')} to zone; "
+            f"using it unclipped")
+        return material
+    return common.Shape()
+
+
+def _stackup_board(stackups: dict, zones: list[dict], shift: float,
+                   log: LogFn) -> TopoDS_Shape:
+    """The board as one solid: every layer of every zone, fused.
+
+    Fusing measured at **25.6%** of the compound's file size with the volume
+    identical to nine decimals - stacked layers share large coplanar faces and
+    each separate solid costs its own product definition in AP214. That is the
+    opposite of the silkscreen legend, where fusing thousands of barely
+    touching prisms came to 154%. One boolean over the whole list rather than
+    pairwise, which is closer to linear.
+    """
+    solids = []
+    for zone in zones:
+        stackup = stackups.get(str(zone["stackup"]))
+        if not stackup:
+            log(f"warning: zone {zone['name']} names an unknown stackup "
+                f"{zone['stackup']!r}, skipped")
+            continue
+        for layer in stackup.get("layers") or []:
+            height = float(layer["z_top"]) - float(layer["z_bottom"])
+            if height <= 0:
+                continue
+            region = _layer_region(layer, zone["contour"],
+                                   float(layer["z_top"]) + shift, log)
+            if region is None:
+                continue
+            solid = BRepPrimAPI_MakePrism(region, gp_Vec(0, 0, -height)).Shape()
+            if not solid.IsNull():
+                solids.append(solid)
+
+    if not solids:
+        raise StepBuilderError("No stackup layer produced a solid")
+    log(f"Building board from {len(solids)} layer solid(s)")
+
+    if len(solids) == 1:
+        return solids[0]
+
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
+    from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain
+    from OCP.TopTools import TopTools_ListOfShape
+
+    # BRepAlgoAPI_Fuse in its multi-argument form, NOT BRepAlgoAPI_BuilderAlgo:
+    # the general fuse computes the same boolean but leaves the pieces as
+    # separate solids in a compound, which is exactly what this is trying to
+    # get rid of (measured: 18 solids out, one expected).
+    arguments = TopTools_ListOfShape()
+    arguments.Append(solids[0])
+    tools = TopTools_ListOfShape()
+    for solid in solids[1:]:
+        tools.Append(solid)
+
+    op = BRepAlgoAPI_Fuse()
+    op.SetArguments(arguments)
+    op.SetTools(tools)
+    op.SetRunParallel(True)
+    op.Build()
+    if not op.IsDone():
+        raise StepBuilderError("Could not fuse the stackup layers")
+    fused = op.Shape()
+    if fused.IsNull():
+        raise StepBuilderError("Fusing the stackup layers produced nothing")
+
+    # Merge the coplanar faces the fuse leaves behind at every layer
+    # interface. Never fatal: an unmerged board is correct, just heavier.
+    try:
+        unify = ShapeUpgrade_UnifySameDomain(fused, True, True, False)
+        unify.Build()
+        merged = unify.Shape()
+        if not merged.IsNull():
+            fused = merged
+    except Exception as exc:
+        log(f"warning: could not merge the board's coplanar faces ({exc})")
+    return fused
+
+
 def zone_levels(zones: list[dict], z_datum: str) -> tuple[dict, float, float]:
     """Where each stackup zone's two faces sit, and the board's overall extent.
 
@@ -227,6 +388,8 @@ def _zone_solid(zones: list[dict], levels: dict, log: LogFn) -> TopoDS_Shape:
 def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0,
                         zones: list[dict] | None = None,
                         levels: dict | None = None,
+                        stackups: dict | None = None,
+                        shift: float = 0.0,
                         log: LogFn = _noop_log) -> TopoDS_Shape:
     """Extrude the board outline downwards and cut every hole/cutout out of it.
 
@@ -243,7 +406,10 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0,
         # Multi-stackup: the board IS the zones. pcb.edges[0] still describes
         # the overall outline, but it carries no per-zone thickness, so it is
         # not used for the body - only its cutouts are, below.
-        board = _zone_solid(zones, levels, log)
+        if stackups:
+            board = _stackup_board(stackups, zones, shift, log)
+        else:
+            board = _zone_solid(zones, levels, log)
         cut_top = max(top for top, _ in levels.values())
         cut_bottom = min(bottom for _, bottom in levels.values())
         # A through-cut that ends exactly on a face is a classic source of
@@ -1235,16 +1401,27 @@ def generate(
     # path below stays exactly as it was.
     zones = data.get("zones")
     zones = zones if isinstance(zones, list) and zones else None
+    stackups = data.get("stackups")
+    stackups = stackups if isinstance(stackups, dict) and stackups else None
     levels = None
+    shift = 0.0
 
     if zones:
-        levels, board_top_z, board_bottom_z = zone_levels(zones, z_datum)
+        if stackups:
+            # format_version 6: every layer carries its own extent, so the
+            # board is built layer by layer rather than as one prism per zone.
+            levels, board_top_z, board_bottom_z, shift = stackup_levels(
+                stackups, zones, z_datum)
+        else:
+            levels, board_top_z, board_bottom_z = zone_levels(zones, z_datum)
         extrude_z_offset = board_top_z
         log(f"Multi-stackup board: {len(zones)} zone(s), "
             f"{board_top_z - board_bottom_z:.3f} mm at its thickest")
         for zone in zones:
-            top, bottom = levels[str(zone["name"])]
-            log(f"  {zone['name']} ({zone['stackup']}): {top - bottom:.3f} mm")
+            name = str(zone["name"])
+            if name in levels:
+                top, bottom = levels[name]
+                log(f"  {name} ({zone['stackup']}): {top - bottom:.3f} mm")
     elif z_datum == "top":
         # Where the two board faces live, given the datum choice.
         board_top_z, board_bottom_z = 0.0, -thickness
@@ -1270,7 +1447,8 @@ def generate(
     # ---- board ----------------------------------------------------------- #
     log("Building board geometry")
     board = make_board_geometry(data["pcb"], thickness, extrude_z_offset,
-                                zones=zones, levels=levels, log=log)
+                                zones=zones, levels=levels, stackups=stackups,
+                                shift=shift, log=log)
 
     pcb_label = shape_tool.NewShape()
     shape_tool.SetShape(pcb_label, board)
@@ -1378,7 +1556,7 @@ def generate(
     # Anything not reserved is a refdes. "silkscreen" MUST be listed here or it
     # would be walked as if it were a component.
     _reserved = ("name", "pcb", "format", "format_version", "silkscreen",
-                 "embedded_models", "zones")
+                 "embedded_models", "zones", "stackups")
     components = {k: v for k, v in data.items() if k not in _reserved}
     result = BuildResult(
         output=output_dir / f"{json_stem}.step",
