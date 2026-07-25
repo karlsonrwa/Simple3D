@@ -269,6 +269,85 @@ procedure( s3dNoStepExport( o_sym )
     )
 )
 
+; The model files Allegro keeps a copy of INSIDE the .brd, by original
+; filename. Returns a list of strings, or nil.
+;
+; Once a 3D model has been mapped, Allegro stores a copy in the design database
+; as an attachment named "3D:<original file name>/<something>", for example
+;   3D:SWITRONIC_IT-1187.step/ACIS
+; Only the file name is wanted here. Simple 3D never uses those copies - it
+; reads model files from disk - but knowing they exist is what lets the export
+; tell "this model is nowhere" apart from "this model is in the board, just not
+; on your disk", which are two very different problems for the user.
+;
+; Deliberately tolerant: the part after the last "/" is dropped whatever it
+; says, so a different Allegro version naming it something else still parses.
+procedure( s3dEmbeddedModels()
+    let( ( names out id rest pos ( n 0 ) )
+        out = tconc( nil nil )
+        names = nil
+        errset( names = axlGetAllAttachmentNames() )
+
+        foreach( entry names
+            when( stringp( entry ) && (strlen( entry ) > 3) &&
+                  (substring( entry 1 3 ) == "3D:")
+                ; drop the "3D:" prefix
+                rest = substring( entry 4 strlen( entry ) - 3 )
+                ; drop a trailing "/<tag>", if there is one
+                pos = nil
+                for( i 1 strlen( rest )
+                    when( substring( rest i 1 ) == "/"  pos = i )
+                )
+                when( pos  rest = substring( rest 1 pos - 1 ) )
+                when( rest && (strlen( rest ) > 0)
+                    n = n + 1
+                    tconc( out rest )
+                )
+            )
+        )
+
+        cdr( car( out ) )
+    )
+)
+
+; The same list as one JSON key, ready to drop into the header block. Always
+; emitted, even empty, so the shape of the file does not depend on the board.
+; No trailing comma: the caller adds the separator.
+procedure( s3dEmbeddedModelsJson()
+    let( ( models out ( first t ) ( nBad 0 ) )
+        models = s3dEmbeddedModels()
+        out = "\"embedded_models\": ["
+        foreach( m models
+            ; A quote or backslash would produce invalid JSON, and this file has
+            ; no escaper (the one written for MFRPN is commented out). A model
+            ; file named like that does not occur in practice, so skip it and
+            ; say so rather than corrupt the whole intermediate.
+            if( s3dHasJsonSpecial( m ) then
+                nBad = nBad + 1
+            else
+                unless( first  out = strcat( out ", " ) )
+                first = nil
+                out = strcat( out "\"" m "\"" )
+            )
+        )
+        when( nBad > 0
+            s3dWarn( sprintf( nil "Simple 3D: %d embedded model name(s) contain a quote or backslash and were left out of the report." nBad ) )
+        )
+        strcat( out "]" )
+    )
+)
+
+; t if the string holds a character that would need JSON escaping.
+procedure( s3dHasJsonSpecial( t_str )
+    let( ( ( bad nil ) c )
+        for( i 1 strlen( t_str )
+            c = substring( t_str i 1 )
+            when( (c == "\"") || (c == "\\")  bad = t )
+        )
+        bad
+    )
+)
+
 ; t if this symbol has a STEP model association (PKGDEF_STEP_FILE on its symbol
 ; definition) - which is exactly what axlStepGet reports. Used to admit a
 ; mechanical symbol that carries a 3D model but has no refdes: those are dropped
@@ -2206,12 +2285,17 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; format_version 2 added the optional "silkscreen" object; 3 tags every
         ; silkscreen polygon with the layer it came from, so the layers can be
         ; switched on and off when the model is built instead of at export
-        ; time. Both additions are optional to a reader - an older file simply
-        ; has no layers to choose from and builds whole.
+        ; time; 4 adds the optional "embedded_models" list. All three additions
+        ; are optional to a reader - an older file simply has no layers to
+        ; choose from and nothing to say about embedded models.
+        ;
+        ; NOTE: every top-level key added here must also be listed in core.py's
+        ; _reserved tuple, or the reader walks it as if it were a component.
         name = strcat(
             "\"format\": \"simple3d\",\n"
-            "\"format_version\": 3,\n"
-            "\"name\": \"" variantName "\""
+            "\"format_version\": 4,\n"
+            "\"name\": \"" variantName "\",\n"
+            s3dEmbeddedModelsJson()
         )
 
         ; make pcb (including all cutouts and holes)

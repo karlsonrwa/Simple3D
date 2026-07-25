@@ -285,6 +285,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if result.missing_step_files:
             log(f"warning: {len(result.missing_step_files)} STEP file(s) not found")
+        if result.embedded_not_on_disk:
+            log(f"warning: {len(result.embedded_not_on_disk)} of them are stored "
+                f"inside the board (see above for what to do)")
         if result.silkscreen_solids:
             log(f"silkscreen: {result.silkscreen_solids} solid(s)")
         # MFRPN DISABLED (kept for future):

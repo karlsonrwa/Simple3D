@@ -2600,6 +2600,93 @@ geometry regression unchanged. The docs audit needed a `MIGRATION_ONLY` set —
 a key read only to migrate is deliberately absent from the shipped config, and
 flagging that as an error would push it back in.
 
+## Update 2026-07-25 (round 25) — models stored inside the .brd
+
+Started from a user observation: "at some point the STEP files seem to end up
+inside the board itself". True, and it has consequences.
+
+### What the reference says
+
+`axlPurge3DModelMapDataInDesign` states it outright: once 3D models are mapped,
+"a data attachment is created in the design for each unique 3D model", and that
+function removes "all 3D model attachments from the design database". Confirmed
+live on Allegro **24.1** (`ALLEGRO_DESIGN_WAS_LAST_SAVED` → `allegro 24.1 S009`),
+so this is not a 25.1-only behaviour.
+
+Attachments are reachable through the generic API — `axlGetAllAttachmentNames`,
+`axlGetAttachment`, `axlIsAttachment`, `axlCreateAttachment`, `axlSetAttachment`,
+`axlDeleteAttachment`. The whole 3DX SKILL API is three functions and none of
+them touches models: `axl3DXGet/SetDesignOption` are about via plating only.
+
+### Naming, and the investigation that is now closed
+
+Ids are `3D:<original file name>/ACIS`, e.g. `3D:SWITRONIC_IT-1187.step/ACIS`.
+**The original filename is recoverable from the id** — which is what the shipped
+feature uses.
+
+The rest was an attempt, at the user's suggestion, to extract those copies and
+hand them over for self-conversion. It got all the way and was then dropped on
+the evidence. Recorded so nobody spends the afternoon again:
+
+- **Container**: 31-byte ASCII header `1;<uncompressed size>;A;0;0;<64-bit hash>;`,
+  NUL padding to offset 256, then a **zlib** stream (`78 9c`) that inflates to
+  exactly the declared size. Payload is **`ACIS BinaryFile`** — `.sab`, binary
+  ACIS. Verified on both models (40024 and 126569 bytes, both exact).
+- **`axlGetAttachment( id 'string )` truncates** at the first NUL, which is the
+  byte right after the header — hence 31/32 characters against sizes of 6904 and
+  20934. That truncation is a property of the SKILL string, not of the export.
+- **`axlGetAttachment( id 'file )` returns a stub record** — `(objType
+  "attachment" dataFormat file)`, no id, no size, no data — but **writes the
+  complete file anyway**. Twenty copies of each model were sitting in `%TEMP%`
+  as `#T*.tmp` (plus one `.sat`), one per call across the probe runs. The side
+  effect works; only the return value is broken. Allegro's 31-character id limit
+  is NOT the cause: a 36-character id returned full metadata under `'string`.
+- **Dropped because the output is not usable**: the user tried the extracted
+  `.sab` files — Inventor will not open them, SolidWorks reports the file as
+  faulty. And OCP has no ACIS reader at all (checked: STEP, IGES, STL, glTF,
+  VRML and nothing else; ACIS import in OCCT is a commercial component).
+
+**Two premature conclusions along the way, both mine.** First: "impossible,
+ACIS is unreadable" — wrong framing, the user's proposal only needed the bytes
+handed over, not read. Second: "impossible, the data is truncated" — wrong
+reading, the temp files showed the payload comes out in full. The lesson is the
+one this memo keeps relearning: check the artefact on disk before concluding
+from a return value.
+
+### What shipped instead
+
+The useful half, and it is small. The export now writes the embedded model list
+into the intermediate (`embedded_models`, `format_version` 3 → 4), and the
+reader cross-references it against the models it could not find on disk. A
+component missing for that reason is now named, with the fix spelled out:
+export from the 3DX canvas, take the missing files out of that export, drop them
+in a folder listed under STEP files, run again.
+
+Before this the log said only `could not find X.step`, which does not
+distinguish "this model exists nowhere" from "it is in the board, just not on
+your disk" — and only the second has a remedy.
+
+`embedded_models` is a new TOP-LEVEL key, so it had to go into `core._reserved`
+as well, or the reader walks it as a component. The comment above `_reserved`
+already warned about exactly this; a test now covers it.
+
+README documents the mechanism in both languages — deliberately without the
+container format, which is internal detail a user cannot act on. It lives here
+instead.
+
+### Verified here
+16 assertions on the cross-check: named with guidance when missing AND embedded;
+silent when missing but not embedded (the plain warning still fires); silent
+when embedded but present; silent and crash-free on a format_version 3 file with
+no such key; empty list handled; matching done on the bare filename so a mapping
+carrying a path still resolves; and `embedded_models` not walked as a component.
+The two new SKILL procedures were transliterated to Python and run against the
+REAL attachment ids from the user's board — correct filenames, valid JSON — plus
+six edge cases (no models, no attachments, a different suffix, no suffix, bare
+prefix, a name containing a quote → skipped rather than emitting broken JSON).
+All four SKILL checks, every other suite, the geometry regression and the docs
+audit are clean.
+
 ### The four mechanical SKILL checks now
 Paren balance; string literals broken by a real newline; calls to procedures
 defined nowhere; call arity. Each exists because something got past the previous

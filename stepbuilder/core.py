@@ -819,10 +819,53 @@ class BuildResult:
     components_placed: int = 0
     components_skipped: list[str] = field(default_factory=list)
     missing_step_files: list[str] = field(default_factory=list)
+    # Models the board carries a copy of, that were not found on disk. A
+    # different problem from a plain missing file: the geometry exists, it is
+    # just not where this tool can read it. See _report_embedded_only.
+    embedded_not_on_disk: list[str] = field(default_factory=list)
     silkscreen_solids: int = 0
     silkscreen_skipped: int = 0
     # MFRPN reporting DISABLED (property attachment unreliable); kept for future:
     # missing_mfr_pn: list[str] = field(default_factory=list)
+
+
+def _report_embedded_only(data: dict, result: BuildResult, log: LogFn) -> None:
+    """Name the models the board carries but the disk does not, and say what to do.
+
+    Allegro keeps its own copy of every mapped 3D model inside the .brd. This
+    tool does not read those copies - it builds from model files on disk - so a
+    board can look complete in Allegro's own 3D while a component is missing
+    here. Without this the log said only "could not find X.step", which does not
+    distinguish "that model does not exist anywhere" from "it is right there in
+    the board, just not in your STEP folders" - and only the second has a fix.
+
+    Silent when the JSON predates format_version 4, when the board has no
+    embedded models, or when nothing is missing.
+    """
+    embedded = data.get("embedded_models")
+    if not isinstance(embedded, list) or not embedded:
+        return
+
+    # Compare on the bare filename: the index resolves that way too, so a
+    # mapping carrying a path component still matches.
+    missing = {Path(str(name)).name for name in result.missing_step_files}
+    if not missing:
+        return
+
+    both = sorted({str(name) for name in embedded
+                   if Path(str(name)).name in missing})
+    if not both:
+        return
+
+    result.embedded_not_on_disk = both
+    log(f"warning: {len(both)} model(s) are stored inside the board but were "
+        f"not found on disk: {', '.join(both)}")
+    log("warning: Allegro's own 3D shows these because the board carries a copy "
+        "of each mapped model. Simple 3D builds from model files on disk. To "
+        "include them: export the board from Allegro's 3DX canvas, take the "
+        "missing model files out of that export, put them in a folder listed "
+        "under \"STEP files\" (the board's own folder is a convenient one), and "
+        "run again.")
 
 
 def _validate(data: dict) -> None:
@@ -1215,7 +1258,8 @@ def generate(
     # ---- components ------------------------------------------------------ #
     # Anything not reserved is a refdes. "silkscreen" MUST be listed here or it
     # would be walked as if it were a component.
-    _reserved = ("name", "pcb", "format", "format_version", "silkscreen")
+    _reserved = ("name", "pcb", "format", "format_version", "silkscreen",
+                 "embedded_models")
     components = {k: v for k, v in data.items() if k not in _reserved}
     result = BuildResult(
         output=output_dir / f"{json_stem}.step",
@@ -1301,6 +1345,8 @@ def generate(
         for root in roots:
             shape_tool.AddComponent(parent, root, TopLoc_Location(trsf))
         result.components_placed += 1
+
+    _report_embedded_only(data, result, log)
 
     # Without this the written document is empty.
     shape_tool.UpdateAssemblies()

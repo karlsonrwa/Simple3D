@@ -416,6 +416,33 @@ is keyed internally as `<SymbolName>_MECH1`, `_MECH2`, … (unique per export). 
 key is not shown in the tree — the placed instance carries its STEP file's name,
 like every other component.
 
+## Models the board carries a copy of
+
+Once a 3D model has been mapped to a component, Allegro keeps its own copy of
+that model **inside the .brd**. Simple 3D does not use those copies: it builds
+from model files on disk, taken from the folders listed under **STEP files**.
+
+So a board can look complete in Allegro's own 3D view while a component is
+missing here — the model is in the board, just not anywhere this tool can read
+it. The export tells the two cases apart and names them:
+
+```
+warning: 2 model(s) are stored inside the board but were not found on disk:
+         SWITRONIC_IT-1187.step, DIODFN2_100X60X60L27X50.step
+```
+
+followed by what to do about it. In short:
+
+1. Export the board from Allegro's own 3DX canvas.
+2. Take the missing model files out of that export.
+3. Put them in any folder listed under **STEP files** — the board's own folder
+   is a convenient choice, since it travels with the design.
+4. Run Simple 3D again. Everything is then exported.
+
+A model that is missing from disk and *not* in the board gets the ordinary
+"could not find" warning: there is no copy to recover, and the file has to come
+from wherever the library keeps it.
+
 ## Board thickness
 
 The board solid is `dielectrics + planes + conductors + both soldermasks`.
@@ -911,6 +938,33 @@ Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); 
 на каждый экспорт). В дереве этот ключ не виден — размещённый экземпляр носит имя
 своего STEP-файла, как и любой другой компонент.
 
+## Модели, копия которых лежит внутри платы
+
+После того как 3D-модель привязана к компоненту, Allegro хранит её собственную
+копию **внутри .brd**. Simple 3D эти копии не использует: он собирает модель из
+файлов на диске, из папок, перечисленных в поле **STEP files**.
+
+Поэтому плата может выглядеть полной в штатном 3D-виде Allegro, а здесь
+компонента не окажется — модель есть в плате, но нет там, откуда этот инструмент
+умеет читать. Экспорт различает эти два случая и называет модели поимённо:
+
+```
+warning: 2 model(s) are stored inside the board but were not found on disk:
+         SWITRONIC_IT-1187.step, DIODFN2_100X60X60L27X50.step
+```
+
+и следом поясняет, что делать. Кратко:
+
+1. Экспортируйте плату из штатного 3DX-канваса Allegro.
+2. Возьмите из этого экспорта недостающие файлы моделей.
+3. Положите их в любую папку из списка **STEP files** — удобно в папку самой
+   платы, тогда они путешествуют вместе с проектом.
+4. Запустите Simple 3D ещё раз. После этого экспортируется всё.
+
+Модель, которой нет ни на диске, ни в плате, получает обычное предупреждение
+«could not find»: восстанавливать нечего, файл нужно брать там, где лежит
+библиотека.
+
 ## Толщина платы
 
 Тело платы — это `диэлектрики + плейны + проводники + обе паяльные маски`.
@@ -991,6 +1045,23 @@ stepbuilder/
 ---
 
 ## Changelog / История изменений
+
+- **2026-07-25** — A model that is **stored inside the board but missing from
+  disk** is now named in the log, together with what to do about it: Allegro
+  keeps its own copy of every mapped 3D model inside the .brd, and Simple 3D
+  builds from files on disk, so the two can disagree. Previously such a
+  component produced only a bare "could not find" line, which did not
+  distinguish a model that exists nowhere from one that is right there in the
+  board. Intermediate format `format_version: 4` (the new `embedded_models`
+  list is optional — an older file simply says nothing on the subject).
+  / Модель, которая **лежит внутри платы, но отсутствует на диске**, теперь
+  называется в логе вместе с указанием, что делать: Allegro хранит собственную
+  копию каждой привязанной 3D-модели внутри .brd, а Simple 3D собирает из
+  файлов на диске, поэтому эти два источника могут расходиться. Раньше такой
+  компонент давал только сухое «could not find», по которому не отличить
+  модель, которой нет нигде, от той, что лежит прямо в плате. Промежуточный
+  формат `format_version: 4` (новый список `embedded_models` необязателен —
+  файл постарше просто ничего об этом не сообщает).
 
 - **2026-07-24** — The window now **reopens where you left it**, on the same
   monitor: its position and size are saved on close (`gui.windowGeometry`,

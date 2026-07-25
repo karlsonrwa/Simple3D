@@ -881,6 +881,10 @@ class StepBuilderApp(tk.Tk):
                                         f"{result.silkscreen_solids} solid(s)"))
             if result.missing_step_files:
                 warnings.append(f"{result.output.name}: {len(result.missing_step_files)} STEP missing")
+            if result.embedded_not_on_disk:
+                warnings.append(
+                    f"{result.output.name}: {len(result.embedded_not_on_disk)} of "
+                    f"those are in the board but not on disk (see the log)")
             # MFRPN DISABLED (kept for future):
             # if result.missing_mfr_pn:
             #     warnings.append(f"{result.output.name}: {len(result.missing_mfr_pn)} without MFRPN")
