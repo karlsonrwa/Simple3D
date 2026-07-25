@@ -1177,17 +1177,60 @@ procedure( s3dShapeJson( o_shape )
     )
 )
 
+; Shapes on the RIGID FLEX class, grouped by subclass name. Built once per
+; export; nil until s3dCollectRigidFlexShapes has run.
+S3D_RigidFlexShapes = nil
+
+; Ask for the WHOLE class once and sort the answer, rather than asking for each
+; stackup layer by name.
+;
+; Asking by name made Allegro print
+;     *WARNING* (axlDBGetShapes): No match for subclass name - "RIGID FLEX/TOP"
+; for every conductor, the dielectric and the soldermask - none of which is ever
+; drawn on this class - and once per stackup that contains them, so ten warnings
+; on a three-stackup board. A miss cannot happen here: what is not in the table
+; simply is not there. It is also one database query instead of one per layer
+; per stackup, which mattered less but is not nothing.
+;
+; Only the RIGID FLEX class is consulted. PACKAGE GEOMETRY/SOLDERMASK_* also
+; exists but describes footprint openings, not the extent of a board layer, so
+; asking for it would be wrong rather than merely unhelpful.
+procedure( s3dCollectRigidFlexShapes()
+    let( ( shapes key pos ( n 0 ) )
+        S3D_RigidFlexShapes = makeTable( "s3dRigidFlexShapes" nil )
+        shapes = nil
+        errset( shapes = axlDBGetShapes( "RIGID FLEX" ) )
+
+        foreach( s shapes
+            key = nil
+            errset( key = s->layer )
+            when( stringp( key )
+                ; "RIGID FLEX/COVERLAY_TOP" -> "COVERLAY_TOP"
+                pos = nil
+                for( i 1 strlen( key )
+                    when( substring( key i 1 ) == "/"  pos = i )
+                )
+                when( pos
+                    key = substring( key pos + 1 strlen( key ) - pos )
+                    n = n + 1
+                    S3D_RigidFlexShapes[key] = cons( s S3D_RigidFlexShapes[key] )
+                )
+            )
+        )
+        when( n > 0
+            printf( "Simple 3D: %d shape(s) on RIGID FLEX subclasses.\n" n )
+        )
+        S3D_RigidFlexShapes
+    )
+)
+
 ; Every drawn shape of one stackup layer, as a JSON array. nil when the layer
 ; has none - conductors, the dielectric and the soldermask are not drawn on
 ; the RIGID FLEX class, and those layers span the whole zone instead.
 procedure( s3dLayerShapesJson( t_layerName )
     let( ( shapes body ( first t ) one )
-        shapes = nil
-        ; Only the RIGID FLEX class is consulted. PACKAGE GEOMETRY/SOLDERMASK_*
-        ; also exists but describes footprint openings, not the extent of a
-        ; board layer, so asking for it would be wrong rather than merely
-        ; unhelpful.
-        errset( shapes = axlDBGetShapes( strcat( "RIGID FLEX/" t_layerName ) ) )
+        unless( S3D_RigidFlexShapes  s3dCollectRigidFlexShapes() )
+        shapes = S3D_RigidFlexShapes[t_layerName]
         when( shapes
             body = "[\n"
             foreach( s shapes
@@ -2644,6 +2687,9 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
     let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) body )
         ; Number each variant's no-refdes mechanicals from 1 (see symbolReturn3DElements).
         S3D_MechSeq = 0
+        ; Rebuilt per export: a shape added between two runs in one session
+        ; must be picked up, and it is one query.
+        S3D_RigidFlexShapes = nil
 
         ; reset base board contour
         when( car( edgeCuts )
