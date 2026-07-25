@@ -1,7 +1,7 @@
 """
-Board colour themes.
+Board color themes.
 
-The eight soldermask colours are lifted verbatim from Allegro's
+The eight soldermask colors are lifted verbatim from Allegro's
 `Allegro3DCanvasPreferences.xml` (the FixedThemes / soldermask entries) and
 hardcoded here, so the tool needs neither the XML at runtime nor a parser.
 Transparency is intentionally dropped: the board is one opaque solid, so only
@@ -40,12 +40,12 @@ THEME_ORDER = [
     "White",
 ]
 
-# Typical FR4 dielectric, for the "cream" rim option. Not a mask colour, so it
+# Typical FR4 dielectric, for the "cream" rim option. Not a mask color, so it
 # is kept separate from the themes above.
 CREAM_DIELECTRIC = (253, 255, 215)
 
 # Silkscreen ink. Real legend ink comes in exactly these two in practice, so
-# this is a closed choice rather than a free colour: white on dark masks, black
+# this is a closed choice rather than a free color: white on dark masks, black
 # on white/yellow ones. Neither is a pure 255/0 - printed ink never is, and a
 # pure white next to a pure white mask disappears.
 SILK_COLORS: dict[str, tuple[int, int, int]] = {
@@ -81,17 +81,17 @@ def parse_hex(text: str) -> tuple[int, int, int]:
         return (parts[0], parts[1], parts[2])
     text = text.lstrip("#")
     if len(text) != 6:
-        raise ValueError(f"Expected a 6-digit hex colour, got {text!r}")
+        raise ValueError(f"Expected a 6-digit hex color, got {text!r}")
     return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
 
 
 # --------------------------------------------------------------------------- #
-# stackup layer kinds, for the layer-coloured board
+# stackup layer kinds, for the layer-colored board
 # --------------------------------------------------------------------------- #
 
 # The kinds a flex / rigid-flex stackup is made of, in the order the swatch row
-# shows them. Defaults are Allegro's OWN material colours, read off a real
-# board's 3DX_APPEARANCE attachment - so a layer-coloured export looks like the
+# shows them. Defaults are Allegro's OWN material colors, read off a real
+# board's 3DX_APPEARANCE attachment - so a layer-colored export looks like the
 # same board does in Allegro's 3D canvas rather than like an arbitrary palette.
 LAYER_KINDS: list[tuple[str, str, tuple[int, int, int]]] = [
     ("copper",     "Copper",     (0xB8, 0x73, 0x33)),   # 3d_color_outer_conductor

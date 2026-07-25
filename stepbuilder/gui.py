@@ -46,7 +46,7 @@ from .colors import (
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "simple3d_config.json"
 
 # How the board body is built. One dropdown rather than a pile of checkboxes:
-# the three are alternatives, and "inspect + layer colours" ticked together
+# the three are alternatives, and "inspect + layer colors" ticked together
 # would have to mean something, which it does not.
 BOARD_MODES = [
     ("solid",   "Solid"),
@@ -63,13 +63,18 @@ def _mode_key(label: str) -> str:
     return next((k for k, l in BOARD_MODES if l == label), BOARD_MODES[0][0])
 
 
+# The z datum, as a two-item dropdown. The variable behind it still holds the
+# "top"/"bottom" keys the rest of the tool uses.
+Z_LABELS = {"top": "Top of board", "bottom": "Bottom of board"}
+Z_KEYS = {v: k for k, v in Z_LABELS.items()}
+
 RIM_SAME = "Same as board"
 RIM_CREAM = "Cream (dielectric)"
 RIM_CUSTOM = "Custom..."
 
 # Log lines arrive from core as plain text, so severity is inferred from how the
 # line opens. core labels its own non-fatal lines with a "warning:" prefix, which
-# is what colours them here AND marks them in the CLI's plain-text output - so
+# is what colors them here AND marks them in the CLI's plain-text output - so
 # prefer adding the prefix at the log() call over adding a pattern below.
 # Match lowercase: _append_log lowercases before testing.
 ERROR_PREFIXES = ("error", "traceback")
@@ -213,34 +218,43 @@ class StepBuilderApp(tk.Tk):
         # Everything about the board body in one place, and everything about the
         # legend in the next. They were one "Options" block, which meant the two
         # unrelated halves of the window looked like one list of settings.
-        opts = ttk.LabelFrame(self, text="Board options", padding=8)
-        opts.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
+        # Board and Silk side by side rather than stacked. Stacked, the two
+        # groups pushed the natural window height to 1004 px, which on a 1080p
+        # screen fills it top to bottom on a first run; side by side the window
+        # grows sideways instead, where there is room.
+        mid = ttk.Frame(self)
+        mid.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
+        mid.columnconfigure(0, weight=1)
+        mid.columnconfigure(1, weight=1)
+
+        opts = ttk.LabelFrame(mid, text="Board options", padding=8)
+        opts.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
         opts.columnconfigure(1, weight=1)
         opts.columnconfigure(3, weight=1)
 
-        ttk.Label(opts, text="Board colour").grid(row=0, column=0, sticky="w", pady=3)
-        # Keep the combobox and its colour swatch together in one frame so the
+        ttk.Label(opts, text="Board color").grid(row=0, column=0, sticky="w", pady=3)
+        # Keep the combobox and its color swatch together in one frame so the
         # swatch sits directly beside the dropdown instead of being pushed to the
         # right edge by the expanding grid column.
-        colour_row = ttk.Frame(opts)
-        colour_row.grid(row=0, column=1, columnspan=2, sticky="w", padx=6)
+        color_row = ttk.Frame(opts)
+        color_row.grid(row=0, column=1, columnspan=2, sticky="w", padx=6)
         theme_box = ttk.Combobox(
-            colour_row, textvariable=self.theme, values=THEME_ORDER, state="readonly", width=16
+            color_row, textvariable=self.theme, values=THEME_ORDER, state="readonly", width=16
         )
         theme_box.pack(side="left")
-        self._swatch = tk.Canvas(colour_row, width=22, height=22, highlightthickness=1,
+        self._swatch = tk.Canvas(color_row, width=22, height=22, highlightthickness=1,
                                  highlightbackground="#888")
         self._swatch.pack(side="left", padx=(6, 0))
         theme_box.bind("<<ComboboxSelected>>", lambda e: self._update_swatch())
 
-        ttk.Label(opts, text="Board edge colour").grid(row=0, column=3, sticky="e", padx=(12, 6))
+        ttk.Label(opts, text="Board edge color").grid(row=0, column=3, sticky="e", padx=(12, 6))
         rim_box = ttk.Combobox(
             opts, textvariable=self.rim_choice,
             values=[RIM_SAME, RIM_CREAM, RIM_CUSTOM], state="readonly", width=18
         )
         rim_box.grid(row=0, column=4, sticky="w")
         rim_box.bind("<<ComboboxSelected>>", lambda e: self._update_rim_swatch())
-        # A picker, not a typed hex string: the same idiom as every other colour
+        # A picker, not a typed hex string: the same idiom as every other color
         # in the window, and it cannot be given a value that does not parse.
         # Greyed until Custom is chosen, so it is obvious when it does nothing.
         self._rim_swatch = tk.Canvas(opts, width=22, height=22, highlightthickness=1,
@@ -248,29 +262,33 @@ class StepBuilderApp(tk.Tk):
         self._rim_swatch.grid(row=0, column=5, sticky="w", padx=(6, 0))
         self._rim_swatch.bind("<Button-1>", lambda e: self._pick_rim_color())
 
+        # A two-item dropdown rather than two radios: same choice, one row
+        # instead of a row of its own. The variable still holds "top"/"bottom",
+        # so the config and every caller are untouched.
         ttk.Label(opts, text="Z = 0 at").grid(row=1, column=0, sticky="w", pady=3)
-        zrow = ttk.Frame(opts)
-        zrow.grid(row=1, column=1, columnspan=2, sticky="w")
-        ttk.Radiobutton(zrow, text="Top of board", variable=self.z_datum,
-                        value="top").pack(side="left")
-        ttk.Radiobutton(zrow, text="Bottom of board", variable=self.z_datum,
-                        value="bottom").pack(side="left", padx=(10, 0))
+        self._z_label = tk.StringVar(value=Z_LABELS[self.z_datum.get()])
+        zbox = ttk.Combobox(opts, textvariable=self._z_label,
+                            values=list(Z_LABELS.values()), state="readonly",
+                            width=16)
+        zbox.grid(row=1, column=1, sticky="w", padx=6)
+        zbox.bind("<<ComboboxSelected>>", lambda e: self.z_datum.set(
+            Z_KEYS[self._z_label.get()]))
 
         self._build_board_mode_row(opts)
         # Leaves the mask out of the board however the design defines it, and
         # closes the stack toward the core by what was removed.
         ttk.Checkbutton(opts, text="Ignore soldermask layers",
                         variable=self.ignore_soldermask).grid(
-            row=3, column=0, columnspan=6, sticky="w", pady=(6, 0))
+            row=4, column=0, columnspan=6, sticky="w", pady=(6, 0))
 
         # --- silkscreen ---
-        silk = ttk.LabelFrame(self, text="Silk options", padding=8)
-        silk.grid(row=2, column=0, sticky="ew", padx=8, pady=4)
+        silk = ttk.LabelFrame(mid, text="Silk options", padding=8)
+        silk.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         silk.columnconfigure(0, weight=1)
 
-        # The colour is a closed two-item choice, not the free picker the board
+        # The color is a closed two-item choice, not the free picker the board
         # rim gets: legend ink is white or black and nothing else, so offering
-        # a free colour here would only invite a value no fab can print.
+        # a free color here would only invite a value no fab can print.
         silk_row = ttk.Frame(silk)
         silk_row.grid(row=0, column=0, sticky="w")
         ttk.Label(silk_row, text="Silkscreen").pack(side="left")
@@ -278,7 +296,8 @@ class StepBuilderApp(tk.Tk):
                         command=self._update_silk_row).pack(side="left", padx=(8, 0))
         ttk.Checkbutton(silk_row, text="Bottom", variable=self.silk_bottom,
                         command=self._update_silk_row).pack(side="left", padx=(4, 0))
-        ttk.Label(silk_row, text="Colour").pack(side="left", padx=(12, 6))
+        self._silk_color_label = ttk.Label(silk_row, text="Color")
+        self._silk_color_label.pack(side="left", padx=(12, 6))
         self.silk_box = ttk.Combobox(
             silk_row, textvariable=self.silk_color, values=SILK_ORDER,
             state="readonly", width=10
@@ -291,10 +310,12 @@ class StepBuilderApp(tk.Tk):
         # Measured on a 150-polygon legend: 2191 kB as solids, 566 kB as
         # surfaces. Offered as a checkbox rather than done silently because it
         # is a real trade: the ink stops being a solid.
+        # Its own row for the same reason as the swatches: a long label on a
+        # shared line makes the group demand width the window does not have.
         self.silk_flat_check = ttk.Checkbutton(
-            silk_row, text="Make surface (minimum file size)", variable=self.silk_flat
+            silk, text="Make surface (minimum file size)", variable=self.silk_flat
         )
-        self.silk_flat_check.pack(side="left", padx=(12, 0))
+        self.silk_flat_check.grid(row=1, column=0, sticky="w", pady=(4, 0))
 
         # --- silkscreen layers ---
         # Checkbuttons, not a multi-select Listbox: a highlighted row reads as
@@ -303,9 +324,13 @@ class StepBuilderApp(tk.Tk):
         # built, so it can never offer a layer that would do nothing, and each
         # row carries its polygon count - that is what explains a large file.
         ttk.Separator(silk, orient="horizontal").grid(
-            row=1, column=0, sticky="ew", pady=(8, 6))
+            row=2, column=0, sticky="ew", pady=(8, 6))
         layers_frame = ttk.LabelFrame(silk, text="Layers", padding=4)
-        layers_frame.grid(row=2, column=0, sticky="ew")
+        layers_frame.grid(row=3, column=0, sticky="ew")
+        # Everything in the group that should grey out when both sides are off.
+        # The two side checkboxes are deliberately NOT in here: they are how the
+        # group is switched back on.
+        self._silk_group_widgets = [self._silk_color_label, layers_frame]
         layers_frame.columnconfigure(0, weight=1)
 
         self._layers_canvas = tk.Canvas(layers_frame, height=96, highlightthickness=0)
@@ -338,10 +363,13 @@ class StepBuilderApp(tk.Tk):
 
         layer_buttons = ttk.Frame(layers_frame)
         layer_buttons.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        ttk.Button(layer_buttons, text="All", width=6,
-                   command=lambda: self._set_all_layers(True)).pack(side="left")
-        ttk.Button(layer_buttons, text="None", width=6,
-                   command=lambda: self._set_all_layers(False)).pack(side="left", padx=(4, 0))
+        all_btn = ttk.Button(layer_buttons, text="All", width=6,
+                             command=lambda: self._set_all_layers(True))
+        all_btn.pack(side="left")
+        none_btn = ttk.Button(layer_buttons, text="None", width=6,
+                              command=lambda: self._set_all_layers(False))
+        none_btn.pack(side="left", padx=(4, 0))
+        self._silk_group_widgets += [all_btn, none_btn]
 
         # Neither a board setting nor a legend one - it shrinks the whole file,
         # component models included - so it sits on its own between the groups
@@ -350,13 +378,16 @@ class StepBuilderApp(tk.Tk):
         # ttk.Checkbutton(checks, text="Append MFRPN to instance names",
         #                 variable=self.mfr_pn_in_name).pack(side="left")
         checks = ttk.Frame(self, padding=(8, 0))
-        checks.grid(row=3, column=0, sticky="w")
-        ttk.Checkbutton(checks, text="Minimise file size",
+        checks.grid(row=2, column=0, sticky="w")
+        # Not "Minimise file size": the silk row already has a "minimum file
+        # size" and the two do different things - that one drops the ink's
+        # thickness, this one shares geometry and skips surface curves.
+        ttk.Checkbutton(checks, text="Compact STEP (reuse component geometry)",
                         variable=self.minimize).pack(side="left")
 
         # --- log ---
         log_frame = ttk.LabelFrame(self, text="Log", padding=4)
-        log_frame.grid(row=4, column=0, sticky="nsew", padx=8, pady=4)
+        log_frame.grid(row=3, column=0, sticky="nsew", padx=8, pady=4)
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
         # wrap="word": build messages carry full paths and OCCT errors, which
@@ -366,14 +397,14 @@ class StepBuilderApp(tk.Tk):
         scroll = ttk.Scrollbar(log_frame, command=self.log_view.yview)
         scroll.grid(row=0, column=1, sticky="ns")
         self.log_view.configure(yscrollcommand=scroll.set)
-        # severity colours: warnings orange, errors dark red
+        # severity colors: warnings orange, errors dark red
         self.log_view.tag_configure("warning", foreground="#d9791e")
         self.log_view.tag_configure("error", foreground="#8b0000")
         self.log_view.tag_configure("success", foreground="#1a7f2e")
 
         # --- bottom ---
         bottom = ttk.Frame(self, padding=(8, 4, 8, 8))
-        bottom.grid(row=5, column=0, sticky="ew")
+        bottom.grid(row=4, column=0, sticky="ew")
         bottom.columnconfigure(0, weight=1)
         self.progress = ttk.Progressbar(bottom, mode="determinate")
         self.progress.grid(row=0, column=0, sticky="ew", padx=(0, 8))
@@ -479,10 +510,10 @@ class StepBuilderApp(tk.Tk):
         self._last_normal_geometry = self.geometry()
 
     def _build_board_mode_row(self, parent) -> None:
-        """How the board body is built, and the colour of each layer kind.
+        """How the board body is built, and the color of each layer kind.
 
         Both live on one row: the swatches only mean anything in "Layer
-        colours", so they are greyed out otherwise rather than hidden - a row
+        colors", so they are greyed out otherwise rather than hidden - a row
         that appears and disappears makes the window jump.
         """
         row = ttk.Frame(parent)
@@ -491,10 +522,14 @@ class StepBuilderApp(tk.Tk):
         ttk.Label(row, text="Body stitching").pack(side="left")
         box = ttk.Combobox(row, textvariable=self.board_mode,
                            values=[label for _, label in BOARD_MODES],
-                           state="readonly", width=28)
+                           state="readonly", width=22)
         box.pack(side="left", padx=(6, 0))
         box.bind("<<ComboboxSelected>>", lambda e: self._update_layer_swatches())
 
+        # The swatches take their own row: on one line with the dropdown they
+        # made the group ask for 923 px, which forced the whole window wide.
+        row = ttk.Frame(parent)
+        row.grid(row=3, column=0, columnspan=6, sticky="w", pady=(4, 0))
         self._swatches: dict[str, tk.Canvas] = {}
         for key, label, _ in LAYER_KINDS:
             if key == "other":            # not a layer anyone sets on purpose
@@ -507,12 +542,25 @@ class StepBuilderApp(tk.Tk):
             canvas.bind("<Button-1>", lambda e, k=key: self._pick_layer_color(k))
             ttk.Label(cell, text=label, foreground="#777").pack(side="top")
             self._swatches[key] = canvas
+
+        # Sits at the end of the swatches, so what it resets is unambiguous:
+        # these, back to Allegro's own material colors. The board theme and
+        # the rim have their own controls and are not touched.
+        self._reset_colors_btn = ttk.Button(row, text="Reset colors", width=14,
+                                            command=self._reset_layer_colors)
+        self._reset_colors_btn.pack(side="left", padx=(12, 0))
         self._update_layer_swatches()
+
+    def _reset_layer_colors(self) -> None:
+        self.layer_colors = dict(DEFAULT_LAYER_COLORS)
+        self._update_layer_swatches()
+        self._append_log("Layer colors reset to the Allegro material defaults")
 
     def _update_layer_swatches(self) -> None:
         # Both "Solid colored layers" and "Not stitched" paint by layer kind;
         # only plain "Solid" ignores these.
         active = _mode_key(self.board_mode.get()) in ("layers", "inspect")
+        self._reset_colors_btn.state(["!disabled"] if active else ["disabled"])
         for key, canvas in self._swatches.items():
             rgb = self.layer_colors.get(key, DEFAULT_LAYER_COLORS[key])
             canvas.configure(bg="#%02x%02x%02x" % rgb if active else "#d9d9d9",
@@ -526,7 +574,7 @@ class StepBuilderApp(tk.Tk):
         current = self.layer_colors.get(kind, DEFAULT_LAYER_COLORS[kind])
         rgb, _ = colorchooser.askcolor(
             color="#%02x%02x%02x" % current,
-            title=f"Colour for {dict((k, l) for k, l, _ in LAYER_KINDS)[kind]}")
+            title=f"Color for {dict((k, l) for k, l, _ in LAYER_KINDS)[kind]}")
         if rgb:
             self.layer_colors[kind] = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
             self._update_layer_swatches()
@@ -606,13 +654,13 @@ class StepBuilderApp(tk.Tk):
 
     def _update_rim_swatch(self) -> None:
         active = self.rim_choice.get() == RIM_CUSTOM
-        colour = "#d9d9d9"
+        color = "#d9d9d9"
         if active:
             try:
-                colour = "#%02x%02x%02x" % parse_hex(self.rim_custom.get())
+                color = "#%02x%02x%02x" % parse_hex(self.rim_custom.get())
             except ValueError:
-                colour = "#ffffff"
-        self._rim_swatch.configure(bg=colour, cursor="hand2" if active else "")
+                color = "#ffffff"
+        self._rim_swatch.configure(bg=color, cursor="hand2" if active else "")
 
     def _pick_rim_color(self) -> None:
         if self.rim_choice.get() != RIM_CUSTOM:
@@ -623,7 +671,7 @@ class StepBuilderApp(tk.Tk):
             current = "#%02x%02x%02x" % parse_hex(self.rim_custom.get())
         except ValueError:
             current = "#ffffff"
-        rgb, _ = colorchooser.askcolor(color=current, title="Board edge colour")
+        rgb, _ = colorchooser.askcolor(color=current, title="Board edge color")
         if rgb:
             self.rim_custom.set("#%02X%02X%02X" % tuple(int(c) for c in rgb))
             self._update_rim_swatch()
@@ -766,6 +814,15 @@ class StepBuilderApp(tk.Tk):
                 box.configure(state=state)
         self.silk_box.configure(state="readonly" if on else "disabled")
         self.silk_flat_check.configure(state="normal" if on else "disabled")
+        # With both sides off nothing in this group does anything, so the whole
+        # group says so - the same rule the per-side layer greying already
+        # follows, applied one level up. State only: no variable is touched, so
+        # every tick comes back as it was when a side is switched on again.
+        for widget in self._silk_group_widgets:
+            try:
+                widget.state(["!disabled"] if on else ["disabled"])
+            except (AttributeError, tk.TclError):
+                pass
         rgb = SILK_COLORS.get(self.silk_color.get(), (128, 128, 128))
         self._silk_swatch.configure(bg="#%02x%02x%02x" % rgb)
 
@@ -871,7 +928,7 @@ class StepBuilderApp(tk.Tk):
     def _snapshot(self) -> BuildSettings:
         """Read every widget the build needs. MAIN THREAD ONLY - see BuildSettings.
 
-        Raises ValueError if the custom rim colour does not parse, which doubles
+        Raises ValueError if the custom rim color does not parse, which doubles
         as the early validation on_generate wants.
         """
         return BuildSettings(
@@ -903,9 +960,9 @@ class StepBuilderApp(tk.Tk):
             )
             return
         try:
-            settings = self._snapshot()   # also validates the custom colour
+            settings = self._snapshot()   # also validates the custom color
         except ValueError as exc:
-            messagebox.showerror("Bad colour", str(exc))
+            messagebox.showerror("Bad color", str(exc))
             return
 
         self._clear_log()
@@ -1079,7 +1136,7 @@ class StepBuilderApp(tk.Tk):
 
     def _append_log(self, message: str, severity: str | None = None) -> None:
         # Auto-detect severity from the message if not given, so plain "log"
-        # queue items are coloured too.
+        # queue items are colored too.
         if severity is None:
             low = message.lstrip().lower()
             if low.startswith(ERROR_PREFIXES):

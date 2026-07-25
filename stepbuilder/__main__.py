@@ -169,11 +169,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--color", default=None,
-        help="board colour: a theme name (e.g. Dark_green), 'r,g,b', or '#rrggbb'",
+        help="board color: a theme name (e.g. Dark_green), 'r,g,b', or '#rrggbb'",
     )
     parser.add_argument(
         "--rim-color", default=None,
-        help="separate colour for the board rim/underside (same formats as --color)",
+        help="separate color for the board rim/underside (same formats as --color)",
     )
     parser.add_argument(
         "--no-silkscreen", action="store_true",
@@ -205,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--silk-color", default=DEFAULT_SILK,
-        help=f"silkscreen colour: {' or '.join(SILK_ORDER)} (default: {DEFAULT_SILK})",
+        help=f"silkscreen color: {' or '.join(SILK_ORDER)} (default: {DEFAULT_SILK})",
     )
     # MFRPN DISABLED (property attachment unreliable); kept for future:
     # parser.add_argument(
@@ -219,8 +219,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--board-mode", choices=["solid", "layers", "inspect"], default="solid",
-        help="multi-stackup boards only. solid: one solid, one colour "
-             "(default, smallest). layers: one solid whose faces are coloured "
+        help="multi-stackup boards only. solid: one solid, one color "
+             "(default, smallest). layers: one solid whose faces are colored "
              "by layer kind, so the rim shows the stack. inspect: every layer "
              "a separate named part",
     )
@@ -230,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--legacy-color", action="store_true",
-        help="treat colours as linear RGB, reproducing the original C++ behaviour",
+        help="treat colors as linear RGB, reproducing the original C++ behaviour",
     )
     parser.add_argument("--quiet", action="store_true", help="suppress progress output")
     args = parser.parse_args(argv)

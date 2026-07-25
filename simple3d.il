@@ -273,7 +273,7 @@ procedure( s3dExportCommand()
         )
 
         ; --- launch the GUI, prefilled --------------------------------
-        ; Open the GUI with paths already set. The GUI lets the user pick colour
+        ; Open the GUI with paths already set. The GUI lets the user pick color
         ; and z-datum and press Generate; with several variant JSONs it builds
         ; all of them. step_dir is the model library (or cad if unset).
         ; Build the argument tail (everything AFTER the interpreter). The
@@ -281,7 +281,7 @@ procedure( s3dExportCommand()
         ; parses the quoted paths natively (no nesting through "start", which
         ; mangled paths containing spaces).
         ;
-        ; Only design-derived values are passed. Colours, the STEP folder and
+        ; Only design-derived values are passed. Colors, the STEP folder and
         ; the silkscreen options used to be passed here as well; the GUI now
         ; reads them from simple3d_config.json itself, so passing them would be
         ; a second copy of the same settings and a chance for the two to drift.

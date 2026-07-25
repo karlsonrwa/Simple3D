@@ -46,15 +46,15 @@
 ;=====================================================================
 ;  CONSOLE MESSAGES
 ;
-;  axlUIWPrint carries a severity, and the Allegro console colours by it:
-;  warnings in its warning colour, errors in red, both with the *WARNING* /
+;  axlUIWPrint carries a severity, and the Allegro console colors by it:
+;  warnings in its warning color, errors in red, both with the *WARNING* /
 ;  *Error* prefix Allegro puts on its own messages. So these lines do NOT
 ;  spell the severity out themselves - Allegro says it, and saying it twice
 ;  reads as a mistake.
 ;
 ;  The documented levels are 'info0, 'info1, 'warn, 'error and 'fatal. There is
 ;  no "success" level, so a green completion line cannot be had this way; the
-;  GUI log does colour its own success line green, and that is where the result
+;  GUI log does color its own success line green, and that is where the result
 ;  is judged. 'fatal is deliberately unused - it beeps and its behaviour beyond
 ;  that is not documented here.
 ;
@@ -63,7 +63,7 @@
 ;  conversion and either print wrongly or fault.
 ;
 ;  Falls back to printf when axlUIWPrint is unavailable or refuses the call, so
-;  no message is ever lost to the attempt at colouring it.
+;  no message is ever lost to the attempt at coloring it.
 ;=====================================================================
 
 procedure( s3dSay( s_level t_message )
@@ -2071,7 +2071,7 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
 ; how exportJson tells the two apart as well.
 ; Messages about objects that were found but could not be exported. Collected
 ; while sweeping and carried into the JSON so the Python side can show them too
-; - the Allegro console scrolls away, the GUI log does not, and it colours a
+; - the Allegro console scrolls away, the GUI log does not, and it colors a
 ; line beginning with "warning" orange.
 ;
 ; A module-level accumulator rather than a return value: the collector already
@@ -2894,8 +2894,8 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                 ;
                 ; No green: axlUIWPrint's severities are info0, info1, warn,
                 ; error and fatal, and none of them is "success". A completion
-                ; line therefore prints in the console's ordinary colour. The
-                ; GUI log does colour its own completion line green, and that
+                ; line therefore prints in the console's ordinary color. The
+                ; GUI log does color its own completion line green, and that
                 ; is where the result is actually judged.
                 printf( "Simple 3D: export complete - %d variant(s) written.\n"
                         variantCount )

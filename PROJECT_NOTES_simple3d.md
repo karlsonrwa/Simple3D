@@ -94,7 +94,7 @@ File → Export → Simple 3D  (new SKILL: simple3d.il)
 ```
 
 Three moving parts:
-1. `simple3d.il` — NEW. Menu item, config (default model dir, default colour), path
+1. `simple3d.il` — NEW. Menu item, config (default model dir, default color), path
    resolution (pcb -> cad), launches the exporter and then the GUI.
 2. `makeVariant3dIntermediates.il` — existing (juulsA/exportStep). Takes the output dir
    as its **first argument** and `createDir`s it, so redirecting JSON to `cad` needs no
@@ -143,7 +143,7 @@ x_levels tabs (default 1). Must be written.
 ## Python port — fixes already applied
 
 Cache mapping per-component (was per-STEP-file, first-wins); pathlib instead of hardcoded
-`\`; no `cin.get()` (exit codes); sRGB colour (`--legacy-color` restores old); free-shape
+`\`; no `cin.get()` (exit codes); sRGB color (`--legacy-color` restores old); free-shape
 diff instead of `for i=2`; single-walk file index; always `edges[0]` as outline; checked
 ReadFile/Write status; error on open contours.
 
@@ -167,8 +167,8 @@ statement true when written and never revisited. Corrected in round 21.)
 1. Board thickness = dielectrics + planes + conductors + soldermask (both sides).
    Silkscreen and paste mask excluded. Example 2-layer: 1.464 + 0.045 + 0.045 + 0.025 +
    0.025 = 1.604.
-2. Colour dropdown in the GUI, colours from `Allegro3DCanvasPreferences.xml`.
-3. `simple3d.il`: menu item, config (default model dir + default colour), JSON to `cad`,
+2. Color dropdown in the GUI, colors from `Allegro3DCanvasPreferences.xml`.
+3. `simple3d.il`: menu item, config (default model dir + default color), JSON to `cad`,
    launch GUI prefilled. Output name `<brd>_simple_DD_MM_YYYY.step`, `_` appended on collision.
 4. Assembly: `symbols_top` / `symbols_bot` sub-assemblies at top level, unique names
    `refdes_<jsonname>`.
@@ -182,7 +182,7 @@ Path on user's machine: **unknown, need to confirm**.
 8 FixedThemes: `Black, Blue, Dark_green, Green, Purple, Red, White, Yellow`.
 `CustomThemes` is empty. `ActiveTheme = Dark_green`.
 
-The colour the user perceives as "board colour" is the **soldermask** entry, and it is
+The color the user perceives as "board color" is the **soldermask** entry, and it is
 semi-transparent (alpha 165/166) over the dielectric:
 
 | theme | soldermask RGBA | dielectric RGB |
@@ -218,16 +218,16 @@ Adding mask thickness therefore raises the question of which side of z=0 it goes
   lives: top side or bottom side of the board.
   - z0 = top: board spans 0 .. -T; top parts at 0, bottom parts at -T.
   - z0 = bottom: board spans +T .. 0; top parts at +T, bottom parts at 0.
-- **Colour**: no transparency, pure soldermask RGB. Colours **hardcoded** in the script
+- **Color**: no transparency, pure soldermask RGB. Colors **hardcoded** in the script
   (no runtime XML read).
-- **Board edge (rim)**: separate colour, exposed as a setting with documented values —
+- **Board edge (rim)**: separate color, exposed as a setting with documented values —
   same as board / cream dielectric / user-defined RGB.
 - **Filename**: `board_simple_18_07_2026.step`. On collision the underscore **accumulates**
   (`board_simple_18_07_2026_.step`, `__`, ...) — deliberate, sorts better.
 - **Variants**: export **all** of them, one STEP per variant.
 - **Naming**: use the **MfrPN** user property (present on every component) as the part name.
   If a component lacks it -> warn and abort **without writing the JSON**.
-- **Component colours**: mandatory, must be preserved — this is the point of the exercise.
+- **Component colors**: mandatory, must be preserved — this is the point of the exercise.
 - **`write.surfacecurve.mode = 0`**: worth trying; user will evaluate on several boards.
 
 ## Resolved 2026-07-18 (round 2)
@@ -343,7 +343,7 @@ documented in addIndent (harmless: generator never emits empty lines, byte-verif
 
 - [ ] Shape of `axlDBGetProperties` entries — (name . value) or (name value)? Both handled,
       but wants confirming on a real component.
-- [ ] Board rim colour default (same as board / cream / custom).
+- [ ] Board rim color default (same as board / cream / custom).
 
 ## STATUS: requirement table — LIVING, keep current
 
@@ -362,14 +362,14 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | # | requirement | status |
 |---|---|---|
 | 1 | mask thickness in board | done; core.total_board_thickness: board+both masks. Verified 1.104. Limitation: mask layers count only if named `SOLDERMASK*` (round 2 decision) — a stackup naming them otherwise contributes 0.0 silently. |
-| 2 | colour dropdown in GUI | done; colors.py: 8 themes from XML, dropdown + swatch. |
+| 2 | color dropdown in GUI | done; colors.py: 8 themes from XML, dropdown + swatch. |
 | 3 | simple3d.il menu, pcb→cad, dated name, prefill | done; anchor 3d_export_ui; --dated-name accumulating _ |
 | 4 | symbols_top/bot, unique names `refdes_<jsonname>` | **PARTIAL** — groups and shared parts done (part = model file). The `refdes_<jsonname>` instance naming this requirement asks for was **removed in round 8** as over-complication, so no reference designator survives into the STEP at all. The requirement itself was never withdrawn: either restore the naming or amend requirement 4. |
 | 5 | minimise size / reuse | done; surfacecurve.mode=0 (~49% smaller) + one shared part per model |
 | 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
 | 7 | silkscreen export (user, 2026-07-22) | **done and confirmed on the user's boards** (rounds 10–12). `format_version: 2`; polygons carry Allegro's own area and the reader resolves the vertex-radius reading against it (settled: axis / positive-sits-left / first-radius-closes). Solid or flat, per side, White/Black, clipped to outline−cutouts. Flat faces are unioned; solid ones deliberately are not. |
 | 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11; **extended in round 19 and confirmed live 2026-07-24** to mechanical symbols that carry a STEP model (`PKGDEF_STEP_FILE`) but have **no refdes** — they were silently dropped by the refdes gate before, now they export (`axlStepGet` on a mechanical instance returns the mapping; no `sym->definition` fallback needed). Export list comes from the design, the variant table only subtracts, so a symbol Variants.lst does not mention is exported in every variant. `NO_STEP_EXPORT` excludes outright and is logged by refdes — **confirmed live 2026-07-24: `axlDBGetProperties` sees the property and marked symbols are excluded.** |
-| 10 | silkscreen layers chosen in the GUI (user, 2026-07-23) | done in rounds 14-17; `format_version: 3`. Every polygon carries its layer, the panel offers what the JSON contains, exclusions are persisted, a side switched off greys its layers. Zero-width objects reported by layer and position. Console coloured by severity via `axlUIWPrint` — no green severity exists. |
+| 10 | silkscreen layers chosen in the GUI (user, 2026-07-23) | done in rounds 14-17; `format_version: 3`. Every polygon carries its layer, the panel offers what the JSON contains, exclusions are persisted, a side switched off greys its layers. Zero-width objects reported by layer and position. Console colored by severity via `axlUIWPrint` — no green severity exists. |
 | 11 | multi-stackup + bent flex (user, 2026-07-25) | **multi-stackup done in round 26**; `format_version: 5`. Zones read from the design with their own outline and stackup thickness, fused into one board, components placed on their own zone's surface, zones aligned on the shared conductor core. Fixed two live defects on the way (see round 26). **Bends deliberately NOT done** — the data is available but folding is a separate effort of comparable size to the whole tool, and the bend parameters live in an undocumented `IDX_BEND_TYPE_INFO` property. Board is exported flat. |
 | 9 | one settings file (user, 2026-07-22) | done in round 10h. `simple3d_config.json` holds every user setting, read by both halves; only `S3D_ScriptDir` stays in SKILL source, for bootstrap. Rounds 12–13 fixed two ways the GUI could damage it. |
 
@@ -378,8 +378,8 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 - Mask thickness: board 1.036 -> 1.096 with 0.03+0.03 demo masks; z_datum top/bottom both correct.
 - Assembly tree: board -> PCB / symbols_top / symbols_bot, shared part across 3 instances.
 - CLI single / dated-name collision / batch variants all pass.
-- GUI rendered under Xvfb: colour dropdown+swatch, rim dropdown, z radios, checkboxes;
-  Generate works; --gui prefill launch fills paths + colour.
+- GUI rendered under Xvfb: color dropdown+swatch, rim dropdown, z radios, checkboxes;
+  Generate works; --gui prefill launch fills paths + color.
 
 ### NOT verifiable here (user must confirm in Allegro)
 - `getWorkingDir()` — not in the project API reference. simple3d.il has a load-time
@@ -461,12 +461,12 @@ Fixes:
    GUI prefill + CLI --batch filter globbed *.json to only tagged files and log
    the ignored ones. core._reserved excludes format/format_version from the
    component loop. Foreign Variants.lst-style json is now ignored, not built.
-6. **Rim colour bug** (point 3): _top_and_bottom_faces classified by z-position,
+6. **Rim color bug** (point 3): _top_and_bottom_faces classified by z-position,
    but a straight board's side walls have z_com == mid exactly, so `>= mid` swept
-   them into "top" and the rim colour landed on a flat face. Replaced with
+   them into "top" and the rim color landed on a flat face. Replaced with
    _rim_faces() classifying by NORMAL: vertical walls (|normal_z|<0.5) = rim,
    curved cutout walls included. Verified: 4 walls plain, 5 with a hole, flats
-   excluded; cream rim + green board both present as distinct colours.
+   excluded; cream rim + green board both present as distinct colors.
 
 Full consolidated regression: 7/7 pass. Core geometry still == C++ 12073.309477.
 ruff: only E501 line-length (cosmetic), no F-code (functional) issues.
@@ -478,7 +478,7 @@ ruff: only E501 line-length (cosmetic), no F-code (functional) issues.
 
 ## Update 2026-07-18 (round 7)
 
-1. **Coloured log** (point 1): tk Text tags - warning #d9791e (orange), error
+1. **Colored log** (point 1): tk Text tags - warning #d9791e (orange), error
    #8b0000 (dark red), success green. _append_log auto-detects severity from the
    message prefix (warning/ignored/error/traceback); done->success, error->error
    tagged explicitly in the drain. Rendered under Xvfb: orange "Ignored..." line
@@ -503,8 +503,8 @@ Core regression still V=12073.309477. ruff F-codes clean.
 
 ### Still user-verified only (Allegro 24.1)
 - makeVariant3dIntermediates.il + simple3d.il load/run clean (balance OK).
-- Rim colour on a real board with cutouts.
-- Coloured log appearance on the user's Windows tk theme.
+- Rim color on a real board with cutouts.
+- Colored log appearance on the user's Windows tk theme.
 
 ## Review 2026-07-19 (full code + README review)
 
@@ -577,7 +577,7 @@ Four changes this round (user request):
    `symbols_top`/`symbols_bot` the shared model part is now added **directly**
    as an instance carrying its STEP file's own name; identical footprints still
    share one solid. (`core.py`, placement loop rewritten.)
-4. **GUI swatch moved.** The board-colour swatch was pushed to the right edge by
+4. **GUI swatch moved.** The board-color swatch was pushed to the right edge by
    the expanding grid column; it now sits in a small frame beside its dropdown
    (`ttk.Frame` + `pack`), directly to the right of the combobox.
 
@@ -623,7 +623,7 @@ SKILL fixes cost two live-debug cycles that are worth recording (below).
    dataclass (`gui.py:43`) filled by `_snapshot()` (`gui.py:306`) on the main
    thread in `on_generate`, and passed into the worker. Frozen also means a
    widget edit mid-build can no longer change the build in flight.
-   `_snapshot()` calls `_rim_color()`, so the early colour validation still
+   `_snapshot()` calls `_rim_color()`, so the early color validation still
    happens before the thread starts.
 2. **One bad variant aborted the whole GUI batch.** The per-job loop had no
    try/except, so the first `StepBuilderError` cancelled every remaining
@@ -640,7 +640,7 @@ SKILL fixes cost two live-debug cycles that are worth recording (below).
    now two named tuples (`gui.py:38-39`). **Side effect worth knowing:** the CLI
    prints the same strings, so its output changed — both lines now carry a
    `warning:` marker they did not have before. Nothing in the repo parses it.
-   Still uncoloured by design: `if not roots` (`core.py:605`) logs nothing at
+   Still uncolored by design: `if not roots` (`core.py:605`) logs nothing at
    all, to avoid one line per component for a single missing STEP file.
 
 ### Fixed — SKILL
@@ -787,7 +787,7 @@ what to do when the two disagree (trust the API, warn, or both).
 - `py_compile` clean on all four `.py`; no Tk access remains inside `_generate`
   (checked by grep over the method body).
 - Every `core` `log()` literal mapped through the actual `_append_log` logic:
-  two warnings coloured, four neutral lines untouched.
+  two warnings colored, four neutral lines untouched.
 - Both `.il` files: paren balance 0/0, and every `return()` now sits in a `prog`
   (static checker, which was itself verified against deliberately broken copies).
 - Every `axl*` call in both `.il` files exists in `skill_api_index` (16/16), and
@@ -835,7 +835,7 @@ that the conversion is sound on the success path too.
 ### NOT verified here (user must confirm in Allegro)
 - GUI: the batch-isolation path (queue several variants, break the second — the
   rest should build and the summary should end `, 1 failed`).
-- Log colours on the user's Windows tk theme.
+- Log colors on the user's Windows tk theme.
 
 ### Doc debt found while reading this memo
 
@@ -866,7 +866,7 @@ Branch `feature/silkscreen-export`. User requirements for this round, verbatim
 in intent: variant A of the options memo; silkscreen of components absent from a
 variant must **not** be removed (the bare board is manufactured once for every
 assembly variant, so its legend is physically there regardless); ink 25 µm as a
-config parameter; GUI checkbox plus a two-item White/Black colour dropdown; silk
+config parameter; GUI checkbox plus a two-item White/Black color dropdown; silk
 outside the board must be clipped; a settings file for which layers are
 silkscreen, as exportJson has.
 
@@ -905,7 +905,7 @@ board. Rectangular boards with no cutouts get a bbox fast path.
 
 **Silk solids are deliberately NOT fused.** Thousands of overlapping thin prisms
 would cost minutes of OCCT time with a real chance of failing, and buy nothing
-visible. Each side is one compound, one label, one colour. Documented as a
+visible. Each side is one compound, one label, one color. Documented as a
 limitation in the README.
 
 ### Files touched
@@ -1499,7 +1499,7 @@ and ran off the right edge with no horizontal scrollbar to reach them.
 
 ### Verified here
 Per-side counts; flat and solid z-ranges; config round trip in both directions;
-GUI smoke test (config path, wrap mode, both checkboxes, colour box greying out
+GUI smoke test (config path, wrap mode, both checkboxes, color box greying out
 when both sides are off); full suite clean. One scratch test still called
 `generate(silkscreen=...)` and was updated to the new API - worth remembering
 that renaming a keyword silently breaks callers that pass it by name.
@@ -2028,7 +2028,7 @@ Simple 3D: WARNING - zero width: text on REF DES/SILKSCREEN_TOP at (12.500, 4.00
 ```
 
 The messages also travel into the JSON under `silkscreen.warnings` and are
-re-logged by the Python side with a `warning:` prefix, which the GUI colours
+re-logged by the Python side with a `warning:` prefix, which the GUI colors
 orange. Two reasons: the Allegro console has usually scrolled past by the time
 anyone looks at the model, and the GUI is where the result is judged. They are
 logged even when silkscreen is switched off - the object is wrong in the board
@@ -2043,13 +2043,13 @@ Cleared per export, not per side, so both sides report together.
 Greying: both sides on leaves everything enabled; switching bottom off disables
 only its boxes; tick states are byte-identical before and after; None skips the
 disabled side; switching back on re-enables. Warnings: carried through the JSON,
-logged with the prefix that colours them, and still logged with silkscreen off.
+logged with the prefix that colors them, and still logged with silkscreen off.
 Writer transliteration extended to emit the warnings array - all seven JSON
 shapes still parse. Full suite and all three SKILL checks clean.
 
-## Update 2026-07-23 (round 17) — severity colouring in the Allegro console
+## Update 2026-07-23 (round 17) — severity coloring in the Allegro console
 
-The user pointed at a Cadence forum thread on colouring SKILL output. The link
+The user pointed at a Cadence forum thread on coloring SKILL output. The link
 returns 403 to a fetch, but the answer is in the local reference:
 `axlUIWPrint( r_window [s_msg_level] t_format [args] )`.
 
@@ -2061,13 +2061,13 @@ Five levels, and that is the whole set:
 |---|---|
 | `'info0` | informational, not journalled |
 | `'info1` | informational (the default) |
-| `'warn` | warning colour, `*WARNING*` prefix |
+| `'warn` | warning color, `*WARNING*` prefix |
 | `'error` | red, `*Error*` prefix, beeps |
 | `'fatal` | beeps; behaviour beyond that not documented here |
 
 So orange warnings and red errors are available and now used. **Green is not.**
 There is no "success" severity, so a completed export prints in the ordinary
-colour; the GUI log already shows its own completion line in green, and that is
+color; the GUI log already shows its own completion line in green, and that is
 where the result is judged. Said plainly in the README rather than approximated
 with something that is not green.
 
@@ -2083,7 +2083,7 @@ Two details in it that matter:
   name or path containing a per-cent sign would otherwise be read as a
   conversion.
 - It falls back to `printf` when `axlUIWPrint` is unavailable or refuses. A
-  message must not be lost to the attempt at colouring it.
+  message must not be lost to the attempt at coloring it.
 
 Messages no longer spell their own severity: Allegro adds `*WARNING*` /
 `*Error*`, and saying it twice reads as a mistake. `Simple 3D: warning - no such
@@ -2155,11 +2155,11 @@ Plus one omission that was not a wrong statement but a gap: **the changelog
 stopped at 2026-07-22**. Everything from rounds 11-17 - mechanical symbols,
 NO_STEP_EXPORT, per-side control, flat mode and its height, the settings
 consolidation and the two data-loss fixes under it, the layer chooser,
-zero-width reporting, console severity colouring - was undocumented for users.
+zero-width reporting, console severity coloring - was undocumented for users.
 One entry added covering all of it, in both languages.
 
 The GUI table also listed its rows in an order the window does not use (layers
-before Colour/Flat, which share the Top/Bottom row). Reordered.
+before Color/Flat, which share the Top/Bottom row). Reordered.
 
 ### The pattern in all four
 
@@ -2285,10 +2285,10 @@ Small round on user feedback after the round-19 export landed.
   does see the property and marked symbols are excluded. Removed from the
   "Not verified outside Allegro" list at the top and marked confirmed in the
   requirement-8 row. (Nothing else in that list changed.)
-- **GUI: `Board edge` → `Board edge colour`.** The dropdown sets a colour, so the
+- **GUI: `Board edge` → `Board edge color`.** The dropdown sets a color, so the
   label now says so (`gui.py` `_build_ui`).
-- **GUI: an explicit `HEX colour` label** now sits directly left of the custom
-  rim-colour entry, and greys out in step with the field via
+- **GUI: an explicit `HEX color` label** now sits directly left of the custom
+  rim-color entry, and greys out in step with the field via
   `rim_hex_label.state(["disabled"])` in `_update_rim_entry` — same greying
   discipline as the silk layer rows in round 16, so a user cannot mistake the
   disabled `#RRGGBB` field for something to fill in. Verified: `py_compile`
@@ -2352,7 +2352,7 @@ person reading it.
 - Silkscreen exercised **as a package import**, which the mechanical test did not
   do: `core` reaches `from .colors import SILK_COLORS` only on that path. 20
   assertions — areas reproduced, layer exclusion, flat mode smaller than solid
-  and unioned without warning, JSON warnings re-logged with the colouring prefix
+  and unioned without warning, JSON warnings re-logged with the coloring prefix
   even when the legend is switched off, one bad polygon skipped not fatal.
 - **Config contract across the SKILL/Python boundary**: every key each side reads
   exists in the shipped file, all four sections and both `_comment_` keys survive
@@ -2895,8 +2895,8 @@ the pieces as separate solids (18 out, one expected). The multi-argument
 
 ### Layer inspection build
 `gui.debugLayers` / `--debug-layers` / a checkbox. Every layer stays its own
-part named `<zone>__<layer>`, coloured from a 12-entry contrasting palette keyed
-on the layer NAME so one sheet keeps one colour across zones. Cutouts applied
+part named `<zone>__<layer>`, colored from a 12-entry contrasting palette keyed
+on the layer NAME so one sheet keeps one color across zones. Cutouts applied
 per layer. About 10x the file size; off by default. This is what let the user
 see the inverted coverlay.
 
@@ -2971,6 +2971,54 @@ deliberate manufacturing overlap left by the trim, and the fuse absorbs them.
 - Whether `layerFunction` alone is enough to decide polarity without the name
   list - `probe_func.il` was written to answer that and has not been run yet.
 
+## Update 2026-07-25 (round 31) — the round-30 suggestions, and one spelling
+
+User declined the preset picker (a mock-up, `picker_demo.py`, was built and
+shown first - it stays in scratch), asked for a **Reset colors** button, and
+took the rest of the round-30 list.
+
+### Done
+- **Reset colors**, at the end of the swatch row so its scope is unambiguous:
+  those swatches, back to Allegro's material defaults. The board theme and the
+  rim have their own controls and are left alone. Greys with the swatches.
+- **Board and Silk side by side**, not stacked.
+- **Z = 0 at is a dropdown**, one row instead of a row of its own. The variable
+  still holds "top"/"bottom", so the config and every caller are untouched.
+- **"Minimise file size" → "Compact STEP (reuse component geometry)".** Two
+  controls both saying *size* and meaning different things is what prompted
+  this; the silk one keeps the wording the user chose.
+- **The whole Silk group greys when both sides are off**, not just the layer
+  rows. The two side checkboxes are deliberately left live - they are how it
+  comes back.
+
+### The layout numbers, because the first attempt was worse than what it replaced
+
+| | width | height |
+|---|---|---|
+| stacked (round 30) | 1038 | 1004 |
+| side by side, first try | **1635** | 814 |
+| side by side, long rows wrapped | **1204** | 844 |
+
+Side by side buys 160 px of height but costs width, and the first attempt cost
+far too much of it: Board options alone asked for 923 px because the stitching
+dropdown, six swatches and the Reset button shared one line. Moving the swatches
+to their own row, and "Make surface" to its own, brought the group to 654 and
+the window to 1204x844 - comfortable on 1080p, where 1004 tall was not.
+
+**Measure the request, not the appearance.** `winfo_reqwidth` on each frame
+found the 923 immediately; the rendered window looked fine because it had been
+restored to a saved geometry and was simply clipping.
+
+### colour -> color, everywhere
+User asked which is right in standard American English. It is **color /
+colors / colored**; "colour" is British. The project was mixed: config keys and
+Python identifiers were already American (`layerColors`, `board_color`), while
+every UI label, comment and doc sentence was British. 237 replacements across
+10 files, none in identifiers that anything external depends on. OCCT and
+tkinter were never a risk - `Quantity_Color`, `XCAFDoc_ColorTool`,
+`colorchooser` are American already, so a blind `colour`->`color` could not
+collide with them.
+
 ## Update 2026-07-25 (round 30) — the window regrouped
 
 User's list, after using round 29 live. All done.
@@ -2979,12 +3027,12 @@ User's list, after using round 29 live. All done.
 - **One "Options" block became "Board options" and "Silk options"**, after
   Input. The old block held the board and the legend in one list, so two
   unrelated halves of the window read as one set of settings.
-- **The rim colour is a picker, not a typed hex string.** Same idiom as every
-  other colour in the window, and it cannot be handed a value that does not
+- **The rim color is a picker, not a typed hex string.** Same idiom as every
+  other color in the window, and it cannot be handed a value that does not
   parse. Greyed until Custom, like the field it replaces. `boardEdgeCustom`
   still stores `#RRGGBB`, so existing configs are untouched.
 - **"Body stitching"**: Solid / Solid colored layers / Not stitched.
-- **"Not stitched" now uses the SAME per-kind palette** as the coloured mode
+- **"Not stitched" now uses the SAME per-kind palette** as the colored mode
   instead of the contrast palette round 29 gave it. The user asked for this and
   it is the better answer: switching between the two now changes how the board
   is put together and nothing else, so the two pictures are comparable. The
@@ -3006,21 +3054,21 @@ nearly fills the height. Not fixed, listed below as a suggestion.
    Layers panel down from 96 px to ~72 - either buys back the 128 px.
 2. "Minimise file size" and "Make surface (minimum file size)" both say size and
    mean different things; one of them could be reworded.
-3. Board colour is 8 fixed themes while the rim and the layers are free pickers.
+3. Board color is 8 fixed themes while the rim and the layers are free pickers.
    One idiom would be better than two.
 4. "Z = 0 at" is two radios on a row of its own; a dropdown would save a row.
 5. Silk options could grey wholesale when both Top and Bottom are off, the way
    the layer list already does per side.
 
 ### The audit earned its keep again
-It caught the quick-start still naming an "Options" frame and a "HEX colour"
+It caught the quick-start still naming an "Options" frame and a "HEX color"
 control, both gone. Two of its own rules needed widening for the new window -
 the group whitelist and the control list - which is the maintenance this kind
 of check costs and is still cheaper than re-reading the prose.
 
-## Update 2026-07-25 (round 29) — three board modes, colour per layer kind
+## Update 2026-07-25 (round 29) — three board modes, color per layer kind
 
-User asked whether the board could be ONE solid and still show a colour per
+User asked whether the board could be ONE solid and still show a color per
 layer on its rim, the way Inventor shows it. It can, and the answer is a single
 line of the pipeline.
 
@@ -3036,25 +3084,25 @@ stack into one surface. Measured on the real STIFFENER2, eleven layer solids:
 | fuse + UnifySameDomain | 1 | **11** |
 | fuse only | **1** | **47** |
 
-So: fuse, skip the unify, colour the faces. Volume identical, one solid on
-re-import, 11 distinct face colours survive the STEP round trip.
+So: fuse, skip the unify, color the faces. Volume identical, one solid on
+re-import, 11 distinct face colors survive the STEP round trip.
 
 **Which face came from which layer is taken from the boolean's own history**
 (`BRepAlgoAPI_Fuse.Modified`), not from geometry. A z-band lookup would be
 ambiguous the moment two zones put different layers at the same height, which
 is the normal case.
 
-### Cost, measured with ONE writer and all three coloured
+### Cost, measured with ONE writer and all three colored
 
 | mode | size | |
 |---|---|---|
-| solid (fuse+unify, one colour) | 12,589 | |
-| **layers** (fuse, colour per face) | **59,475** | 472% of solid, 67% of inspect |
+| solid (fuse+unify, one color) | 12,589 | |
+| **layers** (fuse, color per face) | **59,475** | 472% of solid, 67% of inspect |
 | inspect (separate parts) | 88,769 | |
 
 The first attempt at this comparison was wrong and worth remembering: `solid`
 and `inspect` were written with `STEPControl_Writer` (geometry only) and
-`layers` with `STEPCAFControl_Writer` (colours + structure), which made the new
+`layers` with `STEPCAFControl_Writer` (colors + structure), which made the new
 mode look 159% of a compound it was actually cheaper than. **Compare like with
 like, or do not compare.**
 
@@ -3063,7 +3111,7 @@ like, or do not compare.**
 `gui.boardMode` = solid / layers / inspect, replacing the `debugLayers` boolean
 added in round 27 (read once for migration, then dropped from the file - same
 pattern as `stepDir`). A dropdown rather than more checkboxes because the three
-are alternatives: "inspect + layer colours" ticked together would have to mean
+are alternatives: "inspect + layer colors" ticked together would have to mean
 something, and it does not.
 
 Beside it, a row of six clickable swatches - copper, base, coverlay, adhesive,
@@ -3071,10 +3119,10 @@ stiffener, soldermask - opening the stdlib `colorchooser`. Greyed rather than
 hidden outside `layers` mode: a row that appears and disappears makes the
 window jump.
 
-**The defaults are Allegro's own material colours**, read off the test board's
+**The defaults are Allegro's own material colors**, read off the test board's
 `3DX_APPEARANCE` attachment during the round-25 investigation
 (`3d_color_outer_conductor_material` 0xB87333, `_dielectric_` 0xFCFFD6,
-`_coverlay_` 0xF29440, `_soldermask_` 0x1A5924). So a layer-coloured export
+`_coverlay_` 0xF29440, `_soldermask_` 0x1A5924). So a layer-colored export
 looks like the same board does in Allegro's canvas rather than like an
 arbitrary palette. Adhesive and stiffener have no Allegro entry; grey and FR4
 green.
@@ -3083,16 +3131,16 @@ Layer kind is decided by type first, name second: a conductor is a conductor
 whatever it is called, while everything outside the core is a MASK layer and
 only its name distinguishes coverlay from adhesive.
 
-### Both non-solid modes now ignore the board and rim colours
-They have already decided every colour on the board. A whole-shape colour
+### Both non-solid modes now ignore the board and rim colors
+They have already decided every color on the board. A whole-shape color
 applied over the top would either be ignored or, worse, win - and paint the
-stack one colour, which is the one thing those modes exist to avoid. Says so in
+stack one color, which is the one thing those modes exist to avoid. Says so in
 the log rather than silently.
 
 ### Three self-inflicted stumbles, all caught by tests
 - `TopTools_ListIteratorOfListOfShape` does not exist in these bindings;
   `TopTools_ListOfShape` is directly iterable in Python.
-- `make_board_layer_parts` returned the layer NAME where the colour code needed
+- `make_board_layer_parts` returned the layer NAME where the color code needed
   the layer DICT (type and function decide the kind). Now carries the dict.
 - **A scripted edit to the test file replaced nothing and said so only because
   the next run showed the block missing.** Then the anchor with `\n` in it

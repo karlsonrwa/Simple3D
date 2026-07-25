@@ -330,13 +330,13 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
                            log: LogFn = _noop_log) -> list[tuple[str, dict, TopoDS_Shape]]:
     """(zone name, layer dict, solid) for every layer of every zone, NOT fused.
 
-    The LAYER ITSELF, not just its name: the layer-coloured build needs its
+    The LAYER ITSELF, not just its name: the layer-colored build needs its
     type and function to decide what kind of layer it is.
 
     The inspection build. Fusing is what the ordinary path does and what makes
     the file a quarter of the size, but it also welds the stack into one
     surface you cannot take apart by eye. Here each layer stays its own part,
-    keeps its own name and gets its own colour, so a stackup can be checked
+    keeps its own name and gets its own color, so a stackup can be checked
     against the cross-section editor layer by layer.
 
     Cutouts are applied to each layer separately, so holes stay visible.
@@ -472,7 +472,7 @@ def fuse_keeping_faces(parts: list[tuple[str, str, TopoDS_Shape]],
 
     if unknown:
         log(f"warning: {unknown} board face(s) could not be traced back to a "
-            f"layer and keep the default colour")
+            f"layer and keep the default color")
     return fused, faces
 
 
@@ -992,7 +992,7 @@ def build_silkscreen(
     The solids are deliberately NOT fused. Silkscreen is thousands of
     overlapping strokes and glyphs, and a boolean union of that many thin
     prisms is minutes of OCCT time with a real chance of failing outright,
-    while the union buys nothing: the result is one label, one colour, and it
+    while the union buys nothing: the result is one label, one color, and it
     renders and exports identically. What it costs is that the compound is not
     a single manifold solid, which matters only if someone means to do
     downstream boolean work on the ink itself.
@@ -1514,9 +1514,9 @@ def _rim_faces(shape: TopoDS_Shape):
     (normal_z ~ 0), i.e. faces whose plane is vertical. Classifying by
     z-position instead was wrong: a straight board's side walls have their
     centre of mass at mid-height, exactly on the top/bottom boundary, so they
-    leaked into the "top" set and the rim colour landed on a flat face.
+    leaked into the "top" set and the rim color landed on a flat face.
     Everything with a vertical normal is rim; the flat top and bottom faces
-    keep the board colour.
+    keep the board color.
     """
     # TopoDS is NOT re-imported here: it is a module-level import already, and
     # a local import of a module-level name makes that name local to the whole
@@ -1611,13 +1611,13 @@ def generate(
         Set write.surfacecurve.mode = 0 (about half the file size, geometry
         unchanged) and share one part per distinct model.
     srgb_color:
-        Treat colours as sRGB (what you set is what you see). False reproduces
+        Treat colors as sRGB (what you set is what you see). False reproduces
         the original C++ linear-RGB behaviour.
     board_mode:
         How a MULTI-STACKUP board is built. Ignored on an ordinary board.
-          "solid"   - one solid, one colour, coplanar faces merged. Smallest.
+          "solid"   - one solid, one color, coplanar faces merged. Smallest.
           "layers"  - one solid, but the layer interfaces are kept and each
-                      face is coloured by what kind of layer it belongs to, so
+                      face is colored by what kind of layer it belongs to, so
                       the rim shows the stack. About 4.7x "solid".
           "inspect" - every layer a separate named part. For taking the board
                       apart by eye; largest of the three.
@@ -1719,7 +1719,7 @@ def generate(
 
     if mode == "layers":
         # One solid, but the layer interfaces survive and every face is
-        # coloured by the kind of layer it belongs to, so the rim shows the
+        # colored by the kind of layer it belongs to, so the rim shows the
         # stack. See fuse_keeping_faces for why UnifySameDomain is skipped.
         from .colors import DEFAULT_LAYER_COLORS, layer_kind
 
@@ -1734,22 +1734,22 @@ def generate(
         for face, layer in faces:
             kind = layer_kind(layer)
             rgb = palette.get(kind, DEFAULT_LAYER_COLORS["other"])
-            colour = Quantity_Color(
+            color = Quantity_Color(
                 rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0,
                 Quantity_TypeOfColor.Quantity_TOC_sRGB if srgb_color
                 else Quantity_TypeOfColor.Quantity_TOC_RGB)
-            color_tool.SetColor(face, colour, XCAFDoc_ColorType.XCAFDoc_ColorSurf)
+            color_tool.SetColor(face, color, XCAFDoc_ColorType.XCAFDoc_ColorSurf)
             used[kind] = used.get(kind, 0) + 1
 
-        log(f"Layer-coloured board: one solid, {len(faces)} face(s) coloured "
+        log(f"Layer-colored board: one solid, {len(faces)} face(s) colored "
             f"by layer kind")
         for kind, count in sorted(used.items()):
             rgb = palette.get(kind, DEFAULT_LAYER_COLORS["other"])
             log(f"  {kind}: {count} face(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
 
     elif mode == "inspect":
-        # Not stitched: every stackup layer stays its own named part. Colours
-        # come from the SAME per-kind palette the stitched-and-coloured mode
+        # Not stitched: every stackup layer stays its own named part. Colors
+        # come from the SAME per-kind palette the stitched-and-colored mode
         # uses, so switching between the two changes how the board is put
         # together and nothing else - a second palette would have made the two
         # pictures needlessly hard to compare.
@@ -1775,7 +1775,7 @@ def generate(
             shape_tool.AddComponent(group, label, TopLoc_Location(gp_Trsf()))
 
         log(f"Not stitched: {len(parts)} separate layer part(s), "
-            f"coloured by layer kind")
+            f"colored by layer kind")
         shape_tool.UpdateAssemblies()
         board = None
         pcb_label = None
@@ -1787,13 +1787,13 @@ def generate(
         pcb_label = shape_tool.NewShape()
         shape_tool.SetShape(pcb_label, board)
 
-    # Both non-solid modes have already decided every colour on the board:
-    # "inspect" per part, "layers" per face. A board colour or a rim colour
+    # Both non-solid modes have already decided every color on the board:
+    # "inspect" per part, "layers" per face. A board color or a rim color
     # applied over the top would either be ignored by the viewer or, worse,
-    # win - and paint the stack a single colour, which is the one thing those
+    # win - and paint the stack a single color, which is the one thing those
     # modes exist to avoid.
     if mode != "solid" and rim_color is not None:
-        log(f"warning: the rim colour is ignored in board mode {mode!r}")
+        log(f"warning: the rim color is ignored in board mode {mode!r}")
 
     if board_color is None:
         rgb = data["pcb"]["color"]
@@ -1806,8 +1806,8 @@ def generate(
 
     if pcb_label is not None and mode == "solid" and rim_color is not None:
         # Paint the rim (vertical side walls) separately. This needs per-face
-        # colour, which costs a few extra entities but is what the user asked
-        # for. The flat top/bottom keep the board colour.
+        # color, which costs a few extra entities but is what the user asked
+        # for. The flat top/bottom keep the board color.
         rim_rgb01 = (rim_color[0] / 255.0, rim_color[1] / 255.0, rim_color[2] / 255.0)
         rim_faces = _rim_faces(board)
         rim_q = Quantity_Color(
@@ -1827,7 +1827,7 @@ def generate(
         shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))
 
     # ---- silkscreen ------------------------------------------------------ #
-    # Its own part per side, so it can be hidden or recoloured in the viewer
+    # Its own part per side, so it can be hidden or recolored in the viewer
     # without touching the board, and so the two sides stay distinguishable.
     silk_data = data.get("silkscreen")
     silk_built = 0
