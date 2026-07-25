@@ -1315,10 +1315,13 @@ procedure( s3dLayerInBody( o_layer )
                 upperCase( o_layer->layerFunction )
             else
                 "" ) )
-        !( s3dContains( probe "SILKSCREEN" ) ||
-           s3dContains( probe "PASTEMASK" ) ||
-           s3dContains( probe "SOLDER_PASTE" ) ||
-           s3dContains( probe "SOLDERPASTE" ) )
+        ; Short markers on purpose. SILKSCREEN_TOP and PASTEMASK_TOP are the
+        ; usual names and layerFunction usually says SILKSCREEN / SOLDER_PASTE,
+        ; but a design that names a layer PASTE_TOP and sets no function would
+        ; slip through a longer test. Nothing else in a cross section contains
+        ; "SILK" or "PASTE" - not coverlay, adhesive, stiffener, soldermask,
+        ; conductor or dielectric - so the short form cannot over-match.
+        !( s3dContains( probe "SILK" ) || s3dContains( probe "PASTE" ) )
     )
 )
 

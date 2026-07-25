@@ -3003,6 +3003,19 @@ everything.
 no silkscreen or paste entries at all, so every check up to here passed. It
 took a plain board to show it.
 
+**It covers rigid-flex too, by construction**: `s3dStackupJson` is the only
+emitter and both call sites - the named stackups and the Primary fallback - go
+through it, with the filter as its first act. Asked directly, and checked
+rather than asserted: a flex stack carrying paste and legend loses exactly
+those four and keeps coverlay, adhesive, stiffener and soldermask.
+
+The markers were shortened from SILKSCREEN/PASTEMASK/SOLDER_PASTE to just
+**SILK** and **PASTE** while checking that: a design naming a layer `PASTE_TOP`
+and setting no `layerFunction` would have slipped through the long forms.
+Nothing else in a cross section contains either string - not coverlay,
+adhesive, stiffener, soldermask, conductor or dielectric - so the short test
+cannot over-match, and `SOLDERMASK` is explicitly checked not to be caught.
+
 Verified by transliterating the filter against the user's actual Primary: 9
 layers -> 5, total 1.104 matching `pcb.thickness` exactly, top copper still at
 z=0, no gaps. Plus a check that SOLDERMASK is not swept up by the SOLDER_PASTE
