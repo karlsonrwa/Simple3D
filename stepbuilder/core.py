@@ -238,6 +238,81 @@ def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
     return common.Shape()
 
 
+def _layer_order(stackups: dict) -> list[str]:
+    """Layer names in stackup order, first appearance wins, deduplicated.
+
+    Drives the inspection colours, so a layer keeps one colour across every
+    stackup it appears in.
+    """
+    order: list[str] = []
+    for stackup in stackups.values():
+        for layer in stackup.get("layers") or []:
+            name = str(layer.get("name") or "")
+            if name and name not in order:
+                order.append(name)
+    return order
+
+
+def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
+                           shift: float,
+                           log: LogFn = _noop_log) -> list[tuple[str, str, TopoDS_Shape]]:
+    """(zone, layer, solid) for every layer of every zone, NOT fused.
+
+    The inspection build. Fusing is what the ordinary path does and what makes
+    the file a quarter of the size, but it also welds the stack into one
+    surface you cannot take apart by eye. Here each layer stays its own part,
+    keeps its own name and gets its own colour, so a stackup can be checked
+    against the cross-section editor layer by layer.
+
+    Cutouts are applied to each layer separately, so holes stay visible.
+    """
+    parts: list[tuple[str, str, TopoDS_Shape]] = []
+    contours = pcb.get("edges") or []
+    cutouts = contours[1:] if len(contours) > 1 else []
+
+    for zone in zones:
+        stackup = stackups.get(str(zone["stackup"]))
+        if not stackup:
+            continue
+        for layer in stackup.get("layers") or []:
+            height = float(layer["z_top"]) - float(layer["z_bottom"])
+            if height <= 0:
+                continue
+            top = float(layer["z_top"]) + shift
+            region = _layer_region(layer, zone["contour"], top, log)
+            if region is None:
+                continue
+            solid = BRepPrimAPI_MakePrism(region, gp_Vec(0, 0, -height)).Shape()
+            if solid.IsNull():
+                continue
+            if cutouts:
+                solid = _cut_out(solid, cutouts, top + 0.01,
+                                 gp_Vec(0, 0, -(height + 0.02)))
+            parts.append((str(zone["name"]), str(layer.get("name") or "?"), solid))
+
+    if not parts:
+        raise StepBuilderError("No stackup layer produced a solid")
+    return parts
+
+
+def _cut_out(shape: TopoDS_Shape, contours: list, cut_z: float,
+             direction: gp_Vec) -> TopoDS_Shape:
+    """Remove every contour in *contours* from *shape*, in one boolean."""
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for i, contour in enumerate(contours, start=1):
+        wire = build_contour(contour, cut_z)
+        face = BRepBuilderAPI_MakeFace(wire, True)
+        if not face.IsDone():
+            raise StepBuilderError(f"Cutout #{i} is not planar or self-intersects")
+        builder.Add(compound, BRepPrimAPI_MakePrism(face.Face(), direction).Shape())
+    cut = BRepAlgoAPI_Cut(shape, compound)
+    if not cut.IsDone():
+        raise StepBuilderError("Boolean cut of board cutouts failed")
+    return cut.Shape()
+
+
 def _stackup_board(stackups: dict, zones: list[dict], shift: float,
                    log: LogFn) -> TopoDS_Shape:
     """The board as one solid: every layer of every zone, fused.
@@ -1329,6 +1404,7 @@ def generate(
     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
     minimize_size: bool = True,
     srgb_color: bool = True,
+    debug_layers: bool = False,
     log: LogFn = _noop_log,
     progress: ProgressFn = _noop_progress,
 ) -> BuildResult:
@@ -1372,6 +1448,12 @@ def generate(
     srgb_color:
         Treat colours as sRGB (what you set is what you see). False reproduces
         the original C++ linear-RGB behaviour.
+    debug_layers:
+        Inspection build for multi-stackup boards: every stackup layer stays a
+        separate, individually coloured and named part instead of being fused
+        into one board solid. For checking a stackup against the cross-section
+        editor by eye. Bigger files, and the board is no longer one solid.
+        Ignored on an ordinary single-stackup board.
     """
     json_file = Path(json_file)
     output_dir = Path(output_dir)
@@ -1446,12 +1528,48 @@ def generate(
 
     # ---- board ----------------------------------------------------------- #
     log("Building board geometry")
-    board = make_board_geometry(data["pcb"], thickness, extrude_z_offset,
-                                zones=zones, levels=levels, stackups=stackups,
-                                shift=shift, log=log)
 
-    pcb_label = shape_tool.NewShape()
-    shape_tool.SetShape(pcb_label, board)
+    if debug_layers and zones and stackups:
+        # Inspection build: every stackup layer stays its own coloured part.
+        from .colors import layer_color
+
+        order = _layer_order(stackups)
+        parts = make_board_layer_parts(data["pcb"], stackups, zones, shift, log)
+        group = shape_tool.NewShape()
+        TDataStd_Name.Set_s(group,
+                            TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
+        shape_tool.AddComponent(main_assembly, group, TopLoc_Location(gp_Trsf()))
+
+        for zone_name, layer_name, solid in parts:
+            label = shape_tool.NewShape()
+            shape_tool.SetShape(label, solid)
+            rgb = layer_color(layer_name, order)
+            _set_color(color_tool, label,
+                       (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0), srgb_color)
+            TDataStd_Name.Set_s(
+                label,
+                TCollection_ExtendedString(_sanitize(f"{zone_name}__{layer_name}")))
+            shape_tool.AddComponent(group, label, TopLoc_Location(gp_Trsf()))
+
+        log(f"Layer inspection: {len(parts)} part(s), unfused, one colour per layer")
+        for name in order:
+            rgb = layer_color(name, order)
+            log(f"  {name}: RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+        shape_tool.UpdateAssemblies()
+        board = None
+        pcb_label = None
+    else:
+        board = make_board_geometry(data["pcb"], thickness, extrude_z_offset,
+                                    zones=zones, levels=levels, stackups=stackups,
+                                    shift=shift, log=log)
+
+        pcb_label = shape_tool.NewShape()
+        shape_tool.SetShape(pcb_label, board)
+
+    # The inspection build has already coloured and named every layer part, so
+    # there is no single board solid left to paint or to find a rim on.
+    if pcb_label is None and rim_color is not None:
+        log("warning: the rim colour is ignored in the layer inspection build")
 
     if board_color is None:
         rgb = data["pcb"]["color"]
@@ -1459,9 +1577,10 @@ def generate(
     else:
         board_rgb01 = (board_color[0] / 255.0, board_color[1] / 255.0, board_color[2] / 255.0)
 
-    _set_color(color_tool, pcb_label, board_rgb01, srgb_color)
+    if pcb_label is not None:
+        _set_color(color_tool, pcb_label, board_rgb01, srgb_color)
 
-    if rim_color is not None:
+    if pcb_label is not None and rim_color is not None:
         # Paint the rim (vertical side walls) separately. This needs per-face
         # colour, which costs a few extra entities but is what the user asked
         # for. The flat top/bottom keep the board colour.
@@ -1478,8 +1597,10 @@ def generate(
     # Name the board part per board (PCB_<jsonstem>), not a bare "PCB": otherwise
     # importing several boards into one CAD session, each carrying a part called
     # "PCB", lets one board's PCB silently substitute another's.
-    TDataStd_Name.Set_s(pcb_label, TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
-    shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))
+    if pcb_label is not None:
+        TDataStd_Name.Set_s(pcb_label,
+                            TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
+        shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))
 
     # ---- silkscreen ------------------------------------------------------ #
     # Its own part per side, so it can be hidden or recoloured in the viewer

@@ -213,6 +213,12 @@ def main(argv: list[str] | None = None) -> int:
     #     help="append MFRPN to each instance name",
     # )
     parser.add_argument(
+        "--debug-layers", action="store_true",
+        help="multi-stackup boards only: keep every stackup layer as its own "
+             "coloured part instead of fusing the board, for inspecting a "
+             "stackup by eye. Bigger files; the board is not one solid",
+    )
+    parser.add_argument(
         "--no-minimize", action="store_true",
         help="do not shrink the file (keep surface curves)",
     )
@@ -276,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
                 # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
                 minimize_size=not args.no_minimize,
                 srgb_color=not args.legacy_color,
+                debug_layers=args.debug_layers,
                 log=log,
             )
         except core.StepBuilderError as exc:

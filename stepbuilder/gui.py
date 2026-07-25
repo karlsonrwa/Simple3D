@@ -80,6 +80,7 @@ class BuildSettings:
     silk_flat_height: float
     silk_layers_off: frozenset[str]
     minimize: bool
+    debug_layers: bool
     brd_name: str | None
     dated_name: bool
 
@@ -119,6 +120,7 @@ class StepBuilderApp(tk.Tk):
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
+        self.debug_layers = tk.BooleanVar(value=False)
 
         # Prefill state, set by prefill_jobs() when launched from Allegro.
         # Note: there is deliberately NO cached job list - jobs are resolved
@@ -306,6 +308,12 @@ class StepBuilderApp(tk.Tk):
         #                 variable=self.mfr_pn_in_name).pack(side="left")
         ttk.Checkbutton(checks, text="Minimise file size",
                         variable=self.minimize).pack(side="left")
+        # Inspection mode. Only does anything on a multi-stackup board, and it
+        # is deliberately not hidden away in the config file: it is the thing
+        # you reach for when a stackup looks wrong and you want to take the
+        # board apart by eye.
+        ttk.Checkbutton(checks, text="Inspect layers (unfused, coloured)",
+                        variable=self.debug_layers).pack(side="left", padx=(12, 0))
 
         # --- log ---
         log_frame = ttk.LabelFrame(self, text="Log", padding=4)
@@ -770,6 +778,7 @@ class StepBuilderApp(tk.Tk):
             silk_flat_height=self.silk_flat_height,
             silk_layers_off=frozenset(self._current_layers_off()),
             minimize=self.minimize.get(),
+            debug_layers=self.debug_layers.get(),
             brd_name=self._brd_name,
             dated_name=self._dated_name,
         )
@@ -860,6 +869,7 @@ class StepBuilderApp(tk.Tk):
                     silk_layers_off=settings.silk_layers_off,
                     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
                     minimize_size=settings.minimize,
+                    debug_layers=settings.debug_layers,
                     log=lambda m: self._queue.put(("log", m)),
                     progress=lambda i, n: self._queue.put(("progress", (i, n))),
                 )
@@ -1039,6 +1049,7 @@ class StepBuilderApp(tk.Tk):
         # MFRPN DISABLED (kept for future):
         # self.mfr_pn_in_name.set(gui.get("mfrPnInName", False))
         self.minimize.set(gui.get("minimizeFileSize", True))
+        self.debug_layers.set(gui.get("debugLayers", False))
         geometry = gui.get("windowGeometry")
         self._saved_geometry = geometry if isinstance(geometry, str) else None
         self._saved_state = ("zoomed" if gui.get("windowState") == "zoomed"
@@ -1115,6 +1126,7 @@ class StepBuilderApp(tk.Tk):
             # MFRPN DISABLED (kept for future):
             # "mfrPnInName": self.mfr_pn_in_name.get(),
             "minimizeFileSize": self.minimize.get(),
+            "debugLayers": self.debug_layers.get(),
             # Where the window was, so the next run comes up in the same place -
             # on the same monitor, which is the point on a multi-screen desk.
             # The non-maximized rect is stored even when closing maximized, so
