@@ -152,7 +152,82 @@ def _open_wire_detail(wire: TopoDS_Wire) -> str:
         return ""
 
 
-def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0) -> TopoDS_Shape:
+def zone_levels(zones: list[dict], z_datum: str) -> tuple[dict, float, float]:
+    """Where each stackup zone's two faces sit, and the board's overall extent.
+
+    Returns ({zone name: (top_z, bottom_z)}, board_top_z, board_bottom_z).
+
+    **Zones line up on the copper, not on their outer faces.** Measured on a
+    real rigid-flex board: FLEX, STIFFENER1 and STIFFENER2 are 0.365, 0.49 and
+    2.44 thick, but all three have a 0.215 conductor core. A 2.44 mm stiffener
+    grows 2.125 above that core and 0.1 below it. Stacking them by total
+    thickness, or aligning their top faces, would tear the board apart at every
+    zone boundary.
+
+    So the shared datum is the top of the core, and each zone extends `above`
+    up and `core + below` down from it. The whole thing is then shifted so the
+    chosen datum face lands on z=0, exactly as the single-stackup path does.
+    """
+    tops = {}
+    bottoms = {}
+    for zone in zones:
+        name = str(zone["name"])
+        tops[name] = float(zone["above"])
+        bottoms[name] = -(float(zone["core"]) + float(zone["below"]))
+
+    board_top = max(tops.values())
+    board_bottom = min(bottoms.values())
+    shift = -board_top if z_datum == "top" else -board_bottom
+
+    levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}
+    return levels, board_top + shift, board_bottom + shift
+
+
+def _zone_solid(zones: list[dict], levels: dict, log: LogFn) -> TopoDS_Shape:
+    """One solid per zone, fused into a single board.
+
+    Fused rather than left as a compound: zone outlines are trimmed against
+    each other and overlap slightly at their shared edges (measured: 0.14 mm on
+    the test board), so a compound would carry doubled geometry along every
+    seam. Four zones make this cheap - unlike the silkscreen legend, where
+    fusing thousands of prisms was measured and rejected.
+    """
+    solids = []
+    for zone in zones:
+        name = str(zone["name"])
+        top_z, bottom_z = levels[name]
+        height = top_z - bottom_z
+        if height <= 0:
+            log(f"warning: zone {name} has no thickness, skipped")
+            continue
+        wire = build_contour(zone["contour"], top_z)
+        face = BRepBuilderAPI_MakeFace(wire, True)
+        if not face.IsDone():
+            raise StepBuilderError(
+                f"Zone {name} outline is not planar or self-intersects")
+        solids.append(
+            BRepPrimAPI_MakePrism(face.Face(), gp_Vec(0, 0, -height)).Shape())
+
+    if not solids:
+        raise StepBuilderError("No stackup zone produced a solid")
+    if len(solids) == 1:
+        return solids[0]
+
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
+
+    board = solids[0]
+    for solid in solids[1:]:
+        fuse = BRepAlgoAPI_Fuse(board, solid)
+        if not fuse.IsDone():
+            raise StepBuilderError("Could not fuse the stackup zones")
+        board = fuse.Shape()
+    return board
+
+
+def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0,
+                        zones: list[dict] | None = None,
+                        levels: dict | None = None,
+                        log: LogFn = _noop_log) -> TopoDS_Shape:
     """Extrude the board outline downwards and cut every hole/cutout out of it.
 
     edges[0] is the outline; every following contour is a cutout. All cutout
@@ -164,27 +239,44 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0) -> T
     if not contours:
         raise StepBuilderError("pcb.edges is empty")
 
-    # FIX: the C++ version special-cased len==1 and passed the whole array
-    # instead of contours[0]. It only worked because the nesting happened to
-    # collapse. edges[0] is always the outline.
-    wire = build_contour(contours[0], z_offset)
-    face = BRepBuilderAPI_MakeFace(wire, True)
-    if not face.IsDone():
-        raise StepBuilderError("Board outline is not planar or self-intersects")
+    if zones and levels:
+        # Multi-stackup: the board IS the zones. pcb.edges[0] still describes
+        # the overall outline, but it carries no per-zone thickness, so it is
+        # not used for the body - only its cutouts are, below.
+        board = _zone_solid(zones, levels, log)
+        cut_top = max(top for top, _ in levels.values())
+        cut_bottom = min(bottom for _, bottom in levels.values())
+        # A through-cut that ends exactly on a face is a classic source of
+        # boolean trouble; the zone path extends past both. The single-stackup
+        # path below deliberately keeps its exact extents, which is what the
+        # C++-verified regression measures.
+        margin = 0.01
+        cut_z = cut_top + margin
+        cut_direction = gp_Vec(0, 0, -(cut_top - cut_bottom + 2 * margin))
+    else:
+        # FIX: the C++ version special-cased len==1 and passed the whole array
+        # instead of contours[0]. It only worked because the nesting happened to
+        # collapse. edges[0] is always the outline.
+        wire = build_contour(contours[0], z_offset)
+        face = BRepBuilderAPI_MakeFace(wire, True)
+        if not face.IsDone():
+            raise StepBuilderError("Board outline is not planar or self-intersects")
 
-    direction = gp_Vec(0, 0, -thickness)
-    board = BRepPrimAPI_MakePrism(face.Face(), direction).Shape()
+        board = BRepPrimAPI_MakePrism(face.Face(), gp_Vec(0, 0, -thickness)).Shape()
+        cut_z = z_offset
+        cut_direction = gp_Vec(0, 0, -thickness)
 
     if len(contours) > 1:
         builder = BRep_Builder()
         compound = TopoDS_Compound()
         builder.MakeCompound(compound)
         for i, cutout in enumerate(contours[1:], start=1):
-            cut_wire = build_contour(cutout, z_offset)
+            cut_wire = build_contour(cutout, cut_z)
             cut_face = BRepBuilderAPI_MakeFace(cut_wire, True)
             if not cut_face.IsDone():
                 raise StepBuilderError(f"Cutout #{i} is not planar or self-intersects")
-            builder.Add(compound, BRepPrimAPI_MakePrism(cut_face.Face(), direction).Shape())
+            builder.Add(compound,
+                        BRepPrimAPI_MakePrism(cut_face.Face(), cut_direction).Shape())
 
         cut = BRepAlgoAPI_Cut(board, compound)
         if not cut.IsDone():
@@ -671,6 +763,7 @@ def component_transform(
     component: dict,
     board_top_z: float,
     board_bottom_z: float,
+    zone_levels: dict | None = None,
 ) -> gp_Trsf:
     """Build the full placement transform for one component.
 
@@ -703,6 +796,16 @@ def component_transform(
         mirror = _rotation(gp_Dir(0, 1, 0), 180.0)
     else:
         z = board_top_z
+
+    # On a multi-stackup board the surface a part rests on is its ZONE's, not
+    # the board's: a part on a 2.44 mm stiffener and one on 0.365 mm flex are
+    # two millimetres apart. zone_levels is None on an ordinary board, and on a
+    # part whose zone is unknown the board-wide surface is the right fallback.
+    if zone_levels:
+        zone = component.get("zone")
+        if zone and zone in zone_levels:
+            zone_top, zone_bottom = zone_levels[zone]
+            z = zone_bottom if component["is_mirrored"] else zone_top
 
     position = gp_Trsf()
     position.SetTranslation(gp_Vec(component["x"], component["y"], z))
@@ -1127,8 +1230,23 @@ def generate(
     json_stem = output_name or pcb_name
     thickness = total_board_thickness(data["pcb"]["thickness"])
 
-    # Where the two board faces live, given the datum choice.
-    if z_datum == "top":
+    # Multi-stackup: a rigid-flex board is several zones of different
+    # thickness. An empty or absent list means an ordinary board and every
+    # path below stays exactly as it was.
+    zones = data.get("zones")
+    zones = zones if isinstance(zones, list) and zones else None
+    levels = None
+
+    if zones:
+        levels, board_top_z, board_bottom_z = zone_levels(zones, z_datum)
+        extrude_z_offset = board_top_z
+        log(f"Multi-stackup board: {len(zones)} zone(s), "
+            f"{board_top_z - board_bottom_z:.3f} mm at its thickest")
+        for zone in zones:
+            top, bottom = levels[str(zone["name"])]
+            log(f"  {zone['name']} ({zone['stackup']}): {top - bottom:.3f} mm")
+    elif z_datum == "top":
+        # Where the two board faces live, given the datum choice.
         board_top_z, board_bottom_z = 0.0, -thickness
         extrude_z_offset = 0.0            # outline drawn at z=0, prism goes down
     else:
@@ -1151,7 +1269,8 @@ def generate(
 
     # ---- board ----------------------------------------------------------- #
     log("Building board geometry")
-    board = make_board_geometry(data["pcb"], thickness, extrude_z_offset)
+    board = make_board_geometry(data["pcb"], thickness, extrude_z_offset,
+                                zones=zones, levels=levels, log=log)
 
     pcb_label = shape_tool.NewShape()
     shape_tool.SetShape(pcb_label, board)
@@ -1259,7 +1378,7 @@ def generate(
     # Anything not reserved is a refdes. "silkscreen" MUST be listed here or it
     # would be walked as if it were a component.
     _reserved = ("name", "pcb", "format", "format_version", "silkscreen",
-                 "embedded_models")
+                 "embedded_models", "zones")
     components = {k: v for k, v in data.items() if k not in _reserved}
     result = BuildResult(
         output=output_dir / f"{json_stem}.step",
@@ -1331,7 +1450,8 @@ def generate(
         # if not mfr_pn:
         #     result.missing_mfr_pn.append(ref_des)
 
-        trsf = component_transform(mapping, component, board_top_z, board_bottom_z)
+        trsf = component_transform(mapping, component, board_top_z, board_bottom_z,
+                                   zone_levels=levels)
 
         # Place the shared part DIRECTLY under symbols_top / symbols_bot, as an
         # instance that carries the STEP file's own name. No per-refdes wrapper

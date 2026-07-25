@@ -370,6 +370,7 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | 7 | silkscreen export (user, 2026-07-22) | **done and confirmed on the user's boards** (rounds 10–12). `format_version: 2`; polygons carry Allegro's own area and the reader resolves the vertex-radius reading against it (settled: axis / positive-sits-left / first-radius-closes). Solid or flat, per side, White/Black, clipped to outline−cutouts. Flat faces are unioned; solid ones deliberately are not. |
 | 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11; **extended in round 19 and confirmed live 2026-07-24** to mechanical symbols that carry a STEP model (`PKGDEF_STEP_FILE`) but have **no refdes** — they were silently dropped by the refdes gate before, now they export (`axlStepGet` on a mechanical instance returns the mapping; no `sym->definition` fallback needed). Export list comes from the design, the variant table only subtracts, so a symbol Variants.lst does not mention is exported in every variant. `NO_STEP_EXPORT` excludes outright and is logged by refdes — **confirmed live 2026-07-24: `axlDBGetProperties` sees the property and marked symbols are excluded.** |
 | 10 | silkscreen layers chosen in the GUI (user, 2026-07-23) | done in rounds 14-17; `format_version: 3`. Every polygon carries its layer, the panel offers what the JSON contains, exclusions are persisted, a side switched off greys its layers. Zero-width objects reported by layer and position. Console coloured by severity via `axlUIWPrint` — no green severity exists. |
+| 11 | multi-stackup + bent flex (user, 2026-07-25) | **multi-stackup done in round 26**; `format_version: 5`. Zones read from the design with their own outline and stackup thickness, fused into one board, components placed on their own zone's surface, zones aligned on the shared conductor core. Fixed two live defects on the way (see round 26). **Bends deliberately NOT done** — the data is available but folding is a separate effort of comparable size to the whole tool, and the bend parameters live in an undocumented `IDX_BEND_TYPE_INFO` property. Board is exported flat. |
 | 9 | one settings file (user, 2026-07-22) | done in round 10h. `simple3d_config.json` holds every user setting, read by both halves; only `S3D_ScriptDir` stays in SKILL source, for bootstrap. Rounds 12–13 fixed two ways the GUI could damage it. |
 
 ### Verification done here
@@ -2686,6 +2687,124 @@ six edge cases (no models, no attachments, a different suffix, no suffix, bare
 prefix, a name containing a quote → skipped rather than emitting broken JSON).
 All four SKILL checks, every other suite, the geometry regression and the docs
 audit are clean.
+
+## Update 2026-07-25 (round 26) — multi-stackup / rigid-flex
+
+Requirement 11 (user): support multi-stackup, and bent flex boards. Bends were
+scoped out for now — they need zones first, and folding is a whole other
+problem. Multi-stackup is done.
+
+### Round 7's "no reliable detection API" was wrong
+
+It said there is no zone/stackup field on the xsection struct and fell back to a
+conductor-count heuristic, which false-positived and was reverted. The API was
+there the whole time; it just was not read far enough:
+
+```
+axlXSectionGet( nil 'stackups )        -> ("STIFFENER1" "FLEX" "STIFFENER2")
+axlXSectionGet( <name> 'all )          -> that stackup's layers
+axlXSectionGet( <name> 'thickness )    -> its exact total
+design->groups, type "ZONE_GROUP"      -> the zones
+zone->stackup                          -> which stackup a zone uses
+zone->groupMembers                     -> the zone outline polygon
+axlZoneAccess( 'point xy )             -> the zone containing a point
+```
+
+### Two defects this exposed in shipped code
+
+1. **`axlXSectionGet( nil 'thickness )` returns ONE stackup's thickness on a
+   rigid-flex board** — 0.49 on the test board, which is STIFFENER1, not the
+   board. `calculateBoardThickness` calls exactly that, so such a board was
+   exported as a 0.49 mm slab everywhere, with 2.44 mm and 0.365 mm zones both
+   silently wrong.
+2. **The `SOLDERMASK*` name gate (round 2) reports zero on a flex stackup.**
+   There is no SOLDERMASK layer there at all — coverlay, adhesive and stiffener
+   sit outside the conductors instead. Hand-summing FLEX gives 0.215 against a
+   true 0.365. The new code splits by POSITION relative to the outermost
+   conductors, never by name.
+
+### The load-bearing measurement: zones share the copper, not the surface
+
+| stackup | above | core | below | total |
+|---|---|---|---|---|
+| FLEX | 0.075 | **0.215** | 0.075 | 0.365 |
+| STIFFENER1 | 0.200 | **0.215** | 0.075 | 0.490 |
+| STIFFENER2 | 2.125 | **0.215** | 0.100 | 2.440 |
+
+Identical cores, wildly different totals. **Zones butt against each other at the
+conductor stack**; a stiffener grows outwards from it, mostly upwards. Aligning
+top faces — the obvious first guess — would tear the board apart at every zone
+boundary. This is why a zone is emitted as three numbers and not as one
+thickness, and it is not stated anywhere in the reference: it came out of the
+probe data.
+
+### Where the zone outline actually is
+
+`zone->shapeBoundary` is **nil on every zone of a real board**, despite the
+reference calling it the boundary. The outline is `car( zone->groupMembers )` —
+a polygon on RIGID FLEX/ZONE_OUTLINE.
+
+Sweeping that subclass directly finds the same polygons, but their `->group` and
+`->groups` are nil, so that route cannot say which zone an outline belongs to.
+**Going through the group is the only way to keep the association.** A fallback
+sweep was written into the probe and is deliberately NOT in the shipped code.
+
+Worth the note: a zone outline is an ordinary polygon carrying the same
+line/arc segments as the board outline, so `boardGeometryParseSegment` reads it
+unchanged. Nothing new had to be written for zone geometry.
+
+### Shape of it
+- SKILL: `s3dStackupProfile` (above/core/below by conductor position),
+  `s3dZoneList`, `s3dZonesJson`; `symbolReturn3DElements` now emits the
+  component's `"zone"` from `axlZoneAccess('point xy)`. `format_version` 4 → 5,
+  new top-level `"zones"` (and therefore into `core._reserved` — third time
+  that rule has mattered).
+- Python: `zone_levels()` computes each zone's two faces off the shared core and
+  applies the datum shift; `_zone_solid()` fuses the zone prisms;
+  `component_transform` takes `zone_levels` and places a part on its own zone's
+  surface, falling back to the board surface when the zone is unknown.
+- Zones are **fused**, not left as a compound: the outlines are trimmed against
+  each other and overlap slightly (0.14 mm on the test board), so a compound
+  would carry doubled geometry along every seam. Four zones make this cheap —
+  the opposite of the silkscreen case, where fusing thousands of prisms was
+  measured and rejected.
+- Cutouts on the zone path get a 0.01 mm margin past both faces. The
+  single-stackup path keeps its exact extents deliberately: that is what the
+  C++-verified regression measures.
+
+### Verified here
+19 assertions built from the REAL zone data of the user's board: the three
+profiles reproduce the API totals exactly; all cores equal; datum top and bottom
+both land the right face on zero; every zone shares one core top; the built
+volume matches the sum of the zones (slightly under, which is the fused overlap
+— the right direction); a part on the stiffener sits exactly 2.05 mm above one
+on the flex, and an unknown zone falls back to the board surface; and an
+ordinary board produces no multi-stackup log and its old volume. All other
+suites, the four SKILL checks, the docs audit and the C++ geometry regression
+(12073.309477 / 5054 entities) unchanged.
+
+### Not done, and why
+Bends. The data is all there — bend lines are paths on RIGID FLEX/BEND_LINE
+whose `segments[0]->startEnd` gives real endpoints (so a diagonal bend reads
+fine), `axlGetBends()`/`axlGetBendInnerRadius()` name them and give the radius,
+and everything else lives in an **undocumented** property:
+
+```
+IDX_BEND_TYPE_INFO = "TYPE=CircularBend, INNER_SIDE=TOP, INNER_ANGLE=28.2600,
+                      INNER_RADIUS=2.5000 MILLIMETERS, ORDER=0, ..."
+```
+
+It appears in neither the API index nor the DB attribute reference, so its
+format would have to be parsed by hand and trusted across versions. Folding
+itself is the larger cost: bending solids, carrying components into the rotated
+frame, deciding what silkscreen does across a bend. Comparable in size to the
+whole current tool. Zones first was the right order — bends fold zones.
+
+### Side finding, closing an old question
+`axlDBGetProperties` entries are `(name value)` — a two-element list, not a
+dotted pair. Open in this memo since 2026-07-18 and visible plainly in the probe
+output: `((FIXED t) (IDX_BEND_TYPE_INFO "TYPE=..."))`. Both shapes are still
+handled in `s3dObjectHasProp`, which is fine, but the question is settled.
 
 ### The four mechanical SKILL checks now
 Paren balance; string literals broken by a real newline; calls to procedures

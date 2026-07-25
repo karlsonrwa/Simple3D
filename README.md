@@ -416,6 +416,47 @@ is keyed internally as `<SymbolName>_MECH1`, `_MECH2`, … (unique per export). 
 key is not shown in the tree — the placed instance carries its STEP file's name,
 like every other component.
 
+## Multi-stackup and rigid-flex
+
+A rigid-flex design is several **zones**, each with its own stackup and its own
+thickness. The export handles that: it reads the zones from the design, takes
+each zone's outline and the thickness of the stackup assigned to it, and builds
+the board as those zones fused into one solid. A board with a single stackup
+takes the ordinary path and nothing changes.
+
+The console says what it found:
+
+```
+Simple 3D: 4 stackup zone(s) exported.
+```
+
+and the build log lists them:
+
+```
+Multi-stackup board: 4 zone(s), 2.440 mm at its thickest
+  STIFFENER2 (STIFFENER2): 2.440 mm
+  FLEX2 (FLEX): 0.365 mm
+```
+
+**Zones line up on the copper, not on their outer faces.** This is what makes
+the result correct rather than merely thick in the right places: a 2.44 mm
+stiffener zone and a 0.365 mm flex zone share the same conductor core, and the
+stiffener grows outwards from it — mostly upwards. Aligning their top faces
+instead would tear the board apart at every zone boundary. Each zone is
+therefore measured as three parts (outside the top conductor, core, outside the
+bottom conductor) and placed on the shared core.
+
+**Components stand on their own zone.** A part on a stiffener and a part on the
+flex are two millimetres apart in Z, and each is placed on the surface of the
+zone it actually sits in.
+
+Thickness comes from Allegro's own per-stackup figure rather than being summed
+by layer name here — a flex stackup has no `SOLDERMASK` layer at all (coverlay,
+adhesive and stiffener sit in its place), so a name-based sum would silently
+report those layers as nothing.
+
+Bends are **not** applied: see *Known limitations*.
+
 ## Models the board carries a copy of
 
 Once a 3D model has been mapped to a component, Allegro keeps its own copy of
@@ -467,10 +508,10 @@ extrudes and subtracts directly, so it is reliable. The general rule: anything
 you want as a hole in the board must exist as a closed contour on the CUTOUT
 subclass.
 
-**Multi-stackup / rigid-flex boards are not supported.** The exporter sums a
-single stackup into one thickness and extrudes one flat board. A design with
-more than one stackup zone will be exported as a single averaged-thickness slab,
-which is wrong for those boards. Support may be added later.
+**Bends are not applied.** A rigid-flex board is exported **flat**, in the
+layout the design is drawn in. Multiple stackups are handled (see *Multi-stackup
+and rigid-flex* above), but a bend line is not folded: the flex sections stay in
+plane. For a folded model, use Allegro's own 3D export.
 
 **Component B-rep comes from your library STEP models.** File size beyond the
 board itself is dominated by those models; "Minimise file size" cannot shrink
@@ -938,6 +979,45 @@ Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); 
 на каждый экспорт). В дереве этот ключ не виден — размещённый экземпляр носит имя
 своего STEP-файла, как и любой другой компонент.
 
+## Мультистэкап и rigid-flex
+
+Гибко-жёсткий дизайн — это несколько **зон**, у каждой свой стэкап и своя
+толщина. Экспорт это учитывает: читает зоны из проекта, берёт контур каждой и
+толщину назначенного ей стэкапа и строит плату как эти зоны, сплавленные в одно
+тело. Плата с одним стэкапом идёт прежним путём, ничего не меняется.
+
+В консоли видно, что найдено:
+
+```
+Simple 3D: 4 stackup zone(s) exported.
+```
+
+а в логе сборки — перечень:
+
+```
+Multi-stackup board: 4 zone(s), 2.440 mm at its thickest
+  STIFFENER2 (STIFFENER2): 2.440 mm
+  FLEX2 (FLEX): 0.365 mm
+```
+
+**Зоны выравниваются по меди, а не по внешним поверхностям.** Именно это делает
+результат правильным, а не просто «толстым где надо»: зона жёсткости 2.44 мм и
+гибкая зона 0.365 мм имеют общее проводниковое ядро, и жёсткая наращивается от
+него наружу — в основном вверх. Выравнивание по верхним граням разорвало бы
+плату на каждой границе зон. Поэтому каждая зона измеряется тремя частями (над
+верхним проводником, ядро, под нижним) и ставится на общее ядро.
+
+**Компоненты стоят на своей зоне.** Деталь на жёсткости и деталь на гибком
+участке разнесены по Z на два миллиметра, и каждая ставится на поверхность той
+зоны, в которой реально находится.
+
+Толщина берётся из собственной оценки Allegro по каждому стэкапу, а не
+суммируется здесь по именам слоёв: у гибкого стэкапа слоя `SOLDERMASK` нет
+вовсе — на его месте coverlay, adhesive и stiffener, — и сумма по именам молча
+посчитала бы их за ноль.
+
+Гибы **не** применяются: см. *Известные ограничения*.
+
 ## Модели, копия которых лежит внутри платы
 
 После того как 3D-модель привязана к компоненту, Allegro хранит её собственную
@@ -989,10 +1069,10 @@ warning: 2 model(s) are stored inside the board but were not found on disk:
 правило: всё, что должно быть отверстием в плате, обязано существовать как
 замкнутый контур в подклассе CUTOUT.
 
-**Платы с мультистэкапом / rigid-flex не поддерживаются.** Экспортёр суммирует
-один стек в одну толщину и экструдирует одну плоскую плату. Дизайн с более чем
-одной зоной стека будет экспортирован как плита усреднённой толщины, что для
-таких плат неверно. Поддержка может быть добавлена позже.
+**Гибы не применяются.** Гибко-жёсткая плата экспортируется **плоской**, в той
+раскладке, в которой она нарисована. Несколько стэкапов поддерживаются (см.
+*Мультистэкап и rigid-flex* выше), но линия гиба не сгибается: гибкие участки
+остаются в плоскости. Если нужна согнутая модель — штатный 3D-экспорт Allegro.
 
 **B-rep компонентов берётся из ваших STEP-моделей библиотеки.** Размер файла
 сверх самой платы определяется этими моделями; «Minimise file size» не может
@@ -1045,6 +1125,27 @@ stepbuilder/
 ---
 
 ## Changelog / История изменений
+
+- **2026-07-25** — **Multi-stackup and rigid-flex boards are now exported
+  correctly.** Each stackup zone is read from the design with its own outline
+  and thickness, and the board is built as those zones fused into one solid;
+  components stand on the surface of the zone they are in. Zones are aligned on
+  the conductor core, which is what they physically share — a stiffener grows
+  outwards from it. Per-stackup thickness comes from Allegro rather than being
+  summed by layer name, which reported zero for a flex stackup (it has no
+  `SOLDERMASK` layer — coverlay and adhesive sit there). Previously such a board
+  was exported as one slab of a single zone's thickness. Bends are still not
+  folded: the board is exported flat. Intermediate format `format_version: 5`.
+  / **Платы с мультистэкапом и rigid-flex теперь экспортируются правильно.**
+  Каждая зона стэкапа читается из проекта со своим контуром и толщиной, а плата
+  строится как эти зоны, сплавленные в одно тело; компоненты стоят на
+  поверхности своей зоны. Зоны выравниваются по проводниковому ядру — именно оно
+  у них общее, а жёсткость наращивается от него наружу. Толщина каждого стэкапа
+  берётся у Allegro, а не суммируется по именам слоёв: для гибкого стэкапа такая
+  сумма давала ноль (слоя `SOLDERMASK` там нет — на его месте coverlay и
+  adhesive). Раньше такая плата экспортировалась одной плитой толщиной одной из
+  зон. Гибы по-прежнему не сгибаются, плата экспортируется плоской. Промежуточный
+  формат `format_version: 5`.
 
 - **2026-07-25** — A model that is **stored inside the board but missing from
   disk** is now named in the log, together with what to do about it: Allegro

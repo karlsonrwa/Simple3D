@@ -982,6 +982,156 @@ procedure( calculateBoardThickness()
     )
 )
 
+;=====================================================================
+;  MULTI-STACKUP / RIGID-FLEX
+;
+;  A rigid-flex board is several zones, each with its own stackup and its
+;  own thickness. Everything needed is in the database:
+;
+;    axlXSectionGet( nil 'stackups )   -> the stackup names
+;    axlXSectionGet( <name> 'all )     -> that stackup's layers
+;    design->groups, type "ZONE_GROUP" -> the zones
+;    zone->stackup                     -> which stackup a zone uses
+;    zone->groupMembers                -> the zone outline polygon
+;
+;  Measured on a real rigid-flex board, and the reason this is not simply
+;  "one thickness per zone": FLEX, STIFFENER1 and STIFFENER2 total 0.365,
+;  0.49 and 2.44 but their conductor cores are all 0.215. The zones butt
+;  against each other at the COPPER, not at their outer faces - a 2.44 mm
+;  stiffener grows 2.125 up and 0.1 down from the same core. So each zone
+;  is emitted as (above, core, below), not as one number.
+;=====================================================================
+
+; (above core below) for one stackup, in design units. g_stackup may be nil
+; for a single-stackup design.
+;
+; Split by POSITION relative to the outermost conductors, never by layer
+; name. A flex stackup has no SOLDERMASK layer at all - coverlay, adhesive
+; and stiffener sit there instead - so the name gate calculateBoardThickness
+; uses reports 0.0 for both sides of it. Verified against the API's own
+; axlXSectionGet(<name> 'thickness): above+core+below reproduces it exactly
+; on every stackup of the test board.
+procedure( s3dStackupProfile( g_stackup )
+    let( ( layers ( above 0.0 ) ( core 0.0 ) ( below 0.0 )
+           firstCond lastCond thk pos )
+        layers = nil
+        errset( layers = axlXSectionGet( g_stackup 'all ) )
+
+        ; outermost conductor positions bound the core
+        foreach( layer layers
+            case( layer->layerType
+                ( ( "CONDUCTOR" "PLANE" )
+                    pos = layer->position
+                    when( pos
+                        unless( firstCond  firstCond = pos )
+                        lastCond = pos
+                    )
+                )
+                ( t nil )
+            )
+        )
+
+        when( firstCond && lastCond
+            foreach( layer layers
+                thk = layer->thickness
+                unless( thk  thk = 0.0 )
+                pos = layer->position
+                when( pos
+                    cond(
+                        ( pos < firstCond  above = above + thk )
+                        ( pos > lastCond   below = below + thk )
+                        ( t                core  = core  + thk )
+                    )
+                )
+            )
+        )
+        list( above core below )
+    )
+)
+
+; Every rigid-flex zone as ( name stackup outlineDbid ). nil when the design
+; has no zones, which is the ordinary single-stackup case.
+;
+; The outline is the zone group's member, NOT zone->shapeBoundary: the
+; reference calls that the boundary, but it comes back nil on every zone of
+; a real board. Sweeping the RIGID FLEX/ZONE_OUTLINE subclass finds the same
+; polygons, but their ->group and ->groups are nil, so that route cannot say
+; which zone an outline belongs to. Going through the group is the only way
+; to keep the association.
+procedure( s3dZoneList()
+    let( ( out groups outline )
+        out = tconc( nil nil )
+        groups = nil
+        errset( groups = axlDBGetDesign()->groups )
+
+        foreach( g groups
+            when( g && (g->type == "ZONE_GROUP") && g->stackup
+                outline = nil
+                errset( outline = car( g->groupMembers ) )
+                when( outline && outline->segments
+                    tconc( out list( g->name g->stackup outline ) )
+                )
+            )
+        )
+        cdr( car( out ) )
+    )
+)
+
+; The zone array as JSON. Always emitted; an empty array means "ordinary
+; single-stackup board", and the reader then behaves exactly as before.
+;
+; The contour goes through boardGeometryParseSegment, the same parser the
+; board outline uses - a zone outline is an ordinary polygon carrying the
+; same line/arc segments, so nothing new had to be written to read it.
+procedure( s3dZonesJson()
+    let( ( zones profile contour element body out ( first t ) ( n 0 ) )
+        zones = s3dZoneList()
+
+        if( zones then
+            out = "\"zones\": [\n"
+            foreach( z zones
+                profile = s3dStackupProfile( cadr( z ) )
+
+                contour = nil
+                foreach( segment caddr( z )->segments
+                    element = boardGeometryParseSegment( segment )
+                    when( element
+                        if( contour then
+                            tconc( contour element )
+                        else
+                            contour = tconc( nil element )
+                        )
+                    )
+                )
+
+                when( contour
+                    n = n + 1
+                    unless( first  out = strcat( out ",\n" ) )
+                    first = nil
+                    body = strcat(
+                        "{\n"
+                        "\t\"name\": \"" car( z ) "\",\n"
+                        "\t\"stackup\": \"" cadr( z ) "\",\n"
+                        "\t\"above\": " sprintf( nil "%f" car( profile ) ) ",\n"
+                        "\t\"core\": " sprintf( nil "%f" cadr( profile ) ) ",\n"
+                        "\t\"below\": " sprintf( nil "%f" caddr( profile ) ) ",\n"
+                        "\t\"contour\": [\n"
+                        addIndent( buildString( car( contour ) ",\n" ) 2 )
+                        "\n\t]\n"
+                        "}"
+                    )
+                    out = strcat( out addIndent( body ) )
+                )
+            )
+            out = strcat( out "\n]" )
+            printf( "Simple 3D: %d stackup zone(s) exported.\n" n )
+            out
+        else
+            "\"zones\": []"
+        )
+    )
+)
+
 procedure( makePcbContour( dsn )
     let( ( outline segments ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) )
         ; make pcb geometry
@@ -1061,7 +1211,7 @@ procedure( makePcbContour( dsn )
 ; through and refdes is read off it. A string is still accepted, because it
 ; costs three lines and keeps the old call shape working.
 procedure( symbolReturn3DElements( g_symbol )
-    let( ( stepPackageMapping refDes dbid sym mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole mfrPn ( holes 'unbound ) )
+    let( ( stepPackageMapping refDes dbid sym mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole mfrPn zone zoneName ( holes 'unbound ) )
 
         stepPackageMapping = nil
 
@@ -1121,6 +1271,18 @@ procedure( symbolReturn3DElements( g_symbol )
         xy = sym->xy
         angle = sym->rotation
 
+        ; The zone this part stands in, by its own placement point.
+        ; axlZoneAccess is the documented way to ask; its reference says the
+        ; return is "xy", which cannot be right for a zone lookup, so the name
+        ; is read defensively and stays nil if the answer is not a zone dbid.
+        zoneName = nil
+        zone = nil
+        errset( zone = axlZoneAccess( 'point xy ) )
+        when( zone
+            errset( zoneName = zone->name )
+        )
+        unless( stringp( zoneName )  zoneName = nil )
+
         ; set step package mapping
         when( stepFileName
             stepPackageMapping = strcat(
@@ -1140,6 +1302,15 @@ procedure( symbolReturn3DElements( g_symbol )
                 ;                      strcat( "\"" s3dJsonEscape( mfrPn ) "\"" )
                 ;                  else
                 ;                      "null" ) ",\n"
+                ; Which stackup zone this part stands on. On a rigid-flex board
+                ; a part on a 2.44 mm stiffener and one on 0.365 mm flex sit at
+                ; very different heights, so the reader needs to know which
+                ; surface to place it on. nil on an ordinary board, and the
+                ; reader then falls back to the single board surface.
+                "\t\"zone\": " if( zoneName then
+                                   strcat( "\"" zoneName "\"" )
+                               else
+                                   "null" ) ",\n"
                 "\t\"is_mirrored\": " isMirrored ",\n"
                 "\t\"x\": " sprintf( nil "%f" xCoord( xy ) ) ",\n"
                 "\t\"y\": " sprintf( nil "%f" yCoord( xy ) ) ",\n"
@@ -2285,17 +2456,20 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; format_version 2 added the optional "silkscreen" object; 3 tags every
         ; silkscreen polygon with the layer it came from, so the layers can be
         ; switched on and off when the model is built instead of at export
-        ; time; 4 adds the optional "embedded_models" list. All three additions
-        ; are optional to a reader - an older file simply has no layers to
-        ; choose from and nothing to say about embedded models.
+        ; time; 4 adds the optional "embedded_models" list; 5 adds "zones" plus
+        ; a per-component "zone", for multi-stackup and rigid-flex boards. All
+        ; of them are optional to a reader - an older file simply has no layers
+        ; to choose from, nothing to say about embedded models, and an empty
+        ; zone list, which means "ordinary single-stackup board".
         ;
         ; NOTE: every top-level key added here must also be listed in core.py's
         ; _reserved tuple, or the reader walks it as if it were a component.
         name = strcat(
             "\"format\": \"simple3d\",\n"
-            "\"format_version\": 4,\n"
+            "\"format_version\": 5,\n"
             "\"name\": \"" variantName "\",\n"
-            s3dEmbeddedModelsJson()
+            s3dEmbeddedModelsJson() ",\n"
+            s3dZonesJson()
         )
 
         ; make pcb (including all cutouts and holes)
