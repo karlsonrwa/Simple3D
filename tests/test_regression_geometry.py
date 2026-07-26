@@ -16,7 +16,8 @@ from pathlib import Path
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT / "stepbuilder"))
 import core
-out = Path(__file__).parent
+out = _OUT / "regression"
+out.mkdir(exist_ok=True)
 d = json.load(open(ROOT/"demo/ap-214/demo.json"))
 d["pcb"]["thickness"]["soldermask_top"] = 0.0
 d["pcb"]["thickness"]["soldermask_bottom"] = 0.0

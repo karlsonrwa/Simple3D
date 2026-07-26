@@ -19,7 +19,8 @@ ROOT = _ROOT
 sys.path.insert(0, str(ROOT))
 from stepbuilder import core           # package import, not a bare module
 
-OUT = Path(__file__).parent
+OUT = _OUT / "silk"
+OUT.mkdir(exist_ok=True)
 fails = []
 def check(name, cond, detail=""):
     print(f"  {'PASS' if cond else 'FAIL'}  {name}{'' if cond else '  <- ' + detail}")

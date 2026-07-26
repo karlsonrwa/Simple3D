@@ -30,7 +30,8 @@ board["CR2032_MECH1"] = json.loads(json.dumps(mech))          # top
 m2 = json.loads(json.dumps(mech)); m2["is_mirrored"] = True
 board["CR2032_MECH2"] = m2                                    # bottom
 
-out = Path(sys.argv[0]).parent
+out = _OUT / "mech"
+out.mkdir(exist_ok=True)
 jf = out / "mech_board.json"
 jf.write_text(json.dumps(board, indent=1))
 

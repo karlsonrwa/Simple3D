@@ -3353,6 +3353,24 @@ escaper. Written to a file instead.
 ### The four mechanical SKILL checks now
 Paren balance; string literals broken by a real newline; calls to procedures
 defined nowhere; call arity. Each exists because something got past the previous
-ones. Run all four after any scripted edit — they live in scratch
-(`skill_checks.py`, `check_arity.py`) and are still not in the repo, which is now
-a standing suggestion three rounds old.
+ones. Run all four after any scripted edit.
+
+**They are in the repository now** (2026-07-25), with the whole Python suite:
+`tools/` for the checks and the docs audit, `tests/` for the fourteen suites,
+`tools/probes/` for the read-only Allegro diagnostics, and
+`python tests/run_all.py` for all seventeen in about forty seconds. Output goes
+to a gitignored `build/test-output/`. Until then they lived only in a session
+scratchpad, so a new session began with no way to tell whether a change had
+broken anything — a standing suggestion since round 14b, and one that mattered
+the moment the next piece of work was going to be bends.
+
+**Two mistakes worth keeping from the move itself:**
+
+- Three suites wrote into their own directory rather than a subfolder, so the
+  first commit carried sixteen generated `.step` and `.json` files into
+  `tests/`. The path rewrite matched `Path(__file__).parent / "` and those
+  three said `Path(__file__).parent` with nothing after it.
+- **`git status --short` collapses an untracked directory to one line.** `??
+  tests/` looked clean and was hiding all sixteen. Use
+  `--untracked-files=all` before committing a new directory, and re-run the
+  suite afterwards to prove the tree stays clean.
