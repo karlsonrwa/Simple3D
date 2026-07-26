@@ -326,7 +326,6 @@ def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
 
 
 
-
 def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
                            shift: float,
                            log: LogFn = _noop_log) -> list[tuple[str, dict, TopoDS_Shape]]:
@@ -390,11 +389,13 @@ def _cut_out(shape: TopoDS_Shape, contours: list, cut_z: float,
     return cut.Shape()
 
 
-def fuse_keeping_faces(parts: list[tuple[str, str, TopoDS_Shape]],
+def fuse_keeping_faces(parts: list[tuple[str, dict, TopoDS_Shape]],
                        log: LogFn = _noop_log):
     """Fuse the layer solids into ONE solid whose faces stay per-layer.
 
-    Returns (solid, [(face, layer dict)]).
+    *parts* is what make_board_layer_parts returns: (zone name, layer, solid),
+    the LAYER ITSELF rather than its name, because the caller colors each face
+    by what kind of layer it belongs to. Returns (solid, [(face, layer)]).
 
     **UnifySameDomain is deliberately NOT applied here**, and that is the whole
     trick. It is what makes the ordinary build small - it merges the coplanar
@@ -1223,7 +1224,6 @@ def component_transform(
     return position * angle * mirror * offset * rotation
 
 
-
 # --------------------------------------------------------------------------- #
 # step file lookup
 # --------------------------------------------------------------------------- #
@@ -1471,6 +1471,33 @@ def dated_output_name(base: str, output_dir: str | Path) -> str:
     while (output_dir / f"{candidate}.step").exists():
         candidate += "_"
     return candidate
+
+
+def output_stem(json_file: str | Path, output_dir: str | Path, *,
+                brd_name: str | None = None, several: bool = False,
+                dated: bool = False) -> str | None:
+    """What to call one job's .step, or None to use the JSON's own `name`.
+
+    The whole naming rule in one place, because keeping it in two is what let
+    the GUI and the CLI disagree: **brd_name used to be read on the dated path
+    only**, so `--brd-name X` without `--dated-name` was silently ignored and
+    the file came out named after the JSON. The launcher always passes both, so
+    nothing in the shipped flow ever showed it.
+
+    brd_name is the board's name in its ORIGINAL case - the exporter lower-cases
+    the JSON filename, and this is what puts the capitals back.
+
+    several: more than one variant is being built in this run. Then each JSON's
+    own stem (design_variant) has to name its output, or one brd_name would be
+    handed to every variant and they would collide.
+    """
+    stem = Path(json_file).stem
+    base = stem if several else (brd_name or stem)
+    if dated:
+        return dated_output_name(base, output_dir)
+    if brd_name and not several:
+        return brd_name
+    return None
 
 
 def resolve_json_jobs(path: str | Path) -> tuple[list[Path], list[Path]]:

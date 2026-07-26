@@ -101,11 +101,6 @@ def _run(settings: BuildSettings, channel) -> None:
     failures: list[str] = []
 
     for number, jf in enumerate(jobs, start=1):
-        # Base name for the output file. With SEVERAL variants the stem of each
-        # json (design_variant) must win, or every variant would get the same
-        # name and only differ by collision underscores. The launcher's brd_name
-        # (original-case board name) applies only when there is a single json.
-        base = jf.stem if len(jobs) > 1 else (settings.brd_name or jf.stem)
         prefix = f"{jf.stem}: " if len(jobs) > 1 else ""
 
         def progress(value: int, total: int, label: str = "",
@@ -120,8 +115,10 @@ def _run(settings: BuildSettings, channel) -> None:
         # board 2's outline should still leave boards 3..n built. This mirrors
         # the CLI, which counts failures and carries on.
         try:
-            output_name = (core.dated_output_name(base, settings.output_dir)
-                           if settings.dated_name else None)
+            # One rule, in core, for the CLI and here alike - see output_stem.
+            output_name = core.output_stem(
+                jf, settings.output_dir, brd_name=settings.brd_name,
+                several=len(jobs) > 1, dated=settings.dated_name)
             result = core.generate(
                 list(settings.step_dirs),
                 jf,

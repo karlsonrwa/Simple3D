@@ -709,14 +709,14 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
         for prev in kept:
             pbend, (pnx, pny), (ppx, ppy), phalf, _, _ = prev
             w = pnx * (px - ppx) + pny * (py - ppy)
-            if -phalf - EPS < w + half and w - half < phalf + EPS:
-                clash = pbend.name
+            # Strips that MEET are fine - a flex rolled into a closed ring is
+            # two 180 degree bends whose areas share a line, and there is
+            # nothing ambiguous about it. Only material claimed by both is.
+            if w + half > -phalf + EPS and w - half < phalf - EPS:
+                clash = (prev, abs(w))
                 break
         if clash:
-            plan.notes.append(
-                f"  warning: bend {bend.name}'s strip overlaps bend {clash}'s as "
-                f"seen from the held part, so which of them carries the other "
-                f"cannot be read; {bend.name} is left flat")
+            plan.notes.extend(_overlap_note(item, *clash, neutral_factor))
             continue
         kept.append(item)
 
@@ -729,10 +729,16 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # its own. Bends on different arms contain nothing and are all children of
     # the held panel. A flat list would only have described the single-tail
     # case; the real board is two tails off a middle.
+    #
+    # "Wholly contains" has to admit the case where the two strips MEET: a flex
+    # rolled into a ring is two 180 degree bends whose bend areas share a line,
+    # and read strictly neither would contain the other, both would be roots,
+    # and the panel behind the first would swallow the second - which is how
+    # the tail of a ring came back facing the wrong way.
     def contains(outer, inner) -> bool:
         _, (onx, ony), (opx, opy), ohalf, _, _ = outer
         _, _, (ipx, ipy), ihalf, _, _ = inner
-        return onx * (ipx - opx) + ony * (ipy - opy) - ihalf > ohalf + EPS
+        return onx * (ipx - opx) + ony * (ipy - opy) - ihalf > ohalf - EPS
 
     above = [[j for j in range(len(kept)) if j != i and contains(kept[j], kept[i])]
              for i in range(len(kept))]
@@ -823,6 +829,51 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
         else "  held: the largest piece the bend lines leave (no anchor set)"))
     plan.notes.insert(0, f"Folding {len(plan.bends)} bend(s):")
     return plan
+
+
+def _overlap_note(item, prev, apart: float, neutral_factor: float) -> list[str]:
+    """Why two bends cannot both be folded, in the numbers that caused it.
+
+    Nearly always the neutral factor, and the message has to say so. Allegro
+    draws a bend area at the INNER arc, angle x radius, with no thickness term
+    in it; the material a bend really consumes is the arc at the neutral axis,
+    angle x (radius + k x thickness), which is longer. So a designer who lays
+    two bend areas edge to edge - a flex rolled into a closed ring is exactly
+    that, two 180 degree areas that touch - has drawn something that fits in
+    Allegro and does not fit here, by k x thickness x angle per bend.
+
+    Measured on the real board: two 180 degree bends at R = 0.795 with their
+    lines 2.500 mm apart, drawn 2.4999 mm across each, which is the inner arc
+    to a tenth of a micron and closes the ring exactly. At k = 0.5 each strip
+    wants 2.805 mm, they overlap by 0.305 mm, and the second bend is refused.
+    Nothing is wrong with the board; the answer is the setting, and the log
+    now names it and the value that would fit.
+    """
+    bend, _, _, half, top, bottom = item
+    other, _, _, ohalf, otop, obottom = prev
+    lines = [
+        f"  warning: bends {bend.name} and {other.name} both want to fold the "
+        f"same material - {2 * half:.3f} mm and {2 * ohalf:.3f} mm of it with "
+        f"their lines only {apart:.3f} mm apart - so which of them carries the "
+        f"other cannot be read; {bend.name} is left flat"]
+
+    drawn = (bend.width or 0.0) + (other.width or 0.0)
+    if drawn <= EPS or drawn > 2 * apart + EPS:
+        return lines                       # the drawn areas overlap too: a design
+
+    # Both areas fit; only the neutral term does not. Solve for the k that
+    # makes the two developed lengths exactly meet.
+    theta = math.radians(bend.angle)
+    otheta = math.radians(other.angle)
+    slack = (2 * apart - bend.radius * theta - other.radius * otheta)
+    room = abs(top - bottom) * theta + abs(otop - obottom) * otheta
+    fits = max(0.0, slack / room) if room > EPS else 0.0
+    lines.append(
+        f"    their drawn bend areas do not overlap - Allegro draws them at the "
+        f"inner arc, {drawn / 2:.3f} mm each on average - so this is the neutral "
+        f"factor, now {neutral_factor:.2f}: at {fits:.2f} the two strips meet "
+        f"exactly (foldNeutral in the config, --fold-neutral on the command line)")
+    return lines
 
 
 def plan_from_json(data: dict, board_top_z: float, board_bottom_z: float,
@@ -1242,6 +1293,7 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
     from OCP.GeomAbs import GeomAbs_CurveType
     from OCP.TColgp import TColgp_Array1OfPnt2d
     from OCP.TopAbs import TopAbs_Orientation
+    from OCP.TopoDS import TopoDS_Vertex
     from OCP.gp import gp_Ax3, gp_Ax22d, gp_Dir2d, gp_Pnt2d, gp_Vec2d
 
     def give_up(reason: str) -> None:
@@ -1397,15 +1449,72 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
         return [sampled(adaptor, first, last)]
 
     def wire_on(surface, curves):
-        builder = BRepBuilderAPI_MakeWire()
+        """The wrapped outline as a wire ON *surface*, sharing its corners.
+
+        Each edge is rebuilt from its own 2D curve, so where two of them meet
+        the two surface points agree only as well as the FLAT solid's own
+        vertices did - a couple of tenths of a micron on a shape that came out
+        of a boolean, which is well inside the tolerance the flat shape carries
+        on that vertex and therefore perfectly legal there.
+
+        BRepBuilderAPI_MakeWire joins edges by comparing vertices at
+        Precision::Confusion, a flat 1e-7 that nothing can widen, and when the
+        gap is bigger than that it does not report a failure: it starts a
+        second wire, and IsDone() comes back TRUE as soon as some later edge
+        closes a loop - having silently dropped the rest. Measured on the real
+        board: a four-edge outline came back as a wire of two, the two missing
+        walls stayed unsewn, the shell never closed and the bend fell back to
+        facets, with nothing in the log but "not valid".
+
+        So the corners are made explicit. One vertex per junction, placed
+        between the two curve ends with a tolerance wide enough to reach both,
+        and every edge is built on the vertices its neighbours share: the wire
+        is then connected by TOPOLOGY and no tolerance decides anything. The
+        edge count is checked anyway, because this is exactly the kind of
+        failure that is invisible until a solid comes out inside out.
+        """
+        count = len(curves)
+        if not count:
+            return None
+
+        ends = []
         for curve, first, last in curves:
-            edge = BRepBuilderAPI_MakeEdge(curve, surface, first, last)
+            head, tail = curve.Value(first), curve.Value(last)
+            ends.append((surface.Value(head.X(), head.Y()),
+                         surface.Value(tail.X(), tail.Y())))
+
+        builder = BRep_Builder()
+        corners = []
+        for i in range(count):
+            here, there = ends[i][1], ends[(i + 1) % count][0]
+            corner = TopoDS_Vertex()
+            builder.MakeVertex(
+                corner,
+                gp_Pnt((here.X() + there.X()) / 2.0,
+                       (here.Y() + there.Y()) / 2.0,
+                       (here.Z() + there.Z()) / 2.0),
+                here.Distance(there) / 2.0 + 1.0e-7)
+            corners.append(corner)
+
+        maker = BRepBuilderAPI_MakeWire()
+        for i, (curve, first, last) in enumerate(curves):
+            edge = BRepBuilderAPI_MakeEdge(curve, surface, corners[i - 1],
+                                           corners[i], first, last)
             if not edge.IsDone():
                 return None
-            builder.Add(edge.Edge())
-        if not builder.IsDone():
+            maker.Add(edge.Edge())
+        if not maker.IsDone():
             return None
-        wire = builder.Wire()
+        wire = maker.Wire()
+
+        kept = 0
+        walker = TopExp_Explorer(wire, TopAbs_ShapeEnum.TopAbs_EDGE)
+        while walker.More():
+            kept += 1
+            walker.Next()
+        if kept != count:
+            return None
+
         BRepLib.BuildCurves3d_s(wire)
         return wire
 

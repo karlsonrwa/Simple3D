@@ -5,7 +5,7 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-07-26
+## READ THIS FIRST — state as of 2026-07-27
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -91,7 +91,35 @@ source, because the config is found relative to it.
 - **Bends are built on true cylindrical surfaces** (round 38, branch
   `feature/bend-mapper`): revolved where the strip is a prism, otherwise the
   outline is wrapped onto the cylinder, with the 7.5° facets left as a fallback
-  that a real board no longer reaches. Both bends of flex-b2 wrap.
+  that a real board no longer reaches. Both bends of flex-b2 wrap; all five of
+  flex3-a0 do since round 41.
+
+### Three traps that cost a round each — do not rediscover them
+
+- **A per-design cache in SKILL outlives the design** (round 42). The `.il`
+  files load once per Allegro session, so any global built with
+  `unless( G ... )` is still holding the previous board when the next one is
+  exported. Everything of that kind must be reset at the top of
+  `makeVariant3dIntermediates`; four globals are, and two of them only since
+  round 42.
+
+- **`BRepBuilderAPI_MakeWire` drops edges it cannot join, and still reports
+  `IsDone`** (round 41). It joins at `Precision::Confusion`, a hard 1e-7 that
+  no argument can widen, and past it starts a second wire instead of failing;
+  `IsDone()` comes back true as soon as any later edge closes a loop. A solid
+  that came out of a boolean has edges meeting only to its own vertex
+  tolerance — 2.8e-7 on the real board — so the wrap hit this on every bend
+  with a fillet or a sliver in it, and the only symptom was `the solid built
+  from them is not valid` followed by facets. `wire_on` now makes one explicit
+  vertex per junction and builds each edge on the vertices its neighbours
+  share. **Raising the sewing tolerance does nothing** — the gap is upstream.
+- **Allegro's flat pattern is laid out at k = 0** (round 41). A BEND_AREA is
+  `angle × radius` exactly, and flex3-a0 proves this is the material budget and
+  not merely a keep-out: two 180° areas 0.0001 mm apart close a ring to 0.5 µm
+  at k = 0 and fall 0.61 mm short at k = 0.5. The default `foldNeutral` is
+  still **0.5**, the physically right place for a symmetric flex; a board whose
+  bends are laid edge to edge needs `--fold-neutral 0`, and the log now says so
+  by name when two strips collide.
 
 ### Working method that has paid off repeatedly
 
@@ -2851,6 +2879,189 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-07-27 (round 42) — full review, and the docs brought up to date
+
+A read of every source file in the project (~10 000 lines: both `.il`, the six
+Python modules, `tools/`, the suites, the config). The code is in good shape;
+four defects came out of it, three of them silent.
+
+### 1. `--brd-name` did nothing without `--dated-name`
+
+`base` was computed and then only used on the dated path, so
+`--brd-name X` alone produced a file named after the JSON. Reproduced on the
+demo board. The launcher always passes both, which is why it was never seen.
+
+The naming rule now lives in **one** function, `core.output_stem` — the
+docstring of `dated_output_name` had claimed exactly that ("shared so the rule
+cannot drift"), and it had drifted anyway because only *half* the rule was in
+there. `__main__.py` and `worker.py` both call it. Covered by test `[7e]`.
+
+### 2. Two per-design caches survived into the next board
+
+`S3D_RigidFlexShapes` and `S3D_BendLines` are built once and then guarded with
+`unless( S3D_... )`. The SKILL files load once per Allegro session, so
+exporting board A and then board B reused **A's** shapes and bend lines — as
+dbids into a database that may not even be open. Nothing would say so; the JSON
+would simply describe the wrong board. `S3D_MechSeq` and `S3D_SilkWarnings`
+are already reset per export, so this was an omission rather than a decision.
+Both are now cleared at the top of `makeVariant3dIntermediates`.
+
+### 3. The doc audit rubber-stamped renamed controls
+
+`tools/audit_docs.py` checked a QUICKSTART label by its **first word** against
+an allow-list. So "Ignore soldermask layers" kept passing after the widget was
+renamed to "Do not include soldermask layers" — both start with a word that was
+on the list. It now matches the whole string against `gui.py` + `colors.py`,
+with two named exceptions for prose shorthand (`Custom…`, `White/Black`).
+Verified by renaming the label back and watching it fail.
+
+### 4. Documentation that had gone stale
+
+Found by reading, not by the audit — which only checks what it can mechanise:
+
+- `simple3d_config.json`, the file users actually edit: `_comment_foldBends`
+  still said "the fold is faceted, not exact" (wrong since round 38),
+  `_comment_boardMode` said the GUI calls it "Board" (it says *Body
+  stitching*), `_comment_ignoreSoldermask` named a checkbox that had been
+  renamed, and `_comment_foldNeutral` still called the bend area a cross-check.
+- README: a `debugLayers` row documented as current when the key is
+  migration-only; the settings table's section column wrong from
+  `negativeLayers` onward, so eight `gui` keys appeared to be `settings` ones;
+  the GUI table missing **Body stitching** and the soldermask checkbox
+  entirely; the install tree missing `bend.py` and `worker.py`; "about 40 s"
+  for a 50 s suite; the probe list missing `probe_bend.il`; the changelog entry
+  for round 36 still describing the fold as faceted.
+- Both halves updated, plus the round-41 K-factor material and a new changelog
+  entry, in English and Russian.
+
+### Noted, not changed
+
+- **`colors.as_fraction` is dead** — defined, named in the module docstring,
+  and called nowhere; `core.py` writes `rgb[0] / 255.0` inline in five places.
+- **Thirteen `MFRPN DISABLED` comment blocks** across six files, carried since
+  round 18. They document a deliberate decision and say how to re-enable it, so
+  they are not litter, but they are the largest block of commented-out code in
+  the project.
+- `board_mode` is not validated in `core.generate`; an unknown string silently
+  builds a plain solid. Both callers restrict it (argparse choices, a
+  read-only combobox), so it is unreachable from the shipped paths.
+
+### Verified here
+
+18/18 green, twice in a row (test `[7e]` empties its own directory - it writes
+a .step to exercise the collision suffix, and the first version of it passed
+once and then failed on the second run). `--brd-name` checked all three ways on
+the demo board: bare, with `--dated-name`, and neither. The doc audit passes and
+was checked to fail on a renamed label.
+
+## Update 2026-07-26 (round 41) — flex3-a0, the ring, and one OCC tolerance
+
+A third real board, **flex3-a0**: three zones, five bends, two of them 180° in
+a row forming a closed ring. It exposed **two independent defects**, and every
+symptom the user reported traces to one or the other.
+
+### 1. Allegro folds at k = 0, and this board proves it
+
+Round 37 measured that a BEND_AREA is drawn at the inner arc, `angle × radius`,
+with no thickness term, and concluded it was a keep-out region rather than a
+material budget. **This board settles it the other way.** BEND_4 and BEND_5 are
+both 180° at r = 0.7954, lines 2.500 mm apart, areas 2.4999 mm across each:
+
+| | length | two of them | vs the 5.000 mm the board has |
+|---|---|---|---|
+| drawn area, `θR` | 2.4988 | 4.9977 | closes the ring to **0.5 µm** |
+| `k = 0.5`, `θ(R + kt)` | 2.8051 | 5.6102 | **0.61 mm short of material** |
+
+A designer does not put two 180° areas 0.0001 mm apart by accident, and
+2π × 0.7954 = 4.9977 against a 5.000 mm span is not a coincidence either. **The
+flat pattern was laid out to a model in which a bend consumes its inner arc**,
+i.e. k = 0. At the shipped default of 0.5 the two strips overlap by 0.305 mm,
+BEND_5 is refused, and the ring cannot close. `--fold-neutral 0` folds all five
+exactly. Same story at the other end of the board: BEND_3's strip overshoots the
+FLEX/STIFFENER2 boundary (y = 37.98) by 0.076 mm at k = 0.5 and stops **on** it
+at k = 0 — the bend area was drawn to fit the zone.
+
+The default is **left at 0.5**, which is the physically right place for the
+neutral axis of a symmetric flex; it is `foldNeutral` / `--fold-neutral` and the
+user decides. What changed is that the log now says which of the two it is:
+
+```
+warning: bends BEND_5 and BEND_4 both want to fold the same material - 2.805 mm
+  and 2.805 mm of it with their lines only 2.500 mm apart - ...
+  their drawn bend areas do not overlap - Allegro draws them at the inner arc,
+  2.500 mm each on average - so this is the neutral factor, now 0.50: at 0.00
+  the two strips meet exactly (foldNeutral in the config, --fold-neutral ...)
+```
+
+Two off-by-an-epsilon bugs fell out of the same board, both where strips
+**exactly meet** — which is what a ring is, and what nothing had ever been:
+
+- the overlap test counted touching as overlapping (`< phalf + EPS` where it
+  wanted `< phalf - EPS`), so even at k = 0 the ring was refused;
+- `contains()` wanted strictly more than `ohalf`, so neither ring bend contained
+  the other, both became roots, and the panel behind the first swallowed the
+  second — the tail came back facing the wrong way.
+
+### 2. `BRepBuilderAPI_MakeWire` drops edges it cannot join, and says IsDone
+
+This is the one that was making bends "криво строиться". Symptom: BEND_1 and
+BEND_3 faceted every layer with `the solid built from them is not valid`, and
+BEND_3 built 2 of its 17 pieces and faceted 15.
+
+Traced with `TopExp::MapShapesAndAncestors`: **the sewn shell had free edges** —
+`{2: 13, 1: 2}` for BEND_1, `{2: 8, 1: 4}` for BEND_3 — so it was not closed and
+the two cylinder faces came back `BRepCheck_UnorientableShape`. Raising the
+sewing tolerance from 1e-6 to 1e-3 changed nothing, which ruled sewing out. The
+faces were **missing edges before they were sewn**: 5 edges added to the wire, 4
+in the wire; 4 added, 2 in the wire.
+
+Why: the wrap rebuilds every outline edge from its own 2D curve, so consecutive
+edges' surface points agree only as well as the FLAT solid's vertices did —
+measured **2.8e-7 and 1.5e-7** on this board, perfectly legal there because the
+shared vertex carries a tolerance that covers it. `BRepBuilderAPI_MakeWire`
+joins edges at `Precision::Confusion`, a hard **1e-7** that nothing can widen,
+and past it **it does not report a failure**: it starts a second wire, and
+`IsDone()` returns true again as soon as some later edge closes a loop, having
+silently dropped the rest.
+
+Fix in `wire_on`: one explicit `TopoDS_Vertex` per junction, placed between the
+two curve ends with tolerance `gap/2 + 1e-7`, and each edge built on the
+vertices its neighbours share (`MakeEdge(curve2d, surface, V1, V2, p1, p2)`).
+The wire is then connected by **topology** and no tolerance decides anything.
+The edge count is checked afterwards regardless — that check alone would have
+turned a week of "not valid" into one line.
+
+**Do not replace this with a bigger sewing tolerance.** The gap is upstream of
+the sewing.
+
+### Was it the stiffener?
+
+The user's guess — the bend area overlaps the stiffener — is only half right and
+was not the cause. BEND_3's strip does cross into STIFFENER2 at k = 0.5 (by
+0.076 mm, see above), which splits the layer into several disjoint solids, one
+of them a 0.0765 mm sliver. But the sliver is legitimate geometry and wraps
+exactly now; and **BEND_1 is 0.4 mm clear of any stiffener** and failed for the
+same reason. What the stiffener actually correlates with is *small features* —
+slivers, 1 mm fillets, 45° chamfers — which is where a loose corner is most
+likely to be the shortest edge and get dropped.
+
+### Verified here
+
+flex3-a0 in all three board modes × k = 0.5 and k = 0: six builds, exit 0.
+Before: 4 bends planned, 2 faceted, `built in more than one way (15 faceted,
+2 wrapped)`, 52797 STEP entities. After, at k = 0.5: **every bend exact or
+wrapped, no facets, no mixed-build warning**, 35581 entities. At k = 0: all five
+bends fold, all exact, the ring closes.
+
+Two new test sections. **[7c]** the ring: two 180° bends whose areas touch —
+refused at k = 0.5 with the neutral-factor advice, folded at k = 0, tail back in
+its own plane shortened by exactly the material the loop ate, loop standing 2R+T
+above the board. **[17e]** an outline with one corner deliberately loose by
+4e-7 — twice what OCC joins by itself, inside the vertex tolerance, so the flat
+solid is valid. Checked against the old code: it fails with the field's own
+message, `faceted at 7.5 deg per slice - the solid built from them is not
+valid`. 18/18 suites green.
 
 ## Update 2026-07-26 (round 40) — the crash, caught and contained
 
