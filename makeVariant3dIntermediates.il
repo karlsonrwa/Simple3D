@@ -3200,6 +3200,16 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
         dsnName = axlCurrentDesign()
         dsn = axlDBGetDesign()
 
+        ; Both of these are per-DESIGN caches, and the SKILL files are loaded
+        ; once per Allegro session - so without this they survive from one
+        ; board to the next and the second export gets the FIRST board's
+        ; shapes and bend lines, as dbids belonging to a database that may not
+        ; even be open any more. Nothing says so: the JSON simply describes the
+        ; wrong board. S3D_MechSeq and S3D_SilkWarnings are already reset the
+        ; same way, one level down; these two were missed.
+        S3D_RigidFlexShapes = nil
+        S3D_BendLines = nil
+
         ; create dir (recursively - createDir makes only one level at a time,
         ; so walk the path and create each missing segment).
         s3dMakeDirs( dir )

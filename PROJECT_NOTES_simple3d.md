@@ -5,7 +5,7 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-07-26
+## READ THIS FIRST — state as of 2026-07-27
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -94,7 +94,14 @@ source, because the config is found relative to it.
   that a real board no longer reaches. Both bends of flex-b2 wrap; all five of
   flex3-a0 do since round 41.
 
-### Two traps in the fold that cost a round each — do not rediscover them
+### Three traps that cost a round each — do not rediscover them
+
+- **A per-design cache in SKILL outlives the design** (round 42). The `.il`
+  files load once per Allegro session, so any global built with
+  `unless( G ... )` is still holding the previous board when the next one is
+  exported. Everything of that kind must be reset at the top of
+  `makeVariant3dIntermediates`; four globals are, and two of them only since
+  round 42.
 
 - **`BRepBuilderAPI_MakeWire` drops edges it cannot join, and still reports
   `IsDone`** (round 41). It joins at `Precision::Confusion`, a hard 1e-7 that
@@ -2872,6 +2879,81 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-07-27 (round 42) — full review, and the docs brought up to date
+
+A read of every source file in the project (~10 000 lines: both `.il`, the six
+Python modules, `tools/`, the suites, the config). The code is in good shape;
+four defects came out of it, three of them silent.
+
+### 1. `--brd-name` did nothing without `--dated-name`
+
+`base` was computed and then only used on the dated path, so
+`--brd-name X` alone produced a file named after the JSON. Reproduced on the
+demo board. The launcher always passes both, which is why it was never seen.
+
+The naming rule now lives in **one** function, `core.output_stem` — the
+docstring of `dated_output_name` had claimed exactly that ("shared so the rule
+cannot drift"), and it had drifted anyway because only *half* the rule was in
+there. `__main__.py` and `worker.py` both call it. Covered by test `[7e]`.
+
+### 2. Two per-design caches survived into the next board
+
+`S3D_RigidFlexShapes` and `S3D_BendLines` are built once and then guarded with
+`unless( S3D_... )`. The SKILL files load once per Allegro session, so
+exporting board A and then board B reused **A's** shapes and bend lines — as
+dbids into a database that may not even be open. Nothing would say so; the JSON
+would simply describe the wrong board. `S3D_MechSeq` and `S3D_SilkWarnings`
+are already reset per export, so this was an omission rather than a decision.
+Both are now cleared at the top of `makeVariant3dIntermediates`.
+
+### 3. The doc audit rubber-stamped renamed controls
+
+`tools/audit_docs.py` checked a QUICKSTART label by its **first word** against
+an allow-list. So "Ignore soldermask layers" kept passing after the widget was
+renamed to "Do not include soldermask layers" — both start with a word that was
+on the list. It now matches the whole string against `gui.py` + `colors.py`,
+with two named exceptions for prose shorthand (`Custom…`, `White/Black`).
+Verified by renaming the label back and watching it fail.
+
+### 4. Documentation that had gone stale
+
+Found by reading, not by the audit — which only checks what it can mechanise:
+
+- `simple3d_config.json`, the file users actually edit: `_comment_foldBends`
+  still said "the fold is faceted, not exact" (wrong since round 38),
+  `_comment_boardMode` said the GUI calls it "Board" (it says *Body
+  stitching*), `_comment_ignoreSoldermask` named a checkbox that had been
+  renamed, and `_comment_foldNeutral` still called the bend area a cross-check.
+- README: a `debugLayers` row documented as current when the key is
+  migration-only; the settings table's section column wrong from
+  `negativeLayers` onward, so eight `gui` keys appeared to be `settings` ones;
+  the GUI table missing **Body stitching** and the soldermask checkbox
+  entirely; the install tree missing `bend.py` and `worker.py`; "about 40 s"
+  for a 50 s suite; the probe list missing `probe_bend.il`; the changelog entry
+  for round 36 still describing the fold as faceted.
+- Both halves updated, plus the round-41 K-factor material and a new changelog
+  entry, in English and Russian.
+
+### Noted, not changed
+
+- **`colors.as_fraction` is dead** — defined, named in the module docstring,
+  and called nowhere; `core.py` writes `rgb[0] / 255.0` inline in five places.
+- **Thirteen `MFRPN DISABLED` comment blocks** across six files, carried since
+  round 18. They document a deliberate decision and say how to re-enable it, so
+  they are not litter, but they are the largest block of commented-out code in
+  the project.
+- `board_mode` is not validated in `core.generate`; an unknown string silently
+  builds a plain solid. Both callers restrict it (argparse choices, a
+  read-only combobox), so it is unreachable from the shipped paths.
+
+### Verified here
+
+18/18 green, twice in a row (test `[7e]` empties its own directory - it writes
+a .step to exercise the collision suffix, and the first version of it passed
+once and then failed on the second run). `--brd-name` checked all three ways on
+the demo board: bare, with `--dated-name`, and neither. The doc audit passes and
+was checked to fail on a renamed label.
 
 ## Update 2026-07-26 (round 41) — flex3-a0, the ring, and one OCC tolerance
 

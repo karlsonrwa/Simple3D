@@ -297,15 +297,10 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     for jf in jsons:
         try:
-            # With several variants, each json's stem (design_variant) must
-            # name the output, or all variants would collide into one base and
-            # differ only by underscores. --brd-name applies to a single json.
-            if len(jsons) > 1:
-                base = jf.stem
-            else:
-                base = args.brd_name or jf.stem
-            output_name = (core.dated_output_name(base, output_dir)
-                           if args.dated_name else None)
+            # One rule, in core, for the GUI and here alike - see output_stem.
+            output_name = core.output_stem(
+                jf, output_dir, brd_name=args.brd_name,
+                several=len(jsons) > 1, dated=args.dated_name)
             result = core.generate(
                 step_dirs,
                 jf,

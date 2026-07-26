@@ -96,19 +96,31 @@ for f in ("makeVariant3dIntermediates.il", "simple3d.il", "simple3d_config.json"
         note("file not in layout listing", f)
 
 # ---- QUICKSTART claims ----------------------------------------------------
-# every GUI label the quick-start names must exist in gui.py
+# Every GUI label the quick-start names must exist in gui.py, VERBATIM.
+#
+# This used to allow a label through on its first word, which meant a renamed
+# control kept passing as long as the new name started the same way - and one
+# did: the soldermask checkbox was documented as "Ignore soldermask layers"
+# long after the widget said "Do not include soldermask layers", because both
+# begin with a word that was on the list. Matching the whole string is the
+# point of the check.
+#
+# Two entries are prose shorthand rather than a widget's text and are named
+# here so the exception is visible: the quick-start writes the ellipsis
+# character where Tk has three dots, and folds a two-item dropdown into one
+# "White/Black".
+#
+# The dropdown CONTENTS live in colors.py, not in gui.py, so both are searched.
+PROSE = {"Custom…": "Custom...", "White/Black": "White"}
+widget_text = gui_py + (ROOT / "stepbuilder/colors.py").read_text(encoding="utf-8")
 for label in re.findall(r"\*\*([A-Z][A-Za-z0-9 =/…]+?)\*\*", quick):
     lab = label.strip()
     if lab in ("Input", "Board options", "Silk options", "Layers", "Log"):
         if f'text="{lab}"' not in gui_py:
             note("QUICKSTART names a missing frame", lab)
         continue
-    if lab.split()[0] in ("Generate", "Board", "Silkscreen", "Minimise",
-                          "STEP", "JSON", "Output", "Z", "All", "None",
-                          "White/Black", "Top", "Bottom", "Body", "Ignore", "Reset", "Compact",
-                          "Make", "Fold", "Add...", "Custom…"):
-        continue
-    note("QUICKSTART label unchecked", lab)
+    if PROSE.get(lab, lab) not in widget_text:
+        note("QUICKSTART names a control absent from the GUI", lab)
 
 for term in ("Board edge color", "Body stitching", "Reset colors",
              "Make surface (minimum file size)", "Fold flex bends", "Generate"):

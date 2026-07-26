@@ -204,6 +204,36 @@ for mode, want in (("solid","readonly"),("layers","disabled"),("inspect","disabl
           str(app._rim_box.cget("state")) == want, str(app._rim_box.cget("state")))
 app.board_mode.set(_mode_label("solid")); app._on_mode_changed()
 
+print(chr(10) + "[7e] what the output file is called - one rule for both halves")
+from stepbuilder.core import output_stem
+NAMES = TMP / "names"
+# Emptied first: the collision check below writes a .step, and a leftover from
+# the previous run would make the FIRST dated name collide instead.
+shutil.rmtree(NAMES, ignore_errors=True)
+NAMES.mkdir()
+one = NAMES / "board_a0.json"
+# The rule the launcher relies on: the exporter lower-cases the filename, and
+# --brd-name is what puts the board's own capitals back.
+check("nothing given -> the JSON's own name is used",
+      output_stem(one, NAMES) is None, str(output_stem(one, NAMES)))
+check("a board name names the file, WITHOUT a date",
+      output_stem(one, NAMES, brd_name="Board_A0") == "Board_A0",
+      str(output_stem(one, NAMES, brd_name="Board_A0")))
+dated = output_stem(one, NAMES, brd_name="Board_A0", dated=True)
+check("with a date it is <brd>_simple_DD_MM_YYYY",
+      dated.startswith("Board_A0_simple_") and len(dated.split("_")) == 6, str(dated))
+(NAMES / f"{dated}.step").write_text("", encoding="utf-8")
+check("and a second build the same day gets a trailing _",
+      output_stem(one, NAMES, brd_name="Board_A0", dated=True) == dated + "_",
+      str(output_stem(one, NAMES, brd_name="Board_A0", dated=True)))
+# Several variants: one brd_name handed to all of them would collide, so each
+# json's own stem (design_variant) has to win.
+check("several variants ignore the board name and use their own stem",
+      output_stem(one, NAMES, brd_name="Board_A0", several=True) is None
+      and output_stem(one, NAMES, brd_name="Board_A0", several=True,
+                      dated=True).startswith("board_a0_simple_"),
+      str(output_stem(one, NAMES, brd_name="Board_A0", several=True, dated=True)))
+
 print("\n[8] snapshot is complete and frozen")
 snap = app._snapshot()
 # Names, not a count: a bare number says "16 != 15" when a field is added and
