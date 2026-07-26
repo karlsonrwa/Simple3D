@@ -1,7 +1,7 @@
 """
-Board colour themes.
+Board color themes.
 
-The eight soldermask colours are lifted verbatim from Allegro's
+The eight soldermask colors are lifted verbatim from Allegro's
 `Allegro3DCanvasPreferences.xml` (the FixedThemes / soldermask entries) and
 hardcoded here, so the tool needs neither the XML at runtime nor a parser.
 Transparency is intentionally dropped: the board is one opaque solid, so only
@@ -40,16 +40,24 @@ THEME_ORDER = [
     "White",
 ]
 
-# Typical FR4 dielectric, for the "cream" rim option. Not a mask colour, so it
+# Typical FR4 dielectric, for the "cream" rim option. Not a mask color, so it
 # is kept separate from the themes above.
 CREAM_DIELECTRIC = (253, 255, 215)
 
 # Silkscreen ink. Real legend ink comes in exactly these two in practice, so
-# this is a closed choice rather than a free colour: white on dark masks, black
-# on white/yellow ones. Neither is a pure 255/0 - printed ink never is, and a
-# pure white next to a pure white mask disappears.
+# this is a closed choice rather than a free color: white on dark masks, black
+# on white/yellow ones.
+#
+# White was 242 rather than 255 on the reasoning that printed ink is never pure
+# and that pure white would vanish against a white mask. Changed to 255 after
+# the user pointed out the obvious: 242 reads plainly GREY next to the window's
+# white entry fields, and the swatch is meant to show what you will get. The
+# 13-point difference never saved the white-on-white case anyway.
+#
+# Black stays off pure zero: a true 0,0,0 renders as a hole rather than a
+# surface in several viewers, and nothing about it looks wrong in the swatch.
 SILK_COLORS: dict[str, tuple[int, int, int]] = {
-    "White": (242, 242, 242),
+    "White": (255, 255, 255),
     "Black": (26, 26, 26),
 }
 
@@ -81,8 +89,54 @@ def parse_hex(text: str) -> tuple[int, int, int]:
         return (parts[0], parts[1], parts[2])
     text = text.lstrip("#")
     if len(text) != 6:
-        raise ValueError(f"Expected a 6-digit hex colour, got {text!r}")
+        raise ValueError(f"Expected a 6-digit hex color, got {text!r}")
     return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
+
+
+# --------------------------------------------------------------------------- #
+# stackup layer kinds, for the layer-colored board
+# --------------------------------------------------------------------------- #
+
+# The kinds a flex / rigid-flex stackup is made of, in the order the swatch row
+# shows them. Defaults are Allegro's OWN material colors, read off a real
+# board's 3DX_APPEARANCE attachment - so a layer-colored export looks like the
+# same board does in Allegro's 3D canvas rather than like an arbitrary palette.
+LAYER_KINDS: list[tuple[str, str, tuple[int, int, int]]] = [
+    ("copper",     "Copper",     (0xB8, 0x73, 0x33)),   # 3d_color_outer_conductor
+    ("base",       "Base",       (0xFC, 0xFF, 0xD6)),   # 3d_color_dielectric
+    ("coverlay",   "Coverlay",   (0xF2, 0x94, 0x40)),   # 3d_color_coverlay
+    ("adhesive",   "Adhesive",   (0xC8, 0xC8, 0xC8)),   # no Allegro entry; grey
+    ("stiffener",  "Stiffener",  (0x5A, 0x8C, 0x5A)),   # no Allegro entry; FR4 green
+    ("soldermask", "Soldermask", (0x1A, 0x59, 0x24)),   # 3d_color_soldermask
+    ("other",      "Other",      (0x96, 0x96, 0x96)),
+]
+
+DEFAULT_LAYER_COLORS: dict[str, tuple[int, int, int]] = {
+    key: rgb for key, _, rgb in LAYER_KINDS
+}
+
+
+def layer_kind(layer: dict) -> str:
+    """Which of LAYER_KINDS a stackup layer belongs to.
+
+    Type first, name second: a conductor is a conductor whatever it is called,
+    while everything outside the core is a MASK layer and can only be told apart
+    by its name. Same normalisation as the soldermask test in core - strip
+    everything but letters and digits - so SOLDER_MASK_TOP and "Solder Mask"
+    both land in the same place.
+    """
+    kind_of_type = {"CONDUCTOR": "copper", "PLANE": "copper", "DIELECTRIC": "base"}
+    by_type = kind_of_type.get(str(layer.get("type") or "").upper())
+    if by_type:
+        return by_type
+
+    probe = f"{layer.get('name') or ''} {layer.get('function') or ''}".upper()
+    probe = "".join(c for c in probe if c.isalnum())
+    for marker, kind in (("SOLDERMASK", "soldermask"), ("COVERLAY", "coverlay"),
+                         ("ADHESIVE", "adhesive"), ("STIFFENER", "stiffener")):
+        if marker in probe:
+            return kind
+    return "other"
 
 
 def resolve_board_color(theme: str) -> tuple[int, int, int]:

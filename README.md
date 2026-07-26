@@ -151,11 +151,16 @@ and whether it parsed. A byte-order mark left by an editor is tolerated.
 | | `menuLabel` / `commandName` | Menu item text and internal command name. Read at load time, so changing them needs a SKILL reload. |
 | `gui` | `stepDirs` | Folders holding the footprint STEP models (referenced by `PKGDEF_STEP_FILE`) — the "STEP files" field. A **list, searched in order: the first folder holding a given model file wins**, so a project-local folder listed above the shared library overrides individual models. Each is searched recursively, so subfolders need no entry. |
 | | `outputDir`, `jsonFile` | The last paths you picked **in the GUI**. An export launched from Allegro fills these fields for the board being built but does not record them here — they describe a board, not a preference. |
+| | `boardMode` | How the board body is built on a **multi-stackup / rigid-flex** design; ignored on an ordinary board. `solid` — one solid in one color, coplanar faces merged, smallest file. `layers` — one solid whose layer interfaces are **kept**, so every face is colored by the kind of layer it belongs to and the rim shows the stack (about 4.7x `solid`). `inspect` — every layer of every zone as its own named part, for taking the board apart by eye. GUI: the **Board** dropdown; CLI: `--board-mode`. |
+| | `layerColors` | Color per kind of stackup layer (`copper`, `base`, `coverlay`, `adhesive`, `stiffener`, `soldermask`, `other`), used by `boardMode: layers`. Defaults are **Allegro's own material colors**, taken from a board's `3DX_APPEARANCE`, so the export looks like the same board does in Allegro's 3D canvas. Set them from the swatch row beside the Board dropdown, or by hand as `#RRGGBB`. |
+| | `ignoreSoldermask` | Leave the soldermask out of the board entirely, however the design defines it, and **close the stack up toward the core** by exactly the thickness removed — each side independently. Components then rest on the copper rather than on the mask. Applies to a multi-stackup board's layers and to a plain board's `soldermask_top`/`soldermask_bottom` alike. GUI: *Ignore soldermask layers*; CLI: `--ignore-soldermask`. Decided when the model is built, so it needs no re-export. |
+| | `debugLayers` | Inspection build for multi-stackup boards: every stackup layer becomes its own part named `<zone>__<layer>` with its own contrasting color, **not fused** into one board solid — for checking a stackup by eye. Several times larger, and the board is no longer one solid, so leave it off for normal exports. Also `--board-mode {solid,layers,inspect}`, and a checkbox beside *Compact STEP (reuse component geometry)*. |
+| `settings` | `negativeLayers` | Stackup layers whose drawn shapes are **openings** rather than material, matched as a case-insensitive substring of the layer name or its IPC function. Coverlay, soldermask and pastemask are drawn that way by convention; stiffener, adhesive and epoxy are the opposite. Add a layer here if its bodies come out inverted in the inspection build. |
 | | `windowGeometry`, `windowState` | Where the window was when it was last closed (`WIDTHxHEIGHT+X+Y`) and whether it was maximized. Restored on the next run, so on a multi-monitor desk it comes back **on the same screen** — `X` is negative for a monitor left of the primary. If that position is no longer reachable (usually the monitor was disconnected) it is ignored, the window is centred on the main screen and the log says so. Empty on a first run, which also centres it. |
-| | `boardColor`, `boardEdge`, `boardEdgeCustom` | Board and rim colour. |
+| | `boardColor`, `boardEdge`, `boardEdgeCustom` | Board and rim color. |
 | | `zDatum` | `"top"` or `"bottom"`. |
 | | `silkscreenTop`, `silkscreenBottom` | Which sides of the legend to build. |
-| | `silkColor`, `silkscreenFlat` | Ink colour, and flat or solid. |
+| | `silkColor`, `silkscreenFlat` | Ink color, and flat or solid. |
 | | `silkscreenLayersOff` | Layers currently unticked in the GUI. Exclusions, not inclusions: a layer that turns up on a board for the first time is drawn, rather than silently missing. |
 | | `silkscreenFlatHeight` | Distance in mm from the board surface to a **flat** legend, so the two are not coplanar and do not flicker. Default `0.001` (1 µm). Not the ink thickness — that is `settings.silkscreenThickness`, and it applies to solid mode only. |
 | | `minimizeFileSize` | See *Silkscreen file size*. |
@@ -176,25 +181,25 @@ needs changing if you deliberately keep the config somewhere else.
 | **STEP files** | Folders with the footprint STEP models, **one per line** (`gui.stepDirs`). Searched in order — the first folder holding a model file wins, so a project-local folder above the shared library overrides individual models. Each is searched recursively. **Add...** appends a folder; reorder by editing the text. A name found in more than one folder is reported in the log with the path that won. |
 | **JSON file** | The intermediate JSON, or a folder of variant JSONs. Only files tagged `"format": "simple3d"` are used; others are ignored and logged. |
 | **Output** | Where the `.step` is written (the `cad` folder). |
-| **Board colour** | The eight Allegro 3D-canvas themes, with a colour swatch. |
-| **Board edge** | Rim / side-wall colour: same as board, cream dielectric, or a custom `r,g,b` / `#rrggbb`. |
+| **Board color** | The eight Allegro 3D-canvas themes, with a color swatch. |
+| **Board edge** | Rim / side-wall color: same as board, cream dielectric, or a custom `r,g,b` / `#rrggbb`. |
 | **Z = 0 at** | Which board face is the datum: top or bottom. Parts sit on the soldermask of their side (real pads carry solder that lifts the part to mask level). |
 | **Silkscreen: Top / Bottom** | Which sides of the printed legend to build. Both off skips silkscreen entirely and makes a noticeably smaller file. |
-| **Colour** (same row) | Silkscreen ink: **White** or **Black**. Those are the two colours legend ink actually comes in, so it is a closed choice. |
+| **Color** (same row) | Silkscreen ink: **White** or **Black**. Those are the two colors legend ink actually comes in, so it is a closed choice. |
 | **Flat** (same row) | Draw the legend as surfaces instead of thin solids: about a quarter of the silkscreen's file size. Their height above the board is `gui.silkscreenFlatHeight`. See *Silkscreen file size* below. |
 | **Silkscreen layers** | A tick per layer found in the loaded JSON, with its polygon count, the two sides side by side. Untick a layer to leave it out of this build — no re-export needed. **All** / **None** set them together, skipping a side that is switched off. |
-| **Minimise file size** | Drops parametric surface curves (`write.surfacecurve.mode = 0`), roughly halving the file with identical geometry. |
+| **Compact STEP (reuse component geometry)** | Drops parametric surface curves (`write.surfacecurve.mode = 0`), roughly halving the file with identical geometry. |
 | **Generate** | Builds one file, or every queued variant. |
 
-Log messages are colour-coded: **orange** for warnings, **dark red** for errors,
+Log messages are color-coded: **orange** for warnings, **dark red** for errors,
 green for success.
 
-The Allegro console is colour-coded too. Messages go through `axlUIWPrint` with
-a severity, so warnings appear in Allegro's warning colour and errors in red,
+The Allegro console is color-coded too. Messages go through `axlUIWPrint` with
+a severity, so warnings appear in Allegro's warning color and errors in red,
 carrying the same `*WARNING*` / `*Error*` prefixes as Allegro's own messages.
 There is no green: the documented severities are `info0`, `info1`, `warn`,
 `error` and `fatal`, and none of them means success, so a completed export
-prints in the ordinary colour. The GUI log is where a successful build shows
+prints in the ordinary color. The GUI log is where a successful build shows
 green.
 
 ## Assembly structure
@@ -218,7 +223,7 @@ green.
 * The **board part** is named `PCB_<board>` (not a bare `PCB`), so importing
   several boards into one CAD session never lets one board's PCB silently
   substitute another's.
-* Each **silkscreen side is its own part**, so it can be hidden or recoloured in
+* Each **silkscreen side is its own part**, so it can be hidden or recolored in
   the viewer without touching the board.
 
 ## Silkscreen
@@ -337,7 +342,7 @@ A legend is thousands of small faces, so it costs real bytes. Measured on a
 
 | representation | size | note |
 |---|---|---|
-| solids, **Minimise file size** on | 2191 kB | the default |
+| solids, **Compact STEP (reuse component geometry)** on | 2191 kB | the default |
 | solids, Minimise **off** | 5769 kB | 2.6x worse - leave the box ticked |
 | **Flat** (surfaces) | 566 kB | **26%** of the default |
 | boolean-fused into one solid | 3377 kB | *larger*, and slower - not offered |
@@ -514,7 +519,7 @@ and rigid-flex* above), but a bend line is not folded: the flex sections stay in
 plane. For a folded model, use Allegro's own 3D export.
 
 **Component B-rep comes from your library STEP models.** File size beyond the
-board itself is dominated by those models; "Minimise file size" cannot shrink
+board itself is dominated by those models; "Compact STEP (reuse component geometry)" cannot shrink
 geometry that lives inside them.
 
 **Silkscreen solids are not fused into one.** This is about **solid** mode: the
@@ -709,6 +714,11 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 | | `menuLabel` / `commandName` | Текст пункта меню и внутреннее имя команды. Читаются при загрузке, поэтому их изменение требует перезагрузки SKILL. |
 | `gui` | `stepDirs` | Папки с STEP-моделями посадочных мест (по `PKGDEF_STEP_FILE`) — поле «STEP files». **Список, просматриваемый по порядку: побеждает первая папка, где есть нужный файл**, поэтому проектная папка выше общей библиотеки переопределяет отдельные модели. Каждая просматривается рекурсивно, подпапки перечислять не нужно. |
 | | `outputDir`, `jsonFile` | Последние пути, выбранные **в самом окне**. Экспорт из Allegro заполняет эти поля под собираемую плату, но в файл их не записывает — они описывают плату, а не настройку. |
+| | `boardMode` | Как строится тело платы на **мультистэкапе / rigid-flex**; на обычной плате игнорируется. `solid` — одно тело одного цвета, копланарные грани слиты, самый лёгкий файл. `layers` — одно тело, но границы слоёв **сохранены**, каждая грань красится по виду своего слоя, и торец показывает стек (примерно в 4.7 раза больше `solid`). `inspect` — каждый слой каждой зоны отдельной именованной деталью, чтобы разобрать плату глазами. GUI: список **Board**; CLI: `--board-mode`. |
+| | `layerColors` | Цвет на вид слоя (`copper`, `base`, `coverlay`, `adhesive`, `stiffener`, `soldermask`, `other`), используется при `boardMode: layers`. По умолчанию — **собственные цвета материалов Allegro**, взятые из `3DX_APPEARANCE` платы, так что экспорт выглядит как та же плата в 3D-канвасе Allegro. Задаются рядом квадратиков рядом со списком Board или вручную как `#RRGGBB`. |
+| | `ignoreSoldermask` | Полностью исключить паяльную маску из платы, как бы она ни была задана в проекте, и **сомкнуть стек к ядру** ровно на убранную толщину — с каждой стороны независимо. Компоненты тогда стоят на меди, а не на маске. Действует и на слои платы с мультистэкапом, и на `soldermask_top`/`soldermask_bottom` обычной платы. GUI: *Ignore soldermask layers*; CLI: `--ignore-soldermask`. Решение принимается при сборке модели, переэкспорт не нужен. |
+| | `debugLayers` | Инспекционная сборка для плат с мультистэкапом: каждый слой становится отдельной деталью `<зона>__<слой>` со своим контрастным цветом и **не сплавляется** с остальными — чтобы разобрать стэкап глазами. Файл в несколько раз больше, плата перестаёт быть одним телом, поэтому для обычного экспорта выключено. Также `--board-mode {solid,layers,inspect}` и галочка рядом с *Compact STEP (reuse component geometry)*. |
+| `settings` | `negativeLayers` | Слои стэкапа, чьи нарисованные шейпы — **окна**, а не материал; сопоставление без учёта регистра по подстроке имени слоя или его IPC-функции. Coverlay, soldermask и pastemask рисуются так по конвенции; stiffener, adhesive и epoxy — наоборот. Добавьте слой сюда, если в инспекционной сборке его тела вышли инверсными. |
 | | `windowGeometry`, `windowState` | Где было окно при последнем закрытии (`ШИРИНАxВЫСОТА+X+Y`) и было ли оно развёрнуто. Восстанавливается при следующем запуске, поэтому на нескольких мониторах окно возвращается **на тот же экран** — для монитора левее главного `X` отрицателен. Если позиция стала недостижимой (обычно монитор отключили), она игнорируется, окно центрируется на главном экране, и в лог пишется почему. При первом запуске пусто — окно тоже центрируется. |
 | | `boardColor`, `boardEdge`, `boardEdgeCustom` | Цвет платы и торца. |
 | | `zDatum` | `"top"` или `"bottom"`. |
@@ -735,14 +745,14 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 | **STEP files** | Папки с STEP-моделями посадочных мест, **по одной на строку** (`gui.stepDirs`). Просматриваются по порядку — побеждает первая, где есть нужный файл, поэтому проектная папка выше общей библиотеки переопределяет отдельные модели. Каждая просматривается рекурсивно. **Add...** дописывает папку в конец; порядок правится прямо текстом. Имя, найденное в нескольких папках, отмечается в логе с указанием победившего пути. |
 | **JSON file** | Промежуточный JSON или папка с JSON-вариантами. Берутся только файлы с меткой `"format": "simple3d"`, остальные игнорируются с записью в лог. |
 | **Output** | Куда пишется `.step` (папка `cad`). |
-| **Board colour** | Восемь тем 3D-канвы Allegro, с образцом цвета. |
+| **Board color** | Восемь тем 3D-канвы Allegro, с образцом цвета. |
 | **Board edge** | Цвет торца / боковых стенок: как плата, кремовый диэлектрик или свой `r,g,b` / `#rrggbb`. |
 | **Z = 0 at** | Какая грань платы — ноль: верхняя или нижняя. Компоненты садятся на маску своей стороны (на площадках реально есть припой, поднимающий деталь до уровня маски). |
 | **Silkscreen: Top / Bottom** | Какие стороны легенды строить. Обе выключены — шелкографии нет вовсе, файл заметно меньше. |
-| **Colour** (в той же строке) | Цвет краски: **White** или **Black**. Это те два цвета, которыми шелкография реально печатается, поэтому выбор закрытый. |
+| **Color** (в той же строке) | Цвет краски: **White** или **Black**. Это те два цвета, которыми шелкография реально печатается, поэтому выбор закрытый. |
 | **Flat** (в той же строке) | Рисовать легенду поверхностями вместо тонких тел: примерно вчетверо меньший вклад в размер файла. Высота над платой задаётся `gui.silkscreenFlatHeight`. См. «Размер файла и шелкография» ниже. |
 | **Silkscreen layers** | Галочка на каждый слой, найденный в загруженном JSON, с числом полигонов; стороны расположены рядом. Снимите галочку — слой не попадёт в эту сборку, повторный экспорт не нужен. **All** / **None** переключают все сразу, пропуская выключенную сторону. |
-| **Minimise file size** | Убирает параметрические кривые поверхностей (`write.surfacecurve.mode = 0`), примерно вдвое уменьшая файл при идентичной геометрии. |
+| **Compact STEP (reuse component geometry)** | Убирает параметрические кривые поверхностей (`write.surfacecurve.mode = 0`), примерно вдвое уменьшая файл при идентичной геометрии. |
 | **Generate** | Собирает один файл или все варианты из очереди. |
 
 Сообщения в логе раскрашены: **оранжевый** — предупреждения, **тёмно-красный** —
@@ -899,7 +909,7 @@ Simple 3D: WARNING - zero width: text on REF DES/SILKSCREEN_TOP at (12.500, 4.00
 
 | представление | размер | примечание |
 |---|---|---|
-| тела, **Minimise file size** включён | 2191 КБ | по умолчанию |
+| тела, **Compact STEP (reuse component geometry)** включён | 2191 КБ | по умолчанию |
 | тела, Minimise **выключен** | 5769 КБ | в 2.6 раза хуже — галочку не снимайте |
 | **Flat** (поверхности) | 566 КБ | **26%** от значения по умолчанию |
 | объединение булевой операцией в одно тело | 3377 КБ | *больше* и медленнее — не предлагается |
@@ -1075,7 +1085,7 @@ warning: 2 model(s) are stored inside the board but were not found on disk:
 остаются в плоскости. Если нужна согнутая модель — штатный 3D-экспорт Allegro.
 
 **B-rep компонентов берётся из ваших STEP-моделей библиотеки.** Размер файла
-сверх самой платы определяется этими моделями; «Minimise file size» не может
+сверх самой платы определяется этими моделями; «Compact STEP (reuse component geometry)» не может
 уменьшить геометрию, которая лежит внутри них.
 
 **Тела шелкографии не объединяются в одно.** Речь про **объёмный** режим:
@@ -1228,7 +1238,7 @@ stepbuilder/
   are reported by layer and position instead of vanishing. Every user setting
   moved into `simple3d_config.json`, read by both halves of the tool, and the
   GUI now refuses to rewrite a settings file it could not read. Allegro console
-  messages carry a severity, so warnings print in Allegro's warning colour and
+  messages carry a severity, so warnings print in Allegro's warning color and
   errors in red. / Слои шелкографии теперь выбираются в окне, а не правкой
   конфига (формат `format_version: 3`): экспортёр собирает все слои из конфига
   и помечает каждый полигон его слоем, поэтому панель **Silkscreen layers**
@@ -1278,7 +1288,7 @@ stepbuilder/
   named `PCB_<board>` instead of a bare `PCB`, so several boards no longer
   collide in one CAD session. Under `symbols_top`/`symbols_bot` the model parts
   are placed directly (instance named after its STEP file), dropping the
-  per-refdes wrapper sub-assemblies. GUI: the board-colour swatch now sits next
+  per-refdes wrapper sub-assemblies. GUI: the board-color swatch now sits next
   to its dropdown. / MFRPN закомментирован везде (чтение в SKILL и поле JSON,
   опция Python, галочка GUI, флаг CLI) — чтение свойства работало ненадёжно;
   код оставлен отключённым на будущее. Деталь платы теперь называется
@@ -1303,8 +1313,8 @@ stepbuilder/
   устаревшая настройка `S3D_DefaultModelDir`; в список флагов добавлены
   `--batch`/`--quiet`.
 
-- **2026-07-18** — Coloured log (orange warnings, dark-red errors); JSON format
-  marker so foreign `.json` files are ignored; rim-colour fix (was landing on a
+- **2026-07-18** — Colored log (orange warnings, dark-red errors); JSON format
+  marker so foreign `.json` files are ignored; rim-color fix (was landing on a
   flat face); documented `ncroute_path` and multi-stackup limitations; settings
   switched from `defvar` to `=`; self-deleting launch batch; console-less
   `pythonw` launch. Bilingual README created.

@@ -46,15 +46,15 @@
 ;=====================================================================
 ;  CONSOLE MESSAGES
 ;
-;  axlUIWPrint carries a severity, and the Allegro console colours by it:
-;  warnings in its warning colour, errors in red, both with the *WARNING* /
+;  axlUIWPrint carries a severity, and the Allegro console colors by it:
+;  warnings in its warning color, errors in red, both with the *WARNING* /
 ;  *Error* prefix Allegro puts on its own messages. So these lines do NOT
 ;  spell the severity out themselves - Allegro says it, and saying it twice
 ;  reads as a mistake.
 ;
 ;  The documented levels are 'info0, 'info1, 'warn, 'error and 'fatal. There is
 ;  no "success" level, so a green completion line cannot be had this way; the
-;  GUI log does colour its own success line green, and that is where the result
+;  GUI log does color its own success line green, and that is where the result
 ;  is judged. 'fatal is deliberately unused - it beeps and its behaviour beyond
 ;  that is not documented here.
 ;
@@ -63,7 +63,7 @@
 ;  conversion and either print wrongly or fault.
 ;
 ;  Falls back to printf when axlUIWPrint is unavailable or refuses the call, so
-;  no message is ever lost to the attempt at colouring it.
+;  no message is ever lost to the attempt at coloring it.
 ;=====================================================================
 
 procedure( s3dSay( s_level t_message )
@@ -1011,41 +1011,238 @@ procedure( calculateBoardThickness()
 ; uses reports 0.0 for both sides of it. Verified against the API's own
 ; axlXSectionGet(<name> 'thickness): above+core+below reproduces it exactly
 ; on every stackup of the test board.
-procedure( s3dStackupProfile( g_stackup )
-    let( ( layers ( above 0.0 ) ( core 0.0 ) ( below 0.0 )
-           firstCond lastCond thk pos )
-        layers = nil
-        errset( layers = axlXSectionGet( g_stackup 'all ) )
+; Thickness of one cross-section entry, 0.0 when it has none (the two
+; surface entries).
+procedure( s3dLayerThk( o_layer )
+    let( ( thk )
+        thk = nil
+        errset( thk = o_layer->thickness )
+        if( thk && numberp( thk ) then thk else 0.0 )
+    )
+)
 
-        ; outermost conductor positions bound the core
-        foreach( layer layers
+; Index (0-based) of the first and last conductor in the entry list, as
+; ( firstIdx lastIdx ), or nil if the stackup has no conductor at all.
+;
+; **LIST ORDER, never layer->position.** Measured on a real rigid-flex
+; board: position DUPLICATES (6 is both SOLDERMASK_TOP and the dielectric,
+; 10 is both SOLDERMASK_BOTTOM and the bottom surface) and is not monotonic,
+; because it indexes the combined "All Stackups" view rather than this
+; stackup. The order axlXSectionGet( <name> 'all ) returns IS the physical
+; order - checked line by line against Allegro's own cross-section editor,
+; top surface first.
+;
+; The earlier version of this code compared positions and put SOLDERMASK_TOP
+; inside the core instead of above it: the total still came out right, so
+; nothing looked wrong, but the core - which is the datum every zone is
+; aligned on - sat 0.025 mm low on one stackup.
+procedure( s3dConductorSpan( l_layers )
+    let( ( ( i 0 ) first last )
+        foreach( layer l_layers
             case( layer->layerType
                 ( ( "CONDUCTOR" "PLANE" )
-                    pos = layer->position
-                    when( pos
-                        unless( firstCond  firstCond = pos )
-                        lastCond = pos
-                    )
+                    unless( first  first = i )
+                    last = i
                 )
                 ( t nil )
             )
+            i = i + 1
         )
+        when( first  list( first last ) )
+    )
+)
 
-        when( firstCond && lastCond
-            foreach( layer layers
-                thk = layer->thickness
-                unless( thk  thk = 0.0 )
-                pos = layer->position
-                when( pos
+; A string, escaped and quoted for JSON.
+;
+; Layer, stackup and zone names go into the intermediate verbatim, and a single
+; quote or backslash in any of them would break the whole file - not one entry,
+; the whole export. Unlikely in a layer name, but a broken intermediate is a
+; total failure while escaping costs one pass over a short string.
+procedure( s3dJsonQuote( g_value )
+    let( ( out c )
+        if( stringp( g_value ) then
+            out = "\""
+            for( i 1 strlen( g_value )
+                c = substring( g_value i 1 )
+                out = strcat( out
                     cond(
-                        ( pos < firstCond  above = above + thk )
-                        ( pos > lastCond   below = below + thk )
-                        ( t                core  = core  + thk )
+                        ( c == "\""  "\\\"" )
+                        ( c == "\\"  "\\\\" )
+                        ( c == "\t"  "\\t" )
+                        ( c == "\n"  "\\n" )
+                        ( t          c )
+                    ) )
+            )
+            strcat( out "\"" )
+        else
+            "null"
+        )
+    )
+)
+
+; The contour of one shape or polygon, as a JSON array of primitives.
+; Same parser the board outline uses - a zone outline, a stiffener shape and
+; the board edge all carry the same line/arc segments.
+procedure( s3dContourJson( o_dbid )
+    let( ( contour element )
+        contour = nil
+        errset(
+            foreach( segment o_dbid->segments
+                element = boardGeometryParseSegment( segment )
+                when( element
+                    if( contour then
+                        tconc( contour element )
+                    else
+                        contour = tconc( nil element )
                     )
                 )
             )
         )
-        list( above core below )
+        when( contour
+            strcat( "[\n" addIndent( buildString( car( contour ) ",\n" ) ) "\n]" )
+        )
+    )
+)
+
+; Layer-name prefixes whose drawn shapes are OPENINGS, not material.
+; Overridden from settings.negativeLayers in simple3d_config.json.
+S3D_NegativeLayers = list( "COVERLAY" "SOLDERMASK" "PASTEMASK" )
+
+; t if this layer's shapes are openings rather than material.
+;
+; Determined by IPC-2581 layer FUNCTION where the design carries one -
+; layerFunction is what the Mask Layer Site File assigns, per the rigid-flex
+; documentation - and by name prefix otherwise.
+;
+; NOT by negativeArtwork: that flag is about film generation and reads nil on
+; every layer of a real rigid-flex board, including the coverlay, which is
+; unambiguously drawn as openings. Believing it produced a board with the
+; coverlay inverted - material where the windows should be.
+procedure( s3dLayerIsNegative( o_layer )
+    let( ( nm fn ( neg nil ) probe )
+        nm = nil
+        errset( nm = o_layer->name )
+        fn = nil
+        errset( fn = o_layer->layerFunction )
+
+        ; the function name, when there is one, carries the same words
+        probe = ""
+        when( stringp( fn )  probe = upperCase( fn ) )
+        when( stringp( nm )  probe = strcat( probe " " upperCase( nm ) ) )
+
+        foreach( key S3D_NegativeLayers
+            when( stringp( key ) && (strlen( key ) > 0)
+                ; substring search, so COVERLAY matches COVERLAY_TOP and a
+                ; function spelled "Coverlay" alike
+                for( i 1 (strlen( probe ) - strlen( key ) + 1)
+                    when( substring( probe i strlen( key ) ) == upperCase( key )
+                        neg = t
+                    )
+                )
+            )
+        )
+        neg
+    )
+)
+
+; One drawn shape as { "outline": [...], "voids": [ [...], ... ] }.
+;
+; Voids are the holes punched in a layer - ADHESIVE_TOP has 7 of them on the
+; test board, STIFFENER_TOP and ADHESIVE_TOP2 six each, and the six small
+; COVERLAY_TOP patches sit exactly in those holes. They have to become holes
+; in the face, not material.
+procedure( s3dShapeJson( o_shape )
+    let( ( outline voids body ( firstVoid t ) )
+        outline = s3dContourJson( o_shape )
+        when( outline
+            body = strcat( "{\n\t\"outline\": " addIndent( outline ) )
+
+            voids = nil
+            errset( voids = o_shape->voids )
+            if( voids then
+                body = strcat( body ",\n\t\"voids\": [\n" )
+                foreach( v voids
+                    when( s3dContourJson( v )
+                        unless( firstVoid  body = strcat( body ",\n" ) )
+                        firstVoid = nil
+                        body = strcat( body addIndent( s3dContourJson( v ) 2 ) )
+                    )
+                )
+                body = strcat( body "\n\t]" )
+            else
+                body = strcat( body ",\n\t\"voids\": []" )
+            )
+            strcat( body "\n}" )
+        )
+    )
+)
+
+; Shapes on the RIGID FLEX class, grouped by subclass name. Built once per
+; export; nil until s3dCollectRigidFlexShapes has run.
+S3D_RigidFlexShapes = nil
+
+; Ask for the WHOLE class once and sort the answer, rather than asking for each
+; stackup layer by name.
+;
+; Asking by name made Allegro print
+;     *WARNING* (axlDBGetShapes): No match for subclass name - "RIGID FLEX/TOP"
+; for every conductor, the dielectric and the soldermask - none of which is ever
+; drawn on this class - and once per stackup that contains them, so ten warnings
+; on a three-stackup board. A miss cannot happen here: what is not in the table
+; simply is not there. It is also one database query instead of one per layer
+; per stackup, which mattered less but is not nothing.
+;
+; Only the RIGID FLEX class is consulted. PACKAGE GEOMETRY/SOLDERMASK_* also
+; exists but describes footprint openings, not the extent of a board layer, so
+; asking for it would be wrong rather than merely unhelpful.
+procedure( s3dCollectRigidFlexShapes()
+    let( ( shapes key pos ( n 0 ) )
+        S3D_RigidFlexShapes = makeTable( "s3dRigidFlexShapes" nil )
+        shapes = nil
+        errset( shapes = axlDBGetShapes( "RIGID FLEX" ) )
+
+        foreach( s shapes
+            key = nil
+            errset( key = s->layer )
+            when( stringp( key )
+                ; "RIGID FLEX/COVERLAY_TOP" -> "COVERLAY_TOP"
+                pos = nil
+                for( i 1 strlen( key )
+                    when( substring( key i 1 ) == "/"  pos = i )
+                )
+                when( pos
+                    key = substring( key pos + 1 strlen( key ) - pos )
+                    n = n + 1
+                    S3D_RigidFlexShapes[key] = cons( s S3D_RigidFlexShapes[key] )
+                )
+            )
+        )
+        when( n > 0
+            printf( "Simple 3D: %d shape(s) on RIGID FLEX subclasses.\n" n )
+        )
+        S3D_RigidFlexShapes
+    )
+)
+
+; Every drawn shape of one stackup layer, as a JSON array. nil when the layer
+; has none - conductors, the dielectric and the soldermask are not drawn on
+; the RIGID FLEX class, and those layers span the whole zone instead.
+procedure( s3dLayerShapesJson( t_layerName )
+    let( ( shapes body ( first t ) one )
+        unless( S3D_RigidFlexShapes  s3dCollectRigidFlexShapes() )
+        shapes = S3D_RigidFlexShapes[t_layerName]
+        when( shapes
+            body = "[\n"
+            foreach( s shapes
+                one = s3dShapeJson( s )
+                when( one
+                    unless( first  body = strcat( body ",\n" ) )
+                    first = nil
+                    body = strcat( body addIndent( one ) )
+                )
+            )
+            unless( first  strcat( body "\n]" ) )
+        )
     )
 )
 
@@ -1077,47 +1274,195 @@ procedure( s3dZoneList()
     )
 )
 
-; The zone array as JSON. Always emitted; an empty array means "ordinary
-; single-stackup board", and the reader then behaves exactly as before.
+; One stackup as { "thickness": t, "layers": [ ... ] }.
 ;
-; The contour goes through boardGeometryParseSegment, the same parser the
-; board outline uses - a zone outline is an ordinary polygon carrying the
-; same line/arc segments, so nothing new had to be written to read it.
+; Every layer carries its own z_top / z_bottom, measured from the TOP OF THE
+; CONDUCTOR CORE = 0. That datum is what lets zones of wildly different
+; thickness butt together: measured on a real board, FLEX, STIFFENER1 and
+; STIFFENER2 are 0.365, 0.49 and 2.44 thick with an identical 0.215 core, and
+; a stiffener simply grows outwards from the copper.
+;
+; A layer also carries its drawn shapes, or null when it has none. That is the
+; difference between this and a plain prism per zone: Allegro's own export puts
+; 86.763 mm2 at the stiffener height while a zone prism puts 171.761 there,
+; because the stiffener is a drawn shape smaller than the zone. Layers with no
+; shapes - conductors, the dielectric, the soldermask - do span the whole zone.
+; nil for a cross-section entry that is NOT part of the finished board body.
+;
+; Silkscreen and paste mask are both layerType MASK and both appear in the
+; cross section, but neither belongs in the solid:
+;   - the legend is exported separately, as its own geometry, from the
+;     silkscreen section. Leaving it in the stack would draw it TWICE, and the
+;     stack copy would be a sheet covering the whole board rather than the
+;     characters actually printed on it.
+;   - paste mask is a stencil aperture definition. It is not on the finished
+;     board at all.
+;
+; This is requirement #1 from 2026-07-18 - "dielectrics + planes + conductors +
+; soldermask both sides; silkscreen and paste mask excluded" - which
+; calculateBoardThickness has always honoured. The per-layer emission did not,
+; and on a plain board that put four extra 0.025 sheets into the stack and
+; reported 1.204 mm where the board is 1.104. It never showed on the rigid-flex
+; test board because those stackups carry no silkscreen or paste layers.
+;
+; layerFunction is the reliable test (SILKSCREEN / SOLDER_PASTE); the name is
+; the fallback for a design that does not set one.
+procedure( s3dLayerInBody( o_layer )
+    let( ( probe )
+        probe = strcat(
+            if( o_layer->name then upperCase( o_layer->name ) else "" ) " "
+            if( stringp( o_layer->layerFunction ) then
+                upperCase( o_layer->layerFunction )
+            else
+                "" ) )
+        ; Short markers on purpose. SILKSCREEN_TOP and PASTEMASK_TOP are the
+        ; usual names and layerFunction usually says SILKSCREEN / SOLDER_PASTE,
+        ; but a design that names a layer PASTE_TOP and sets no function would
+        ; slip through a longer test. Nothing else in a cross section contains
+        ; "SILK" or "PASTE" - not coverlay, adhesive, stiffener, soldermask,
+        ; conductor or dielectric - so the short form cannot over-match.
+        !( s3dContains( probe "SILK" ) || s3dContains( probe "PASTE" ) )
+    )
+)
+
+; t if t_hay contains t_needle.
+procedure( s3dContains( t_hay t_needle )
+    let( ( ( n 0 ) ( found nil ) )
+        n = strlen( t_needle )
+        when( n > 0
+            for( i 1 strlen( t_hay ) - n + 1
+                when( substring( t_hay i n ) == t_needle  found = t )
+            )
+        )
+        found
+    )
+)
+
+procedure( s3dStackupJson( t_name g_stackup )
+    let( ( all layers span thk ( total 0.0 ) ( above 0.0 ) ( cum 0.0 ) ( i 0 )
+           ( nSkip 0 ) zTop zBot shapes body out ( first t ) )
+        all = nil
+        errset( all = axlXSectionGet( g_stackup 'all ) )
+
+        ; Drop what is not part of the body BEFORE anything is measured: the
+        ; z walk below closes the remaining layers up against the core, so a
+        ; dropped sheet leaves no gap where it used to be.
+        layers = nil
+        foreach( layer all
+            if( s3dLayerInBody( layer ) then
+                layers = cons( layer layers )
+            else
+                when( s3dLayerThk( layer ) > 0.0  nSkip = nSkip + 1 )
+            )
+        )
+        layers = reverse( layers )
+
+        span = s3dConductorSpan( layers )
+        unless( span  layers = nil )
+
+        ; everything outside the top conductor, so the core top lands on 0
+        i = 0
+        foreach( layer layers
+            when( i < car( span )  above = above + s3dLayerThk( layer ) )
+            total = total + s3dLayerThk( layer )
+            i = i + 1
+        )
+
+        when( nSkip > 0
+            printf( "Simple 3D: stackup %s - %d silkscreen/paste layer(s) left out of the body.\n"
+                    t_name nSkip )
+        )
+
+        out = strcat( s3dJsonQuote( t_name ) ": {\n"
+                      "\t\"thickness\": " sprintf( nil "%f" total )
+                      ",\n\t\"layers\": [\n" )
+
+        foreach( layer layers
+            thk = s3dLayerThk( layer )
+            zTop = above - cum
+            zBot = zTop - thk
+            cum = cum + thk
+
+            ; The two surface entries have no thickness and no material.
+            when( thk > 0.0
+                shapes = nil
+                when( layer->name
+                    shapes = s3dLayerShapesJson( layer->name )
+                )
+                body = strcat(
+                    "{\n"
+                    "\t\"name\": " s3dJsonQuote( if( layer->name then layer->name else "" ) ) ",\n"
+                    "\t\"type\": " s3dJsonQuote( if( layer->layerType then layer->layerType else "" ) ) ",\n"
+                    "\t\"thickness\": " sprintf( nil "%f" thk ) ",\n"
+                    "\t\"z_top\": " sprintf( nil "%f" zTop ) ",\n"
+                    "\t\"z_bottom\": " sprintf( nil "%f" zBot ) ",\n"
+                    "\t\"negative\": " if( s3dLayerIsNegative( layer ) then "true" else "false" ) ",\n"
+                    "\t\"function\": " s3dJsonQuote( layer->layerFunction ) ",\n"
+                    "\t\"shapes\": " if( shapes then addIndent( shapes ) else "null" ) "\n"
+                    "}"
+                )
+                unless( first  out = strcat( out ",\n" ) )
+                first = nil
+                out = strcat( out addIndent( body 2 ) )
+            )
+        )
+        strcat( out "\n\t]\n}" )
+    )
+)
+
+; Every stackup the design has, keyed by name. Empty object on a plain board.
+procedure( s3dStackupsJson()
+    let( ( names out ( first t ) )
+        names = nil
+        errset( names = axlXSectionGet( nil 'stackups ) )
+        if( names then
+            out = "\"stackups\": {\n"
+            foreach( s names
+                when( stringp( s )
+                    unless( first  out = strcat( out ",\n" ) )
+                    first = nil
+                    out = strcat( out addIndent( s3dStackupJson( s s ) ) )
+                )
+            )
+            strcat( out "\n}" )
+        else
+            ; An ORDINARY board has no named stackups, but it does have a cross
+            ; section, and axlXSectionGet( nil 'all ) returns it. Emitting that
+            ; under the name Allegro itself uses for the default - Primary -
+            ; lets the reader build a plain board layer by layer too, so "Body
+            ; stitching" stops being a setting that silently does nothing on
+            ; every board that is not rigid-flex.
+            ;
+            ; nil is safe as the query ONLY because there are no named stackups
+            ; here: on a rigid-flex design nil 'all returns the combined "All
+            ; Stackups" view, which is not any real stackup (round 27).
+            strcat( "\"stackups\": {\n"
+                    addIndent( s3dStackupJson( "Primary" nil ) )
+                    "\n}" )
+        )
+    )
+)
+
+; The zone array: which stackup each zone uses, and its outline. The layer
+; geometry lives in "stackups", so a zone is now just an outline plus a
+; reference - several zones share one stackup (FLEX1 and FLEX2 here).
 procedure( s3dZonesJson()
-    let( ( zones profile contour element body out ( first t ) ( n 0 ) )
+    let( ( zones contour body out ( first t ) ( n 0 ) )
         zones = s3dZoneList()
 
         if( zones then
             out = "\"zones\": [\n"
             foreach( z zones
-                profile = s3dStackupProfile( cadr( z ) )
-
-                contour = nil
-                foreach( segment caddr( z )->segments
-                    element = boardGeometryParseSegment( segment )
-                    when( element
-                        if( contour then
-                            tconc( contour element )
-                        else
-                            contour = tconc( nil element )
-                        )
-                    )
-                )
-
+                contour = s3dContourJson( caddr( z ) )
                 when( contour
                     n = n + 1
                     unless( first  out = strcat( out ",\n" ) )
                     first = nil
                     body = strcat(
                         "{\n"
-                        "\t\"name\": \"" car( z ) "\",\n"
-                        "\t\"stackup\": \"" cadr( z ) "\",\n"
-                        "\t\"above\": " sprintf( nil "%f" car( profile ) ) ",\n"
-                        "\t\"core\": " sprintf( nil "%f" cadr( profile ) ) ",\n"
-                        "\t\"below\": " sprintf( nil "%f" caddr( profile ) ) ",\n"
-                        "\t\"contour\": [\n"
-                        addIndent( buildString( car( contour ) ",\n" ) 2 )
-                        "\n\t]\n"
+                        "\t\"name\": " s3dJsonQuote( car( z ) ) ",\n"
+                        "\t\"stackup\": " s3dJsonQuote( cadr( z ) ) ",\n"
+                        "\t\"contour\": " addIndent( contour ) "\n"
                         "}"
                     )
                     out = strcat( out addIndent( body ) )
@@ -1764,6 +2109,16 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
                 when( s3dJsonHas( settings "exportSilkscreen" )
                     doExport = s3dJsonGet( settings "exportSilkscreen" )
                 )
+
+                ; Which stackup layers are drawn as openings. Read here rather
+                ; than left hardcoded because it is fabricator/site convention,
+                ; not something the database states: negativeArtwork reads nil
+                ; on every layer even where the polarity is unambiguous.
+                when( s3dJsonList( settings "negativeLayers" )
+                    S3D_NegativeLayers = s3dJsonList( settings "negativeLayers" )
+                    printf( "Simple 3D: negative (opening) layers: %L\n"
+                            S3D_NegativeLayers )
+                )
                 when( stringp( s3dJsonGet( settings "endCapType" ) )
                     ; only the three Allegro end-cap keywords are accepted; a
                     ; typo silently becoming 'SQUARE would be hard to notice.
@@ -1838,7 +2193,7 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
 ; how exportJson tells the two apart as well.
 ; Messages about objects that were found but could not be exported. Collected
 ; while sweeping and carried into the JSON so the Python side can show them too
-; - the Allegro console scrolls away, the GUI log does not, and it colours a
+; - the Allegro console scrolls away, the GUI log does not, and it colors a
 ; line beginning with "warning" orange.
 ;
 ; A module-level accumulator rather than a return value: the collector already
@@ -2411,6 +2766,9 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
     let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) body )
         ; Number each variant's no-refdes mechanicals from 1 (see symbolReturn3DElements).
         S3D_MechSeq = 0
+        ; Rebuilt per export: a shape added between two runs in one session
+        ; must be picked up, and it is one query.
+        S3D_RigidFlexShapes = nil
 
         ; reset base board contour
         when( car( edgeCuts )
@@ -2466,9 +2824,10 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; _reserved tuple, or the reader walks it as if it were a component.
         name = strcat(
             "\"format\": \"simple3d\",\n"
-            "\"format_version\": 5,\n"
+            "\"format_version\": 6,\n"
             "\"name\": \"" variantName "\",\n"
             s3dEmbeddedModelsJson() ",\n"
+            s3dStackupsJson() ",\n"
             s3dZonesJson()
         )
 
@@ -2660,8 +3019,8 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                 ;
                 ; No green: axlUIWPrint's severities are info0, info1, warn,
                 ; error and fatal, and none of them is "success". A completion
-                ; line therefore prints in the console's ordinary colour. The
-                ; GUI log does colour its own completion line green, and that
+                ; line therefore prints in the console's ordinary color. The
+                ; GUI log does color its own completion line green, and that
                 ; is where the result is actually judged.
                 printf( "Simple 3D: export complete - %d variant(s) written.\n"
                         variantCount )

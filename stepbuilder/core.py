@@ -152,6 +152,405 @@ def _open_wire_detail(wire: TopoDS_Wire) -> str:
         return ""
 
 
+# A layer counts as soldermask if this survives in its name or IPC function
+# once everything but letters and digits is stripped - so SOLDERMASK_TOP,
+# "Solder Mask" and SOLDER-MASK-BOTTOM all match.
+SOLDERMASK_MARKER = "SOLDERMASK"
+
+
+def _is_soldermask(layer: dict) -> bool:
+    probe = f"{layer.get('name') or ''} {layer.get('function') or ''}".upper()
+    return SOLDERMASK_MARKER in "".join(c for c in probe if c.isalnum())
+
+
+def restack(layers: list[dict]) -> list[dict]:
+    """Recompute every layer's z from its thickness, core top back at 0.
+
+    The same walk the exporter does: everything outside the top conductor is
+    summed, and each layer then hangs off that. Re-running it after layers have
+    been removed is what closes the gap - the stack settles toward the core by
+    exactly the thickness taken out, above and below independently.
+
+    List order is the physical order (`layer->position` is not - it duplicates
+    and indexes the combined All-Stackups view), so this walks the list.
+    """
+    first = next((i for i, lay in enumerate(layers)
+                  if str(lay.get("type") or "").upper() in ("CONDUCTOR", "PLANE")),
+                 None)
+    if first is None:
+        return layers
+
+    above = sum(float(lay["thickness"]) for lay in layers[:first])
+    out, cum = [], 0.0
+    for lay in layers:
+        thickness = float(lay["thickness"])
+        z_top = above - cum
+        cum += thickness
+        out.append({**lay, "z_top": z_top, "z_bottom": z_top - thickness})
+    return out
+
+
+def drop_soldermask(stackups: dict, log: LogFn = _noop_log) -> dict:
+    """Every stackup with its soldermask layers removed and the rest re-stacked.
+
+    Removing a layer is not enough on its own: the layers outside it would keep
+    their old heights and float, leaving a gap where the mask used to be. So
+    the survivors are re-walked, which settles them toward the core.
+    """
+    out, dropped = {}, []
+    for name, stackup in stackups.items():
+        layers = stackup.get("layers") or []
+        keep = [lay for lay in layers if not _is_soldermask(lay)]
+        dropped += [str(lay.get("name")) for lay in layers if _is_soldermask(lay)]
+        out[name] = {**stackup, "layers": restack(keep)}
+
+    if dropped:
+        seen = sorted(set(dropped))
+        log(f"Ignoring soldermask: {len(dropped)} layer(s) removed from the "
+            f"stack ({', '.join(seen)}); the rest closes up toward the core")
+    else:
+        log("Ignoring soldermask: this design has none in its stackups")
+    return out
+
+
+def stackup_levels(stackups: dict, zones: list[dict],
+                   z_datum: str) -> tuple[dict, float, float, float]:
+    """Zone faces, board extent and the datum shift, from the per-layer data.
+
+    Returns ({zone: (top, bottom)}, board_top, board_bottom, shift).
+
+    Every layer arrives with its own z_top/z_bottom measured from the top of
+    the conductor core, which the exporter puts at 0 for every stackup. That
+    datum is the whole point: FLEX, STIFFENER1 and STIFFENER2 are 0.365, 0.49
+    and 2.44 thick but share a 0.215 core, so they can only be stacked
+    correctly by their copper - a stiffener grows outwards from it.
+
+    Verified against Allegro's own export of the same board, which spans
+    -0.315 .. 2.125 in exactly this frame.
+    """
+    tops, bottoms = {}, {}
+    for zone in zones:
+        layers = stackups.get(str(zone["stackup"]), {}).get("layers") or []
+        if not layers:
+            continue
+        name = str(zone["name"])
+        tops[name] = max(float(lay["z_top"]) for lay in layers)
+        bottoms[name] = min(float(lay["z_bottom"]) for lay in layers)
+
+    if not tops:
+        raise StepBuilderError("No zone resolved to a stackup with layers")
+
+    board_top = max(tops.values())
+    board_bottom = min(bottoms.values())
+    shift = -board_top if z_datum == "top" else -board_bottom
+    levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}
+    return levels, board_top + shift, board_bottom + shift, shift
+
+
+def _shape_face(shape: dict, z: float):
+    """One drawn layer shape as a face, its voids becoming holes."""
+    outer = build_contour(shape["outline"], z)
+    inner = [build_contour(v, z) for v in (shape.get("voids") or [])]
+    return _face_from_wires(outer, inner)
+
+
+def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
+    """The material of one layer inside one zone, as a face or compound.
+
+    Three cases:
+
+    **No shapes** - the layer spans the whole zone. Conductors and the
+    dielectric are like this; Allegro's own tree shows the dielectric as
+    exactly one body per zone, which is the same statement.
+
+    **Positive shapes** - the material IS those shapes. Stiffener, adhesive
+    and epoxy are drawn this way, and it is what this per-layer model exists
+    for: Allegro puts 86.763 mm2 at the stiffener height where a plain zone
+    prism puts 171.761, because the stiffener is a drawn shape smaller than
+    the zone.
+
+    **Negative shapes** - the shapes are OPENINGS and the material is the zone
+    minus them. Coverlay, soldermask and pastemask are drawn this way by
+    IPC-2581 convention. On the test board COVERLAY_TOP has a shape matching
+    the FLEX1 zone outline exactly - as an opening that is a flex tail with
+    its contacts exposed, which is ordinary; as material it would have been
+    the only coverlay patch on a board that needs it everywhere.
+
+    `negativeArtwork` does NOT answer this - it is about film generation and
+    reads nil on every layer of a real board. Polarity comes from
+    `layer["negative"]` when the exporter could determine it, and from the
+    caller's name list otherwise.
+
+    Shapes are design-wide, so they are always intersected with the zone: one
+    ADHESIVE_TOP shape covers most of the board and belongs to three zones at
+    once, each at its own height.
+    """
+    zone_face = _face_from_wires(build_contour(zone_contour, z), [])
+    shapes = layer.get("shapes")
+    if not shapes:
+        return zone_face
+
+    faces = []
+    for i, shape in enumerate(shapes):
+        try:
+            faces.append(_shape_face(shape, z))
+        except (StepBuilderError, RuntimeError, KeyError, TypeError, IndexError) as exc:
+            log(f"warning: shape {i + 1} of layer {layer.get('name')} skipped ({exc})")
+    if not faces:
+        return zone_face if layer.get("negative") else None
+
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common, BRepAlgoAPI_Cut
+
+    builder = BRep_Builder()
+    drawn = TopoDS_Compound()
+    builder.MakeCompound(drawn)
+    for face in faces:
+        builder.Add(drawn, face)
+
+    if layer.get("negative"):
+        cut = BRepAlgoAPI_Cut(zone_face, drawn)
+        if not cut.IsDone():
+            log(f"warning: could not open layer {layer.get('name')} in its zone; "
+                f"leaving it solid")
+            return zone_face
+        return cut.Shape()
+
+    common = BRepAlgoAPI_Common(drawn, zone_face)
+    if not common.IsDone():
+        log(f"warning: could not clip layer {layer.get('name')} to zone; "
+            f"using it unclipped")
+        return drawn
+    return common.Shape()
+
+
+
+
+def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
+                           shift: float,
+                           log: LogFn = _noop_log) -> list[tuple[str, dict, TopoDS_Shape]]:
+    """(zone name, layer dict, solid) for every layer of every zone, NOT fused.
+
+    The LAYER ITSELF, not just its name: the layer-colored build needs its
+    type and function to decide what kind of layer it is.
+
+    The inspection build. Fusing is what the ordinary path does and what makes
+    the file a quarter of the size, but it also welds the stack into one
+    surface you cannot take apart by eye. Here each layer stays its own part,
+    keeps its own name and gets its own color, so a stackup can be checked
+    against the cross-section editor layer by layer.
+
+    Cutouts are applied to each layer separately, so holes stay visible.
+    """
+    parts: list[tuple[str, dict, TopoDS_Shape]] = []
+    contours = pcb.get("edges") or []
+    cutouts = contours[1:] if len(contours) > 1 else []
+
+    for zone in zones:
+        stackup = stackups.get(str(zone["stackup"]))
+        if not stackup:
+            continue
+        for layer in stackup.get("layers") or []:
+            height = float(layer["z_top"]) - float(layer["z_bottom"])
+            if height <= 0:
+                continue
+            top = float(layer["z_top"]) + shift
+            region = _layer_region(layer, zone["contour"], top, log)
+            if region is None:
+                continue
+            solid = BRepPrimAPI_MakePrism(region, gp_Vec(0, 0, -height)).Shape()
+            if solid.IsNull():
+                continue
+            if cutouts:
+                solid = _cut_out(solid, cutouts, top + 0.01,
+                                 gp_Vec(0, 0, -(height + 0.02)))
+            parts.append((str(zone["name"]), layer, solid))
+
+    if not parts:
+        raise StepBuilderError("No stackup layer produced a solid")
+    return parts
+
+
+def _cut_out(shape: TopoDS_Shape, contours: list, cut_z: float,
+             direction: gp_Vec) -> TopoDS_Shape:
+    """Remove every contour in *contours* from *shape*, in one boolean."""
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for i, contour in enumerate(contours, start=1):
+        wire = build_contour(contour, cut_z)
+        face = BRepBuilderAPI_MakeFace(wire, True)
+        if not face.IsDone():
+            raise StepBuilderError(f"Cutout #{i} is not planar or self-intersects")
+        builder.Add(compound, BRepPrimAPI_MakePrism(face.Face(), direction).Shape())
+    cut = BRepAlgoAPI_Cut(shape, compound)
+    if not cut.IsDone():
+        raise StepBuilderError("Boolean cut of board cutouts failed")
+    return cut.Shape()
+
+
+def fuse_keeping_faces(parts: list[tuple[str, str, TopoDS_Shape]],
+                       log: LogFn = _noop_log):
+    """Fuse the layer solids into ONE solid whose faces stay per-layer.
+
+    Returns (solid, [(face, layer dict)]).
+
+    **UnifySameDomain is deliberately NOT applied here**, and that is the whole
+    trick. It is what makes the ordinary build small - it merges the coplanar
+    faces every layer interface leaves behind - but merging them is exactly what
+    destroys the stack on the rim: two layers with the same outline become one
+    face and the board loses its stripes. Measured on the real STIFFENER2:
+    eleven layer solids fuse to one solid with 47 faces, against 11 once
+    unified.
+
+    Which face came from which layer is taken from the boolean's own history
+    (`Modified`), not guessed from geometry: with several zones, two different
+    layers can occupy the same z, so a z-band lookup would be ambiguous.
+    """
+    if not parts:
+        raise StepBuilderError("No stackup layer produced a solid")
+
+    # Imported here, not at module scope, like every other OCCT helper in this
+    # file - and never as a local rebinding of a name that IS module-level, for
+    # the UnboundLocalError reason spelled out in _rim_faces.
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopTools import TopTools_DataMapOfShapeInteger, TopTools_ListOfShape
+
+    solids = [solid for _, _, solid in parts]
+    if len(solids) == 1:
+        faces = []
+        exp = TopExp_Explorer(solids[0], TopAbs_FACE)
+        while exp.More():
+            faces.append((TopoDS.Face_s(exp.Current()), parts[0][1]))
+            exp.Next()
+        return solids[0], faces
+
+    arguments = TopTools_ListOfShape()
+    arguments.Append(solids[0])
+    tools = TopTools_ListOfShape()
+    for solid in solids[1:]:
+        tools.Append(solid)
+
+    op = BRepAlgoAPI_Fuse()
+    op.SetArguments(arguments)
+    op.SetTools(tools)
+    op.SetRunParallel(True)
+    op.Build()
+    if not op.IsDone():
+        raise StepBuilderError("Could not fuse the stackup layers")
+    fused = op.Shape()
+    if fused.IsNull():
+        raise StepBuilderError("Fusing the stackup layers produced nothing")
+
+    # input face -> layer, followed through the boolean
+    owner = TopTools_DataMapOfShapeInteger()
+    for index, (_, layer, solid) in enumerate(parts):
+        exp = TopExp_Explorer(solid, TopAbs_FACE)
+        while exp.More():
+            face = exp.Current()
+            modified = op.Modified(face)
+            if modified.Size() == 0:
+                if not op.IsDeleted(face):
+                    owner.Bind(face, index)
+            else:
+                # OCP makes TopTools_ListOfShape iterable directly; there is no
+                # TopTools_ListIteratorOfListOfShape in these bindings.
+                for produced in modified:
+                    owner.Bind(produced, index)
+            exp.Next()
+
+    faces, unknown = [], 0
+    exp = TopExp_Explorer(fused, TopAbs_FACE)
+    while exp.More():
+        face = TopoDS.Face_s(exp.Current())
+        if owner.IsBound(face):
+            faces.append((face, parts[owner.Find(face)][1]))
+        else:
+            unknown += 1
+        exp.Next()
+
+    if unknown:
+        log(f"warning: {unknown} board face(s) could not be traced back to a "
+            f"layer and keep the default color")
+    return fused, faces
+
+
+def _stackup_board(stackups: dict, zones: list[dict], shift: float,
+                   log: LogFn) -> TopoDS_Shape:
+    """The board as one solid: every layer of every zone, fused.
+
+    Fusing measured at **25.6%** of the compound's file size with the volume
+    identical to nine decimals - stacked layers share large coplanar faces and
+    each separate solid costs its own product definition in AP214. That is the
+    opposite of the silkscreen legend, where fusing thousands of barely
+    touching prisms came to 154%. One boolean over the whole list rather than
+    pairwise, which is closer to linear.
+    """
+    solids = []
+    for zone in zones:
+        stackup = stackups.get(str(zone["stackup"]))
+        if not stackup:
+            log(f"warning: zone {zone['name']} names an unknown stackup "
+                f"{zone['stackup']!r}, skipped")
+            continue
+        for layer in stackup.get("layers") or []:
+            height = float(layer["z_top"]) - float(layer["z_bottom"])
+            if height <= 0:
+                continue
+            region = _layer_region(layer, zone["contour"],
+                                   float(layer["z_top"]) + shift, log)
+            if region is None:
+                continue
+            solid = BRepPrimAPI_MakePrism(region, gp_Vec(0, 0, -height)).Shape()
+            if not solid.IsNull():
+                solids.append(solid)
+
+    if not solids:
+        raise StepBuilderError("No stackup layer produced a solid")
+    log(f"Building board from {len(solids)} layer solid(s)")
+
+    if len(solids) == 1:
+        return solids[0]
+
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
+    from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain
+    from OCP.TopTools import TopTools_ListOfShape
+
+    # BRepAlgoAPI_Fuse in its multi-argument form, NOT BRepAlgoAPI_BuilderAlgo:
+    # the general fuse computes the same boolean but leaves the pieces as
+    # separate solids in a compound, which is exactly what this is trying to
+    # get rid of (measured: 18 solids out, one expected).
+    arguments = TopTools_ListOfShape()
+    arguments.Append(solids[0])
+    tools = TopTools_ListOfShape()
+    for solid in solids[1:]:
+        tools.Append(solid)
+
+    op = BRepAlgoAPI_Fuse()
+    op.SetArguments(arguments)
+    op.SetTools(tools)
+    op.SetRunParallel(True)
+    op.Build()
+    if not op.IsDone():
+        raise StepBuilderError("Could not fuse the stackup layers")
+    fused = op.Shape()
+    if fused.IsNull():
+        raise StepBuilderError("Fusing the stackup layers produced nothing")
+
+    # Merge the coplanar faces the fuse leaves behind at every layer
+    # interface. Never fatal: an unmerged board is correct, just heavier.
+    try:
+        unify = ShapeUpgrade_UnifySameDomain(fused, True, True, False)
+        unify.Build()
+        merged = unify.Shape()
+        if not merged.IsNull():
+            fused = merged
+    except Exception as exc:
+        log(f"warning: could not merge the board's coplanar faces ({exc})")
+    return fused
+
+
 def zone_levels(zones: list[dict], z_datum: str) -> tuple[dict, float, float]:
     """Where each stackup zone's two faces sit, and the board's overall extent.
 
@@ -227,6 +626,8 @@ def _zone_solid(zones: list[dict], levels: dict, log: LogFn) -> TopoDS_Shape:
 def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0,
                         zones: list[dict] | None = None,
                         levels: dict | None = None,
+                        stackups: dict | None = None,
+                        shift: float = 0.0,
                         log: LogFn = _noop_log) -> TopoDS_Shape:
     """Extrude the board outline downwards and cut every hole/cutout out of it.
 
@@ -243,7 +644,10 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0,
         # Multi-stackup: the board IS the zones. pcb.edges[0] still describes
         # the overall outline, but it carries no per-zone thickness, so it is
         # not used for the body - only its cutouts are, below.
-        board = _zone_solid(zones, levels, log)
+        if stackups:
+            board = _stackup_board(stackups, zones, shift, log)
+        else:
+            board = _zone_solid(zones, levels, log)
         cut_top = max(top for top, _ in levels.values())
         cut_bottom = min(bottom for _, bottom in levels.values())
         # A through-cut that ends exactly on a face is a classic source of
@@ -588,7 +992,7 @@ def build_silkscreen(
     The solids are deliberately NOT fused. Silkscreen is thousands of
     overlapping strokes and glyphs, and a boolean union of that many thin
     prisms is minutes of OCCT time with a real chance of failing outright,
-    while the union buys nothing: the result is one label, one colour, and it
+    while the union buys nothing: the result is one label, one color, and it
     renders and exports identically. What it costs is that the compound is not
     a single manifold solid, which matters only if someone means to do
     downstream boolean work on the ink itself.
@@ -1110,9 +1514,9 @@ def _rim_faces(shape: TopoDS_Shape):
     (normal_z ~ 0), i.e. faces whose plane is vertical. Classifying by
     z-position instead was wrong: a straight board's side walls have their
     centre of mass at mid-height, exactly on the top/bottom boundary, so they
-    leaked into the "top" set and the rim colour landed on a flat face.
+    leaked into the "top" set and the rim color landed on a flat face.
     Everything with a vertical normal is rim; the flat top and bottom faces
-    keep the board colour.
+    keep the board color.
     """
     # TopoDS is NOT re-imported here: it is a module-level import already, and
     # a local import of a module-level name makes that name local to the whole
@@ -1163,6 +1567,9 @@ def generate(
     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
     minimize_size: bool = True,
     srgb_color: bool = True,
+    board_mode: str = "solid",
+    layer_colors: dict | None = None,
+    ignore_soldermask: bool = False,
     log: LogFn = _noop_log,
     progress: ProgressFn = _noop_progress,
 ) -> BuildResult:
@@ -1204,8 +1611,26 @@ def generate(
         Set write.surfacecurve.mode = 0 (about half the file size, geometry
         unchanged) and share one part per distinct model.
     srgb_color:
-        Treat colours as sRGB (what you set is what you see). False reproduces
+        Treat colors as sRGB (what you set is what you see). False reproduces
         the original C++ linear-RGB behaviour.
+    board_mode:
+        How a MULTI-STACKUP board is built. Ignored on an ordinary board.
+          "solid"   - one solid, one color, coplanar faces merged. Smallest.
+          "layers"  - one solid, but the layer interfaces are kept and each
+                      face is colored by what kind of layer it belongs to, so
+                      the rim shows the stack. About 4.7x "solid".
+          "inspect" - every layer a separate named part. For taking the board
+                      apart by eye; largest of the three.
+    layer_colors:
+        {kind: (r, g, b)} for board_mode="layers", kinds as in colors.LAYER_KINDS
+        (copper, base, coverlay, adhesive, stiffener, soldermask, other).
+        Missing kinds fall back to colors.DEFAULT_LAYER_COLORS.
+    ignore_soldermask:
+        Leave the soldermask out of the board entirely, however the design
+        defines it, and close the stack up toward the core by exactly the
+        thickness removed - on both sides, independently. Components then sit
+        on the copper rather than on the mask. Applies to a multi-stackup
+        board's layers and to a plain board's pcb.thickness alike.
     """
     json_file = Path(json_file)
     output_dir = Path(output_dir)
@@ -1228,23 +1653,63 @@ def generate(
 
     pcb_name = data["name"]
     json_stem = output_name or pcb_name
-    thickness = total_board_thickness(data["pcb"]["thickness"])
+    if ignore_soldermask:
+        # The plain-board path keeps its masks in pcb.thickness rather than as
+        # stackup layers, so it is the same decision expressed twice.
+        thickness = float(data["pcb"]["thickness"]["board"])
+    else:
+        thickness = total_board_thickness(data["pcb"]["thickness"])
 
     # Multi-stackup: a rigid-flex board is several zones of different
     # thickness. An empty or absent list means an ordinary board and every
     # path below stays exactly as it was.
     zones = data.get("zones")
     zones = zones if isinstance(zones, list) and zones else None
+    stackups = data.get("stackups")
+    stackups = stackups if isinstance(stackups, dict) and stackups else None
     levels = None
+    shift = 0.0
+
+    # An ordinary board has one stackup and no zones, because there is nothing
+    # to divide. "Body stitching" still means something there - the layers are
+    # known - so the whole outline becomes one implicit zone and every mode
+    # works everywhere. Only for the modes that need it: plain "Solid" keeps the
+    # single-prism path, which is what the C++-verified regression measures.
+    if not zones and board_mode != "solid":
+        contours = data["pcb"].get("edges") or []
+        if stackups and len(stackups) == 1 and contours:
+            only = next(iter(stackups))
+            zones = [{"name": "board", "stackup": only, "contour": contours[0]}]
+            log(f"Single-stackup board: building it as one zone on stackup "
+                f"{only!r} so the body stitching applies")
+        else:
+            # An intermediate written before format_version 6 carries no
+            # stackup layers, so there is nothing to stitch by. Say so: the
+            # setting quietly doing nothing is exactly what this is here to
+            # stop.
+            log(f"warning: body stitching {board_mode!r} needs the stackup "
+                f"layers and this JSON does not carry them - re-export from "
+                f"Allegro. Building one plain solid instead.")
+
+    if stackups and ignore_soldermask:
+        stackups = drop_soldermask(stackups, log)
 
     if zones:
-        levels, board_top_z, board_bottom_z = zone_levels(zones, z_datum)
+        if stackups:
+            # format_version 6: every layer carries its own extent, so the
+            # board is built layer by layer rather than as one prism per zone.
+            levels, board_top_z, board_bottom_z, shift = stackup_levels(
+                stackups, zones, z_datum)
+        else:
+            levels, board_top_z, board_bottom_z = zone_levels(zones, z_datum)
         extrude_z_offset = board_top_z
         log(f"Multi-stackup board: {len(zones)} zone(s), "
             f"{board_top_z - board_bottom_z:.3f} mm at its thickest")
         for zone in zones:
-            top, bottom = levels[str(zone["name"])]
-            log(f"  {zone['name']} ({zone['stackup']}): {top - bottom:.3f} mm")
+            name = str(zone["name"])
+            if name in levels:
+                top, bottom = levels[name]
+                log(f"  {name} ({zone['stackup']}): {top - bottom:.3f} mm")
     elif z_datum == "top":
         # Where the two board faces live, given the datum choice.
         board_top_z, board_bottom_z = 0.0, -thickness
@@ -1269,11 +1734,87 @@ def generate(
 
     # ---- board ----------------------------------------------------------- #
     log("Building board geometry")
-    board = make_board_geometry(data["pcb"], thickness, extrude_z_offset,
-                                zones=zones, levels=levels, log=log)
 
-    pcb_label = shape_tool.NewShape()
-    shape_tool.SetShape(pcb_label, board)
+    multi = bool(zones and stackups)
+    mode = board_mode if multi else "solid"
+
+    if mode == "layers":
+        # One solid, but the layer interfaces survive and every face is
+        # colored by the kind of layer it belongs to, so the rim shows the
+        # stack. See fuse_keeping_faces for why UnifySameDomain is skipped.
+        from .colors import DEFAULT_LAYER_COLORS, layer_kind
+
+        palette = {**DEFAULT_LAYER_COLORS, **(layer_colors or {})}
+        parts = make_board_layer_parts(data["pcb"], stackups, zones, shift, log)
+        board, faces = fuse_keeping_faces(parts, log)
+
+        pcb_label = shape_tool.NewShape()
+        shape_tool.SetShape(pcb_label, board)
+
+        used: dict[str, int] = {}
+        for face, layer in faces:
+            kind = layer_kind(layer)
+            rgb = palette.get(kind, DEFAULT_LAYER_COLORS["other"])
+            color = Quantity_Color(
+                rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0,
+                Quantity_TypeOfColor.Quantity_TOC_sRGB if srgb_color
+                else Quantity_TypeOfColor.Quantity_TOC_RGB)
+            color_tool.SetColor(face, color, XCAFDoc_ColorType.XCAFDoc_ColorSurf)
+            used[kind] = used.get(kind, 0) + 1
+
+        log(f"Layer-colored board: one solid, {len(faces)} face(s) colored "
+            f"by layer kind")
+        for kind, count in sorted(used.items()):
+            rgb = palette.get(kind, DEFAULT_LAYER_COLORS["other"])
+            log(f"  {kind}: {count} face(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+
+    elif mode == "inspect":
+        # Not stitched: every stackup layer stays its own named part. Colors
+        # come from the SAME per-kind palette the stitched-and-colored mode
+        # uses, so switching between the two changes how the board is put
+        # together and nothing else - a second palette would have made the two
+        # pictures needlessly hard to compare.
+        from .colors import DEFAULT_LAYER_COLORS, layer_kind
+
+        palette = {**DEFAULT_LAYER_COLORS, **(layer_colors or {})}
+        parts = make_board_layer_parts(data["pcb"], stackups, zones, shift, log)
+        group = shape_tool.NewShape()
+        TDataStd_Name.Set_s(group,
+                            TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
+        shape_tool.AddComponent(main_assembly, group, TopLoc_Location(gp_Trsf()))
+
+        for zone_name, layer, solid in parts:
+            layer_name = str(layer.get("name") or "?")
+            label = shape_tool.NewShape()
+            shape_tool.SetShape(label, solid)
+            rgb = palette.get(layer_kind(layer), DEFAULT_LAYER_COLORS["other"])
+            _set_color(color_tool, label,
+                       (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0), srgb_color)
+            TDataStd_Name.Set_s(
+                label,
+                TCollection_ExtendedString(_sanitize(f"{zone_name}__{layer_name}")))
+            shape_tool.AddComponent(group, label, TopLoc_Location(gp_Trsf()))
+
+        log(f"Not stitched: {len(parts)} separate layer part(s), "
+            f"colored by layer kind")
+        shape_tool.UpdateAssemblies()
+        board = None
+        pcb_label = None
+    else:
+        board = make_board_geometry(data["pcb"], thickness, extrude_z_offset,
+                                    zones=zones, levels=levels, stackups=stackups,
+                                    shift=shift, log=log)
+
+        pcb_label = shape_tool.NewShape()
+        shape_tool.SetShape(pcb_label, board)
+
+    # Both non-solid modes have already decided every color on the board:
+    # "inspect" per part, "layers" per face. A board color or a rim color
+    # applied over the top would either be ignored by the viewer or, worse,
+    # win - and paint the stack a single color, which is the one thing those
+    # modes exist to avoid.
+    if mode != "solid" and rim_color is not None:
+        log(f"warning: the rim color is ignored in board mode {mode!r}")
 
     if board_color is None:
         rgb = data["pcb"]["color"]
@@ -1281,12 +1822,13 @@ def generate(
     else:
         board_rgb01 = (board_color[0] / 255.0, board_color[1] / 255.0, board_color[2] / 255.0)
 
-    _set_color(color_tool, pcb_label, board_rgb01, srgb_color)
+    if pcb_label is not None and mode == "solid":
+        _set_color(color_tool, pcb_label, board_rgb01, srgb_color)
 
-    if rim_color is not None:
+    if pcb_label is not None and mode == "solid" and rim_color is not None:
         # Paint the rim (vertical side walls) separately. This needs per-face
-        # colour, which costs a few extra entities but is what the user asked
-        # for. The flat top/bottom keep the board colour.
+        # color, which costs a few extra entities but is what the user asked
+        # for. The flat top/bottom keep the board color.
         rim_rgb01 = (rim_color[0] / 255.0, rim_color[1] / 255.0, rim_color[2] / 255.0)
         rim_faces = _rim_faces(board)
         rim_q = Quantity_Color(
@@ -1300,11 +1842,13 @@ def generate(
     # Name the board part per board (PCB_<jsonstem>), not a bare "PCB": otherwise
     # importing several boards into one CAD session, each carrying a part called
     # "PCB", lets one board's PCB silently substitute another's.
-    TDataStd_Name.Set_s(pcb_label, TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
-    shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))
+    if pcb_label is not None:
+        TDataStd_Name.Set_s(pcb_label,
+                            TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
+        shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))
 
     # ---- silkscreen ------------------------------------------------------ #
-    # Its own part per side, so it can be hidden or recoloured in the viewer
+    # Its own part per side, so it can be hidden or recolored in the viewer
     # without touching the board, and so the two sides stay distinguishable.
     silk_data = data.get("silkscreen")
     silk_built = 0
@@ -1378,7 +1922,7 @@ def generate(
     # Anything not reserved is a refdes. "silkscreen" MUST be listed here or it
     # would be walked as if it were a component.
     _reserved = ("name", "pcb", "format", "format_version", "silkscreen",
-                 "embedded_models", "zones")
+                 "embedded_models", "zones", "stackups")
     components = {k: v for k, v in data.items() if k not in _reserved}
     result = BuildResult(
         output=output_dir / f"{json_stem}.step",
