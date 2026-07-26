@@ -498,6 +498,31 @@ Silkscreen and paste mask are excluded. Example, a 2-layer stackup:
 1.464 (dielectric) + 0.045 + 0.045 (copper) + 0.025 + 0.025 (mask) = 1.604 mm
 ```
 
+## Checks and tests
+
+```
+python tests/run_all.py            everything, about 40 s
+python tests/run_all.py --quick    skip the OCCT-heavy geometry suites
+```
+
+`tools/` holds four mechanical checks on the SKILL sources — parenthesis
+balance, string literals broken across a real newline, calls to procedures
+defined nowhere, and call arity — plus an audit of this README against the
+code. **Run them after any edit to a `.il` file:** SKILL resolves names at call
+time, so a file with a stale or wrong-arity call loads without complaint and
+fails only when that line executes.
+
+`tests/` holds the Python suites, including the geometry regression that pins
+the demo board against the original C++ implementation (volume 12073.309477,
+5054 entities). Everything they write goes to `build/test-output/`, which is
+gitignored.
+
+`tools/probes/` holds read-only SKILL diagnostics to load in Allegro when a
+board does something unexpected — stackups and zones (`probe_flex.il`,
+`probe_order.il`), layer shapes and polarity (`probe_layers.il`,
+`probe_neg.il`, `probe_func.il`), database attachments
+(`probe_attachments*.il`). They change nothing.
+
 ## Known limitations
 
 **Milling paths (`BOARD GEOMETRY/ncroute_path`) are not exported.** Only closed
@@ -1063,6 +1088,32 @@ warning: 2 model(s) are stored inside the board but were not found on disk:
 ```
 1.464 (диэлектрик) + 0.045 + 0.045 (медь) + 0.025 + 0.025 (маска) = 1.604 мм
 ```
+
+## Проверки и тесты
+
+```
+python tests/run_all.py            всё, около 40 с
+python tests/run_all.py --quick    без тяжёлых геометрических наборов
+```
+
+В `tools/` — четыре механические проверки исходников SKILL: баланс скобок,
+строковые литералы, разорванные настоящим переводом строки, вызовы процедур,
+которых нигде нет, и арность вызовов. Плюс сверка этого README с кодом.
+**Запускайте их после любой правки `.il`:** SKILL разрешает имена в момент
+вызова, поэтому файл с устаревшим вызовом или неверным числом аргументов
+грузится без единой жалобы и падает лишь тогда, когда до этой строки дойдёт
+исполнение.
+
+В `tests/` — наборы на Python, включая регрессию геометрии, которая держит
+демонстрационную плату на значениях исходной реализации C++ (объём
+12073.309477, 5054 сущности). Всё, что они пишут, идёт в `build/test-output/`,
+а он в `.gitignore`.
+
+В `tools/probes/` — диагностические скрипты SKILL только для чтения: загрузить
+в Allegro, когда плата ведёт себя неожиданно. Стэкапы и зоны (`probe_flex.il`,
+`probe_order.il`), шейпы слоёв и полярность (`probe_layers.il`,
+`probe_neg.il`, `probe_func.il`), вложения базы (`probe_attachments*.il`).
+Ничего не меняют.
 
 ## Известные ограничения
 
