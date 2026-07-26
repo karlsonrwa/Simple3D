@@ -218,6 +218,27 @@ def main(argv: list[str] | None = None) -> int:
              "stack up toward the core by the thickness removed",
     )
     parser.add_argument(
+        "--flat", dest="no_fold", action="store_true",
+        help="do not fold the board along its bend areas; export it flat, "
+             "the way Allegro holds it",
+    )
+    parser.add_argument(
+        "--fold-anchor", metavar="X,Y|auto",
+        help="the point that stays in the XY plane when the board is folded "
+             "(default: the origin, 0,0). 'auto' holds the largest piece the "
+             "bend lines leave instead",
+    )
+    parser.add_argument(
+        "--fold-slice-angle", type=float, metavar="DEG",
+        help="degrees of arc per slice for a bend that has to be faceted "
+             "(default 7.5); only reached when neither exact construction fits",
+    )
+    parser.add_argument(
+        "--fold-neutral", type=float, metavar="K",
+        help="where the neutral axis sits in the stack, as a fraction of "
+             "thickness from the inner surface (default 0.5)",
+    )
+    parser.add_argument(
         "--board-mode", choices=["solid", "layers", "inspect"], default="solid",
         help="multi-stackup boards only. solid: one solid, one color "
              "(default, smallest). layers: one solid whose faces are colored "
@@ -242,6 +263,20 @@ def main(argv: list[str] | None = None) -> int:
     board_color = resolve_board_color(args.color) if args.color else None
     rim_color = resolve_board_color(args.rim_color) if args.rim_color else None
     silk_color = resolve_silk_color(args.silk_color) if args.silk_color else None
+
+    fold_anchor = None
+    if args.fold_anchor:
+        text = args.fold_anchor.strip()
+        if text.lower() == "auto":
+            fold_anchor = "auto"
+        else:
+            try:
+                x, y = (float(v) for v in text.replace(";", ",").split(","))
+            except ValueError:
+                print(f"error: --fold-anchor wants X,Y or 'auto', got {text!r}",
+                      file=sys.stderr)
+                return 1
+            fold_anchor = (x, y)
 
     # The positional folder first, then any --step-dir, in the order given.
     step_dirs = _split_dirs([args.step_dir] + list(args.extra_step_dirs))
@@ -290,6 +325,10 @@ def main(argv: list[str] | None = None) -> int:
                 srgb_color=not args.legacy_color,
                 board_mode=args.board_mode,
                 ignore_soldermask=args.ignore_soldermask,
+                fold_bends=not args.no_fold,
+                fold_anchor=fold_anchor,
+                fold_neutral=args.fold_neutral,
+                fold_slice_angle=args.fold_slice_angle,
                 log=log,
             )
         except core.StepBuilderError as exc:
@@ -312,4 +351,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # The GUI builds in a child process, and on Windows that child is SPAWNED:
+    # it re-imports this module. The guard above is what stops it starting a
+    # second GUI, and freeze_support keeps the same true if this is ever frozen
+    # into an exe.
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     sys.exit(main())

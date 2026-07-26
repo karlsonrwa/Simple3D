@@ -26,6 +26,13 @@ FILES = [
     str(_ROOT / "simple3d.il"),
 ]
 
+# The read-only diagnostics under tools/probes are SKILL too, and a probe with
+# an unbalanced paren fails at load - in a live Allegro session, which costs a
+# round trip with the user rather than a test run. Each is loaded on its own,
+# so each is checked against its OWN definitions; pooling them with the shipped
+# files would let a probe's procedure satisfy a call in the exporter.
+PROBES = sorted(str(p) for p in (_ROOT / "tools" / "probes").glob("*.il"))
+
 # project-shaped call prefixes we own and must have defined
 PROJECT_RE = re.compile(r"^(s3d|make|add|symbolReturn|gdsys|create3d|calculateBoard|boardGeometry)")
 
@@ -89,6 +96,34 @@ def analyze(path):
     calls = set(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(", nostr))
     return text, bal, broken, defs, calls
 
+def report(path, bal, broken, calls, known):
+    """Print one file's findings; True if it is clean."""
+    ok = True
+    print(f"=== {Path(path).name} ===")
+    print(f"  paren balance: {bal}" + ("" if bal == 0 else "   <-- UNBALANCED"))
+    if bal != 0:
+        ok = False
+    if broken:
+        ok = False
+        print("  broken string literals:")
+        for n, line in broken:
+            print(f"    line {n}: {line}")
+    else:
+        print("  broken string literals: none")
+
+    undef = sorted(c for c in calls
+                   if PROJECT_RE.match(c) and c not in known
+                   and c not in BUILTIN_ALLOW)
+    if undef:
+        ok = False
+        print("  calls to undefined project procedures:")
+        for c in undef:
+            print(f"    {c}")
+    else:
+        print("  undefined project calls: none")
+    return ok
+
+
 def main():
     all_defs = set()
     per_file = {}
@@ -99,31 +134,16 @@ def main():
 
     ok = True
     for f, (bal, broken, calls) in per_file.items():
-        name = Path(f).name
-        print(f"=== {name} ===")
-        print(f"  paren balance: {bal}" + ("" if bal == 0 else "   <-- UNBALANCED"))
-        if bal != 0: ok = False
-        if broken:
-            ok = False
-            print("  broken string literals:")
-            for n, line in broken:
-                print(f"    line {n}: {line}")
-        else:
-            print("  broken string literals: none")
+        ok = report(f, bal, broken, calls, all_defs) and ok
 
-        undef = sorted(c for c in calls
-                       if PROJECT_RE.match(c) and c not in all_defs
-                       and c not in BUILTIN_ALLOW)
-        if undef:
-            ok = False
-            print("  calls to undefined project procedures:")
-            for c in undef:
-                print(f"    {c}")
-        else:
-            print("  undefined project calls: none")
+    for f in PROBES:
+        text, bal, broken, defs, calls = analyze(f)
+        ok = report(f, bal, broken, calls, defs) and ok
+
     print()
     print("ALL CHECKS PASS" if ok else "CHECKS FAILED")
     sys.exit(0 if ok else 1)
+
 
 if __name__ == "__main__":
     main()

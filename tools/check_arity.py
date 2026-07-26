@@ -26,6 +26,10 @@ from pathlib import Path
 FILES = [str(_ROOT / "makeVariant3dIntermediates.il"),
          str(_ROOT / "simple3d.il")]
 
+# Each probe is loaded on its own in a live Allegro session, so each is checked
+# against its own definitions only.
+PROBES = sorted(str(p) for p in (_ROOT / "tools" / "probes").glob("*.il"))
+
 
 def strip_line_comment(line):
     out, in_str, esc = [], False, False
@@ -151,6 +155,15 @@ def main():
             lo, hi = defs[name]
             if n < lo or (hi is not None and n > hi):
                 bad.append((Path(f).name, line, name, n, lo, hi))
+
+    for f in PROBES:
+        t = clean(f)
+        own = collect_defs(t)
+        for name, n, line in collect_calls(t, own):
+            lo, hi = own[name]
+            if n < lo or (hi is not None and n > hi):
+                bad.append((Path(f).name, line, name, n, lo, hi))
+    print(f"{len(PROBES)} probe(s) checked against their own definitions")
 
     if bad:
         print("\nARITY MISMATCHES:")

@@ -91,7 +91,7 @@ if flat not in readme:
 
 # ---- shipped files listed -------------------------------------------------
 for f in ("makeVariant3dIntermediates.il", "simple3d.il", "simple3d_config.json",
-          "core.py", "gui.py", "colors.py", "__main__.py"):
+          "core.py", "gui.py", "colors.py", "bend.py", "__main__.py"):
     if f not in readme:
         note("file not in layout listing", f)
 
@@ -106,12 +106,12 @@ for label in re.findall(r"\*\*([A-Z][A-Za-z0-9 =/…]+?)\*\*", quick):
     if lab.split()[0] in ("Generate", "Board", "Silkscreen", "Minimise",
                           "STEP", "JSON", "Output", "Z", "All", "None",
                           "White/Black", "Top", "Bottom", "Body", "Ignore", "Reset", "Compact",
-                          "Make", "Add...", "Custom…"):
+                          "Make", "Fold", "Add...", "Custom…"):
         continue
     note("QUICKSTART label unchecked", lab)
 
 for term in ("Board edge color", "Body stitching", "Reset colors",
-             "Make surface (minimum file size)", "Generate"):
+             "Make surface (minimum file size)", "Fold flex bends", "Generate"):
     if term not in gui_py:
         note("QUICKSTART names a control absent from the GUI", term)
     if term not in quick:

@@ -14,8 +14,11 @@ if str(_ROOT) not in _sys.path:
 import sys, json
 from pathlib import Path
 ROOT = _ROOT
-sys.path.insert(0, str(ROOT / "stepbuilder"))
-import core
+sys.path.insert(0, str(ROOT))
+# The PACKAGE import: core.py imports its siblings relatively inside the
+# functions that need them, so a bare `import core` fails there and not at
+# the top of the file.
+from stepbuilder import core
 out = _OUT / "regression"
 out.mkdir(exist_ok=True)
 d = json.load(open(ROOT/"demo/ap-214/demo.json"))
