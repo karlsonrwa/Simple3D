@@ -2971,6 +2971,37 @@ deliberate manufacturing overlap left by the trim, and the fuse absorbs them.
 - Whether `layerFunction` alone is enough to decide polarity without the name
   list - `probe_func.il` was written to answer that and has not been run yet.
 
+## Update 2026-07-25 (round 35) — four window nits
+
+- **Dropdown widths cut to the longest entry.** Measured rather than guessed:
+  the board theme was 16 characters wide for a 10-character `Dark_green`, the
+  silk color 10 for `White`. Now 11 and 6. The rim (18 for
+  `Cream (dielectric)`), Z datum (16 for `Bottom of board`) and stitching (21
+  for `Solid colored layers`) were already at or near their minimum and barely
+  moved.
+- **A first run opens at a fixed 908 px wide** (`FIRST_RUN_WIDTH`), against a
+  natural request of 1158. Board options keeps its natural width - it has
+  weight 0 - so the squeeze lands on the silk column, and widening the window
+  gives it straight back. A remembered geometry still wins over this.
+- **Display swatches and picker swatches no longer look alike.** The board
+  theme and the silk ink only REPORT what a dropdown chose; the rim and the six
+  layer kinds OPEN a chooser. Pickers are now raised with a 2 px border and take
+  the hand cursor, display squares are flat with a hairline. A picker that is
+  currently inert - rim outside Custom, layer swatches in Solid - drops back to
+  flat, so "looks like a button" and "is a button" stay the same thing.
+- **The rim controls grey outside Solid**, which is the opposite of what was
+  asked and the right way round: `generate()` has ignored the rim color in the
+  other two stitchings since round 29, because they decide every face
+  themselves. The user's phrasing had it inverted; said so and implemented the
+  version that matches the code.
+
+### Verified
+Live window: first run 908x844, the five dropdowns at 11/18/16/21/6, rim
+dropdown readonly in Solid and disabled in the other two, pickers raised only
+while live, display squares never raised. Tests extended for the picker relief
+and the rim state; the geometry suite needed its centring expectation moved
+from the natural width to FIRST_RUN_WIDTH.
+
 ## Update 2026-07-25 (round 34) — silkscreen and paste were in the body
 
 Round 33 made a plain board emit its cross section as a `Primary` stackup so

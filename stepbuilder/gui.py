@@ -68,6 +68,17 @@ def _mode_key(label: str) -> str:
 Z_LABELS = {"top": "Top of board", "bottom": "Bottom of board"}
 Z_KEYS = {v: k for k, v in Z_LABELS.items()}
 
+# Two kinds of color square, and they must not look alike. A DISPLAY swatch
+# only reports what a dropdown already chose - the board theme, the silk ink -
+# and clicking it does nothing. A PICKER swatch opens a color chooser. The
+# picker is raised like a button and takes the hand cursor; the display one is
+# flat with a hairline border and no cursor change.
+SWATCH = dict(width=22, height=22)
+DISPLAY_SWATCH = dict(SWATCH, highlightthickness=1, highlightbackground="#888",
+                      relief="flat", borderwidth=0)
+PICKER_SWATCH = dict(SWATCH, highlightthickness=0, relief="raised",
+                     borderwidth=2, cursor="hand2")
+
 RIM_SAME = "Same as board"
 RIM_CREAM = "Cream (dielectric)"
 RIM_CUSTOM = "Custom..."
@@ -243,26 +254,25 @@ class StepBuilderApp(tk.Tk):
         color_row = ttk.Frame(opts)
         color_row.grid(row=0, column=1, columnspan=2, sticky="w", padx=6)
         theme_box = ttk.Combobox(
-            color_row, textvariable=self.theme, values=THEME_ORDER, state="readonly", width=16
+            color_row, textvariable=self.theme, values=THEME_ORDER,
+            state="readonly", width=11
         )
         theme_box.pack(side="left")
-        self._swatch = tk.Canvas(color_row, width=22, height=22, highlightthickness=1,
-                                 highlightbackground="#888")
+        self._swatch = tk.Canvas(color_row, **DISPLAY_SWATCH)
         self._swatch.pack(side="left", padx=(6, 0))
         theme_box.bind("<<ComboboxSelected>>", lambda e: self._update_swatch())
 
         ttk.Label(opts, text="Board edge color").grid(row=0, column=3, sticky="e", padx=(12, 6))
-        rim_box = ttk.Combobox(
+        self._rim_box = ttk.Combobox(
             opts, textvariable=self.rim_choice,
             values=[RIM_SAME, RIM_CREAM, RIM_CUSTOM], state="readonly", width=18
         )
-        rim_box.grid(row=0, column=4, sticky="w")
-        rim_box.bind("<<ComboboxSelected>>", lambda e: self._update_rim_swatch())
+        self._rim_box.grid(row=0, column=4, sticky="w")
+        self._rim_box.bind("<<ComboboxSelected>>", lambda e: self._update_rim_swatch())
         # A picker, not a typed hex string: the same idiom as every other color
         # in the window, and it cannot be given a value that does not parse.
         # Greyed until Custom is chosen, so it is obvious when it does nothing.
-        self._rim_swatch = tk.Canvas(opts, width=22, height=22, highlightthickness=1,
-                                     highlightbackground="#888")
+        self._rim_swatch = tk.Canvas(opts, **PICKER_SWATCH)
         self._rim_swatch.grid(row=0, column=5, sticky="w", padx=(6, 0))
         self._rim_swatch.bind("<Button-1>", lambda e: self._pick_rim_color())
 
@@ -306,11 +316,10 @@ class StepBuilderApp(tk.Tk):
         self._silk_color_label.pack(side="left", padx=(12, 6))
         self.silk_box = ttk.Combobox(
             silk_row, textvariable=self.silk_color, values=SILK_ORDER,
-            state="readonly", width=10
+            state="readonly", width=6
         )
         self.silk_box.pack(side="left")
-        self._silk_swatch = tk.Canvas(silk_row, width=22, height=22, highlightthickness=1,
-                                      highlightbackground="#888")
+        self._silk_swatch = tk.Canvas(silk_row, **DISPLAY_SWATCH)
         self._silk_swatch.pack(side="left", padx=(6, 0))
         self.silk_box.bind("<<ComboboxSelected>>", lambda e: self._update_silk_row())
         # Measured on a 150-polygon legend: 2191 kB as solids, 566 kB as
@@ -470,10 +479,18 @@ class StepBuilderApp(tk.Tk):
         visible_h = max(0, min(y + h, vy + vh) - max(y, vy))
         return visible_w >= 120 and visible_h >= 40
 
+    # What a first run opens at. The natural request is wider than this; the
+    # groups simply start narrower and the silk column, which is the one with
+    # weight, gives the room back as soon as the window is widened.
+    FIRST_RUN_WIDTH = 908
+
     def _center_on_primary(self) -> None:
         """First run, or a remembered position that is no longer usable."""
         self.update_idletasks()
-        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        w = self.FIRST_RUN_WIDTH
+        h = self.winfo_reqheight()
+        self.geometry(f"{w}x{h}")
+        self.update_idletasks()
         x = max(0, (self.winfo_screenwidth() - w) // 2)
         y = max(0, (self.winfo_screenheight() - h) // 2)
         self.geometry(f"+{x}+{y}")
@@ -528,9 +545,9 @@ class StepBuilderApp(tk.Tk):
         ttk.Label(row, text="Body stitching").pack(side="left")
         box = ttk.Combobox(row, textvariable=self.board_mode,
                            values=[label for _, label in BOARD_MODES],
-                           state="readonly", width=22)
+                           state="readonly", width=21)
         box.pack(side="left", padx=(6, 0))
-        box.bind("<<ComboboxSelected>>", lambda e: self._update_layer_swatches())
+        box.bind("<<ComboboxSelected>>", lambda e: self._on_mode_changed())
 
         # The swatches take their own row: on one line with the dropdown they
         # made the group ask for 923 px, which forced the whole window wide.
@@ -542,8 +559,7 @@ class StepBuilderApp(tk.Tk):
                 continue
             cell = ttk.Frame(row)
             cell.pack(side="left", padx=(10, 0))
-            canvas = tk.Canvas(cell, width=18, height=18, highlightthickness=1,
-                               highlightbackground="#888", cursor="hand2")
+            canvas = tk.Canvas(cell, **dict(PICKER_SWATCH, width=18, height=18))
             canvas.pack(side="top")
             canvas.bind("<Button-1>", lambda e, k=key: self._pick_layer_color(k))
             ttk.Label(cell, text=label, foreground="#777").pack(side="top")
@@ -562,6 +578,11 @@ class StepBuilderApp(tk.Tk):
         self._update_layer_swatches()
         self._append_log("Layer colors reset to the Allegro material defaults")
 
+    def _on_mode_changed(self) -> None:
+        """Both the swatches and the rim controls depend on the stitching."""
+        self._update_layer_swatches()
+        self._update_rim_swatch()
+
     def _update_layer_swatches(self) -> None:
         # Both "Solid colored layers" and "Not stitched" paint by layer kind;
         # only plain "Solid" ignores these.
@@ -570,6 +591,8 @@ class StepBuilderApp(tk.Tk):
         for key, canvas in self._swatches.items():
             rgb = self.layer_colors.get(key, DEFAULT_LAYER_COLORS[key])
             canvas.configure(bg="#%02x%02x%02x" % rgb if active else "#d9d9d9",
+                             relief="raised" if active else "flat",
+                             borderwidth=2 if active else 1,
                              cursor="hand2" if active else "")
 
     def _pick_layer_color(self, kind: str) -> None:
@@ -659,17 +682,28 @@ class StepBuilderApp(tk.Tk):
         self._swatch.configure(bg="#%02x%02x%02x" % rgb)
 
     def _update_rim_swatch(self) -> None:
-        active = self.rim_choice.get() == RIM_CUSTOM
+        # The rim color paints the side walls a different color from the faces,
+        # which only means anything when the board IS one uniformly colored
+        # solid. The other two stitchings decide every face themselves and
+        # ignore it - generate() already says so in the log - so the control
+        # greys out rather than sitting there looking live.
+        solid = _mode_key(self.board_mode.get()) == "solid"
+        self._rim_box.configure(state="readonly" if solid else "disabled")
+        active = solid and self.rim_choice.get() == RIM_CUSTOM
         color = "#d9d9d9"
         if active:
             try:
                 color = "#%02x%02x%02x" % parse_hex(self.rim_custom.get())
             except ValueError:
                 color = "#ffffff"
-        self._rim_swatch.configure(bg=color, cursor="hand2" if active else "")
+        self._rim_swatch.configure(bg=color,
+                                   relief="raised" if active else "flat",
+                                   borderwidth=2 if active else 1,
+                                   cursor="hand2" if active else "")
 
     def _pick_rim_color(self) -> None:
-        if self.rim_choice.get() != RIM_CUSTOM:
+        if (_mode_key(self.board_mode.get()) != "solid"
+                or self.rim_choice.get() != RIM_CUSTOM):
             return
         from tkinter import colorchooser
 
