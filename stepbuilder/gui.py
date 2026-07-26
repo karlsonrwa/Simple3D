@@ -13,17 +13,18 @@ the command line, or by setting them via the config file the SKILL side writes.
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 import queue
 import re
-import threading
 import tkinter as tk
 import traceback
-from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import core
+from .worker import BuildSettings, run_jobs
+from .bend import DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
 from .core import DEFAULT_FLAT_HEIGHT
 from .colors import (
     BOARD_THEMES,
@@ -92,36 +93,10 @@ ERROR_PREFIXES = ("error", "traceback")
 WARNING_PREFIXES = ("warning", "ignored", "ignoring")
 
 
-@dataclass(frozen=True)
-class BuildSettings:
-    """Everything a build needs, snapshotted off the widgets on the main thread.
-
-    Tk variables belong to the thread running mainloop: reading a StringVar from
-    the worker enters the Tcl interpreter from a second thread, which raises
-    "main thread is not in main loop" on a non-threaded Tcl and is a data race
-    on a threaded one. So the worker never touches self.<var>.get() - it gets
-    one of these, taken in on_generate() before the thread starts. Frozen so a
-    later widget edit cannot change the build already in flight.
-    """
-
-    step_dirs: tuple[str, ...]
-    json_file: str
-    output_dir: str
-    z_datum: str
-    board_color: tuple[int, int, int] | None
-    rim_color: tuple[int, int, int] | None
-    silk_top: bool
-    silk_bottom: bool
-    silk_color: tuple[int, int, int] | None
-    silk_flat: bool
-    silk_flat_height: float
-    silk_layers_off: frozenset[str]
-    minimize: bool
-    board_mode: str
-    layer_colors: dict
-    ignore_soldermask: bool
-    brd_name: str | None
-    dated_name: bool
+# BuildSettings lives in worker.py, because it crosses the process boundary and
+# that module must not drag tkinter into the child. Imported here so
+# `from .gui import BuildSettings` keeps working.
+__all__ = ["StepBuilderApp", "BuildSettings"]
 
 
 class StepBuilderApp(tk.Tk):
@@ -131,8 +106,12 @@ class StepBuilderApp(tk.Tk):
         self.title("Simple 3D - StepBuilder")
         self.minsize(760, 560)
 
-        self._queue: queue.Queue = queue.Queue()
-        self._worker: threading.Thread | None = None
+        # A process, not a thread: OCC can die outright and take the whole
+        # interpreter with it, and with a thread that means this window
+        # vanishing with nothing written anywhere. See worker.py.
+        self._queue = multiprocessing.Queue()
+        self._worker: multiprocessing.Process | None = None
+        self._finished = False
 
         # The STEP folders are a Text widget, not a StringVar, and _load_config
         # runs BEFORE _build_ui - so reads and writes buffer here until the
@@ -162,6 +141,17 @@ class StepBuilderApp(tk.Tk):
         self.board_mode = tk.StringVar(value=BOARD_MODES[0][1])
         self.layer_colors: dict[str, tuple[int, int, int]] = dict(DEFAULT_LAYER_COLORS)
         self.ignore_soldermask = tk.BooleanVar(value=False)
+        # On by default: a board whose designer went to the trouble of defining
+        # bend areas is a board meant to be seen folded, and a design with none
+        # is unaffected either way.
+        self.fold_bends = tk.BooleanVar(value=True)
+        # Config-only, no widget, same as silk_flat_height: numbers you set once
+        # for a board, not something to press on every build. The anchor is the
+        # point that stays in the XY plane (the origin by convention) and the
+        # neutral factor is where the neutral axis sits in the stack.
+        self.fold_anchor: tuple[float, float] | str | None = None
+        self.fold_neutral: float = DEFAULT_NEUTRAL_FACTOR
+        self.fold_slice_angle: float = DEFAULT_SLICE_ANGLE
 
         # Prefill state, set by prefill_jobs() when launched from Allegro.
         # Note: there is deliberately NO cached job list - jobs are resolved
@@ -296,6 +286,14 @@ class StepBuilderApp(tk.Tk):
                               "(check total thickness!)"),
                         variable=self.ignore_soldermask).grid(
             row=4, column=0, columnspan=6, sticky="w", pady=(6, 0))
+
+        # Off means the board is exported flat, which is how Allegro holds it
+        # and how every export before this behaved. Nothing to grey out when a
+        # board has no bends: the label says what it would do, and the log says
+        # what it did.
+        ttk.Checkbutton(opts, text="Fold flex bends",
+                        variable=self.fold_bends).grid(
+            row=5, column=0, columnspan=6, sticky="w", pady=(6, 0))
 
         # --- silkscreen ---
         silk = ttk.LabelFrame(mid, text="Silk options", padding=8)
@@ -988,6 +986,10 @@ class StepBuilderApp(tk.Tk):
             board_mode=_mode_key(self.board_mode.get()),
             layer_colors=dict(self.layer_colors),
             ignore_soldermask=self.ignore_soldermask.get(),
+            fold_bends=self.fold_bends.get(),
+            fold_anchor=self.fold_anchor,
+            fold_neutral=self.fold_neutral,
+            fold_slice_angle=self.fold_slice_angle,
             brd_name=self._brd_name,
             dated_name=self._dated_name,
         )
@@ -1006,141 +1008,17 @@ class StepBuilderApp(tk.Tk):
             return
 
         self._clear_log()
-        self._run_in_worker(lambda: self._generate(settings))
-
-    def _generate(self, settings: BuildSettings) -> None:
-        """Runs on the worker thread. Builds one or many JSONs.
-
-        Reads nothing from the widgets - everything comes from *settings*, taken
-        on the main thread by _snapshot().
-
-        The job list is resolved HERE, from the JSON path as it was when
-        Generate was pressed - never from a cached queue. This way, browsing to
-        a different file after an Allegro prefill builds exactly what the field
-        showed at that moment.
-        """
-        field = Path(settings.json_file)
-        jobs, ignored = core.resolve_json_jobs(field)
-
-        for j in ignored:
-            self._queue.put(("log", f"Ignoring non-Simple-3D json: {j.name}"))
-
-        if not jobs:
-            # Explain precisely what was found, so a wrong path, an empty
-            # folder and a foreign json are distinguishable at a glance.
-            if field.is_dir():
-                entries = sorted(p.name for p in field.iterdir())
-                detail = (f"Folder {self._show_path(field)} contains: "
-                          + (", ".join(entries) if entries else "(empty)"))
-            elif field.is_file():
-                detail = (f"{self._show_path(field)} is not a Simple 3D "
-                          'intermediate (missing the "format": "simple3d" '
-                          "marker). Pick a JSON produced by "
-                          "File -> Export -> Simple 3D.")
-            else:
-                detail = f"Path does not exist: {self._show_path(field)}"
-            raise core.StepBuilderError(f"No JSON file to build.\n{detail}")
-
-        total_placed = 0
-        outputs = []
-        warnings = []
-        failures = []
-        for jf in jobs:
-            # Base name for the output file. With SEVERAL variants the stem of
-            # each json (design_variant) must win, or every variant would get
-            # the same name and only differ by collision underscores. The
-            # launcher's brd_name (original-case board name) applies only when
-            # there is a single json.
-            if len(jobs) > 1:
-                base = jf.stem
-            else:
-                base = settings.brd_name or jf.stem
-
-            # One variant must not take the rest of the batch down with it: a
-            # gap in board 2's outline should still leave boards 3..n built.
-            # This mirrors the CLI, which counts failures and carries on.
-            try:
-                output_name = (core.dated_output_name(base, settings.output_dir)
-                               if settings.dated_name else None)
-                result = core.generate(
-                    list(settings.step_dirs),
-                    jf,
-                    settings.output_dir,
-                    output_name=output_name,
-                    z_datum=settings.z_datum,
-                    board_color=settings.board_color,
-                    rim_color=settings.rim_color,
-                    silk_top=settings.silk_top,
-                    silk_bottom=settings.silk_bottom,
-                    silk_color=settings.silk_color,
-                    silk_flat=settings.silk_flat,
-                    silk_flat_height=settings.silk_flat_height,
-                    silk_layers_off=settings.silk_layers_off,
-                    # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=...,
-                    minimize_size=settings.minimize,
-                    board_mode=settings.board_mode,
-                    layer_colors=settings.layer_colors,
-                    ignore_soldermask=settings.ignore_soldermask,
-                    log=lambda m: self._queue.put(("log", m)),
-                    progress=lambda i, n: self._queue.put(("progress", (i, n))),
-                )
-            except core.StepBuilderError as exc:
-                failures.append(f"{jf.name}: {exc}")
-                self._queue.put(("log", f"error ({jf.name}): {exc}"))
-                continue
-            except Exception:
-                # Unexpected (a malformed JSON key, an OCCT failure): keep the
-                # traceback so the bug is reportable, but still build the rest.
-                failures.append(f"{jf.name}: unexpected error (see log)")
-                self._queue.put(("log", f"error ({jf.name}):\n{traceback.format_exc()}"))
-                continue
-
-            total_placed += result.components_placed
-            outputs.append(result.output.name)
-            if result.silkscreen_solids:
-                self._queue.put(("log", f"{result.output.name}: silkscreen "
-                                        f"{result.silkscreen_solids} solid(s)"))
-            if result.missing_step_files:
-                warnings.append(f"{result.output.name}: {len(result.missing_step_files)} STEP missing")
-            if result.embedded_not_on_disk:
-                warnings.append(
-                    f"{result.output.name}: {len(result.embedded_not_on_disk)} of "
-                    f"those are in the board but not on disk (see the log)")
-            # MFRPN DISABLED (kept for future):
-            # if result.missing_mfr_pn:
-            #     warnings.append(f"{result.output.name}: {len(result.missing_mfr_pn)} without MFRPN")
-
-        for w in warnings:
-            self._queue.put(("log", "warning: " + w))
-
-        # Nothing built at all -> report as a failure, not a green "Done: 0".
-        if failures and not outputs:
-            self._queue.put(("error", f"All {len(failures)} job(s) failed:\n"
-                                      + "\n".join(failures)))
-            return
-
-        summary = f"Done: {len(outputs)} file(s), {total_placed} component(s) placed"
-        if failures:
-            summary += f", {len(failures)} failed"
-        self._queue.put(("done", summary))
-
+        self._run_in_worker(settings)
 
     # ------------------------------------------------------------ plumbing - #
 
-    def _run_in_worker(self, target) -> None:
+    def _run_in_worker(self, settings: BuildSettings) -> None:
         if self._worker and self._worker.is_alive():
             return
         self._set_busy(True)
-
-        def wrapper() -> None:
-            try:
-                target()
-            except core.StepBuilderError as exc:
-                self._queue.put(("error", str(exc)))
-            except Exception:
-                self._queue.put(("error", traceback.format_exc()))
-
-        self._worker = threading.Thread(target=wrapper, daemon=True)
+        self._finished = False
+        self._worker = multiprocessing.Process(
+            target=run_jobs, args=(settings, self._queue), daemon=True)
         self._worker.start()
 
     def _drain_queue(self) -> None:
@@ -1150,22 +1028,57 @@ class StepBuilderApp(tk.Tk):
                 if kind == "log":
                     self._append_log(payload)
                 elif kind == "progress":
-                    current, total = payload
+                    current, total, *rest = payload
                     self.progress["maximum"] = max(total, 1)
                     self.progress["value"] = current
-                    self.status.set(f"Placing components {current}/{total}")
+                    if rest and rest[0]:
+                        self.status.set(rest[0])
                 elif kind == "done":
+                    self._finished = True
                     self._append_log(payload, "success")
                     self.status.set(payload)
                     self._set_busy(False)
                 elif kind == "error":
+                    self._finished = True
                     self._append_log(payload, "error")
                     self.status.set("Failed")
                     self._set_busy(False)
                     messagebox.showerror("StepBuilder", payload.strip().splitlines()[-1])
         except queue.Empty:
             pass
+
+        self._check_worker_alive()
         self._drain_job = self.after(100, self._drain_queue)
+
+    def _check_worker_alive(self) -> None:
+        """A build that died without saying so still has to be reported.
+
+        OpenCASCADE can take its process down with an access violation rather
+        than an exception - measured on a real board, in the fuse that stitches
+        the layer solids - and before the build moved into a child process that
+        was this window disappearing. Now the exit code arrives here instead.
+        """
+        if self._worker is None or self._worker.is_alive() or self._finished:
+            return
+        code = self._worker.exitcode
+        self._worker = None
+        self._finished = True
+        if code == 0:
+            return                       # said its piece and exited cleanly
+        self._set_busy(False)
+        self.status.set("The build crashed")
+        detail = (f"The build stopped without finishing (exit code {code})."
+                  if code is not None else "The build stopped without finishing.")
+        if code == -1073741819:          # 0xC0000005
+            detail += ("\nThat is an access violation inside OpenCASCADE, not "
+                       "something the export can catch.")
+        detail += ("\n\nWhat usually gets a board through: set Body stitching "
+                   "to 'Not stitched' (it fuses nothing), or raise "
+                   "gui.foldSliceAngle - a bend that has to be faceted makes "
+                   "harder work for the fuse the finer it is sliced. The log "
+                   "above ends at whatever it was doing.")
+        self._append_log(detail, "error")
+        messagebox.showerror("StepBuilder", detail)
 
     def _set_busy(self, busy: bool) -> None:
         for child in self._actions.winfo_children():
@@ -1276,6 +1189,30 @@ class StepBuilderApp(tk.Tk):
                     except ValueError:
                         pass
         self.ignore_soldermask.set(gui.get("ignoreSoldermask", False))
+        self.fold_bends.set(gui.get("foldBends", True))
+        # Anything unreadable falls back to the default rather than stopping the
+        # load: these two are hand-edited numbers in a file nothing validates.
+        anchor = gui.get("foldAnchor")
+        if isinstance(anchor, str) and anchor.strip().lower() == "auto":
+            self.fold_anchor = "auto"
+        elif (isinstance(anchor, (list, tuple)) and len(anchor) >= 2
+              and all(isinstance(v, (int, float)) for v in anchor[:2])):
+            self.fold_anchor = (float(anchor[0]), float(anchor[1]))
+        else:
+            self.fold_anchor = None
+        try:
+            self.fold_neutral = float(gui.get("foldNeutral", DEFAULT_NEUTRAL_FACTOR))
+        except (TypeError, ValueError):
+            self.fold_neutral = DEFAULT_NEUTRAL_FACTOR
+        if not 0.0 <= self.fold_neutral <= 1.0:
+            self.fold_neutral = DEFAULT_NEUTRAL_FACTOR
+        try:
+            self.fold_slice_angle = float(gui.get("foldSliceAngle",
+                                                  DEFAULT_SLICE_ANGLE))
+        except (TypeError, ValueError):
+            self.fold_slice_angle = DEFAULT_SLICE_ANGLE
+        if not 0.5 <= self.fold_slice_angle <= 90.0:
+            self.fold_slice_angle = DEFAULT_SLICE_ANGLE
         geometry = gui.get("windowGeometry")
         self._saved_geometry = geometry if isinstance(geometry, str) else None
         self._saved_state = ("zoomed" if gui.get("windowState") == "zoomed"
@@ -1358,6 +1295,13 @@ class StepBuilderApp(tk.Tk):
             "layerColors": {k: "#%02X%02X%02X" % v
                             for k, v in self.layer_colors.items()},
             "ignoreSoldermask": self.ignore_soldermask.get(),
+            "foldBends": self.fold_bends.get(),
+            # Written back as read, so a hand-edited anchor survives a run.
+            "foldAnchor": (list(self.fold_anchor)
+                           if isinstance(self.fold_anchor, tuple)
+                           else self.fold_anchor),
+            "foldNeutral": self.fold_neutral,
+            "foldSliceAngle": self.fold_slice_angle,
             # Where the window was, so the next run comes up in the same place -
             # on the same monitor, which is the point on a multi-screen desk.
             # The non-maximized rect is stored even when closing maximized, so
@@ -1400,6 +1344,16 @@ class StepBuilderApp(tk.Tk):
                     pass
         self._drain_job = None
         self._layer_refresh_job = None
+        # A build outlives its window otherwise: the child is a process now, and
+        # closing the window while one is running would leave it grinding away
+        # on a file nobody is waiting for.
+        if self._worker is not None and self._worker.is_alive():
+            self._worker.terminate()
+        try:
+            self._queue.close()
+            self._queue.cancel_join_thread()
+        except Exception:
+            pass
         self.destroy()
 
 

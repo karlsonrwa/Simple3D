@@ -177,6 +177,26 @@ check("old debugLayers=true migrates to inspect",
       _mode_key(app6.board_mode.get()) == "inspect", app6.board_mode.get())
 app6.destroy()
 
+print(chr(10) + "[7d] folding flex bends")
+check("on by default - a board with bend areas is meant to be seen folded",
+      app.fold_bends.get() is True)
+check("the snapshot carries it", app._snapshot().fold_bends is True)
+app.fold_bends.set(False)
+app._save_config()
+g = json.loads(cfg.read_text(encoding="utf-8"))["gui"]
+check("saved to the config", g["foldBends"] is False, str(g.get("foldBends")))
+app7 = StepBuilderApp(cfg); app7.withdraw()
+check("and survives a reopen", app7.fold_bends.get() is False)
+app7.destroy()
+# A config written before this existed must not silently start exporting flat.
+legacy3 = TMP / "no_fold_key.json"
+legacy3.write_text(json.dumps({"gui": {"boardColor": "Red"}}), encoding="utf-8")
+app8 = StepBuilderApp(legacy3); app8.withdraw()
+check("an older config with no key at all defaults to folding",
+      app8.fold_bends.get() is True)
+app8.destroy()
+app.fold_bends.set(True)
+
 print(chr(10) + "[7c] the rim controls only mean anything in Solid")
 for mode, want in (("solid","readonly"),("layers","disabled"),("inspect","disabled")):
     app.board_mode.set(_mode_label(mode)); app._on_mode_changed()
@@ -191,8 +211,8 @@ snap = app._snapshot()
 EXPECTED = {"step_dirs","json_file","output_dir","z_datum","board_color",
             "rim_color","silk_top","silk_bottom","silk_color","silk_flat",
             "silk_flat_height","silk_layers_off","minimize","board_mode",
-            "layer_colors","ignore_soldermask",
-            "brd_name","dated_name"}
+            "layer_colors","ignore_soldermask","fold_bends","fold_anchor",
+            "fold_neutral","fold_slice_angle","brd_name","dated_name"}
 got = set(snap.__dataclass_fields__)
 check("snapshot carries exactly the expected fields", got == EXPECTED,
       f"missing {EXPECTED-got}, unexpected {got-EXPECTED}")

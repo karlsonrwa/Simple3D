@@ -5,7 +5,7 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-07-23
+## READ THIS FIRST — state as of 2026-07-26
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -49,6 +49,17 @@ source, because the config is found relative to it.
 - **Do not fuse the SOLID legend.** Measured at 154% of the file size. But DO
   union the FLAT faces — measured smaller, and required, because coplanar
   coincident faces flicker. Same word, opposite results (rounds 10g, 12).
+- **Fold before the fuse, never after** (rounds 36 and 38). The layer-colored
+  board colors the face objects `fuse_keeping_faces` hands back, and folding a
+  shape replaces every face in it. And a fused board is several thicknesses at
+  once inside a bend area that crosses a zone boundary, which no single pair of
+  cylinders can carry — so every mode now folds per layer. Same reason the rim
+  color asks "is this wall vertical" in the panel's own frame: after a 90° fold,
+  half the board's flat faces are vertical.
+- **Measure an OCC volume with the iterative overload** (round 38).
+  `VolumeProperties_s(shape, props)` is 1.5% light on B-spline faces, which is
+  enough to condemn geometry that is exactly right. Pass `(shape, props, 1e-5,
+  False, False)` — in the tests too.
 - **Area agreement is necessary, not sufficient.** It cannot see compensating
   errors (two caps inverted opposite ways) or geometry faithfully reproduced
   from a source that is itself wrong (a mitred join). Both were caught by
@@ -72,6 +83,15 @@ source, because the config is found relative to it.
 - Per-segment path conversion producing round joins on a live board. The SKILL
   side warns if a path yields fewer polygons than it has segments.
 - Runtime and the 400-polygon clip batch size on a dense board.
+- **Bends fold correctly on the user's real board** (round 36b: probe, export,
+  and a build here from the exported intermediate), and the user has confirmed
+  it bends in the right places. Since round 37 the held piece is the one
+  containing **the origin**, by convention — Allegro's own anchor point never
+  reaches the database.
+- **Bends are built on true cylindrical surfaces** (round 38, branch
+  `feature/bend-mapper`): revolved where the strip is a prism, otherwise the
+  outline is wrapped onto the cylinder, with the 7.5° facets left as a fallback
+  that a real board no longer reaches. Both bends of flex-b2 wrap.
 
 ### Working method that has paid off repeatedly
 
@@ -2697,6 +2717,611 @@ six edge cases (no models, no attachments, a different suffix, no suffix, bare
 prefix, a name containing a quote → skipped rather than emitting broken JSON).
 All four SKILL checks, every other suite, the geometry regression and the docs
 audit are clean.
+
+## Update 2026-07-26 (round 36) — bends, folded
+
+Requirement 11's other half, deferred since round 26. `format_version` 7, a new
+`stepbuilder/bend.py`, a GUI checkbox and `--flat`. **Not yet run on a real
+board** — see "What is still owed" at the end.
+
+### The model: rigid panels and a faceted strip
+
+OCC can transform a solid and it can cut one; it has nothing that deforms a
+solid along a curve. So a bend is:
+
+- the panel before it — untouched;
+- the strip the board curls in — cut into rigid slices, each hinged at its own
+  leading edge and rotated by the angle the arc has reached there, so every
+  slice's leading edge sits exactly on the true arc and the error is one-sided
+  (7.5°/slice, chords 0.2% of the radius inside the true surface);
+- the panel after it — one exact rigid transform, no approximation at all.
+
+The transform for a piece hinged at flat position `v`, in the plane across the
+bend, is **slide then turn**: translate back along the bend direction by
+`v - arc_start`, then rotate about the cylinder axis. Sliding first is what
+makes the flat material the bend eats *disappear into the arc* instead of
+stretching the board. The same formula covers the slices and the far panel
+(`v = arc_end`, full angle), which is why they cannot drift apart.
+
+**Slices are cut with a deliberate overlap.** Rotating a straight slice about
+its leading edge opens a wedge on the outside of the bend and an overlap on the
+inside; without the extra `max(0.02, t·Δφ)` mm the pieces would touch along a
+line and the fuse would not make a solid. Cost measured: **+0.07%** of volume on
+a 40×10 strip, +0.035% on the rigid-flex test board.
+
+### Everything is cut in the FLAT frame
+
+Every region is a set of half-plane constraints in flat XY, applied before any
+transform. That is what makes a chain composable: bend *k*'s transform is
+`M(k-1) · F(k)` with `F(k)` written in flat coordinates, so a second bend is
+simply carried by the first. Cutting in the folded frame would need the
+constraints re-derived per bend and would not survive a third.
+
+### What the fold is applied to, and where
+
+- **solid** — the fused board, once.
+- **layers** — each layer part, **before** `fuse_keeping_faces`. The colors are
+  keyed on the face objects the fuse hands back and folding replaces every face
+  in a shape; fold first and the two steps do not fight. Verified: the volume is
+  identical to `solid` to the last decimal.
+- **inspect** — each layer part. Measured **0.25% heavier** than the other two,
+  because the layers are never fused and the slice overlaps fan into each other
+  at a bend. Flat, all three agree exactly. Documented rather than fixed.
+- **silkscreen** — same cut, `fuse=False` (round 10g's 154% still holds).
+- **components** — `fold.transform_at(x, y) * component_transform(...)`. The
+  part is placed flat and then carried, exactly like the board, so it cannot
+  drift off the surface it was placed on. A component inside a bend area is
+  placed on the curve and reported.
+
+### The rim color would have painted most of the board
+
+`_rim_faces` calls a face rim when its normal is horizontal. After a 90° fold
+the tail's top and bottom faces ARE vertical, so the naive test grabs them:
+measured **five times the rim area** on the test strip. Fixed by asking the
+question in the panel's own frame — `FoldPlan.flat_frame(point)` finds the
+region by trying each inverse and keeping the one whose flat bounds the result
+lands in, then the normal is judged there. The folded rim then has the same area
+as the flat one to within the faceting (an annular sector about a mid-thickness
+neutral axis has exactly the area of the flat strip it came from — worth knowing
+as a check).
+
+### Decisions that are conventions, not data
+
+- **The largest piece is held.** Every combination of sides is tried (2^n, n is
+  one or two on a real board), the outline is clipped to each, biggest survivor
+  wins. "The first bend's larger side" would pick differently the moment a
+  second bend crossed it.
+- **The developed width is measured from the bend area**, not derived from
+  radius × angle. The bend area is trimmed to the design outline and is what
+  Allegro itself thinks bends. When the two disagree by more than a quarter the
+  log says so and the drawn area wins. The slice angles are interpolated across
+  the strip rather than derived from the neutral radius, so the last slice meets
+  the finished angle exactly either way.
+- **The radius is measured from the LOCAL stack** — the zone the bend line is
+  in, found by point-in-polygon. Taking the board's own top face would put the
+  cylinder axis 2.05 mm out on the test board. Tested: the same bend in the flex
+  zone lands 2.05 mm below where the board-wide fallback puts it.
+
+### IDX_BEND_TYPE_INFO is emitted RAW and parsed in Python
+
+The property carries the angle, the inner side and the order, and it is in
+neither the API index nor the DB attribute reference. So SKILL emits the string
+verbatim (plus name, line endpoints, radius from `axlGetBendInnerRadius`, and
+the measured width) and Python parses it. A field spelled differently by another
+Allegro version can then be fixed **without a re-export**, and the string is in
+the intermediate where it can be read. The parser keeps unknown keys, handles
+units (`2.5000 MILLIMETERS`, and 100 MILS is not 100 mm), and an explicit JSON
+field always wins over the raw string.
+
+### Verified here, and how
+
+60+ assertions in `tests/test_bend.py`. The numbers are worked out from the bend
+by hand first — for a 90° top-side fold, a flat point `(v, z)` past the strip
+lands at `x = arc_start + (z_axis - z)`, `z = z_axis + (v - arc_end)` — and the
+geometry is required to match: the far panel's height, the outside of the bend,
+the held end not moving, volume preserved to within the overlap, both fold
+directions, the chain of two, a component's exact landing point, all three
+stitchings, and an end-to-end build where a capacitor 20 mm out on the tail is
+found at the position the fold predicts. Full suite 18/18.
+
+`s3dBendsJson` cannot run here, so it is **transliterated line for line** and
+its output required to be JSON this module reads back — including a bend name
+containing a quote, a missing radius, a missing property, a bend with no line,
+and no bends at all. Same method as the round-34 filter and the round-28
+escaper. `s3dSpanAcross` is transliterated too and checked on a diagonal bend,
+where measuring in x or y would give 4/sqrt(2) times the wrong answer.
+
+**Three of my own expectations were wrong and the code was right** every time —
+each was the same class of slip (forgetting that the arc lifts the panel by the
+axis height, or that the flex surface is 0.075 above the core, not on it). The
+lesson is the one the memo already carries in another form: write the expected
+number from the geometry, then read the failure as a question about which of the
+two is wrong, not as a defect report.
+
+### Two mechanical checks widened
+
+The probes under `tools/probes/` are SKILL too, and one with an unbalanced paren
+fails at load **in a live Allegro session** — a round trip with the user, not a
+test run. Both `skill_checks.py` and `check_arity.py` now check them, each
+against its own definitions (pooling them with the shipped files would let a
+probe's procedure satisfy a call in the exporter).
+
+`tests/test_mech.py` and `tests/test_regression_geometry.py` were importing
+`core` as a bare module rather than as part of the package. That works until
+`core` reaches sideways to a sibling — `from .bend import ...` — and then it is
+an ImportError deep inside `generate()`. `test_silk.py` already carried a
+comment about this; the other two now do too.
+
+## Update 2026-07-26 (round 40) — the crash, caught and contained
+
+### It reproduces, and the missing variable was the slice angle
+
+The user's console run ended silently right after
+`BEND_6: faceted at 5 deg per slice`. **5**, not 7.5 - they had edited
+`DEFAULT_SLICE_ANGLE` in their copy, and my attempt to match it by patching
+`bend.DEFAULT_SLICE_ANGLE = 5.0` at runtime **did nothing**: the value is
+captured in a function's default argument at import time. Five reproduction
+attempts in round 39 all ran at 7.5.
+
+With the angle passed properly:
+
+| | 7.5 deg | 5 deg |
+|---|---|---|
+| `solid` | builds | **exit code -1073741819** |
+| `layers` | builds | **exit code -1073741819** |
+| `inspect` | builds | builds |
+
+`-1073741819` is `0xC0000005`, an access violation. It happens in
+`fuse_keeping_faces` / `fuse_and_unify` - `inspect` fuses nothing, which is
+exactly why the user's "not stitched" build came out. Narrowed further: **all 41
+folded layer parts are valid solids** at both angles (`BRepCheck_Analyzer`), and
+folding them one at a time is clean. It is the boolean over the combination that
+dies, and the finer BEND_6 is sliced the more likely it is.
+
+Nothing to fix in the geometry, then - the input is valid by every test OCC
+offers. What can be fixed is that it took the window with it.
+
+### The build runs in a child process now
+
+`stepbuilder/worker.py`: `BuildSettings` (moved out of `gui.py`, because the
+child must not import tkinter) and `run_jobs`, which the window starts as a
+`multiprocessing.Process` and talks to over a `multiprocessing.Queue`. The
+message protocol is the one the drain loop already understood.
+
+`_check_worker_alive` then turns a dead child into a message: the exit code, the
+words "access violation inside OpenCASCADE" when it is that one, and what
+actually gets a board through - `Not stitched`, or a coarser `foldSliceAngle`.
+Verified on the crashing configuration: the window stays up, says "The build
+crashed", and keeps the log up to the last thing it was doing.
+
+**Windows spawns rather than forks, so the child re-imports `__main__`.**
+`stepbuilder/__main__.py` has the `if __name__ == "__main__"` guard already and
+now calls `freeze_support()`; a scratch script of mine without the guard forked
+bombed instantly, which is the lesson in one line.
+
+Closing the window mid-build now terminates the child instead of leaving it
+grinding on a file nobody is waiting for.
+
+### The progress bar shows the build, not the last 5% of it
+
+It only ever moved on component placement, which is the last second of a
+two-minute build. `core.generate` now reports coarse phases - reading 2%, board
+10%, legend 60%, components 75-95%, writing 96%, done 100% - and the label goes
+into the status line. Measured on flex2-a0: the bar sits at 10% "Building the
+board" for 40 seconds, which is honest, where before it sat at 0 and then jumped.
+
+`ProgressFn` takes an optional third argument (the label); the call is wrapped
+so a two-argument callback from anywhere else still works.
+
+### flex2.stp, the designer's prototype, against the board
+
+| feature | prototype | board |
+|---|---|---|
+| bend | r 0.700, 97 deg | BEND_1 r 0.7, 97 |
+| bend | r 8.000, 32 deg | BEND_2 r 8, 32 |
+| bend | r 10.000, 24 deg | BEND_3 r 10, 24 |
+| bend | r 3.000, 37 deg | BEND_4 r 3, 37 |
+| bend | r 0.500, **172 deg** | BEND_5 r 0.5, **180** |
+| bend | r 2.000, **120 deg** | BEND_6 r 2, **130** |
+| **roll** | **r 6.000, 294 deg** | nothing |
+
+Every radius the designer used is in the board, so the transfer was mostly
+right. Two angles were rounded up (172 to 180, 120 to 130), and - the one that
+matters - **the prototype's seventh feature, a 294 degree roll at r = 6, has no
+counterpart in the board at all.** In the prototype the rounded end of the tail
+is a flat panel carried by that roll; in the board a 4.87 mm bend area at
+y = 38.8 sits on top of the rounded end, so the r = 5 and r = 6.4 outline arcs
+fall INSIDE the bend and the fold is asked to curve the round part itself. That
+is the "разновеликое скругление", and it is why both this exporter and Allegro's
+own 3D fail there.
+
+## Update 2026-07-26 (round 39) — flex2-a0, and a bend nobody can build
+
+A second real board: **flex2-a0**, six bends including a 180° at r=0.5 and a
+130° at r=2.0 - the roll-up case. Five of the six build entirely on true
+cylinders. The sixth is the one the user already knew was wrong.
+
+### The bend that cannot be built, measured
+
+BEND_6 crosses the round stiffener at the top of the board. Of its sixteen
+layer pieces, nine build and **seven refuse**, all with "the solid built from
+them is not valid". The reason is in the outline inside that bend area:
+
+```
+BEND_6: band 36.367..41.233, turn 2.269 rad, neutral radius 2.145
+wire:  Line, Line, Circle(r=5.000 = 2.33 rad), Line,
+       Circle(r=6.400 = 2.98 rad), Circle(r=6.400 = 2.98 rad), Line, ...
+```
+
+The board's own edge curves on a 5-6.4 mm radius **inside a bend that rolls it
+onto 2.1 mm**. Wrapped, those arcs become ellipses spanning 133° and 171° of the
+cylinder each - the material is being asked to curve two ways at once at a scale
+larger than the bend itself. Allegro's own 3D canvas tears the same board in the
+same place, which is the same statement from the other side.
+
+**A tempting check that does not work:** "warn when an arc inside the bend area
+is larger than the bend radius" flags BEND_1 (ratio 8.9) and BEND_5 (7.8) too,
+and both of those build all seven pieces perfectly. Curvature alone does not
+predict it. Rule refused; the honest test is to build it and see.
+
+### So the handling is: build what builds, and say which bend did not
+
+Already true per piece - that is why the user's "not stitched" build came out.
+What was missing was a legible report, so `FoldPlan.summary()` now says:
+
+```
+warning: BEND_6: built in more than one way (7 faceted, 9 wrapped). A bend that
+only partly builds usually means its bend area does not match the board there -
+worth checking in Allegro.
+```
+
+A bend that comes out UNEVEN is the signal. A bend that is entirely faceted is
+just an unusual shape; a bend where some layers are exact and some are not is a
+bend area that does not fit its board.
+
+### The GUI vanished, and I could not make it
+
+The user's "solid colored layers" run closed the window with no message. Five
+reproductions on the same machine, same board, same settings: `layers`, `solid`,
+`inspect`; the CLI; the GUI's own worker thread; and under `pythonw` where the
+GUI actually runs. All completed - 40 s, 485 MB peak. So the crash is not in
+the code path as such, and hunting it further from here is guesswork.
+
+What it means for the design: **a hard crash in OCC kills the process, and the
+build runs in a WORKER THREAD, so the window disappears with nothing written
+anywhere.** Isolating the build in a subprocess would turn any such crash into a
+line in the log - proposed, not built, because it is a real change to a working
+GUI and the user should decide.
+
+Asked of the user: run the same build from a console (`python -m stepbuilder
+... --board-mode layers`) so whatever OCC prints on the way down is captured.
+
+### `foldSliceAngle` is a setting now
+
+The user had edited `DEFAULT_SLICE_ANGLE = 7.5` to 5.0 **in their installed copy
+of bend.py**, which is how the difference showed up in the first place. It is a
+config key and a CLI flag now, so nobody has to edit source to change it.
+
+**Their install is a hand-copied tree and they edit it.** Diffing it against the
+repo took one command and settled what was actually running - do that first,
+before reproducing anything.
+
+### A self-inflicted one worth keeping
+
+Editing README.md with `Get-Content -Raw | ... | Set-Content -Encoding utf8`
+destroyed the Russian half: PowerShell 5.1 reads with the ANSI codepage, so the
+UTF-8 bytes came back as cp1251 mojibake and were written out again as UTF-8.
+Recovered by inverting the mapping byte by byte (cp1251 has undefined slots that
+pass through as raw code points, so the strict codec cannot do it alone). Same
+family as the heredoc trap: **do not round-trip a file through PowerShell.** Use
+the editor, or Python with the encoding named on both ends.
+
+## Update 2026-07-26 (round 38) — the mapper, on branch `feature/bend-mapper`
+
+Round 37 left the exact bend refusing every piece of the real board. This round
+is the general construction the user proposed, in the reduced form our shapes
+allow, and **it now wraps every piece of both bends on flex-b2.**
+
+### The one property everything rests on
+
+In the cylinder's own PARAMETER space - angle across the bend, distance along it
+- the bend map is **affine**: `angle = (distance across) / neutral radius`, and
+the distance along is untouched. An affine map takes a line to a line and a
+circle to an ellipse and bends nothing. So the flat outline is carried into that
+space and the two faces of the bent strip are built ON the cylinder, exactly,
+whatever the outline does.
+
+The user's algorithm proposed discretising every edge and refitting splines.
+That is not needed and, as it turned out, not safe (below). What IS needed:
+
+- **the same 2D outline serves both cylinders**, inner and outer - one curve,
+  two radii - which is what keeps them in registration;
+- **a ruled wall per boundary edge** (`BRepFill.Face_s`), which is a radial
+  plane where the edge ran along the bend, a plane at constant distance where it
+  ran across, and the ruled surface between two helices where it ran at an
+  angle - which is what it physically is;
+- sew, make a solid, check it.
+
+Everything the input analysis in the proposal would have done - is it a sheet,
+how thick, where is the neutral surface - we already know, because we build the
+solid ourselves. The only precondition left is that the piece is **a prism
+standing on a flat face**, which is checked by measurement: top area x thickness
+must equal its volume.
+
+### Four defects, each found by measurement on the real board
+
+**1. Sampled splines are not safe next to a straight edge.** Fitting a relief
+notch through 39 points puts a wiggle of nanometres at its ends, where it meets
+the straight edge it was cut into; OCC then calls the wire self-intersecting and
+throws the solid away. **Every FLEX2 layer of the real board failed exactly
+there.** Fixed by mapping circles analytically to ELLIPSES - closed form, no
+wiggle - which is the case that matters, since notches, fillets and drill holes
+are all circles. Splines remain only for whatever is neither line nor circle.
+
+**2. OCC's default volume integrator is wrong on B-spline faces.** A wrapped
+solid measured **1.5% light** through `VolumeProperties_s(shape, props)`, and
+that sent every piece back to the facets - a defect in the MEASUREMENT, not in
+the geometry. The iterative overload `(shape, props, 1e-5, False, False)` agrees
+with the closed form to 2e-6. The test suite's own `volume()` helper had the
+same bug and now uses the overload too.
+
+**3. A bend does not conserve volume per layer, and must not.** The map
+multiplies volume by `r / rho`, so a layer above the neutral surface is
+compressed and one below is stretched. Measured on the stiffener zone: 0.937 for
+the top coverlay, 1.000 for the dielectric at the core, 1.063 for the bottom
+coverlay - symmetric about the middle, which is the bend being isometric. The
+check now asks for `volume x r_mid / rho`, which is exact for a prism; asking
+for the flat volume back rejected every layer but the one at the core.
+
+**4. In `solid` mode the fold ran after the zones were fused**, so a bend area
+that reaches across a zone boundary - 0.16 mm into the stiffener on this board -
+gave a piece with two thicknesses, which is not something that can be wrapped
+onto one pair of cylinders. Solid mode now folds each LAYER and fuses
+afterwards, like the layer-colored mode, and the fuse gives the same solid.
+
+Plus: a layer that arrives as several disjoint solids (a stiffener the bend area
+clips at both ends is two) is wrapped piece by piece rather than sewn into one
+impossible shell.
+
+### Measured on flex-b2
+
+| | before (facets) | after (wrapped) |
+|---|---|---|
+| BEND_2 | faceted | 16 of 16 layer pieces wrapped |
+| BEND_1 | faceted | 7 of 7 wrapped |
+| solid build | 9.8 s, 6429 kB | 14.6 s, 7316 kB |
+| volume | 3501.52 | 3499.91 |
+
+The volume difference is the isometry: the stack is not symmetric about the
+bend's neutral surface once the stiffener reaches into the bend area, so a few
+tenths of a percent is expected and is in the right direction. `solid` and
+`layers` agree to 0.001 mm3.
+
+### Kept: the revolve, and the facets
+
+Three constructions, tried in order - revolve, wrap, facets - and the log says
+which each bend got, once per bend per way, with the REASON when it falls back
+(`the piece is not a prism standing on a flat face`, `the solid built from them
+is not valid`, ...). The revolve stays because it is cheaper and gives six faces
+where the wrap gives ten; the facets stay because something will eventually turn
+up that neither takes, and a board that folds roughly beats an export that dies.
+
+### Verified
+18/18. New sections: the wrap against the revolve on a shape both can build
+(they agree to **2.7e-15** - two independent constructions of the same solid),
+a relief notch, a hole through the bend area, the isometry (a thin layer above
+the neutral axis loses exactly `r/rho`), and a slanted cut still falling back to
+the facets with its reason printed.
+
+## Update 2026-07-26 (round 37) — the anchor, the K factor, and true cylinders
+
+### Allegro's 3D anchor: found, understood, and unusable
+
+`Setup - Anchor 3D View` (command `anchor 3d view`, `allegro.men:618`) asks for
+a point and prints *"Using (1.9900 1.1600) as anchor for 3D viewing"*. Its
+messages (`share/pcb/text/spmha2.xml`, ids 119-123) define it exactly as the
+piece that stays in plane: *"Pick a point within the design outline"*, *"Point
+cannot be inside a bend"*.
+
+The property it goes to is **`ANCHOR_POINT_3D_VIEWER`** — found in the property
+name table inside `allegro.exe`, since it is in no reference. It is declared
+(`axlDBGetPropDictEntry`: `dataType "UNITS_ARRAY"`, `objects ("designs"
+"layouts")`, `readOnly t`) and **it is never given a value**: empty in
+`axlDBGetProperties` immediately after setting the anchor, absent from
+`design->prop->??` (which lists only properties that have one), still nothing
+after a save and a reopen, and not in any of the 27 attachments. `3DX_BENDS`,
+the promising-looking one, holds the 3D canvas's per-bend slider state:
+`{"format_version":1,"visual_bends":[{"name":"BEND_1","value":0.0}]}`.
+
+Four probe rounds to conclude "the data is not there". Worth it — the
+alternative was a heuristic nobody could check.
+
+**So the anchor is a convention: the origin.** `gui.foldAnchor`, default
+`[0, 0]`, documented in the README, the quick start and the config. It answers
+one question per bend, which side is held, and that is a signed distance - so
+it need not be inside the outline, and the origin sitting exactly on a corner
+costs nothing. `"auto"` still holds the largest piece. The Allegro property is
+read opportunistically (`data["anchor"]`), so a version that starts filling it
+in wins automatically.
+
+**The anchor decides the SHAPE of the fold, not just its position.** With it in
+the middle of the test board, two tails swing off a held centre; at the origin,
+the same two bends are a chain and the board swings as one. The relative
+geometry is identical - it is a rigid motion of the whole assembly - which is
+why the user's "it bends in the right places" verdict survived the change.
+
+### K factor
+
+`gui.foldNeutral`, default 0.5. It sets the material a bend consumes:
+`angle x (radius + k x thickness)`. k = 0 reproduces Allegro's own bend area
+exactly, which is the round-36b finding restated: their drawn area is the inner
+arc, not a bend allowance.
+
+### True cylinders, and why the real board does not get them
+
+The bend map sends (u along the bend, v across it, z) to (u, angle, radius):
+**u is untouched, v becomes the angle, z becomes the radius**. So if the strip
+is the same shape at every v, the bent strip is exactly its cross-section
+**revolved** about the bend axis - `BRepPrimAPI_MakeRevol`, six faces, two of
+them true cylinders, no sewing and no repair. Measured on a test strip: volume
+identical to the flat one to nine decimals (the faceted path costs +0.07% in
+deliberate slice overlap), 6 faces against 50, and the rim area exactly the flat
+perimeter times the thickness.
+
+The precondition is checked by **measurement, not topology**: one cross-section
+times the strip width must equal the strip's volume, with the section taken a
+quarter of the way in, where a taper shows. Anything else - a taper, a hole, a
+zone boundary, a fillet - fails it and falls back to the facets, per shape and
+per bend, with one log line each way.
+
+**On the user's real board it never fires, and the reason is structural.** The
+board outline carries **relief notches** - half circles of r = 0.5 centred on
+each END of the bend line, cut so the flex does not tear - and they sit inside
+the bend area:
+
+```
+outline vertices inside BEND_2's band (y 11.2185..12.5415):
+  (0.0000, 11.3800) (0.1913, 11.4181) (0.3536, 11.5264) (0.4619, 11.6887)
+  (0.5000, 11.8800) ...  (15.5000, 11.8800) ... (16.0000, 11.3800)
+```
+
+That is a notch at each end of a 16 mm bend line, exactly on the bend line's own
+y. There is also a zone boundary (STIFFENER2 ends at y = 11.38) 0.16 mm inside
+the band, so the per-zone layer solids are partial in v as well. Every one of
+the 37 layer solids fails the prism test, most by a wide margin.
+
+**Do not "fix" this by loosening the tolerance.** The notches are real geometry
+0.5 mm across; revolving through them would fill them in. The honest conclusion
+is that the revolve is a fast path for simple strips and that a real flex board
+needs the general construction - map each face's boundary onto the cylinder -
+which is the next piece of work. The insight that makes that tractable is
+already proven here: the map is an axis scaling in the cylinder's PARAMETER
+space, so a line stays a line, an arc becomes an ellipse and a spline stays a
+spline; nothing needs discretising except ruled side walls over slanted edges.
+
+### A defect the exact path introduced, caught by the rim test
+
+With true cylinders in the model, `_rim_faces` painted the inside and outside of
+every bend as rim - it treated any curved face as a side wall. Measured: 77.7
+mm2 of "rim" where the strip's rim is 40. A cylinder is now told apart by its
+AXIS, in the panel's own frame: a drill runs through the board, a bend runs
+along it.
+
+### Verified
+18/18. The bend suite grew to 17 sections: the anchor (default, "auto", an
+explicit point, one outside the board), the K factor against three values
+including Allegro's k = 0, the exact construction (cylindrical faces, volume to
+1e-6, the outside of the bend exact), and the fallback (a notch cut at the end
+of a bend line is noticed, the bend is faceted, and the notch survives with its
+wall intact). The real board still folds: volume 3501.52 against 3501.32 flat,
+both arms away, five zones, no boolean failures.
+
+## Update 2026-07-26 (round 36b) — the live half, and what it corrected
+
+The user ran `probe_bend.il` and the export on **flex-b2** the same day. Three
+things came back: the data path is right, and two pieces of it were wrong.
+
+### What the probe settled
+
+- **The bend group is `BEND_GROUP`**, named exactly as `axlGetBends()` names the
+  bend, with **four** members: the `BEND_AREA` shape, the `BEND_LINE` path, and
+  a `PACKAGE KEEPOUT/ALL` plus a `VIA KEEPOUT/ALL` shape (both carrying
+  `IDX_EXCLUDE`). Reading by layer name picks the two that matter and ignores
+  the keepouts. The group route works; the order-pairing fallback never fired.
+- **A bend line's `->group` and `->groups` are nil**, exactly as a zone
+  outline's are. Through the group is again the only way to keep the
+  association.
+- **The whole property**, at last:
+  `TYPE=CircularBend, INNER_SIDE=TOP, INNER_ANGLE=28.2600, INNER_RADIUS=2.5000
+  MILLIMETERS, ORDER=0, CREATE_VKO=1, VKO_OSIZE=0.0000 MILLIMETERS,
+  CREATE_PKO=1, PKO_OSIZE=0.2490 MILLIMETERS`. The tail that was elided is just
+  the keepout settings from the Create Bend Area form. Nothing needed for
+  folding was hiding in it.
+
+### Defect 1: property names are SYMBOLS, and this memo already said so
+
+Every bend exported with `info: null` and the console said each one carried no
+`IDX_BEND_TYPE_INFO` — while the probe printed it. `car(entry)` on an
+`axlDBGetProperties` pair is a **symbol**, so `== "IDX_BEND_TYPE_INFO"` is false
+however plainly the property is there.
+
+`s3dObjectHasProp` has carried the fix since round 5, with a comment saying
+"property names come back as symbols, hence the %L coercion" — and the new code
+was written without looking at it. The value lookup is now `s3dPropValue`,
+sharing that coercion, and both places use it. **The mechanical checks cannot
+see this class of defect**: the call is well formed, the arity right, the name
+defined. Only a live board or reading the neighbouring function would.
+
+### Defect 2: Allegro's bend area is drawn at the INNER radius
+
+The bend area came out **1.2337 mm** across for a 28.26° bend with R = 2.5.
+
+| candidate | value |
+|---|---|
+| angle x inner radius | **1.2331** |
+| angle x neutral radius (2.5 + 0.365/2) | 1.3232 |
+
+It is the inner arc to within the rounding of its own four-decimal coordinates,
+and there is no thickness term in it at all. So the BEND_AREA is the region to
+keep vias and packages out of, **not a bend allowance**. Round 36 had decided
+"the measured area wins over the computed length" — which would have folded 7%
+too little material on every bend, and would have raised its disagreement note
+on every board with a thin radius. Now the neutral-axis length is folded and the
+drawn area is only checked against the inner arc, with a note when it is neither.
+
+Also confirmed from the same shapes: the bend area is **symmetric about the bend
+line** to four decimals (0.6168 one side, 0.6169 the other), which is the
+documentation's "the bend line represents the midpoint of the bend", measured.
+
+### Defect 3: the real board is not a chain, it is a tree
+
+The two bends are at y = 11.88 (x 0..16) and y = 23.6 (x 25..41), folding
+**opposite arms off the middle of the board** — one up, one down (`INNER_SIDE`
+TOP and BOTTOM respectively). Neither lies beyond the other, and round 36's
+chain check rejected the second one outright.
+
+Rewritten as a tree: a bend is a child of every bend whose moving side wholly
+contains it and takes the innermost of those as its parent; bends on different
+arms are all children of the held panel. Only genuinely **overlapping strips**
+are refused now, and the refusal drops that bend alone rather than everything
+past it. Each strip and each moving panel also carries its ancestors'
+constraints, so a bend line that spans only part of the board's width cannot
+claim material on the far side of its parent.
+
+### Verified on the real board, here
+
+`flex-b2.json` as exported, with the two property strings pasted in from the
+probe (which is what the fixed exporter will now write), built through
+`generate()`:
+
+- Both bends fold. The **held panel is the middle**, `12.62 < y < 22.86`, which
+  is what a person would hold.
+- Each bend picks up the **flex** stack through point-in-polygon: 1.323 mm of
+  material folded, which is 28.26° x (2.5 + 0.365/2) exactly.
+- No note about the bend area, no boolean failure, no warning except the
+  pre-existing zero-width silkscreen text.
+- Volume 3500.85 folded against 3501.32 flat — **0.013% apart**, and in the
+  direction of losing a hair rather than inventing material.
+- The board's extent goes from y −2.50..32.00, z −2.65..16.86 flat to
+  y 1.30..31.08, z −6.35..20.27 folded: both arms swung away, one up, one down.
+- `solid` and `layers` agree to 0.002%.
+
+Still not looked at in CAD by a human — the numbers say the fold is right, but
+whether the two arms end up where the product needs them is a question for the
+model on screen.
+
+### Left open
+
+- The half-plane model is **sound on this board** but is still a half-plane
+  model: a bend line that does not span the board's width at that point relies
+  on there being no material out to the sides, which is true here (the bend
+  area is trimmed to the outline and reaches both edges) and is not guaranteed
+  in general. The proper fix is connectivity — cut the flat outline by the bend
+  strips and walk the resulting faces as a graph. Not needed yet.
+- `flex-b2.json` is the only real rigid-flex intermediate there is, and it lives
+  outside the repo in the user's project. Copying it in as a fixture would make
+  the fold regression-testable against real geometry forever; it is the user's
+  design data, so it is their call.
 
 ## Update 2026-07-25 (round 26) — multi-stackup / rigid-flex
 

@@ -17,10 +17,13 @@ import json, sys
 from pathlib import Path
 
 ROOT = _ROOT
-sys.path.insert(0, str(ROOT / "stepbuilder"))
 sys.path.insert(0, str(ROOT))
-import importlib
-core = importlib.import_module("core")
+# The PACKAGE import, not a bare `core`: core.py reaches sideways to its
+# siblings (`from .colors import ...`, `from .bend import ...`) inside the
+# functions that need them, and a bare module has no package to reach from.
+# The failure is an ImportError deep in generate(), on whichever feature the
+# test happens to exercise.
+from stepbuilder import core
 
 demo = json.load(open(ROOT / "demo/ap-214/demo.json"))
 board = {"name": demo["name"], "pcb": demo["pcb"]}

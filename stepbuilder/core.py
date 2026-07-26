@@ -53,14 +53,16 @@ class StepBuilderError(Exception):
 # --------------------------------------------------------------------------- #
 
 LogFn = Callable[[str], None]
-ProgressFn = Callable[[int, int], None]
+# (value, total, what is happening). The label is optional so an older caller
+# passing a two-argument function still works.
+ProgressFn = Callable[..., None]
 
 
 def _noop_log(message: str) -> None:
     pass
 
 
-def _noop_progress(current: int, total: int) -> None:
+def _noop_progress(current: int, total: int, label: str = "") -> None:
     pass
 
 
@@ -509,7 +511,11 @@ def _stackup_board(stackups: dict, zones: list[dict], shift: float,
     if not solids:
         raise StepBuilderError("No stackup layer produced a solid")
     log(f"Building board from {len(solids)} layer solid(s)")
+    return fuse_and_unify(solids, log)
 
+
+def fuse_and_unify(solids: list[TopoDS_Shape], log: LogFn) -> TopoDS_Shape:
+    """One solid out of many, with the coplanar interfaces merged away."""
     if len(solids) == 1:
         return solids[0]
 
@@ -1507,7 +1513,7 @@ def _set_color(color_tool, label, rgb01, srgb: bool) -> None:
         color_tool.SetColor(label, color, target)
 
 
-def _rim_faces(shape: TopoDS_Shape):
+def _rim_faces(shape: TopoDS_Shape, fold=None):
     """Return the vertical (edge/rim) faces of the board.
 
     The rim is the set of side walls, identified by a horizontal normal
@@ -1517,6 +1523,14 @@ def _rim_faces(shape: TopoDS_Shape):
     leaked into the "top" set and the rim color landed on a flat face.
     Everything with a vertical normal is rim; the flat top and bottom faces
     keep the board color.
+
+    **On a folded board, "vertical" is asked in the panel's own frame.** A tail
+    folded through 90 degrees has its top face standing vertically, and the
+    plain test would paint the whole of it as rim - which is not a subtle
+    error, it is most of the board in the wrong color. Each face is put back
+    into the flat frame of the panel it came from before its normal is judged,
+    so the rim of a folded board is the same set of faces it was before the
+    fold.
     """
     # TopoDS is NOT re-imported here: it is a module-level import already, and
     # a local import of a module-level name makes that name local to the whole
@@ -1524,21 +1538,44 @@ def _rim_faces(shape: TopoDS_Shape):
     # Harmless while these lines sit first, a trap the moment anything is added
     # above them.
     from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
     from OCP.GeomAbs import GeomAbs_SurfaceType
     from OCP.TopAbs import TopAbs_ShapeEnum
     from OCP.TopExp import TopExp_Explorer
+
+    def unfolded_z(face, direction) -> float:
+        """A direction's z, in the frame of the panel the face sits on."""
+        if fold is None:
+            return direction.Z()
+        props = GProp_GProps()
+        BRepGProp.SurfaceProperties_s(face, props)
+        back = fold.flat_frame(props.CentreOfMass())
+        if back is None:
+            return direction.Z()
+        return direction.Transformed(back).Z()
 
     rim = []
     exp = TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_FACE)
     while exp.More():
         face = TopoDS.Face_s(exp.Current())
         surf = BRepAdaptor_Surface(face)
-        if surf.GetType() == GeomAbs_SurfaceType.GeomAbs_Plane:
-            nz = surf.Plane().Axis().Direction().Z()
+        kind = surf.GetType()
+        if kind == GeomAbs_SurfaceType.GeomAbs_Plane:
+            nz = unfolded_z(face, surf.Plane().Axis().Direction())
             if abs(nz) < 0.5:            # vertical wall -> rim
                 rim.append(face)
+        elif kind == GeomAbs_SurfaceType.GeomAbs_Cylinder:
+            # A cylinder is a drill or a rounded cutout edge - rim - UNLESS it
+            # is the surface of a bend, which is the board's own face wrapped
+            # round. The two are told apart by the axis: a hole's runs through
+            # the board, a bend's runs along it. Getting this wrong paints the
+            # whole inside and outside of every bend as rim.
+            axis = surf.Cylinder().Axis().Direction()
+            if abs(unfolded_z(face, axis)) > 0.5:
+                rim.append(face)
         else:
-            # curved wall (e.g. a rounded cutout edge) counts as rim too
+            # any other curved wall (a swept cutout edge, say) counts as rim
             rim.append(face)
         exp.Next()
     return rim
@@ -1570,6 +1607,10 @@ def generate(
     board_mode: str = "solid",
     layer_colors: dict | None = None,
     ignore_soldermask: bool = False,
+    fold_bends: bool = True,
+    fold_anchor: tuple[float, float] | str | None = None,
+    fold_neutral: float | None = None,
+    fold_slice_angle: float | None = None,
     log: LogFn = _noop_log,
     progress: ProgressFn = _noop_progress,
 ) -> BuildResult:
@@ -1631,6 +1672,22 @@ def generate(
         thickness removed - on both sides, independently. Components then sit
         on the copper rather than on the mask. Applies to a multi-stackup
         board's layers and to a plain board's pcb.thickness alike.
+    fold_bends:
+        Fold the board along its bend areas (format_version 7). The board, the
+        legend and the components all move together. False exports it flat,
+        which is how Allegro holds it and how every export before this behaved.
+        A board with no bend areas is unaffected either way. See bend.py.
+    fold_anchor:
+        (x, y) of the piece that stays in the XY plane. None means the
+        documented default, the ORIGIN; "auto" holds the largest piece the bend
+        lines leave instead.
+    fold_neutral:
+        Where the neutral axis sits in the stack, as a fraction of thickness
+        from the inner surface (default 0.5). It sets how much flat material a
+        bend consumes: angle x (radius + k x thickness).
+    fold_slice_angle:
+        Degrees of arc per slice for a bend that has to be faceted (default
+        7.5). Only reached when neither exact construction applies.
     """
     json_file = Path(json_file)
     output_dir = Path(output_dir)
@@ -1641,6 +1698,17 @@ def generate(
     if not json_file.is_file():
         raise StepBuilderError(f"Input file does not exist: {json_file}")
 
+    # Coarse phases, so the bar moves while the slow part is happening rather
+    # than filling up at the very end. The board is the slow one on a folded
+    # rigid-flex design - a minute of the two it takes - and it used to show
+    # nothing at all.
+    def phase(value: float, label: str) -> None:
+        try:
+            progress(value, 100, label)
+        except TypeError:                    # a caller from before the label
+            progress(int(value), 100)
+
+    phase(2, "Reading the intermediate")
     index = StepFileIndex(step_dir, log=log)
 
     log(f"Reading {json_file.name}")
@@ -1718,6 +1786,49 @@ def generate(
         board_top_z, board_bottom_z = thickness, 0.0
         extrude_z_offset = thickness       # outline at z=+T, prism goes down to 0
 
+    # ---- bends ----------------------------------------------------------- #
+    # Worked out here, once, because everything the fold touches - the board,
+    # the legend, every component - has to be carried by the SAME plan, and the
+    # plan needs the two board faces, which are only known now.
+    fold = None
+    if fold_bends:
+        from .bend import (DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR,
+                           DEFAULT_SLICE_ANGLE, plan_from_json)
+
+        # None means "the documented default", the origin; the string "auto"
+        # is how a caller asks for the old behaviour of holding the largest
+        # piece instead. A pair is the point itself.
+        if fold_anchor is None:
+            anchor = DEFAULT_ANCHOR
+        elif isinstance(fold_anchor, str):
+            anchor = None
+        else:
+            anchor = (float(fold_anchor[0]), float(fold_anchor[1]))
+
+        plan = plan_from_json(
+            data, board_top_z, board_bottom_z, zones=zones, levels=levels,
+            anchor=anchor,
+            neutral_factor=(DEFAULT_NEUTRAL_FACTOR if fold_neutral is None
+                            else float(fold_neutral)),
+            slice_angle=(DEFAULT_SLICE_ANGLE if fold_slice_angle is None
+                         else float(fold_slice_angle)),
+            log=log)
+        if plan:
+            for line in plan.describe():
+                log(line)
+            fold = plan
+    elif data.get("bends"):
+        log("Bend folding is off: the board is exported flat")
+
+    def folded(shape, fuse: bool = True, note: bool = True):
+        """One shape through the fold, or unchanged when there is nothing to do.
+
+        note=False for the legend: a letter inside a bend area is never the
+        straight strip the exact construction needs, and saying so once per
+        build is noise - the board is what the message is about.
+        """
+        return fold.apply(shape, fuse=fuse, note=note, log=log) if fold else shape
+
     # (write.surfacecurve.mode is set AFTER the writer is constructed, see
     # below - the STEPCAFControl_Writer constructor resets it, so setting it
     # here would be silently undone.)
@@ -1733,6 +1844,7 @@ def generate(
     TDataStd_Name.Set_s(main_assembly, TCollection_ExtendedString(_sanitize(json_stem)))
 
     # ---- board ----------------------------------------------------------- #
+    phase(10, "Building the board")
     log("Building board geometry")
 
     multi = bool(zones and stackups)
@@ -1746,6 +1858,11 @@ def generate(
 
         palette = {**DEFAULT_LAYER_COLORS, **(layer_colors or {})}
         parts = make_board_layer_parts(data["pcb"], stackups, zones, shift, log)
+        # Folded BEFORE the fuse, not after: the per-face colors below are keyed
+        # on the face objects the fuse hands back, and folding a shape replaces
+        # every face in it. Fold first and the two steps do not fight.
+        if fold:
+            parts = [(zone, layer, folded(solid)) for zone, layer, solid in parts]
         board, faces = fuse_keeping_faces(parts, log)
 
         pcb_label = shape_tool.NewShape()
@@ -1786,7 +1903,7 @@ def generate(
         for zone_name, layer, solid in parts:
             layer_name = str(layer.get("name") or "?")
             label = shape_tool.NewShape()
-            shape_tool.SetShape(label, solid)
+            shape_tool.SetShape(label, folded(solid))
             rgb = palette.get(layer_kind(layer), DEFAULT_LAYER_COLORS["other"])
             _set_color(color_tool, label,
                        (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0), srgb_color)
@@ -1800,13 +1917,30 @@ def generate(
         shape_tool.UpdateAssemblies()
         board = None
         pcb_label = None
+    elif fold and multi:
+        # Folded, and the board is several stackups: the bend has to be applied
+        # to each LAYER and only then fused. A bend area on a real board reaches
+        # across a zone boundary - 0.16 mm into the stiffener on the test board -
+        # so the fused board is two different thicknesses inside the same bend,
+        # which is not something that can be wrapped onto one pair of cylinders.
+        # Per layer it is, and the fuse afterwards gives the same solid.
+        parts = make_board_layer_parts(data["pcb"], stackups, zones, shift, log)
+        board = fuse_and_unify([folded(solid) for _, _, solid in parts], log)
+
+        pcb_label = shape_tool.NewShape()
+        shape_tool.SetShape(pcb_label, board)
     else:
         board = make_board_geometry(data["pcb"], thickness, extrude_z_offset,
                                     zones=zones, levels=levels, stackups=stackups,
                                     shift=shift, log=log)
+        board = folded(board)
 
         pcb_label = shape_tool.NewShape()
         shape_tool.SetShape(pcb_label, board)
+
+    if fold:
+        for line in fold.summary():
+            log(f"warning: {line.strip()}")
 
     # Both non-solid modes have already decided every color on the board:
     # "inspect" per part, "layers" per face. A board color or a rim color
@@ -1830,7 +1964,7 @@ def generate(
         # color, which costs a few extra entities but is what the user asked
         # for. The flat top/bottom keep the board color.
         rim_rgb01 = (rim_color[0] / 255.0, rim_color[1] / 255.0, rim_color[2] / 255.0)
-        rim_faces = _rim_faces(board)
+        rim_faces = _rim_faces(board, fold)
         rim_q = Quantity_Color(
             rim_rgb01[0], rim_rgb01[1], rim_rgb01[2],
             Quantity_TypeOfColor.Quantity_TOC_sRGB if srgb_color
@@ -1850,6 +1984,7 @@ def generate(
     # ---- silkscreen ------------------------------------------------------ #
     # Its own part per side, so it can be hidden or recolored in the viewer
     # without touching the board, and so the two sides stay distinguishable.
+    phase(60, "Building the legend")
     silk_data = data.get("silkscreen")
     silk_built = 0
     silk_skipped = 0
@@ -1895,8 +2030,11 @@ def generate(
             silk_skipped += skipped
             if compound is None:
                 continue
+            # fuse=False: the legend was never one solid, and fusing thousands
+            # of barely touching prisms was measured at 154% of the file size
+            # (round 10g). Folding does not change that arithmetic.
             silk_label = shape_tool.NewShape()
-            shape_tool.SetShape(silk_label, compound)
+            shape_tool.SetShape(silk_label, folded(compound, fuse=False, note=False))
             _set_color(color_tool, silk_label, ink01, srgb_color)
             TDataStd_Name.Set_s(
                 silk_label,
@@ -1922,7 +2060,7 @@ def generate(
     # Anything not reserved is a refdes. "silkscreen" MUST be listed here or it
     # would be walked as if it were a component.
     _reserved = ("name", "pcb", "format", "format_version", "silkscreen",
-                 "embedded_models", "zones", "stackups")
+                 "embedded_models", "zones", "stackups", "bends")
     components = {k: v for k, v in data.items() if k not in _reserved}
     result = BuildResult(
         output=output_dir / f"{json_stem}.step",
@@ -1939,7 +2077,7 @@ def generate(
 
     total = len(components)
     for i, (ref_des, component) in enumerate(components.items(), start=1):
-        progress(i, total)
+        phase(75 + 20.0 * i / max(total, 1), f"Placing components {i}/{total}")
 
         mapping = component.get("step_mapping")
         if not mapping or not mapping.get("step_name"):
@@ -1997,6 +2135,19 @@ def generate(
         trsf = component_transform(mapping, component, board_top_z, board_bottom_z,
                                    zone_levels=levels)
 
+        # A folded board carries its parts with it. The component is placed in
+        # the FLAT frame first and then moved by whatever its panel does, which
+        # is the same composition the board geometry goes through - so a part
+        # cannot drift off the surface it was placed on.
+        if fold:
+            x, y = float(component["x"]), float(component["y"])
+            in_bend = fold.in_bend_area(x, y)
+            if in_bend:
+                log(f"warning: {ref_des} stands in bend area {in_bend} - it is "
+                    f"placed on the curve, but a component there is a design "
+                    f"rule violation, not a modelling choice")
+            trsf = fold.transform_at(x, y) * trsf
+
         # Place the shared part DIRECTLY under symbols_top / symbols_bot, as an
         # instance that carries the STEP file's own name. No per-refdes wrapper
         # sub-assembly and no refdes_<board> instance name (that was
@@ -2018,6 +2169,7 @@ def generate(
     # ---- write ----------------------------------------------------------- #
     # FIX: the C++ version hardcoded a backslash separator, which produced a
     # file literally named "out\name.step" on anything but Windows.
+    phase(96, "Writing the STEP file")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     writer = STEPCAFControl_Writer()
@@ -2038,5 +2190,6 @@ def generate(
     if status != IFSelect_ReturnStatus.IFSelect_RetDone:
         raise StepBuilderError(f"Failed to write {result.output} (status {status})")
 
+    phase(100, "Done")
     log(f"Wrote {result.output}")
     return result

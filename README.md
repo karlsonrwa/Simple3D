@@ -154,6 +154,10 @@ and whether it parsed. A byte-order mark left by an editor is tolerated.
 | | `boardMode` | How the board body is built on a **multi-stackup / rigid-flex** design; ignored on an ordinary board. `solid` — one solid in one color, coplanar faces merged, smallest file. `layers` — one solid whose layer interfaces are **kept**, so every face is colored by the kind of layer it belongs to and the rim shows the stack (about 4.7x `solid`). `inspect` — every layer of every zone as its own named part, for taking the board apart by eye. GUI: the **Board** dropdown; CLI: `--board-mode`. |
 | | `layerColors` | Color per kind of stackup layer (`copper`, `base`, `coverlay`, `adhesive`, `stiffener`, `soldermask`, `other`), used by `boardMode: layers`. Defaults are **Allegro's own material colors**, taken from a board's `3DX_APPEARANCE`, so the export looks like the same board does in Allegro's 3D canvas. Set them from the swatch row beside the Board dropdown, or by hand as `#RRGGBB`. |
 | | `ignoreSoldermask` | Leave the soldermask out of the board entirely, however the design defines it, and **close the stack up toward the core** by exactly the thickness removed — each side independently. Components then rest on the copper rather than on the mask. Applies to a multi-stackup board's layers and to a plain board's `soldermask_top`/`soldermask_bottom` alike. GUI: *Ignore soldermask layers*; CLI: `--ignore-soldermask`. Decided when the model is built, so it needs no re-export. |
+| | `foldBends` | Fold the board along the **bend areas** defined in Allegro (*Setup – Bend*), so a flex tail is modelled where it ends up instead of flat. The board, the legend and the components all move together. `false` exports it flat, the way Allegro holds it. A design with no bend areas is unaffected either way. GUI: *Fold flex bends*; CLI: `--flat` turns it off. Decided when the model is built, so it needs no re-export. |
+| | `foldAnchor` | The point of the board that **stays in the XY plane**, as `[x, y]`. **The origin, `[0, 0]`, by convention** — see *Folding flex bends*. It only decides which side of each bend line is held, so it need not be inside the outline. `"auto"` holds the largest piece the bend lines leave instead. CLI: `--fold-anchor X,Y|auto`. |
+| | `foldNeutral` | Where the neutral axis sits in the stack, as a fraction of thickness from the inner surface (default `0.5`, the middle). This is what decides how much flat material a bend consumes: `angle × (radius + k × thickness)`. CLI: `--fold-neutral K`. |
+| | `foldSliceAngle` | Degrees of arc per slice for a bend that has to be **faceted** — which happens only when neither exact construction fits, and the log then names the bend and the reason. Default `7.5`. Bends built as true cylinders ignore it. CLI: `--fold-slice-angle DEG`. |
 | | `debugLayers` | Inspection build for multi-stackup boards: every stackup layer becomes its own part named `<zone>__<layer>` with its own contrasting color, **not fused** into one board solid — for checking a stackup by eye. Several times larger, and the board is no longer one solid, so leave it off for normal exports. Also `--board-mode {solid,layers,inspect}`, and a checkbox beside *Compact STEP (reuse component geometry)*. |
 | `settings` | `negativeLayers` | Stackup layers whose drawn shapes are **openings** rather than material, matched as a case-insensitive substring of the layer name or its IPC function. Coverlay, soldermask and pastemask are drawn that way by convention; stiffener, adhesive and epoxy are the opposite. Add a layer here if its bodies come out inverted in the inspection build. |
 | | `windowGeometry`, `windowState` | Where the window was when it was last closed (`WIDTHxHEIGHT+X+Y`) and whether it was maximized. Restored on the next run, so on a multi-monitor desk it comes back **on the same screen** — `X` is negative for a monitor left of the primary. If that position is no longer reachable (usually the monitor was disconnected) it is ignored, the window is centred on the main screen and the log says so. Empty on a first run, which also centres it. |
@@ -188,11 +192,19 @@ needs changing if you deliberately keep the config somewhere else.
 | **Color** (same row) | Silkscreen ink: **White** or **Black**. Those are the two colors legend ink actually comes in, so it is a closed choice. |
 | **Flat** (same row) | Draw the legend as surfaces instead of thin solids: about a quarter of the silkscreen's file size. Their height above the board is `gui.silkscreenFlatHeight`. See *Silkscreen file size* below. |
 | **Silkscreen layers** | A tick per layer found in the loaded JSON, with its polygon count, the two sides side by side. Untick a layer to leave it out of this build — no re-export needed. **All** / **None** set them together, skipping a side that is switched off. |
+| **Fold flex bends** | Fold the board along its bend areas (see *Folding flex bends*). On by default; unticking it exports the board flat. Does nothing on a board with no bend areas. |
 | **Compact STEP (reuse component geometry)** | Drops parametric surface curves (`write.surfacecurve.mode = 0`), roughly halving the file with identical geometry. |
 | **Generate** | Builds one file, or every queued variant. |
 
 Log messages are color-coded: **orange** for warnings, **dark red** for errors,
-green for success.
+green for success. The progress bar follows the whole build — reading, the
+board, the legend, components, writing — and the line beside it says which.
+
+**The build runs in a child process.** OpenCASCADE can die outright rather than
+raise, and a boolean over a difficult board occasionally does; in a thread that
+would close this window with nothing written anywhere. Instead the window
+reports the exit code and what usually gets a board through: *Not stitched*,
+which fuses nothing, or a coarser `gui.foldSliceAngle`.
 
 The Allegro console is color-coded too. Messages go through `axlUIWPrint` with
 a severity, so warnings appear in Allegro's warning color and errors in red,
@@ -460,7 +472,87 @@ by layer name here — a flex stackup has no `SOLDERMASK` layer at all (coverlay
 adhesive and stiffener sit in its place), so a name-based sum would silently
 report those layers as nothing.
 
-Bends are **not** applied: see *Known limitations*.
+## Folding flex bends
+
+A bend is not geometry in Allegro — it is a line on `RIGID FLEX/BEND_LINE`, an
+area on `RIGID FLEX/BEND_AREA`, and a property carrying the angle, the inner
+side and the bend order. Simple 3D reads all three and folds the model:
+
+```
+Folding 1 bend(s):
+  BEND1: 90.00 deg over 2.431 mm, inner radius 1.000 mm on the top, order 0
+```
+
+**Everything moves together.** The board, the printed legend and the components
+are placed flat first and then carried by the fold, so a part cannot drift off
+the surface it was placed on. A component standing in a bend area is placed on
+the curve and reported — it is a design rule violation, not a modelling choice.
+
+**The radius is measured from the local stack.** A bend crosses the flex, and on
+a rigid-flex board the flex surface can be two millimetres below the top of the
+stiffener; the fold uses the stackup of the zone the bend line is in.
+
+**Which side moves — the anchor.** The piece containing the **origin** stays in
+the XY plane and everything beyond each bend swings from it. Allegro has the
+same idea (*Setup – Anchor 3D View*), but in 24.1 the point it asks for never
+reaches the board file — not the design property it declares for it
+(`ANCHOR_POINT_3D_VIEWER`), not the design's attributes, not any attachment — so
+the design cannot tell us and `[0, 0]` is the convention instead. **Put the part
+of the board that should lie flat over the origin**, or name another point in
+`gui.foldAnchor`. The anchor decides the shape of the fold, not just where it
+sits: with it in the middle of a board, two tails swing off a held centre; at
+one end, the same two bends make a chain.
+
+Bends are folded outwards from the held piece, each one in the frame the ones
+before it leave. A bend whose moving side wholly contains another carries it;
+bends on different arms are independent.
+
+What to know about the result:
+
+**The bend surfaces are true cylinders.** There are three constructions, tried
+in order, and the log says which one each bend got:
+
+- **Revolved.** When the board is the same shape all the way across a bend area,
+  the bent part is its cross-section revolved about the bend axis: six faces,
+  two of them exact cylinders, and the volume unchanged to nine decimals.
+- **Wrapped.** Otherwise the outline itself is carried onto the cylinder. In the
+  cylinder's parameter space the bend is an affine map — the angle is the
+  distance across the bend over the neutral radius — so a straight edge stays
+  straight, an arc becomes an ellipse, and the surfaces stay exactly
+  cylindrical however complicated the outline is. This is what real boards get:
+  the **relief notches** at the ends of a bend line — the half circles cut so
+  the flex does not tear — sit inside every bend area, and so do zone
+  boundaries and the occasional hole.
+- **Faceted**, in rigid slices of 7.5°, if neither applies — a piece that is not
+  a flat-topped prism, which on a board means something unusual. The chords sit
+  about 0.2% of the radius inside the true surface, and consecutive slices
+  overlap by a hair so they interpenetrate rather than touching along a line,
+  which is what lets the fuse produce one solid. Under 0.5% of the volume.
+
+**A bend stretches and compresses the board, and the model says so.** Material
+outside the neutral surface is longer than it was flat and material inside is
+shorter — each layer's volume comes out multiplied by its own radius over the
+neutral one. On the test board the top coverlay comes out at 0.937 of its flat
+volume, the dielectric at the core at 1.000 and the bottom coverlay at 1.063.
+
+**The flat panels either side are never approximated** — they get one exact
+rigid transform each, whichever way the bend itself was built.
+- **How much flat material a bend consumes** is its arc length along the
+  neutral axis, `angle × (radius + k × thickness)`, with `k = gui.foldNeutral`
+  (0.5, the middle, by default). Allegro's own bend area is drawn at the
+  **inner** radius — measured on a real board, 1.2337 mm across for 28.26° and
+  R = 2.5, against 1.2331 for `angle × 2.5`, i.e. `k = 0` — so it marks the
+  region to keep vias and packages out of, not a material budget. The drawn area
+  is checked against that and the log says so if it is neither.
+- **Bends that overlap as seen from the held part are not a chain**, and the
+  export says which one it stopped at and leaves it and everything past it flat
+  rather than guessing.
+- **Not stitched** folds each layer separately and never fuses them, so along a
+  bend the layer bodies overlap each other very slightly — 0.25% of the board's
+  volume on the test board. Flat, the three stitchings agree exactly.
+
+Tick *Fold flex bends* off (or pass `--flat`) for the flat board. The decision
+is made when the model is built, so both come out of one export.
 
 ## Models the board carries a copy of
 
@@ -538,10 +630,17 @@ extrudes and subtracts directly, so it is reliable. The general rule: anything
 you want as a hole in the board must exist as a closed contour on the CUTOUT
 subclass.
 
-**Bends are not applied.** A rigid-flex board is exported **flat**, in the
-layout the design is drawn in. Multiple stackups are handled (see *Multi-stackup
-and rigid-flex* above), but a bend line is not folded: the flex sections stay in
-plane. For a folded model, use Allegro's own 3D export.
+**A folded bend is a cylinder, not a bent stack-up model.** The surfaces are
+exact and the material stretches and compresses as it should (see *Folding flex
+bends*), but nothing here models what a bend does to copper, adhesive or
+coverlay individually — the whole stack is carried by one map about one neutral
+surface, whose position is `gui.foldNeutral`. Good for fit, clearance and a
+picture; not a substitute for a flex stress calculation.
+
+**Bends that overlap each other as seen from the held part are not folded.**
+Allegro will not let bend areas overlap, but two bends whose *half-planes* cross
+- a tail bent one way and another bend across it - do not form a chain, and the
+export stops at the second one and says so.
 
 **Component B-rep comes from your library STEP models.** File size beyond the
 board itself is dominated by those models; "Compact STEP (reuse component geometry)" cannot shrink
@@ -577,8 +676,9 @@ Flags: `--batch` (json arg is a folder; build every tagged variant),
 json's own stem names its output), `--no-silkscreen`, `--no-silk-top`,
 `--no-silk-bottom`, `--flat-silkscreen`, `--silk-flat-height MM`,
 `--silk-layer-off LAYER` (repeatable), `--silk-color White|Black`,
-`--no-minimize`, `--legacy-color`, `--quiet`. Exit code 0 on success, 1 on
-error.
+`--ignore-soldermask`, `--flat` (do not fold the bends), `--fold-anchor X,Y|auto`,
+`--fold-neutral K`, `--fold-slice-angle DEG`, `--board-mode {solid,layers,inspect}`, `--no-minimize`,
+`--legacy-color`, `--quiet`. Exit code 0 on success, 1 on error.
 
 ## Package layout
 
@@ -586,6 +686,8 @@ error.
 stepbuilder/
   core.py       geometry + assembly. No UI, no printing: reports via callbacks.
   colors.py     the eight board themes + rim options.
+  bend.py       folding a flex board along its bend areas.
+  worker.py     the build, in a child process, so a crash cannot take the window.
   gui.py        tkinter window. Thin wrapper around core.
   __main__.py   entry point: GUI, headless, or --gui prefill for Allegro.
 ```
@@ -742,6 +844,10 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 | | `boardMode` | Как строится тело платы на **мультистэкапе / rigid-flex**; на обычной плате игнорируется. `solid` — одно тело одного цвета, копланарные грани слиты, самый лёгкий файл. `layers` — одно тело, но границы слоёв **сохранены**, каждая грань красится по виду своего слоя, и торец показывает стек (примерно в 4.7 раза больше `solid`). `inspect` — каждый слой каждой зоны отдельной именованной деталью, чтобы разобрать плату глазами. GUI: список **Board**; CLI: `--board-mode`. |
 | | `layerColors` | Цвет на вид слоя (`copper`, `base`, `coverlay`, `adhesive`, `stiffener`, `soldermask`, `other`), используется при `boardMode: layers`. По умолчанию — **собственные цвета материалов Allegro**, взятые из `3DX_APPEARANCE` платы, так что экспорт выглядит как та же плата в 3D-канвасе Allegro. Задаются рядом квадратиков рядом со списком Board или вручную как `#RRGGBB`. |
 | | `ignoreSoldermask` | Полностью исключить паяльную маску из платы, как бы она ни была задана в проекте, и **сомкнуть стек к ядру** ровно на убранную толщину — с каждой стороны независимо. Компоненты тогда стоят на меди, а не на маске. Действует и на слои платы с мультистэкапом, и на `soldermask_top`/`soldermask_bottom` обычной платы. GUI: *Ignore soldermask layers*; CLI: `--ignore-soldermask`. Решение принимается при сборке модели, переэкспорт не нужен. |
+| | `foldBends` | Сгибать плату по **зонам сгиба**, заданным в Allegro (*Setup – Bend*), чтобы гибкий шлейф был там, где он окажется, а не в плоскости. Плата, легенда и компоненты едут вместе. `false` — экспорт плоской платы, как она лежит в Allegro. На плате без зон сгиба не меняет ничего. GUI: *Fold flex bends*; CLI: `--flat` выключает. Решение принимается при сборке модели, переэкспорт не нужен. |
+| | `foldAnchor` | Точка платы, которая **остаётся в плоскости XY**, как `[x, y]`. **По соглашению — начало координат, `[0, 0]`**; см. «Сгибание гибких плат». Она отвечает только на вопрос, по какую сторону каждой линии сгиба держим, поэтому попадать внутрь контура не обязана. `"auto"` — держать самый большой кусок, который оставляют линии сгиба. CLI: `--fold-anchor X,Y|auto`. |
+| | `foldNeutral` | Где в стеке лежит нейтральная ось, долей толщины от внутренней поверхности (по умолчанию `0.5` — середина). Именно это решает, сколько плоского материала съедает сгиб: `угол × (радиус + k × толщина)`. CLI: `--fold-neutral K`. |
+| | `foldSliceAngle` | Градусов дуги на один ломтик для сгиба, который пришлось **гранить** — а это бывает, только когда не подошло ни одно точное построение, и лог тогда называет сгиб и причину. По умолчанию `7.5`. Сгибы, построенные настоящими цилиндрами, его игнорируют. CLI: `--fold-slice-angle DEG`. |
 | | `debugLayers` | Инспекционная сборка для плат с мультистэкапом: каждый слой становится отдельной деталью `<зона>__<слой>` со своим контрастным цветом и **не сплавляется** с остальными — чтобы разобрать стэкап глазами. Файл в несколько раз больше, плата перестаёт быть одним телом, поэтому для обычного экспорта выключено. Также `--board-mode {solid,layers,inspect}` и галочка рядом с *Compact STEP (reuse component geometry)*. |
 | `settings` | `negativeLayers` | Слои стэкапа, чьи нарисованные шейпы — **окна**, а не материал; сопоставление без учёта регистра по подстроке имени слоя или его IPC-функции. Coverlay, soldermask и pastemask рисуются так по конвенции; stiffener, adhesive и epoxy — наоборот. Добавьте слой сюда, если в инспекционной сборке его тела вышли инверсными. |
 | | `windowGeometry`, `windowState` | Где было окно при последнем закрытии (`ШИРИНАxВЫСОТА+X+Y`) и было ли оно развёрнуто. Восстанавливается при следующем запуске, поэтому на нескольких мониторах окно возвращается **на тот же экран** — для монитора левее главного `X` отрицателен. Если позиция стала недостижимой (обычно монитор отключили), она игнорируется, окно центрируется на главном экране, и в лог пишется почему. При первом запуске пусто — окно тоже центрируется. |
@@ -777,11 +883,19 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 | **Color** (в той же строке) | Цвет краски: **White** или **Black**. Это те два цвета, которыми шелкография реально печатается, поэтому выбор закрытый. |
 | **Flat** (в той же строке) | Рисовать легенду поверхностями вместо тонких тел: примерно вчетверо меньший вклад в размер файла. Высота над платой задаётся `gui.silkscreenFlatHeight`. См. «Размер файла и шелкография» ниже. |
 | **Silkscreen layers** | Галочка на каждый слой, найденный в загруженном JSON, с числом полигонов; стороны расположены рядом. Снимите галочку — слой не попадёт в эту сборку, повторный экспорт не нужен. **All** / **None** переключают все сразу, пропуская выключенную сторону. |
+| **Fold flex bends** | Согнуть плату по её зонам сгиба (см. «Сгибание гибких плат»). Включено по умолчанию; снятая галочка даёт плоскую плату. На плате без зон сгиба не делает ничего. |
 | **Compact STEP (reuse component geometry)** | Убирает параметрические кривые поверхностей (`write.surfacecurve.mode = 0`), примерно вдвое уменьшая файл при идентичной геометрии. |
 | **Generate** | Собирает один файл или все варианты из очереди. |
 
 Сообщения в логе раскрашены: **оранжевый** — предупреждения, **тёмно-красный** —
-ошибки, зелёный — успех.
+ошибки, зелёный — успех. Полоса прогресса идёт по всей сборке — чтение, плата,
+легенда, компоненты, запись, — а строка рядом говорит, что именно происходит.
+
+**Сборка идёт в дочернем процессе.** OpenCASCADE умеет не выбрасывать
+исключение, а падать целиком, и на трудной плате булева операция это иногда
+делает; в потоке это закрыло бы окно, не написав никуда ни строчки. Вместо этого
+окно сообщает код возврата и то, что обычно помогает: *Not stitched* (там ничего
+не сплавляется) или более крупный `gui.foldSliceAngle`.
 
 Консоль Allegro тоже раскрашена. Сообщения идут через `axlUIWPrint` с уровнем
 важности, поэтому предупреждения выводятся цветом предупреждений Allegro, а
@@ -1051,7 +1165,88 @@ Multi-stackup board: 4 zone(s), 2.440 mm at its thickest
 вовсе — на его месте coverlay, adhesive и stiffener, — и сумма по именам молча
 посчитала бы их за ноль.
 
-Гибы **не** применяются: см. *Известные ограничения*.
+## Сгибание гибких плат
+
+Сгиб в Allegro — это не геометрия, а линия на `RIGID FLEX/BEND_LINE`, область на
+`RIGID FLEX/BEND_AREA` и свойство с углом, внутренней стороной и порядком сгиба.
+Simple 3D читает всё это и складывает модель:
+
+```
+Folding 1 bend(s):
+  BEND1: 90.00 deg over 2.431 mm, inner radius 1.000 mm on the top, order 0
+```
+
+**Едет всё вместе.** Плата, легенда и компоненты сначала размещаются в плоскости,
+а затем переносятся сгибом, поэтому деталь не может «съехать» с той поверхности,
+на которую её поставили. Компонент, попавший в зону сгиба, ставится на дугу и
+отмечается в логе — это нарушение правил проектирования, а не выбор модели.
+
+**Радиус отсчитывается от местного стэкапа.** Сгиб проходит по гибкому участку, а
+на rigid-flex его поверхность может лежать на два миллиметра ниже верха жёсткой
+зоны; берётся стэкап той зоны, в которой лежит линия сгиба.
+
+**Что именно двигается — якорь.** В плоскости XY остаётся кусок, содержащий
+**начало координат**, а всё за каждым сгибом качается от него. В Allegro есть та
+же идея (*Setup – Anchor 3D View*), но в 24.1 выбранная точка до файла платы не
+доходит — ни в объявленное под неё свойство `ANCHOR_POINT_3D_VIEWER`, ни в
+атрибуты design, ни в одно вложение, — поэтому проект нам её сообщить не может и
+соглашением служит `[0, 0]`. **Разместите ту часть платы, которая должна лежать
+плоско, над началом координат**, либо укажите другую точку в `gui.foldAnchor`.
+Якорь определяет саму форму сгиба, а не только положение: с якорем в середине
+платы два шлейфа отгибаются от неподвижного центра, а с якорем на краю те же два
+сгиба образуют цепочку.
+
+Сгибы применяются от неподвижной части наружу, каждый — в системе координат,
+оставленной предыдущими. Сгиб, чья подвижная сторона целиком содержит другой,
+несёт его на себе; сгибы на разных рукавах независимы.
+
+Что стоит знать о результате:
+
+**Поверхности сгиба — настоящие цилиндры.** Построений три, они пробуются по
+порядку, и лог говорит, какое досталось каждому сгибу:
+
+- **Вращением.** Если поперёк зоны сгиба плата везде одной и той же формы,
+  согнутая часть — это её сечение, провёрнутое вокруг оси сгиба: шесть граней,
+  две из них точные цилиндры, объём совпадает до девятого знака.
+- **Навёрткой.** Иначе на цилиндр переносится сам контур. В параметрическом
+  пространстве цилиндра сгиб — аффинное отображение (угол есть расстояние
+  поперёк сгиба, делённое на нейтральный радиус), поэтому прямая остаётся
+  прямой, дуга становится эллипсом, а поверхности остаются точно
+  цилиндрическими при любой сложности контура. Реальные платы получают именно
+  это: **разгрузочные вырезы** на концах линии сгиба — полукруги, которые режут,
+  чтобы гибкая часть не рвалась, — лежат внутри каждой зоны сгиба, как и границы
+  зон, и случайное отверстие.
+- **Гранями** по 7.5°, если не подошло ни то, ни другое, — например, кусок,
+  который не является призмой с плоским верхом; на плате это что-то необычное.
+  Хорды лежат примерно на 0.2% радиуса внутри истинной поверхности, а соседние
+  ломтики перекрываются на волосок, чтобы входить друг в друга, а не касаться по
+  линии — только так объединение даёт одно тело. Меньше 0.5% объёма.
+
+**Сгиб растягивает и сжимает материал, и модель это показывает.** Материал
+снаружи нейтральной поверхности длиннее, чем был плоским, внутри — короче: объём
+каждого слоя умножается на его собственный радиус, делённый на нейтральный. На
+тестовой плате верхний coverlay выходит 0.937 от плоского объёма, диэлектрик на
+ядре — 1.000, нижний coverlay — 1.063.
+
+**Плоские панели по обе стороны не аппроксимируются никогда** — каждая получает
+одно точное жёсткое преобразование, как бы ни был построен сам сгиб.
+- **Сколько плоского материала съедает сгиб** — это длина дуги по нейтральной
+  оси, `угол × (радиус + k × толщина)`, где `k = gui.foldNeutral` (по умолчанию
+  0.5, середина). Сама зона сгиба в Allegro нарисована по **внутреннему**
+  радиусу: замерено на реальной плате — 1.2337 мм поперёк для 28.26° и R = 2.5
+  против 1.2331 для `угол × 2.5`, то есть `k = 0`. Это область, куда нельзя
+  ставить переходные и корпуса, а не бюджет материала. Нарисованная зона
+  сверяется с этим, и лог скажет, если она не совпала ни с тем, ни с другим.
+- **Сгибы, перекрывающиеся со стороны неподвижной части, — не цепочка**, и
+  экспорт скажет, на каком он остановился, и оставит его и всё дальше плоским,
+  а не будет угадывать.
+- **Not stitched** сгибает каждый слой отдельно и не сплавляет их, поэтому вдоль
+  сгиба тела слоёв чуть-чуть входят друг в друга — 0.25% объёма платы на тестовой
+  плате. В плоском виде все три режима совпадают точно.
+
+Снимите галочку *Fold flex bends* (или передайте `--flat`), чтобы получить
+плоскую плату. Решение принимается при сборке модели, так что оба варианта
+получаются из одного экспорта.
 
 ## Модели, копия которых лежит внутри платы
 
@@ -1130,10 +1325,18 @@ python tests/run_all.py --quick    без тяжёлых геометричес�
 правило: всё, что должно быть отверстием в плате, обязано существовать как
 замкнутый контур в подклассе CUTOUT.
 
-**Гибы не применяются.** Гибко-жёсткая плата экспортируется **плоской**, в той
-раскладке, в которой она нарисована. Несколько стэкапов поддерживаются (см.
-*Мультистэкап и rigid-flex* выше), но линия гиба не сгибается: гибкие участки
-остаются в плоскости. Если нужна согнутая модель — штатный 3D-экспорт Allegro.
+**Согнутый участок — это цилиндр, а не модель поведения стека.** Поверхности
+точные, и материал растягивается и сжимается как положено (см. «Сгибание гибких
+плат»), но никакого расчёта того, что сгиб делает с медью, адгезивом и покровом
+по отдельности, здесь нет: весь стек несёт одно отображение вокруг одной
+нейтральной поверхности, положение которой задаётся `gui.foldNeutral`. Годится
+для сборки, зазоров и картинки; расчёт прочности гибкого участка этим не
+заменяется.
+
+**Сгибы, перекрывающиеся между собой со стороны неподвижной части, не
+складываются.** Сами зоны сгиба Allegro пересекать не даёт, но два сгиба, чьи
+*полуплоскости* пересекаются — отогнутый шлейф и ещё один сгиб поперёк него, — не
+образуют цепочку, и экспорт останавливается на втором и говорит об этом.
 
 **B-rep компонентов берётся из ваших STEP-моделей библиотеки.** Размер файла
 сверх самой платы определяется этими моделями; «Compact STEP (reuse component geometry)» не может
@@ -1170,8 +1373,9 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch   # все вари�
 вариантах имя каждому даёт стем его json), `--no-silkscreen`, `--no-silk-top`,
 `--no-silk-bottom`, `--flat-silkscreen`, `--silk-flat-height ММ`,
 `--silk-layer-off СЛОЙ` (можно несколько раз), `--silk-color White|Black`,
-`--no-minimize`, `--legacy-color`, `--quiet`. Код возврата 0 при успехе, 1 при
-ошибке.
+`--ignore-soldermask`, `--flat` (не сгибать плату), `--fold-anchor X,Y|auto`,
+`--fold-neutral K`, `--fold-slice-angle DEG`, `--board-mode {solid,layers,inspect}`, `--no-minimize`,
+`--legacy-color`, `--quiet`. Код возврата 0 при успехе, 1 при ошибке.
 
 ## Структура пакета
 
@@ -1179,6 +1383,8 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch   # все вари�
 stepbuilder/
   core.py       геометрия + сборка. Без UI и print: отчёты через колбэки.
   colors.py     восемь тем платы + опции торца.
+  bend.py       сгибание гибкой платы по её зонам сгиба.
+  worker.py     сборка в дочернем процессе, чтобы падение не унесло окно.
   gui.py        окно tkinter. Тонкая обёртка над core.
   __main__.py   точка входа: GUI, без окна, или --gui prefill для Allegro.
 ```
@@ -1186,6 +1392,26 @@ stepbuilder/
 ---
 
 ## Changelog / История изменений
+
+- **2026-07-26** — **Flex boards are folded along their bend areas.** The bend
+  line, the bend area and the undocumented `IDX_BEND_TYPE_INFO` property are
+  read from the design, and the board, the printed legend and the components
+  are all carried by the fold together, so nothing drifts off the surface it
+  was placed on. The radius is measured from the stackup of the zone the bend
+  crosses, not from the top of the board. The curve is faceted (rigid 7.5°
+  slices) and the flat panels are exact. *Fold flex bends* in the window,
+  `--flat` on the command line, `gui.foldBends` in the config; on by default,
+  and a board with no bend areas is unaffected. Intermediate format
+  `format_version: 7` (the new `bends` array is optional).
+  / **Гибкие платы сгибаются по своим зонам сгиба.** Линия сгиба, область сгиба
+  и недокументированное свойство `IDX_BEND_TYPE_INFO` читаются из проекта, а
+  плата, легенда и компоненты переносятся сгибом вместе, поэтому ничто не
+  съезжает с поверхности, на которую было поставлено. Радиус отсчитывается от
+  стэкапа той зоны, которую пересекает сгиб, а не от верха платы. Дуга гранёная
+  (жёсткие ломтики по 7.5°), плоские панели — точные. *Fold flex bends* в окне,
+  `--flat` в командной строке, `gui.foldBends` в конфигурации; включено по
+  умолчанию, на плате без зон сгиба ничего не меняет. Промежуточный формат
+  `format_version: 7` (новый массив `bends` необязателен).
 
 - **2026-07-25** — **Multi-stackup and rigid-flex boards are now exported
   correctly.** Each stackup zone is read from the design with its own outline
@@ -1369,3 +1595,4 @@ stepbuilder/
   flat face); documented `ncroute_path` and multi-stackup limitations; settings
   switched from `defvar` to `=`; self-deleting launch batch; console-less
   `pythonw` launch. Bilingual README created.
+
