@@ -322,6 +322,56 @@ check("and keeps its material", abs(volume(arms_solid) - 10 * 32 * T) / (10 * 32
       volume(arms_solid))
 
 # --------------------------------------------------------------------------- #
+print("\n[7c] two 180 deg bends that MEET - the ring, and the K factor")
+
+# The real reason two bends collide, nine times out of ten, is the K factor -
+# and the log has to say so, because the board looks perfectly legal in Allegro.
+# Two 180 degree bends whose areas touch: Allegro draws each area at the INNER
+# arc, pi x R, so at k = 0 they meet exactly and the flex closes into a ring. At
+# k = 0.5 each strip wants pi x (R + T/2) instead and they overlap.
+ring_r = 0.8
+ring_gap = math.pi * ring_r                 # what Allegro draws, and the spacing
+ring_a = Bend(name="R1", start=(0.0, 20.0), end=(10.0, 20.0), angle=180.0,
+              radius=ring_r, inner_side="top", width=ring_gap)
+ring_b = Bend(name="R2", start=(0.0, 20.0 + ring_gap), end=(10.0, 20.0 + ring_gap),
+              angle=180.0, radius=ring_r, inner_side="top", width=ring_gap)
+ring_outline = [(0, 0), (10, 0), (10, 40), (0, 40)]
+ring_half = plan_fold([ring_a, ring_b], ring_outline, 0.0, -T, anchor=(5.0, 0.0))
+check("at k = 0.5 the second of two touching 180 deg bends is refused",
+      [b.name for b in ring_half.bends] == ["R1"],
+      [b.name for b in ring_half.bends])
+check("and the log blames the neutral factor, not the board",
+      any("neutral factor" in n for n in ring_half.notes), ring_half.notes)
+check("and names the value that would fit - 0.00, the inner arc",
+      any("at 0.00 the two strips meet" in n for n in ring_half.notes),
+      ring_half.notes)
+ring_zero = plan_fold([ring_a, ring_b], ring_outline, 0.0, -T, anchor=(5.0, 0.0),
+                      neutral_factor=0.0)
+check("at k = 0 both fold, and the flex closes into a ring",
+      [b.name for b in ring_zero.bends] == ["R1", "R2"],
+      [b.name for b in ring_zero.bends])
+# Two 180 degree bends the same way with nothing flat between them is one whole
+# turn: pi x R + pi x R of material is exactly the circumference of the top
+# face's circle, so the tail comes back into the plane it started in, pointing
+# the same way, beginning exactly where the held panel stopped. The loop stands
+# up out of the board - which is what the ring board looks like.
+ring_end = gp_Pnt(5.0, 40.0, 0.0).Transformed(ring_zero.transform_at(5.0, 40.0))
+check("and the tail comes back into the plane it started in",
+      near(ring_end.Z(), 0.0, 1e-6), ring_end.Z())
+check("pointing the same way, shortened by the material the loop ate",
+      near(ring_end.Y(), 40.0 - 2 * ring_gap, 1e-6),
+      (ring_end.Y(), 40.0 - 2 * ring_gap))
+ring_board = BRepPrimAPI_MakeBox(gp_Pnt(0, 0, -T), 10.0, 40.0, T).Shape()
+ring_solid = ring_zero.apply(ring_board)
+_, _, rz0, _, _, rz1 = bbox(ring_solid)
+# the loop's outer surface is the far side of the circle: 2R above the top
+# face, plus the stack, and nothing hangs below the flat board
+check("and the loop stands a diameter and a stack above the board",
+      near(rz1, 2 * ring_r + T, 0.01) and near(rz0, -T, 1e-6), (rz0, rz1))
+check("the ring keeps its material",
+      abs(volume(ring_solid) - 10 * 40 * T) / (10 * 40 * T) < 0.01,
+      (volume(ring_solid), 10 * 40 * T))
+
 print("\n[8] where a component ends up")
 
 held = plan.transform_at(5.0, 5.0)
@@ -888,6 +938,83 @@ check("and the message says which step refused",
 check("it still folds and keeps its material",
       abs(volume(folded_wedge) - volume(wedge)) / volume(wedge) < 0.01,
       (volume(folded_wedge), volume(wedge)))
+
+print("\n[17e] an outline whose corners only MEET to a tolerance still wraps")
+
+# A solid that came out of a boolean does not have its edges meeting exactly.
+# Each edge's own curve stops where its own geometry says, the shared vertex
+# sits between the two ends, and its tolerance is what makes the shape legal -
+# a few tenths of a micron on the real board, which is perfectly ordinary.
+#
+# The wrap rebuilds every edge from its own 2D curve, so those same few tenths
+# of a micron reappear between the new edges. BRepBuilderAPI_MakeWire joins
+# edges at Precision::Confusion, a hard 1e-7, and when the gap is wider it does
+# not fail: it quietly drops edges and reports IsDone. That left two walls of a
+# four-walled strip unsewn, the shell open, the solid "not valid", and every
+# bend near the stiffener on the real board faceted for no visible reason.
+#
+# So: the same 40 x 10 strip, cut to a five-sided outline that the revolve
+# cannot take, with one corner deliberately loose by 4e-7 - twice what OCC will
+# join by itself, and well inside the tolerance the vertex is given.
+from OCP.BRep import BRep_Builder                            # noqa: E402
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+from OCP.BRepCheck import BRepCheck_Analyzer                 # noqa: E402
+from OCP.Geom import Geom_Line                               # noqa: E402
+from OCP.TopoDS import TopoDS_Vertex                         # noqa: E402
+from OCP.gp import gp_Vec as _gp_Vec                         # noqa: E402
+
+LOOSE = 4.0e-7
+inside = [(arc_start + 0.01, 0.5), (arc_end - 0.01, 0.5),
+          (arc_end - 0.01, 8.0), (arc_start + 1.0, 9.5),
+          (arc_start + 0.01, 9.5)]
+# every corner is one vertex shared by its two edges; corner 2 is the loose one,
+# where the two curves stop 4e-7 apart and the vertex sits between them
+builder = BRep_Builder()
+corners = []
+for i, (cx, cy) in enumerate(inside):
+    corner = TopoDS_Vertex()
+    builder.MakeVertex(corner, gp_Pnt(cx, cy, 0.0), 1.0e-6)
+    corners.append(corner)
+
+loose_edges = []
+for i in range(len(inside)):
+    head, tail = inside[i], inside[(i + 1) % len(inside)]
+    a = gp_Pnt(head[0], head[1], 0.0)
+    b = gp_Pnt(tail[0], tail[1], 0.0)
+    if i == 2:                       # this curve stops SHORT of its vertex
+        a = gp_Pnt(head[0] - LOOSE, head[1], 0.0)
+    if i == 1:                       # and this one overshoots it
+        b = gp_Pnt(tail[0] + LOOSE, tail[1], 0.0)
+    direction = gp_Vec(a, b)
+    line = Geom_Line(a, gp_Dir(direction.X(), direction.Y(), direction.Z()))
+    made = BRepBuilderAPI_MakeEdge(line, corners[i], corners[(i + 1) % len(inside)],
+                                   0.0, direction.Magnitude())
+    check(f"the loose-cornered outline builds edge {i}", made.IsDone())
+    loose_edges.append(made.Edge())
+
+loose_wire = BRepBuilderAPI_MakeWire()
+for edge in loose_edges:
+    loose_wire.Add(edge)
+loose_face = BRepBuilderAPI_MakeFace(loose_wire.Wire(), True).Face()
+loose = BRepPrimAPI_MakePrism(loose_face, _gp_Vec(0, 0, -T)).Shape()
+check("and the flat solid it makes is valid - the tolerance covers the gap",
+      BRepCheck_Analyzer(loose).IsValid())
+
+logs = []
+folded_loose = plan_fold([bend], outline, 0.0, -T).apply(loose, log=logs.append)
+check("a loose corner does not send the bend back to the facets",
+      not any("faceted" in m for m in logs), logs)
+check("it is wrapped onto true cylinders like any other outline",
+      any("wrapped onto" in m for m in logs)
+      and surfaces(folded_loose).get(GeomAbs_SurfaceType.GeomAbs_Cylinder, 0) >= 2,
+      (logs, surfaces(folded_loose)))
+check("the wrapped solid is closed and valid",
+      BRepCheck_Analyzer(folded_loose).IsValid())
+# The piece lies wholly inside the bend area and is symmetric about the neutral
+# axis, so the wrap neither stretches nor compresses it on balance.
+check("and it weighs what it did flat",
+      abs(volume(folded_loose) - volume(loose)) / volume(loose) < 1e-5,
+      (volume(folded_loose), volume(loose)))
 
 print()
 print("FAILURES:", fails if fails else "none")
