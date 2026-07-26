@@ -56,6 +56,16 @@ source, because the config is found relative to it.
   first thing to reach for when a shape looks wrong but the numbers agree.
 - **The settings file may only be written if it was understood at load AND at
   save.** Two separate rounds of data loss came from getting this wrong.
+- **A new code path must be checked against the requirement table above, not
+  just against the old code's tests.** Round 34: the per-layer stackup emission
+  was written without requirement #1 — silkscreen and paste mask excluded from
+  the body — which `calculateBoardThickness` had honoured since round 2. It put
+  four extra 0.025 sheets into a plain board and drew the legend twice, once as
+  characters and once as a sheet covering the whole board. **It survived two
+  rounds of testing because the rigid-flex test board carries no silkscreen or
+  paste layers at all.** When a rule lives in one function and a second function
+  is written to do the same job, the rule does not follow it; and a test corpus
+  of one board shape will not notice.
 
 ### Not verified outside Allegro
 
