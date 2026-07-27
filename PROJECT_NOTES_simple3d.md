@@ -94,7 +94,18 @@ source, because the config is found relative to it.
   that a real board no longer reaches. Both bends of flex-b2 wrap; all five of
   flex3-a0 do since round 41.
 
-### Three traps that cost a round each — do not rediscover them
+### Four traps that cost a round each — do not rediscover them
+
+- **A command line handed to `cmd /c` must not begin with a quote** (round 43,
+  and it is what round 5 misdiagnosed). cmd strips the first and the last quote
+  of the line, so `"python" ... --json-dir "d:/my board/cad"` loses its quoting
+  and the spaced path is split. Begin with a bare word — `start`, `cmd`, `cd` —
+  and every quote inside survives. `s3dLaunch` and `s3dPreflight` both rely on
+  this, together with `start ""` (empty window title) and `start /D` for the
+  working directory. **Do not chain with `&&`**: a chain binds to the OUTER
+  shell, so if `system()` wraps the line in a cmd of its own the `/D` is
+  silently lost and `-m stepbuilder` stops resolving. `tests/test_launch_cmd.py`
+  holds all of this, including the negative control.
 
 - **A per-design cache in SKILL outlives the design** (round 42). The `.il`
   files load once per Allegro session, so any global built with
@@ -470,6 +481,12 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 - calculateBoardThickness on 24.1 -> expect (0.025 1.054 0.025).
 
 ## Update 2026-07-18 (round 5) - spaces in paths
+
+> **Superseded by round 43.** The fix below works, but the diagnosis under it —
+> "start eats the first quoted token as the window title" — is not what was
+> actually breaking the spaced path. It was cmd's own quote-stripping rule, and
+> once that is understood the batch file is unnecessary. Both `.bat` files are
+> gone since round 43; read that round before believing this one.
 
 - **Bug:** a design path with a space (".../my test1/A1/cad") broke the launch.
   Root cause was `cmd /c start "Simple3D" /D "dir" "python" ... --json-dir "path with space"`:
@@ -2879,6 +2896,261 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-07-27 (round 44) — the 25 micron ledge on flex2-a0
+
+Reported from the user's own export: *"около BEND_1 появляется ступенька на
+основной шлейф, она выступает на 0.025158 мм. В проекте платы всё хорошо, дуга
+непрерывная."* It was real, it was ours, and the number came out of the code to
+the micron.
+
+### What it was
+
+The board's right edge runs **straight** at x = 6.93 up to y = 6.057 and then
+**curves outward** along an arc (centre 11.9344, 6.0001, R = 5.0047). BEND_1's
+strip at k = 0.5 spans y ∈ [5.074, 6.5045] — so the curve starts *inside the
+bend area* and has reached 0.0252 mm past the straight part by the far edge of
+the strip.
+
+`_revolve_strip` builds a bend as one cross-section revolved about the axis,
+which is exact and cheap **when the strip is the same shape at every station**.
+That was tested by volume: section area × strip width against the strip's
+volume, within `PRISM_TOLERANCE` = 0.2%. For this strip the whole bulge is
+
+    0.0252 mm x 0.45 mm x 0.29 mm ~ 0.0022 mm3   =  0.04% of the strip
+
+— comfortably inside the tolerance. So the strip was declared straight, the
+section taken a quarter of the way in (where the edge is still at 6.93) was
+revolved through the whole 97°, and the curve was **dropped**. Where the bend
+ended and the flat board resumed at 6.9551, the model stepped by 0.0252 mm.
+
+Measured, by instrumenting the test on the real board:
+
+| strip | volume | section × width | miss | x-max near lo / hi |
+|---|---|---|---|---|
+| BEND_1 (w 1.4306) | 0.23257 | 0.23247 | **0.044%** | 6.9300 / 6.9484 |
+| BEND_2 (w 4.5490) | 0.73927 | 0.73922 | **0.007%** | 9.6500 / 9.6500 * |
+| BEND_6 (w 4.8669) | 1.24353 | 1.42355 | 14.5% | 9.6500 / 10.2065 |
+
+\* BEND_2's box is equal at those two stations but not at the strip's own end —
+it was off by 0.0165 mm, a second ledge nobody had noticed yet. BEND_6 was the
+only one the volume test ever caught.
+
+### The fix
+
+A volume test cannot see a feature this small; a **length** test can. After the
+volume check passes, `_spans_alike` now also requires the cross-section to span
+what the strip itself spans, along the bend line and in z, to within
+`PRISM_SPAN_TOLERANCE` = 1 µm. Compared in the strip's own frame (the bend line
+turned onto X) so a diagonal bend is not mistaken for a taper, with
+`BRepBndLib::AddOptimal` because `Bnd_Box` pads by the shape's tolerance and
+follows curved edges properly — a vertex-by-vertex comparison would miss a bulge
+whose apex is mid-arc.
+
+Nothing extra is built for it: the section is already in hand and the two boxes
+cost nothing next to the booleans around them. Build time on flex2-a0 is
+unchanged at ~15 s.
+
+**Result on the real board:** BEND_1 and BEND_2 now fall through to the wrap and
+come out as **true cylinders** — not facets — and the material comes back
+(+0.0018 mm³ over the whole board; +0.0010 mm³ in the corner past x = 6.9315,
+which is where the ledge was). BEND_3/4/5 are still revolved, BEND_6 still
+wrapped. The `miss` the new test reports for BEND_1 is **0.025158 mm** — the
+user's number exactly.
+
+### The regression test
+
+`test_bend.py` [11b]: the demo board with a 0.5 × 0.03 mm ear on its far edge,
+placed wholly inside the bend area. The ear is 0.008% of the strip's volume, so
+it is squarely under the old tolerance. The fold turns about an axis parallel to
+y, so the ear's y is untouched: material past y = 80 exists in the result if and
+only if the ear survived. **Verified to fail on the old behaviour** — with
+`PRISM_SPAN_TOLERANCE` set toothless the ear measures 0.000000 mm³ — which is
+the only thing that makes such a test worth having.
+
+### Still open, noticed while measuring
+
+The same board folded weighs **184.756 mm³ against 184.246 mm³ flat**, +0.28%.
+Folding should preserve volume exactly (a strip of thickness t wrapped at k =
+0.5 has volume θ·t·(r + t/2), the same as its flat developed length × t), and
+this fix moves it by only 0.002. So something else adds half a cubic millimetre
+when the board is folded — most likely pieces overlapping by a hair at the band
+boundaries. Not investigated, not related to the ledge.
+
+## Update 2026-07-27 (round 43) — the launcher, without a batch file
+
+Branch `fix/launch-without-bat`. Both `.bat` files are gone. `s3dLaunch` and
+`s3dPreflight` each hand cmd a single line now; the only file either one still
+writes is the pre-flight log it reads back and deletes.
+
+### What the batch file was actually working around
+
+Round 5 blamed `start`: a design path with a space arrived at Python split in
+two, and the reading at the time was that start had taken the first quoted token
+as its window title. Writing the command into a file fixed the symptom, so the
+diagnosis was never revisited — for 38 rounds.
+
+It was the wrong culprit. Four shapes measured through `os.system` (the C
+runtime's `system()`, the closest stand-in available for SKILL's), with a space
+in both the script folder and the design folder:
+
+| line | result |
+|---|---|
+| `start "" /D "dir" "python" … --json-dir "…/my design dir"` | argv whole, cwd right |
+| the same behind a second `cmd /c` | argv whole, cwd right |
+| `"python" … --json-dir "…/my design dir"` | **fails** — syntax error from cmd |
+| `cmd /c cd /d "dir" && "python" …` | runs, in the **wrong** directory |
+
+The rule is cmd's, not start's: **a `/c` command line that begins with a quote
+has its first and last quote stripped.** Begin with a bare word and every quote
+inside is delivered untouched. `start ""` — the empty title — disposes of
+start's own title parsing, so what looked like one hard problem was one cmd rule
+plus one missing argument.
+
+The fourth row is the reason `/D` is used rather than the more obvious
+`cd /d … &&`: a chain binds to the **outer** shell. If SKILL's `system()` puts a
+cmd of its own in front of the string, `cd /d "dir"` runs in a subshell that
+exits immediately and the interpreter starts in Allegro's working directory,
+where `-m stepbuilder` does not resolve. `start /D` is carried to the child
+process itself and survives either nesting depth. Redirection does not have the
+problem — the child inherits the handles — so the pre-flight can still capture
+stdout and stderr with a plain `> "log" 2>&1`.
+
+The user confirmed the launch form in a live Allegro session before any code was
+touched, which also settles two things the local tests could not: `system()`
+passes the string through intact, and forward slashes are fine in `/D` (the GUI
+came up, so `-m stepbuilder` resolved, so the working directory really was set).
+
+### The two procedures now
+
+```
+s3dLaunch     cmd /c start "" /D "<S3D_ScriptDir>" "<pythonw>" <argTail>
+s3dPreflight  cmd /c start /B /WAIT "" /D "<S3D_ScriptDir>" "<python>"
+                  -c "import stepbuilder.core, tkinter; print('S3D_OK')" > "<log>" 2>&1
+```
+
+`/B` keeps the pre-flight console-less, `/WAIT` keeps it synchronous. Everything
+else about it is unchanged: same sentinel, same log file in the design folder,
+same three remedy lines.
+
+Two things went with the files:
+
+- **The `S3D_NOEXE` marker**, which was an `if errorlevel 9009` line in the bat.
+  It cannot be expressed without a file or a chain, and a chain is exactly what
+  must not be used here. It existed to keep cmd's localised "command not found"
+  message — OEM codepage, mojibake in the Allegro console — out of the report.
+  The replacement classifies by **who spoke**: the log is echoed only when it
+  carries `Traceback` or `Error`, which is Python answering in ASCII; anything
+  else, including an empty log, is reported in our own English words and the
+  bytes are never printed. That is strictly less dependent on Windows' locale
+  than the marker was.
+- **The "launcher could not be created" branch** in `s3dLaunch`. A read-only
+  `S3D_ScriptDir` — Program Files, a network share — could not launch the GUI at
+  all before, because the bat was written there. Nothing is written there now,
+  so the failure mode and its error path are both gone.
+
+### `tests/test_launch_cmd.py`
+
+New suite, registered in `run_all.py`, Windows-only (it prints a skip line
+elsewhere). It transliterates both command shapes the way `test_quote.py`
+transliterates `s3dJsonQuote`, and runs each **twice** — as written and behind an
+extra `cmd /c` — so nesting-independence is a test and not an assumption. It
+covers argv, the working directory, the sentinel, a real `ModuleNotFoundError`
+reaching the log, and the **negative control**: the quoted-first form must fail.
+That last case is the whole reason the `start` prefix exists, and without a test
+it is the first thing a future tidy-up would remove. A fifth check greps
+`simple3d.il` itself, so changing the shape in the source without changing the
+suite fails the run.
+
+### A progress meter, because Export looked like a no-op
+
+Reported the same round: *"нажимаю экспорт, и ничего не происходит"*. The
+export reads the board, writes the JSON and starts Python before any window
+appears — seconds on a real board — and **Allegro's own green Ready light stays
+green through all of it**.
+
+There is **no API for that light**. Searched the whole index (2600+ entries) and
+all 872 `DOC/FUNCS/*.txt`: nothing for Ready/Busy, and `axlUIControl` is canvas
+inquiry only. What Allegro does give is `axlMeterCreate` / `axlMeterUpdate` /
+`axlMeterDestroy` — its own progress form, title plus one ~28-character line,
+with an optional Stop button. `s3dMeterOn/Step/Off` wrap them; the export names
+four stages (20 / 70 / 95).
+
+Three decisions in there worth keeping:
+
+- **Stop is not enabled.** Nothing in the sequence can be interrupted once it is
+  running — `makeVariant3dIntermediates` is a single call — and a button that
+  stops nothing is worse than no button.
+- **Every call is wrapped in `errset`.** The meter is a courtesy; a release
+  without it, or a form that refuses to open, must not fail an export that would
+  otherwise work.
+- **`s3dMeterOn` destroys a stale meter before creating its own.** SKILL has no
+  unwind-protect, so a hard error inside the export leaves the form on screen;
+  this clears it at the next export. Every exit path of `s3dExportCommand` calls
+  `s3dMeterOff` — including the pre-flight's refusal, which is easy to miss.
+
+Not per-variant, and nothing inside `makeVariant3dIntermediates`: the long pole
+is one variant's own silkscreen work, so per-variant ticks would buy almost
+nothing, and the messages in there go through raw `printf` rather than `s3dSay`,
+so there is no single funnel to hook. If finer progress is ever wanted, that
+funnel is the thing to build first.
+
+### The console still blinks — and it is not Python
+
+Reported with the above. `pythonw.exe` is a **GUI-subsystem** binary: it never
+allocates a console, so nothing that flashes can be it. The flash is
+**`cmd.exe`**, a console-subsystem binary — when a GUI process (Allegro) starts
+it, Windows creates a console window for it, which closes when cmd exits. It
+predates this round: the batch file was run through `cmd /c` too.
+
+**`system()` always goes through a shell — settled by probe, do not re-open
+this.** Two probes in the user's live Allegro console:
+
+- `system("echo probe > <path>")` → the file appeared. Redirection is a shell
+  feature, so `system()` hands the string to cmd.
+- `system("pythonw -c \"import time;time.sleep(4)\"")` — no `cmd /c` from us at
+  all → **a console window still appeared**. pythonw cannot be its owner, so
+  cmd is in the chain whatever we write.
+
+**Therefore the console cannot be removed through `system()`, and `system()` is
+the only door.** Checked the alternatives before concluding: no `ipc*` and no
+exec function anywhere in the index; `axlRunBatchDBProgram` is for Allegro batch
+programs that want the database; and the plugin family (`axlDllOpen` /
+`axlDllSym`) is **not** a general FFI — an exported function must have the
+signature `long f(AXLPluginArgs*, AXLPluginArgs*)` and be built against
+Cadence's `axlplugin.h` with their toolchain, so `ShellExecute` cannot simply be
+called. Shipping a compiled DLL to remove a console flash is out of proportion.
+
+### What the console actually costs, and why it stays
+
+Measured: two appearances per export, and the first is not a flash.
+
+| | command | window visible |
+|---|---|---|
+| pre-flight | `python -c "import stepbuilder.core, tkinter"` | **1.78 s** — it sits there |
+| launch | `start ""`, cmd exits at once | ~0.1 s |
+
+1.7 s of that 1.78 is importing OCP. It is paid on every export for a diagnosis
+that is needed rarely, and the reason it must be a separate process is that
+[`__main__.py`](stepbuilder/__main__.py) imports `from .gui import
+StepBuilderApp` **outside** the `try` that catches startup failures — so under
+pythonw a broken OCP kills the process silently, with no dialog and no log.
+
+The cheaper design was offered and **declined by the user (2026-07-27)**: move
+that import inside the `try` so Python reports its own broken install by dialog,
+and reduce the SKILL pre-flight to `-c "import sys"` (0.06 s — a blink). It
+would have made every export ~1.7 s faster. The user prefers the full check with
+its diagnosis printed in the Allegro console. **Do not propose it again without
+new information.**
+
+### Not verified outside Allegro
+
+The user confirmed the launch line opens the window. Still to check on a live
+export: the meter itself (`axlMeterCreate` is documented but has never run in
+this project), no `_simple3d_*.bat` left in either folder, a board whose path
+contains a space, and the two pre-flight failure branches (a bad `"python"` in
+the config → the English not-found text; a renamed `stepbuilder/` → Python's own
+ImportError echoed).
 
 ## Update 2026-07-27 (round 42) — full review, and the docs brought up to date
 

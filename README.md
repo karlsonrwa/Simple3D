@@ -1482,6 +1482,70 @@ stepbuilder/
 
 ## Changelog / История изменений
 
+- **2026-07-27** — **A bend no longer flattens what curves inside it.** Where a
+  board's outline runs straight into a bend area and then curves *within* it,
+  the bend was built by revolving a single cross-section — exact and cheap, but
+  only correct when the strip is the same shape all the way across. That was
+  checked by volume, and on a real board the whole curve amounted to 0.04% of
+  the strip, so it passed the check and was dropped: the model came out with a
+  25 µm ledge along the edge of the flex exactly where the bend ended. The check
+  now also requires the cross-section to *span* what the strip spans, to within
+  a micron, and a strip that fails it is built by the general construction —
+  still true cylinders, not facets. Two bends on the test board were affected;
+  the reported 0.025158 mm ledge is gone.
+  / **Сгиб больше не спрямляет то, что изгибается внутри него.** Там, где контур
+  платы входит в зону сгиба прямым и начинает закругляться уже *внутри* неё,
+  сгиб строился вращением одного поперечного сечения — точно и дёшево, но
+  правильно лишь тогда, когда полоса одинакова по всей ширине. Проверялось это
+  по объёму, а на реальной плате всё закругление составляло 0.04% полосы,
+  поэтому проверку проходило и терялось: в модели по краю шлейфа ровно там, где
+  кончался сгиб, появлялась ступенька в 25 мкм. Теперь проверка требует ещё и
+  чтобы сечение **перекрывало** ту же протяжённость, что и сама полоса, с
+  точностью до микрона, а полоса, которая этого не проходит, строится общим
+  способом — по-прежнему истинными цилиндрами, а не гранями. На тестовой плате
+  задело два сгиба; названная ступенька 0.025158 мм исчезла.
+
+- **2026-07-27** — **Export now shows a progress meter.** Pressing *File →
+  Export → Simple 3D* used to look like nothing happening: the board is read,
+  the JSON written and Python started before any window appears, and Allegro's
+  own Ready light stays green throughout. Allegro's progress form now comes up
+  at once and names each stage — *Checking components*, *Reading the board*,
+  *Checking the Python side*, *Starting the 3D window* — and closes when the 3D
+  window is on its way. There is deliberately no Stop button: nothing in that
+  sequence can be interrupted once it is running.
+  / **Экспорт показывает индикатор выполнения.** Нажатие *File → Export →
+  Simple 3D* выглядело так, будто ничего не происходит: плата читается, JSON
+  пишется и Python запускается ещё до появления любого окна, а собственный
+  индикатор Ready в Allegro всё это время горит зелёным. Теперь сразу
+  появляется штатная форма прогресса Allegro и называет этапы — *Checking
+  components*, *Reading the board*, *Checking the Python side*, *Starting the 3D
+  window* — и закрывается, когда окно 3D уже в пути. Кнопки Stop намеренно нет:
+  прервать эту последовательность на ходу всё равно нечем.
+
+- **2026-07-27** — **The export no longer writes a batch file.** Launching the
+  GUI and the Python pre-flight check each wrote a throwaway `.bat` — one into
+  the design folder, right next to the board data, one into the install folder —
+  because a design path with a space did not survive the trip through `cmd`. The
+  real cause turned out to be cmd's own rule, which strips the first and the last
+  quote of a `/c` command line; `start` had been blamed for it. A line that
+  *begins* with `start ""` and takes its working directory from start's `/D`
+  switch keeps every quoted path intact, so both files are gone: nothing
+  temporary is written beside your board any more, and the tool now launches
+  from a **read-only install folder** as well, which the batch file made
+  impossible. The "Python did not start" diagnosis no longer reads cmd's
+  localised exit code either, so it can no longer arrive as mojibake.
+  / **Экспорт больше не пишет batch-файл.** Запуск GUI и предварительная
+  проверка Python писали по одноразовому `.bat` — один в папку дизайна, прямо
+  рядом с данными платы, другой в папку установки, — потому что путь с пробелом
+  не переживал дорогу через `cmd`. Настоящей причиной оказалось правило самого
+  cmd: он срезает первую и последнюю кавычку командной строки `/c`, а винили в
+  этом `start`. Строка, которая *начинается* со `start ""` и берёт рабочую папку
+  из ключа `/D`, доносит все кавычки в целости, поэтому оба файла исчезли: рядом
+  с платой больше не появляется ничего временного, а сам инструмент запускается
+  и из папки, **доступной только для чтения**, — с batch-файлом это было
+  невозможно. Диагностика «Python не запустился» тоже больше не опирается на
+  локализованный код возврата cmd и не может прийти кракозябрами.
+
 - **2026-07-27** — **Two fixes found on a board rolled into a closed ring.**
   A bend whose outline had a fillet or a hair-thin sliver in it fell back to
   facets with nothing in the log but *not valid*: rebuilding the outline on the

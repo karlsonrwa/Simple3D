@@ -202,6 +202,45 @@ procedure( s3dDesignDir()
 )
 
 ;=====================================================================
+;  PROGRESS METER
+;
+;  Why this exists: pressing Export looked like nothing happening. The board is
+;  read, the JSON written and Python started before any window appears - seconds
+;  on a real board - and Allegro's own Ready/Busy light stays green through all
+;  of it, so there was nothing to watch. axlMeterCreate is Allegro's own
+;  progress form: a title, one line of about 28 characters, and an optional Stop
+;  button.
+;
+;  Stop is NOT enabled. Nothing here can be interrupted once it is running -
+;  makeVariant3dIntermediates is one call - and a button that does not stop
+;  anything is worse than no button.
+;
+;  Every call is wrapped in errset. The meter is a courtesy: a release that
+;  lacks it, or a form that refuses to open, must not be able to fail an export
+;  that would otherwise work.
+;
+;  SKILL has no unwind-protect, so a hard error inside the export would leave
+;  the form on screen. s3dMeterOn therefore destroys any stale meter before
+;  creating its own, which clears one away at the next export.
+;=====================================================================
+
+procedure( s3dMeterOn( t_text )
+    errset( axlMeterDestroy() )
+    errset( axlMeterCreate( "Simple 3D export" t_text nil ) )
+    t
+)
+
+procedure( s3dMeterStep( x_percent t_text )
+    errset( axlMeterUpdate( x_percent t_text ) )
+    t
+)
+
+procedure( s3dMeterOff()
+    errset( axlMeterDestroy() )
+    t
+)
+
+;=====================================================================
 ;  THE COMMAND
 ;=====================================================================
 
@@ -223,6 +262,11 @@ procedure( s3dExportCommand()
         designDir = s3dDesignDir()
         cadDir = s3dResolveCadDir( designDir )
         printf( "Simple 3D: JSON + STEP output -> %s\n" cadDir )
+
+        ; From here on the command has work to do that takes visible time, so
+        ; the meter goes up before the first of it and comes down on every path
+        ; out - including the pre-flight's refusal below.
+        s3dMeterOn( "Checking components..." )
 
         ; --- pre-flight: components with no 3D model ------------------
         ; s3dCheckMfrPn still returns the no-model list (2nd element); its MFRPN
@@ -250,6 +294,7 @@ procedure( s3dExportCommand()
         ; makeVariant3dIntermediates takes the output dir as its first arg and
         ; createDir's it, so pointing it at cad needs no patch. With a
         ; Variants.lst present it writes one JSON per variant.
+        s3dMeterStep( 20 "Reading the board..." )
         printf( "Simple 3D: writing intermediate JSON...\n" )
         makeVariant3dIntermediates( cadDir list( 0.0 0.4 0.0 )
                                     if( (S3D_ConfigFile != "") then S3D_ConfigFile else nil ) )
@@ -258,6 +303,7 @@ procedure( s3dExportCommand()
         ; Done AFTER the JSON exists, so a broken Python install still leaves the
         ; user with a usable export, and the message can say so. Costs a few
         ; seconds (importing OCP is slow) - worth it against a silent no-op.
+        s3dMeterStep( 70 "Checking the Python side..." )
         printf( "Simple 3D: checking the Python side...\n" )
         ; The check must never be able to break the export it is reporting on:
         ; wrapped in errset so a fault inside it degrades to "skipped" instead
@@ -269,6 +315,7 @@ procedure( s3dExportCommand()
             pyOk = t
         )
         unless( pyOk
+            s3dMeterOff()
             return( nil )
         )
 
@@ -277,9 +324,9 @@ procedure( s3dExportCommand()
         ; and z-datum and press Generate; with several variant JSONs it builds
         ; all of them. step_dir is the model library (or cad if unset).
         ; Build the argument tail (everything AFTER the interpreter). The
-        ; launcher prepends python/pythonw and writes it into a .bat so cmd
-        ; parses the quoted paths natively (no nesting through "start", which
-        ; mangled paths containing spaces).
+        ; launcher prepends python/pythonw and hands the whole line to cmd in
+        ; one piece; see s3dLaunch for the quoting rules that keep a path with
+        ; a space intact.
         ;
         ; Only design-derived values are passed. Colors, the STEP folder and
         ; the silkscreen options used to be passed here as well; the GUI now
@@ -294,9 +341,13 @@ procedure( s3dExportCommand()
             "--dated-name"
         )
 
+        s3dMeterStep( 95 "Starting the 3D window..." )
         printf( "Simple 3D: launching GUI (%s)\n" argTail )
         s3dLaunch( argTail )
 
+        ; The GUI is detached, so this is the end of the command's own work -
+        ; the meter must not sit there implying otherwise.
+        s3dMeterOff()
         return( t )
     )
 )
@@ -311,51 +362,53 @@ procedure( s3dExportCommand()
 ; with stdout+stderr captured to a file, so the real ImportError can be shown in
 ; the Allegro console together with the fact that the JSON itself is fine.
 ;
+; The command goes to cmd in one piece, in the shape s3dLaunch explains - the
+; quoting rules there are the same ones here. "start /B /WAIT" is what makes it
+; synchronous with no console of its own, and /D sets the working directory so
+; "stepbuilder" resolves exactly as it will at launch time. Nothing is chained
+; with && on purpose: a chain binds to the OUTER shell, so the /D would be lost
+; if system() wraps the string in a cmd of its own. Redirection does not have
+; that problem - the child inherits the handles either way.
+;
 ; Success is signalled by a sentinel the check prints, not by an empty log: some
 ; installs emit deprecation warnings on stderr even when the import succeeds.
 ;
-; Returns t to proceed, nil to abort. Fails OPEN: if the check itself cannot be
-; written or run, it says so and returns t rather than blocking a working setup.
+; Returns t to proceed, nil to abort. A fault in the check itself still cannot
+; block a working setup: s3dExportCommand wraps this call in errset and launches
+; anyway if it errors. There is no separate fail-open branch here any more - the
+; one that existed was for a pre-flight file that could not be written, and
+; nothing is written now.
 procedure( s3dPreflight( t_workDir )
     ; prog locals must be bare symbols - the (var value) init form is let-only
     ; syntax and prog rejects it with "local vars must be symbol". Hence the
     ; explicit assignments below.
-    prog( ( exe batPath logFile port line ok noExe out )
-        ok    = nil
-        noExe = nil
-        out   = ""
+    prog( ( exe logFile port line ok pySpoke out )
+        ok      = nil
+        pySpoke = nil
+        out     = ""
         exe = if( (S3D_Python != "") then S3D_Python else S3D_PythonW )
-        batPath = strcat( t_workDir "/_simple3d_preflight.bat" )
         logFile = strcat( t_workDir "/_simple3d_preflight.txt" )
 
-        port = outfile( batPath )
-        unless( port
-            printf( "Simple 3D: cannot write the preflight check to %s - skipping it.\n" batPath )
-            return( t )
-        )
-        ; cd /d so "stepbuilder" resolves exactly as it will at launch time.
         ; Importing stepbuilder.core pulls in OCP, the heavy dependency that is
         ; usually the missing one; tkinter is what the GUI itself needs.
-        fprintf( port "@echo off\r\n" )
-        fprintf( port "cd /d \"%s\"\r\n" S3D_ScriptDir )
-        fprintf( port "\"%s\" -c \"import stepbuilder.core, tkinter; print('S3D_OK')\" > \"%s\" 2>&1\r\n"
-                 exe logFile )
-        ; cmd returns 9009 for "command not found", and its message for that is
-        ; localised AND written in the OEM codepage (866 on a Russian Windows),
-        ; which the Allegro console renders as mojibake. Flag the case with an
-        ; ASCII marker instead and print our own English text for it below.
-        fprintf( port "if errorlevel 9009 echo S3D_NOEXE>>\"%s\"\r\n" logFile )
-        close( port )
-
-        errset( system( strcat( "cmd /c \"" batPath "\"" ) ) )
-        errset( deleteFile( batPath ) )
+        errset( system( strcat(
+            "cmd /c start /B /WAIT \"\" /D \"" S3D_ScriptDir "\" \"" exe
+            "\" -c \"import stepbuilder.core, tkinter; print('S3D_OK')\" > \""
+            logFile "\" 2>&1" ) ) )
 
         port = infile( logFile )
         when( port
             while( gets( line port )
                 out = strcat( out line )
-                when( rexMatchp( "S3D_OK" line )     ok = t )
-                when( rexMatchp( "S3D_NOEXE" line )  noExe = t )
+                when( rexMatchp( "S3D_OK" line )  ok = t )
+                ; Who spoke decides what may be printed. Python's own failures
+                ; are ASCII and safe to echo; Windows' "cannot find the file" is
+                ; localised AND written in the OEM codepage (866 on a Russian
+                ; Windows), which the Allegro console renders as mojibake. Two
+                ; plain substrings rather than one alternation: rexMatchp's
+                ; regex dialect is not worth betting a diagnosis on.
+                when( rexMatchp( "Traceback" line )  pySpoke = t )
+                when( rexMatchp( "Error" line )      pySpoke = t )
             )
             close( port )
         )
@@ -369,23 +422,20 @@ procedure( s3dPreflight( t_workDir )
         printf( "===== Simple 3D: the JSON was written, but Python did not start =====\n" )
         printf( "The intermediate JSON(s) ARE in:\n    %s\n" t_workDir )
         printf( "Nothing is wrong with the board or the export.\n\n" )
-        ; Three cases, and only the last one prints the captured text. Windows'
-        ; own error messages come back localised in the OEM codepage and arrive
-        ; here as mojibake, so the case we can identify (interpreter not found)
-        ; is reported in our own words. Python's own tracebacks are ASCII.
+        ; Two cases, and only the first one prints the captured text - it is the
+        ; one where Python itself answered, in ASCII. Anything else (an empty
+        ; log, or Windows' own localised complaint in the OEM codepage) is
+        ; reported in our own words instead of echoed as mojibake.
         cond(
-            ( noExe
-                printf( "Windows could not run the interpreter at all:\n    %s\n\n" exe )
-                printf( "That name is not on PATH and is not a valid full path.\n" )
-            )
-            ( (out == "")
-                printf( "The check produced no output at all, which usually also\n" )
-                printf( "means the interpreter was not found:\n    %s\n" exe )
-            )
-            ( t
+            ( pySpoke
                 printf( "Python (%s) failed this check:\n" exe )
                 printf( "    import stepbuilder.core, tkinter\n\n" )
                 printf( "It reported:\n%s\n" out )
+            )
+            ( t
+                printf( "Windows could not run the interpreter at all:\n    %s\n\n" exe )
+                printf( "That name is not on PATH and is not a valid full path -\n" )
+                printf( "or it died before it could say anything.\n" )
             )
         )
         printf( "\nCheck, in this order:\n" )
@@ -404,51 +454,32 @@ procedure( s3dPreflight( t_workDir )
 ; Launch the GUI without leaving a console window behind, and robustly for
 ; paths containing spaces.
 ;
-; Two problems the naive "cmd /c start ... python ..." had:
-;   1. start treats the first quoted token as the window title, so a quoted
-;      path with a space got mis-split. Fixed by writing a .bat and running it,
-;      so cmd parses the quoted args from the file natively.
-;   2. python -m stepbuilder --gui blocks until the window closes, so the cmd
-;      window stayed open the whole time. Fixed by having the .bat "start" the
-;      interpreter detached and then exit, which closes the console.
+; ONE line is handed to cmd, and every part of its shape is load-bearing. This
+; used to be written into a throwaway .bat; it no longer needs to be, and the
+; reasons are worth keeping because each one is a bug that was paid for:
+;
+;   1. The line must NOT begin with a quote. cmd strips the first and the last
+;      quote of a /c command line, so a line starting with "python" loses its
+;      quoting and a path with a space is split in two. That - not start - is
+;      what broke a design path with a space (round 5); beginning with the bare
+;      word "start" leaves every quote inside untouched. Measured, both ways.
+;   2. start's FIRST argument is the window title. Passing "" for it is what
+;      stops it from taking the quoted interpreter path as the title.
+;   3. /D sets the working directory, which is what makes "-m stepbuilder"
+;      resolve - it replaces the "cd /d" that used to need the file. Unlike a
+;      "cd /d ... &&" chain it also survives if system() wraps the string in a
+;      cmd of its own: a chain binds to the OUTER shell and the /D would be
+;      silently lost.
+;   4. start returns at once, so Allegro is not blocked, no console lingers,
+;      and nothing has to be cleaned up afterwards.
 ;
 ; S3D_PythonW (pythonw.exe) runs with no console at all; if it is empty we fall
-; back to S3D_Python but still detach so the launching window closes promptly.
+; back to S3D_Python but still detach so nothing stays on screen.
 procedure( s3dLaunch( t_argTail )
-    prog( ( batPath port launchLine )       ; prog: return() below needs it
-        batPath = strcat( S3D_ScriptDir "/_simple3d_launch.bat" )
-        port = outfile( batPath )
-        unless( port
-            ; Read-only or unreachable install dir. Without this the whole
-            ; procedure was a silent no-op: JSON on disk, no window, no message.
-            printf( "\nSimple 3D: the JSON was written, but the launcher could not be created:\n" )
-            printf( "    %s\n" batPath )
-            printf( "S3D_ScriptDir is not writable. Point it at a writable folder,\n" )
-            printf( "or start the GUI by hand:\n    cd /d \"%s\"\n    %s %s\n\n"
-                    S3D_ScriptDir S3D_Python t_argTail )
-            axlUIWPrint( nil
-                "Simple 3D: JSON written OK - but the launcher could not be created. See the console." )
-            return( nil )
-        )
-        fprintf( port "@echo off\r\n" )
-        fprintf( port "cd /d \"%s\"\r\n" S3D_ScriptDir )
-        if( (S3D_PythonW != "") then
-            ; pythonw: no console, detached, window closes immediately.
-            launchLine = strcat( "start \"\" \"" S3D_PythonW "\" " t_argTail )
-        else
-            ; plain python, but detached via start so this window still exits.
-            launchLine = strcat( "start \"\" \"" S3D_Python "\" " t_argTail )
-        )
-        fprintf( port "%s\r\n" launchLine )
-        ; The GUI is launched detached (start ...), so by the time this line
-        ; runs the interpreter already has its own arguments and no longer
-        ; needs the .bat. Delete it so it does not linger. The
-        ; "(goto) 2>nul & del" idiom lets cmd release its handle on the file
-        ; before deleting, avoiding a "file in use" failure; "%~f0" is this
-        ; batch file's own full path.
-        fprintf( port "(goto) 2>nul & del \"%%~f0\"\r\n" )
-        close( port )
-        errset( system( strcat( "cmd /c \"" batPath "\"" ) ) )
+    prog( ( exe )                           ; prog: return() below needs it
+        exe = if( (S3D_PythonW != "") then S3D_PythonW else S3D_Python )
+        errset( system( strcat(
+            "cmd /c start \"\" /D \"" S3D_ScriptDir "\" \"" exe "\" " t_argTail ) ) )
         return( t )
     )
 )

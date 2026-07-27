@@ -39,6 +39,7 @@ JOBS = [
     ("embedded models cross-check",             TESTS / "test_embedded.py", True),
     ("STEP folder search path",                 TESTS / "test_index.py", True),
     ("JSON quoting",                            TESTS / "test_quote.py", False),
+    ("launcher command shape",                  TESTS / "test_launch_cmd.py", False),
     ("GUI widgets and config",                  TESTS / "test_gui.py", False),
     ("GUI window placement",                    TESTS / "test_geom.py", False),
 ]

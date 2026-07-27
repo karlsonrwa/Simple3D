@@ -1108,6 +1108,44 @@ PRISM_TOLERANCE = 0.002
 # it is thrown away and the facets used instead.
 MAP_VOLUME_TOLERANCE = 0.01
 
+# How far the cross-section may fall short of the strip's own extent, along the
+# bend line and in z, before the strip is not a prism after all. A LENGTH and
+# not a fraction, deliberately: what it catches is a feature small enough to
+# disappear into the volume it sits in - see _spans_alike.
+PRISM_SPAN_TOLERANCE = 1e-3          # 1 micron
+
+
+def _spans_alike(flat: TopoDS_Shape, face: TopoDS_Shape, strip: _Strip) -> bool:
+    """Does the cross-section reach as far as the strip itself does?
+
+    Measured in the strip's own frame - the bend line turned onto X - so a bend
+    line at any angle is treated the same way; an axis-aligned box would call
+    every diagonal strip a taper.
+
+    Tight boxes (AddOptimal), because Bnd_Box pads by the shape's tolerance and
+    the difference that matters here is microns. AddOptimal also follows curved
+    edges properly, which a vertex-by-vertex comparison would not: the outline
+    this exists to catch bulges along an arc.
+    """
+    nx, ny = strip.normal
+    turn = gp_Trsf()
+    turn.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)),
+                     -math.atan2(nx, -ny))          # tangent (-ny, nx) -> +X
+
+    def extents(shape: TopoDS_Shape):
+        box = Bnd_Box()
+        BRepBndLib.AddOptimal_s(
+            BRepBuilderAPI_Transform(shape, turn, True).Shape(), box, False, False)
+        if box.IsVoid():
+            return None
+        xmin, _, zmin, xmax, _, zmax = box.Get()
+        return xmin, xmax, zmin, zmax
+
+    whole, section = extents(flat), extents(face)
+    if whole is None or section is None:
+        return False
+    return all(abs(a - b) <= PRISM_SPAN_TOLERANCE for a, b in zip(whole, section))
+
 
 def _revolve_strip(flat: TopoDS_Shape, strip: _Strip) -> TopoDS_Shape | None:
     """The bent strip as a REVOLVED section - exact cylinders, no facets.
@@ -1164,6 +1202,26 @@ def _revolve_strip(flat: TopoDS_Shape, strip: _Strip) -> TopoDS_Shape | None:
     BRepGProp.SurfaceProperties_s(face, props)
     area = props.Mass()
     if area <= 0 or abs(area * width - volume) > PRISM_TOLERANCE * volume:
+        return None
+
+    # The volume test alone is not enough, and a real board says so. On
+    # flex2-a0 the outline runs straight past BEND_1 and then curves outward
+    # INSIDE the bend area, reaching 0.0252 mm beyond the straight part by the
+    # far edge of the strip. That is 0.04% of the strip's volume - comfortably
+    # under PRISM_TOLERANCE - so the strip was revolved as though it were
+    # straight, the curve was dropped, and the model came out with a 25 micron
+    # ledge along the edge of the flex where the bend ended. Measured, and the
+    # number reported from the board matched to the micron.
+    #
+    # So the section must also SPAN what the strip spans: compared in the
+    # strip's own frame, along the bend line and in z. Nothing extra is built
+    # for it - the section is already in hand, and the two tight boxes cost
+    # nothing next to the booleans around them.
+    #
+    # What this still cannot see: an extremum strictly inside a curved edge
+    # that leaves the box unchanged AND the volume within 0.2%. The wrap is the
+    # general construction and is what such a strip falls through to.
+    if not _spans_alike(flat, face, strip):
         return None
 
     slide = gp_Trsf()
