@@ -37,7 +37,7 @@
 ;  USAGE
 ;    makeVariant3dIntermediates( outputDir [ pcbColor ] [ configFile ] )
 ;  Writes <design>.json (or one <design>_<variant>.json per variant if a
-;  Variants.lst is present) into outputDir. Design units must be mm.
+;  Variants.lst sits BESIDE THE BOARD) into outputDir. Design units must be mm.
 ;  configFile is the silkscreen layer/settings JSON; when omitted,
 ;  "simple3d_config.json" in the working directory is used if present, and
 ;  otherwise the built-in defaults apply.
@@ -107,6 +107,56 @@ procedure( s3dMakeDirs( t_path )
             )
         )
         isDir( t_path )
+    )
+)
+
+; s3dDesignFolder() -> the folder holding the open .brd, "" if it cannot be read.
+;
+; Why this exists: Variants.lst lives BESIDE THE BOARD, always. It used to be
+; opened by its bare name, which resolves against Allegro's WORKING directory
+; instead - and when the two differ, the file next to the board is invisible,
+; the export quietly takes its no-variant path and writes one JSON with every
+; component in it. Nothing about that says "your variants were not read".
+;
+; axlCurrentDesign returns the NAME only ("flex2-a0"); the full path of the
+; drawing, extension and all, is axlGetDrawingName. The folder is everything
+; before the last separator, found by SCANNING rather than with parseString,
+; because parseString collapses the leading slashes of a UNC path
+; (//server/share/...) and would hand back a relative folder - the limitation
+; s3dMakeDirs above still carries.
+procedure( s3dDesignFolder()
+    prog( ( full n i cut ch )
+        full = nil
+        errset( full = axlGetDrawingName() )
+        unless( stringp( full )  return( "" ) )
+        n = strlen( full )
+        cut = 0
+        for( i 1 n
+            ch = substring( full i 1 )
+            when( (ch == "/") || (ch == "\\")  cut = i )
+        )
+        ; no separator at all: a bare filename, so there is no folder to give
+        when( cut == 0  return( "" ) )
+        return( if( cut == 1 then "/" else substring( full 1 cut - 1 ) ) )
+    )
+)
+
+; s3dVariantFilePath() -> where Variants.lst is: beside the board.
+;
+; Falls back to the bare name - the working directory, which is where this
+; looked before - when the drawing path cannot be read, so an Allegro that does
+; not answer axlGetDrawingName is no worse off than it was.
+procedure( s3dVariantFilePath()
+    let( ( dir last )
+        dir = s3dDesignFolder()
+        last = if( dir == "" then "" else substring( dir strlen( dir ) 1 ) )
+        cond(
+            ( dir == ""                        "Variants.lst" )
+            ; a folder that already ends in a separator - the root, "/" - must
+            ; not get a second one
+            ( (last == "/") || (last == "\\")  strcat( dir "Variants.lst" ) )
+            ( t                                strcat( dir "/Variants.lst" ) )
+        )
     )
 )
 
@@ -516,7 +566,9 @@ procedure( s3dCheckMfrPn()
 ;=====================================================================
 
 procedure( gdsysGetVariantInfo()
-    let(    (   ( variantFile "Variants.lst" )
+    ; FIX (simple3d): beside the BOARD, not in Allegro's working directory.
+    ; See s3dVariantFilePath.
+    let(    (   ( variantFile s3dVariantFilePath() )
             ( state "findVariant" )
             pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
 
@@ -3194,7 +3246,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 )
 
 procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0.0) ) ( configFile nil ) )
-    let( (  ( variantFile "Variants.lst" ) dsnName dsn thicknesses edgeCuts silk variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName thicknesses elements placement outFile outPort pcb lines )
+    let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName thicknesses elements placement outFile outPort pcb lines )
 
         ; get design and design name
         dsnName = axlCurrentDesign()
@@ -3322,7 +3374,12 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
             )
         else
             ; export all symbols, if no variant.lst can be found
+            ; Name the path it looked at. "No variant information present" on
+            ; its own is indistinguishable from "your Variants.lst was not
+            ; found", and those need different things done about them.
             warn( "No variant information present!\n Exporting all components!" )
+            printf( "Simple 3D: no Variants.lst beside the board (looked for %s)\n"
+                    variantFile )
 
             ; Same routine as the variant path, with no variant table: every
             ; symbol that has a refdes and is not marked NO_STEP_EXPORT.

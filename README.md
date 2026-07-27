@@ -426,10 +426,21 @@ Simple 3D: 3 symbol(s) excluded by NO_STEP_EXPORT.
 Excluded symbols are also kept out of the "no 3D model" pre-flight list, which
 is for parts that *would* be exported if they had a model.
 
-**A variant can only remove.** With a `Variants.lst` present, a refdes the
-variant table mentions somewhere but not in the variant being built is treated
-as not installed and skipped. A refdes the table never mentions at all is not
-variant-controlled, so it is exported in every variant.
+**`Variants.lst` is read from the folder holding the `.brd`** — beside the
+board, which is where Allegro keeps it. Nowhere else is looked at, and the
+console names the path it tried when there is nothing there:
+
+```
+Simple 3D: no Variants.lst beside the board (looked for d:/Projects/board/Variants.lst)
+```
+
+With one present, the export writes **one JSON per variant**, named
+`<design>_<variant>`, and the window builds every one of them into its own STEP.
+
+**A variant can only remove.** A refdes the variant table mentions somewhere but
+not in the variant being built is treated as not installed and skipped. A refdes
+the table never mentions at all is not variant-controlled, so it is exported in
+every variant.
 
 That last rule is what makes **mechanical components work**. A part with
 `Component Class: MECHANICAL` — a connector, a mounting hole, a bracket — is a
@@ -644,7 +655,7 @@ Silkscreen and paste mask are excluded. Example, a 2-layer stackup:
 ## Checks and tests
 
 ```
-python tests/run_all.py            all 19 suites, about 55 s
+python tests/run_all.py            all 20 suites, about 55 s
 python tests/run_all.py --quick    skip the OCCT-heavy geometry suites
 ```
 
@@ -1179,10 +1190,21 @@ Simple 3D: 3 symbol(s) excluded by NO_STEP_EXPORT.
 Исключённые символы не попадают и в предварительный список «нет 3D-модели» — он
 про детали, которые экспортировались бы, будь у них модель.
 
-**Вариант умеет только убирать.** Если `Variants.lst` есть, позиционное
-обозначение, которое таблица вариантов где-то упоминает, но не в собираемом
-варианте, считается неустановленным и пропускается. Обозначение, которого в
-таблице нет вовсе, вариантами не управляется — и экспортируется во всех.
+**`Variants.lst` читается из папки, где лежит `.brd`** — рядом с платой, там,
+где его держит Allegro. Больше нигде не ищется, а если там ничего нет, консоль
+называет путь, по которому смотрели:
+
+```
+Simple 3D: no Variants.lst beside the board (looked for d:/Projects/board/Variants.lst)
+```
+
+Когда файл есть, экспорт пишет **по одному JSON на вариант** с именем
+`<плата>_<вариант>`, и окно собирает каждый из них в собственный STEP.
+
+**Вариант умеет только убирать.** Позиционное обозначение, которое таблица
+вариантов где-то упоминает, но не в собираемом варианте, считается
+неустановленным и пропускается. Обозначение, которого в таблице нет вовсе,
+вариантами не управляется — и экспортируется во всех.
 
 Именно это правило заставляет работать **механические компоненты**. Деталь с
 `Component Class: MECHANICAL` — разъём, монтажное отверстие, кронштейн — это
@@ -1397,7 +1419,7 @@ warning: 2 model(s) are stored inside the board but were not found on disk:
 ## Проверки и тесты
 
 ```
-python tests/run_all.py            все 19 наборов, около 55 с
+python tests/run_all.py            все 20 наборов, около 55 с
 python tests/run_all.py --quick    без тяжёлых геометрических наборов
 ```
 
