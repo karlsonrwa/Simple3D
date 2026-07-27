@@ -138,7 +138,24 @@ def main():
 
     for f in PROBES:
         text, bal, broken, defs, calls = analyze(f)
-        ok = report(f, bal, broken, calls, defs) and ok
+        # A probe is checked against its OWN definitions, so that a typo in it
+        # cannot be satisfied by a procedure in the exporter. One kind of probe
+        # legitimately calls into the shipped files - a diagnostic ABOUT the
+        # exporter, which would be worthless if it re-implemented what it is
+        # meant to be reporting on. It says so with a marker line, and then the
+        # shipped definitions are pooled in for it alone:
+        #
+        #     ; REQUIRES: makeVariant3dIntermediates.il
+        #
+        # Explicit rather than automatic: the dependency is then visible at the
+        # top of the probe, where whoever loads it in Allegro has to read it.
+        required = set(re.findall(r"(?im)^\s*;\s*REQUIRES:\s*(.+?)\s*$", text))
+        known = set(defs)
+        for name in required:
+            for f2 in FILES:
+                if Path(f2).name in name:
+                    known |= analyze(f2)[3]
+        ok = report(f, bal, broken, calls, known) and ok
 
     print()
     print("ALL CHECKS PASS" if ok else "CHECKS FAILED")

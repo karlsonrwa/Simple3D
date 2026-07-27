@@ -2897,6 +2897,93 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-07-27 (round 47b) — Variants.lst is read from beside the board
+
+The user settled the question the round below leaves open: **Variants.lst always
+lives in the same folder as the `.brd`.** So the bare-name read was simply
+wrong, not merely fragile, and it is fixed rather than documented.
+
+`s3dDesignFolder()` cuts the folder off `axlGetDrawingName()` (the full drawing
+path; `axlCurrentDesign` gives the NAME only), and `s3dVariantFilePath()`
+appends `Variants.lst` to it. Both places that used to bind the bare name now
+call it: `gdsysGetVariantInfo`'s own `let` and `makeVariant3dIntermediates`'s.
+When the drawing path cannot be read it falls back to the bare name, i.e. to the
+old behaviour, so an Allegro that does not answer `axlGetDrawingName` is no
+worse off.
+
+**The folder is found by SCANNING for the last separator, not with
+`parseString`.** parseString collapses consecutive separators, so a UNC path
+`\\server\share\boards\x.brd` would come back as the relative `server/share` -
+the limitation `s3dMakeDirs` right above it still carries and this one must not.
+The character scan keeps the leading slashes, the drive letter and mixed
+separators exactly as they came.
+
+The no-variant branch now also prints the path it tried. "No variant information
+present" alone cannot be told apart from "your Variants.lst was not found", and
+those want different things done about them.
+
+`tests/test_variant_path.py` transliterates both helpers the way
+`test_quote.py` does `s3dJsonQuote`: local path, UNC, mixed separators, a bare
+drive root, a name with no folder, and the root case that must not produce
+`//Variants.lst`. It also greps the SKILL source so that a
+`( variantFile "Variants.lst" )` binding coming back fails the suite - that
+binding IS the bug.
+
+## Update 2026-07-27 (round 47) — Variants.lst: what the path actually is
+
+Asked whether the variant export still works. **Nothing in rounds 43–46 touched
+it** — `git log -L 3230,3336:makeVariant3dIntermediates.il` puts the last change
+to that region at `599b4f5`, well before this session — so it is not a
+regression from any of this work. The path, written down because it has three
+quiet ways of looking broken:
+
+1. **The trigger is `isFile("Variants.lst")` — a BARE NAME**, so it resolves
+   against Allegro's working directory (`getWorkingDir()`), the same directory
+   the exporter derives `rev/cad` from. **Not** next to the `.brd` unless those
+   coincide, and not in `cad`. `gdsysGetVariantInfo` opens it the same way. A
+   board opened from elsewhere therefore exports as if it had no variants, with
+   only the console line `No variant information present! Exporting all
+   components!` to say so.
+2. **A Variants.lst from another project parses into zero variants**, and that
+   is a hard `error()` with the "delete or replace it" message (round 6). The
+   count has to be obtained by iterating the table - it is always truthy and
+   `length` does not apply.
+3. **Nothing deletes old intermediates.** A `<design>.json` left in `cad` by an
+   earlier no-variant run stays there, is still tagged `"format": "simple3d"`,
+   and the GUI - which resolves every tagged json in the folder at Generate time
+   - builds it alongside the variant files. So the symptom of a stale file is an
+   EXTRA STEP containing every component, not a missing one.
+
+Otherwise the path is as designed: one JSON per variant, `<design>_<variant>`
+lower-cased, into `cad`; silkscreen collected once outside the loop (the bare
+board is manufactured once for every assembly variant); the export list taken
+from the DESIGN with the variant table only subtracting.
+
+### `tools/probes/probe_variants.il`
+
+New read-only probe that answers all three at once: the working directory and
+whether Variants.lst is in it, where the board file actually is and whether the
+file is there instead, what the parser makes of it, which refdes each variant
+installs against how many symbols would really be exported, and the filenames
+that would be written.
+
+Two things came out of writing it, both worth keeping:
+
+- **It calls into the exporter on purpose** (`gdsysGetVariantInfo`,
+  `s3dSymbolsToExport`) - a diagnostic that re-implemented what it reports on
+  would be worthless. `skill_checks.py` checks each probe against its OWN
+  definitions, so it now honours a `; REQUIRES: <file>.il` marker line and pools
+  that file's definitions for that probe alone. Explicit, so the dependency is
+  visible at the top of the probe where whoever loads it will read it.
+- **The first draft called `axlDirName`, which does not exist.** Caught by
+  scanning every `axl*` call in the repo against the local API index - and worth
+  noting that the check the project already has could not: `PROJECT_RE` only
+  matches our own prefixes, so an invented `axl*` name reads as a builtin.
+  `axlCurrentDesign` returns the NAME only; the full path is
+  `axlGetDrawingName`. The same scan over the shipped files came back clean
+  apart from `axlGetParam`, which IS real (it is in the HTML docs, just not in
+  the extracted 957-name index) and is wrapped in `errset` anyway.
+
 ## Update 2026-07-27 (round 46) — full review, and the docs caught up
 
 A read of the code as it stands after rounds 43–45. **Nothing was found in the
