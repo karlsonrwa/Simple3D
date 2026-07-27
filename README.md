@@ -43,10 +43,15 @@ File → Export → Simple 3D   (simple3d.il, inside Allegro)
    │  1. finds the design's  rev/cad  folder (sibling of  rev/pcb )
    │  2. runs the fixed makeVariant3dIntermediates -> one JSON per variant
    │     into  cad , tagged  "format": "simple3d"
-   └─ 3. launches the Python GUI with the paths prefilled
+   │  3. checks that Python can actually start, and says so if it cannot
+   └─ 4. launches the Python GUI with the paths prefilled
             │  reads the tagged JSON(s), builds the STEP
             └─ <board>_simple_DD_MM_YYYY.step
 ```
+
+Allegro's own progress form is on screen from the moment you press Export and
+names each of those stages, because all of it happens before any window of ours
+appears. Nothing temporary is written next to your board.
 
 The two halves communicate through an intermediate JSON file: SKILL can read the
 Allegro database but not build B-rep/STEP; OpenCASCADE can build STEP but knows
@@ -68,8 +73,11 @@ Open a normal `cmd` window and run:
 pip install cadquery-ocp
 ```
 
-`cadquery-ocp` is the OpenCASCADE geometry kernel with Python bindings (~165 MB).
-It is the only dependency. That is the entire `requirements.txt`.
+`cadquery-ocp` is the OpenCASCADE geometry kernel with Python bindings. It is
+the only thing you install, and it is the entire `requirements.txt` — but it is
+not small: it declares VTK as a hard dependency, so the three of them together
+come to **about 470 MB on disk** (measured: 91 MB of bindings, 63 MB of OCCT
+libraries, ~315 MB of VTK).
 
 ### 3. The files
 
@@ -618,6 +626,12 @@ A model that is missing from disk and *not* in the board gets the ordinary
 "could not find" warning: there is no copy to recover, and the file has to come
 from wherever the library keeps it.
 
+**The case of the filename does not matter.** The name comes from Allegro's STEP
+mapping table, where it is typed by hand, and the file on disk is named by
+whoever supplied the library — so `MODEL.STEP` and `model.step` are the same
+file here, as they are to Windows itself. An exact match is preferred; when only
+the case differs the log says which file was used.
+
 ## Board thickness
 
 The board solid is `dielectrics + planes + conductors + both soldermasks`.
@@ -630,7 +644,7 @@ Silkscreen and paste mask are excluded. Example, a 2-layer stackup:
 ## Checks and tests
 
 ```
-python tests/run_all.py            all 18 suites, about 50 s
+python tests/run_all.py            all 19 suites, about 55 s
 python tests/run_all.py --quick    skip the OCCT-heavy geometry suites
 ```
 
@@ -777,10 +791,15 @@ File → Export → Simple 3D   (simple3d.il, внутри Allegro)
    │  1. находит папку  rev/cad  (рядом с  rev/pcb )
    │  2. запускает исправленный makeVariant3dIntermediates -> по одному JSON
    │     на вариант в  cad , с меткой  "format": "simple3d"
-   └─ 3. запускает Python-окно с уже подставленными путями
+   │  3. проверяет, что Python вообще запускается, и говорит, если нет
+   └─ 4. запускает Python-окно с уже подставленными путями
             │  читает помеченные JSON, собирает STEP
             └─ <плата>_simple_ДД_ММ_ГГГГ.step
 ```
+
+Штатная форма прогресса Allegro висит на экране с момента нажатия Export и
+называет каждый из этих этапов — всё это происходит до появления любого нашего
+окна. Рядом с платой ничего временного не пишется.
 
 Две половины общаются через промежуточный JSON: SKILL умеет читать БД Allegro, но
 не умеет в B-rep/STEP; OpenCASCADE умеет в STEP, но ничего не знает про Allegro.
@@ -802,8 +821,10 @@ JSON — эта граница.
 pip install cadquery-ocp
 ```
 
-`cadquery-ocp` — это геометрический кернел OpenCASCADE с Python-обвязкой (~165 МБ).
-Это единственная зависимость. Весь `requirements.txt` состоит из неё.
+`cadquery-ocp` — это геометрический кернел OpenCASCADE с Python-обвязкой.
+Ставится только он, и весь `requirements.txt` состоит из него, — но лёгким его
+не назовёшь: он жёстко тянет за собой VTK, и втроём они занимают **порядка
+470 МБ на диске** (замерено: 91 МБ обвязки, 63 МБ библиотек OCCT и ~315 МБ VTK).
 
 ### 3. Файлы
 
@@ -1358,6 +1379,12 @@ warning: 2 model(s) are stored inside the board but were not found on disk:
 «could not find»: восстанавливать нечего, файл нужно брать там, где лежит
 библиотека.
 
+**Регистр имени файла значения не имеет.** Имя приходит из таблицы
+сопоставления STEP в Allegro, где его набирают руками, а файл на диске назван
+так, как его назвал поставщик библиотеки, — поэтому `MODEL.STEP` и `model.step`
+здесь один и тот же файл, ровно как и для самой Windows. Точное совпадение
+предпочитается; когда отличается только регистр, лог сообщает, какой файл взят.
+
 ## Толщина платы
 
 Тело платы — это `диэлектрики + плейны + проводники + обе паяльные маски`.
@@ -1370,7 +1397,7 @@ warning: 2 model(s) are stored inside the board but were not found on disk:
 ## Проверки и тесты
 
 ```
-python tests/run_all.py            все 18 наборов, около 50 с
+python tests/run_all.py            все 19 наборов, около 55 с
 python tests/run_all.py --quick    без тяжёлых геометрических наборов
 ```
 
@@ -1481,6 +1508,25 @@ stepbuilder/
 ---
 
 ## Changelog / История изменений
+
+- **2026-07-27** — **A model file is found whatever case its name is in.** The
+  name comes from Allegro's STEP mapping table, where it is typed by hand; the
+  file on disk is whatever the library vendor called it. `MODEL.STEP` against
+  `model.step` was an ordinary miss, reported as "could not find model.step",
+  and the component was simply absent from the assembly — even though Windows
+  itself cannot tell the two names apart. The search now falls back to ignoring
+  case, for the whole name and not only the extension, and says in the log which
+  file it used. An exact match is still tried first and always wins, so nothing
+  that resolved before resolves differently.
+  / **Файл модели находится в любом регистре.** Имя берётся из таблицы
+  сопоставления STEP в Allegro, где его набирают руками, а файл на диске назван
+  так, как его назвал поставщик библиотеки. `MODEL.STEP` против `model.step`
+  было обычным промахом с сообщением «could not find model.step», и компонент
+  просто отсутствовал в сборке — при том что сама Windows эти два имени не
+  различает. Теперь поиск в последнюю очередь пробует без учёта регистра, причём
+  для всего имени, а не только расширения, и пишет в лог, какой файл взял.
+  Точное совпадение по-прежнему проверяется первым и всегда выигрывает, так что
+  ничто из находившегося раньше не начнёт находиться иначе.
 
 - **2026-07-27** — **A bend no longer flattens what curves inside it.** Where a
   board's outline runs straight into a bend area and then curves *within* it,

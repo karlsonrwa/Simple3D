@@ -18,7 +18,6 @@ import os
 import queue
 import re
 import tkinter as tk
-import traceback
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 

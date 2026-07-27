@@ -2897,6 +2897,98 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-07-27 (round 46) — full review, and the docs caught up
+
+A read of the code as it stands after rounds 43–45. **Nothing was found in the
+geometry or the logic**; everything below is either a doc statement that had
+gone stale or one dead line. Recording what was checked and came out clean is
+half the point of the round — so it is not all re-checked next time.
+
+### What was actually read, and what was only scanned
+
+Honest about the difference, because "reviewed" means different things here:
+
+- **Read in full:** `core.py` (2256 lines), `worker.py`, `__main__.py`,
+  `simple3d.il`, and of `bend.py` the plan, the strip geometry, the prism test
+  and the property parsers. Of `gui.py`, everything that carries state -
+  `__init__`, config load/save, the worker plumbing, the snapshot - the
+  widget-layout half was skimmed.
+- **Scanned mechanically, not re-read:** `makeVariant3dIntermediates.il` (3336
+  lines) - unchanged since round 42's full read, so it got the four mechanical
+  checks plus targeted greps for the two trap classes it has a history of.
+  `tests/` and `tools/` got pyflakes and a run.
+
+### Found and fixed
+
+1. **`gui.py` imported `traceback` and never used it.** Dead since the build
+   moved into a child process in round 40 - the traceback is formatted in
+   `worker.py` now and arrives as text. One line, removed.
+2. **README: "all 18 suites, about 50 s".** 19 and ~55 s since round 43. Both
+   language halves.
+3. **README: "`cadquery-ocp` … (~165 MB). It is the only dependency."**
+   Misleading twice over: it declares **VTK** as a hard dependency, and the
+   three together are **~470 MB on disk** - measured here as 91 MB of bindings,
+   63 MB of OCCT libraries and ~315 MB of VTK. The sentence now says so. This is
+   the same measurement the standalone-exe question turned up earlier in the
+   session, and it is worth having in the README rather than only in a chat.
+4. **"How it works" had no pre-flight and no progress meter in it** - the
+   diagram jumped from writing the JSON to the window appearing, which is
+   exactly the several seconds a user now watches a progress form during. Added
+   as its own step, in both halves and in `QUICKSTART.md`.
+5. **Nothing said the model lookup ignores case** (round 45). Added to "Models
+   the board carries a copy of", both halves.
+
+### Checked and clean - do not re-derive
+
+- **No `return()` inside a `let()`** in either `.il`. That is the round-9 trap
+  (SKILL's `return` is legal only in a `prog`), and it is now scanned for
+  mechanically rather than by eye.
+- **Round 42's per-design resets are still in place**: `S3D_RigidFlexShapes`
+  and `S3D_BendLines` at the top of `makeVariant3dIntermediates`,
+  `S3D_MechSeq` and `S3D_SilkWarnings` one level down.
+- **`FoldPlan.chain` really is the 4-tuple its annotation claims.** `plan_fold`
+  builds `kept` as 6-tuples and `plan.chain = [(b, n, p, h) for b, n, p, h, _, _
+  in kept]` narrows it, so `in_bend_area` and `describe` unpack correctly. It
+  reads like a defect on the way past; it is not.
+- **The `_check_worker_alive` race is benign.** A child can exit with code 0
+  while its "done" message is still in the pipe; the check marks `_finished` and
+  returns, and the next drain (100 ms later) still delivers the message and
+  re-enables the window. Traced rather than assumed.
+- **pyflakes is clean** on the shipped package apart from `bend.py:915`, which
+  is the deliberate `stack_at = None` / conditional `def stack_at` pattern.
+- No bare `except:`, no mutable default arguments, and the config save's
+  two-condition rule (understood at load AND at save) is intact.
+
+## Update 2026-07-27 (round 45) — model names, case-folded
+
+Asked by the user: were `.step` and `.STEP` two different files? For the model
+search, yes — and not only the extension. `StepFileIndex` keyed its dict on
+`path.name` and looked up with `dict.get(name)`, so **the whole name was
+compared exactly**, while the two sides come from different places: the name
+being looked for comes from Allegro's STEP mapping table, typed by hand, and
+the file on disk is named by whoever supplied the library. Windows itself
+cannot hold two files in one folder that differ only in case, so there was
+nothing to disambiguate — only a model missing from the assembly and a log line
+saying "could not find model.step".
+
+`find` now falls back to a lower-cased index when both exact lookups miss, and
+`_note_case` says which file it used (capped at ten lines, like the
+shadowed-name report — a library spelled the other way throughout would
+otherwise print one line per component). **Exact match is tried first and always
+wins**, and the folded index is filled first-wins in the same root order, so
+nothing that resolved before resolves differently, and the ambiguity that only a
+case-SENSITIVE filesystem can present resolves by declared precedence.
+
+Checked while there, so it does not get re-investigated: `Path.glob` is
+**case-insensitive on Windows** in 3.12 (`case_sensitive=None` means "follow the
+platform"), so `glob("*.json")` in `resolve_json_jobs` already picks up a
+`.JSON`, and `rglob("*")` in the index never filtered by extension at all. The
+exact-dict lookup was the only case-sensitive step in the chain.
+
+`tests/test_index.py` [8] covers it: the extension in another case, the whole
+name in another case, exact beating folded, a name that differs by more than
+case still missing, and the cap on the report.
+
 ## Update 2026-07-27 (round 44) — the 25 micron ledge on flex2-a0
 
 Reported from the user's own export: *"около BEND_1 появляется ступенька на

@@ -76,5 +76,40 @@ check("plain Path root", StepFileIndex(lib, log=lambda m: None).find("only_lib.s
 print("\n[7] a name carrying a path component still resolves")
 check("subdir/deep.step found", i.find("sub/deep.step") is not None)
 
+print("\n[8] case: the mapping table and the disk may disagree")
+# The name looked up comes from Allegro's STEP mapping table, typed by hand;
+# the file on disk is whatever the library vendor named it. On Windows the two
+# cannot be told apart by the filesystem, so a miss on case alone was a model
+# silently absent from the assembly.
+(lib/"MiXeD.STEP").write_text("M")
+logs3 = []
+i4 = StepFileIndex([lib], log=logs3.append)
+check("exact name still found", i4.find("MiXeD.STEP") is not None)
+check("lower-cased extension found", i4.find("MiXeD.step") is not None)
+check("whole name in another case found", i4.find("mixed.step") is not None)
+check("upper-cased name found", i4.find("MIXED.STEP") is not None)
+check("it is the same file", i4.find("mixed.step").read_text() == "M")
+check("and it says so", any("differ only in case" in m for m in logs3), str(logs3))
+check("a name that differs by more than case is still a miss",
+      i4.find("mixxed.step") is None)
+
+# Exact wins over folded, so nothing that resolved before resolves differently.
+(proj/"Case.step").write_text("EXACT")
+(lib/"CASE.STEP").write_text("FOLDED")
+i5 = StepFileIndex([proj, lib], log=lambda m: None)
+check("an exact match beats a case-folded one",
+      i5.find("Case.step").read_text() == "EXACT")
+check("and the folded one is still reachable by its own name",
+      i5.find("CASE.STEP").read_text() == "FOLDED")
+
+logs4 = []
+i6 = StepFileIndex([lib], log=logs4.append)
+for _ in range(14):                                  # a whole library, misspelled
+    i6.find("mixed.step")
+check("the case report is capped, not one line per component",
+      len([m for m in logs4 if "differ only in case" in m]) == 10, str(len(logs4)))
+check("and it says there were more",
+      any("further model names" in m for m in logs4), str(logs4))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

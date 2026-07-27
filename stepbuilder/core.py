@@ -1275,13 +1275,27 @@ class StepFileIndex:
                 )
             raise StepBuilderError("No STEP folder was given")
 
+        self._log = log
+        self._case_folded = 0
         self._index: dict[str, Path] = {}
+        # The same index folded to lower case, for the lookup of last resort.
+        # Windows cannot hold two files in one folder whose names differ only in
+        # case, but the name being looked up does not come from the disk - it
+        # comes from Allegro's STEP mapping table, where it is typed by hand -
+        # so MODEL.STEP on disk against model.step in the mapping is an ordinary
+        # miss, and it used to read as "could not find model.step". Exact match
+        # is still tried first and always wins, so nothing that resolved before
+        # resolves differently now; and first-wins here follows the same root
+        # order, which is what settles the ambiguity that a case-SENSITIVE
+        # filesystem can present and Windows cannot.
+        self._folded: dict[str, Path] = {}
         shadowed = 0
         for root in self.roots:
             for path in root.rglob("*"):
                 if not path.is_file():
                     continue
                 winner = self._index.setdefault(path.name, path)
+                self._folded.setdefault(path.name.lower(), path)
                 # Only across roots: two files of one name inside a single root
                 # cannot be told apart by precedence, and reporting the walk
                 # order would suggest a meaning it does not have.
@@ -1298,8 +1312,28 @@ class StepFileIndex:
             # The index is keyed on the bare filename; a mapping that carries a
             # path component ("subdir/model.step") would otherwise miss a file
             # that is sitting right there.
-            hit = self._index.get(Path(name).name)
+            bare = Path(name).name
+            hit = self._index.get(bare)
+            if hit is None:
+                hit = self._folded.get(bare.lower())
+                if hit is not None:
+                    self._note_case(bare, hit)
         return hit
+
+    def _note_case(self, asked: str, found: Path) -> None:
+        """Say that a model was found only by ignoring case - a few times.
+
+        Worth saying: it means the mapping table and the disk disagree, which is
+        a real thing to tidy up, and on a case-sensitive filesystem it is the
+        difference between a build and a missing model. Not worth saying two
+        hundred times on a board whose whole library is spelled the other way,
+        hence the same cap the shadowed-name report uses.
+        """
+        self._case_folded += 1
+        if self._case_folded <= 10:
+            self._log(f"{asked}: using {found.name} - the names differ only in case")
+        elif self._case_folded == 11:
+            self._log("(further model names matched only after ignoring case)")
 
 
 def _same_root(path: Path, root: Path) -> bool:
