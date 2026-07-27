@@ -28,7 +28,8 @@
 ;=====================================================================
 
 procedure( s3dProbeVariants()
-    let( ( cwd here info symbolList altParts count names installed nSyms )
+    let( ( cwd here info symbolList altParts count names installed nSyms
+           knownTab nKnown nPlaced nCovered instTab r )
 
         printf( "\n===== 1. WHERE THE EXPORTER LOOKS =====\n" )
         printf( "  current design            : %L\n" axlCurrentDesign() )
@@ -83,6 +84,58 @@ procedure( s3dProbeVariants()
             return( t )
         )
 
+        printf( "\n===== 2b. DOES IT DESCRIBE THIS BOARD? =====\n" )
+        ; The question that a parsed-but-wrong file answers wrongly. A stub
+        ; ("dummy" with an empty base) knows nothing, so nothing is subtracted
+        ; and every component is exported into every variant file; a file from
+        ; another project knows plenty, none of it here, with the same result.
+        knownTab = s3dVariantKnownRefdes( symbolList )
+        nKnown = 0
+        foreach( key knownTab  nKnown = nKnown + 1 )
+        nPlaced = 0
+        nCovered = 0
+        foreach( sym axlDBGetDesign()->symbols
+            when( sym->refdes
+                nPlaced = nPlaced + 1
+                when( knownTab[upperCase( sym->refdes )]  nCovered = nCovered + 1 )
+            )
+        )
+        printf( "  refdes the variant list knows : %d\n" nKnown )
+        printf( "  placed components on the board: %d\n" nPlaced )
+        printf( "  of those, known to the list   : %d\n" nCovered )
+        cond(
+            ( nKnown == 0
+                printf( "  -> the list installs NOTHING. The export stops on it.\n" ) )
+            ( (nPlaced > 0) && (nCovered == 0)
+                printf( "  -> NOT this board's file. The export stops on it.\n" ) )
+            ( t
+                printf( "  -> the list and the board agree.\n" ) )
+        )
+
+        ; Which side of the rule each placed part falls on. An electrical
+        ; component absent from the variant is DROPPED; a mechanical one is kept
+        ; whatever the file says, because the variant list covers the BOM and a
+        ; mechanical part is not in it.
+        printf( "\n  outside the variant system (kept in every variant):\n" )
+        printf( "    refdes            in netlist  symbol type  compdef class\n" )
+        nCovered = 0
+        foreach( sym axlDBGetDesign()->symbols
+            when( s3dIsMechanical( sym )
+                nCovered = nCovered + 1
+                when( nCovered <= 15
+                    ; Which of the three tests fired, so a part that is kept -
+                    ; or dropped - can be traced to the reason rather than
+                    ; guessed at. "in netlist: nil" is the layout-only part.
+                    printf( "    %-16L  %-10L  %-11L  %L\n"
+                            sym->refdes
+                            if( car( errset( sym->component ) ) then t else nil )
+                            sym->type
+                            car( errset( sym->component->compdef->class ) ) )
+                )
+            )
+        )
+        printf( "    %d in total\n" nCovered )
+
         printf( "\n===== 3. WHAT EACH VARIANT INSTALLS =====\n" )
         foreach( v reverse( names )
             installed = symbolList[v]
@@ -96,6 +149,22 @@ procedure( s3dProbeVariants()
             nSyms = nil
             errset( nSyms = length( s3dSymbolsToExport( symbolList v ) ) )
             printf( "     -> %L symbol(s) would be exported\n" nSyms )
+            ; and, by name, the ones this variant leaves out - the answer to
+            ; "why is R3 in my model"
+            ; A table, not member() on a list: SKILL's member compares with eq,
+            ; which is not what two equal strings are.
+            instTab = makeTable( "probeInstalled" nil )
+            foreach( r installed
+                when( stringp( r )  instTab[upperCase( r )] = t )
+            )
+            printf( "     dropped: " )
+            foreach( sym axlDBGetDesign()->symbols
+                when( sym->refdes && !s3dIsMechanical( sym ) &&
+                      !instTab[upperCase( sym->refdes )]
+                    printf( "%s " sym->refdes )
+                )
+            )
+            printf( "\n" )
         )
 
         printf( "\n===== 4. WHAT WOULD BE WRITTEN =====\n" )

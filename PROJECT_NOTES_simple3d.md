@@ -2897,6 +2897,161 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-07-27 (round 50) — the variant that changes a part, not the list
+
+Round 49 confirmed live: `R1 R2 R3 R4 R8` gone, `A1`/`A2` kept as mechanical.
+The next question was the other shape a `Variants.lst` can take - a variant that
+**overrides properties on individual components** - and the user put such a file
+in `My Test Board`. Two variants, `LSM` and `BNO`, and after `BNO`'s base list:
+
+```
+(C43 VALUE="12pF" JEDEC_TYPE="CAPC100X50X55L25N" TOL="1" )
+(C44 VALUE="12pF" JEDEC_TYPE="CAPC100X50X55L25N" TOL="1" )
+```
+
+**It is handled, and the new rule is what makes it matter.** Traced through the
+parser line by line rather than assumed:
+
+- the line matches `propertyStart` (`^\t\t\(`), so it is read in
+  `awaitEndCondition` - exactly where such a block sits, after `base` closes and
+  before the variant does;
+- `refDes` comes from token 0 with the parser's character class stripped ->
+  `C43`, and `symbols = nconc( symbols list( refDes ) )` puts it in **that
+  variant's** installed list. That line is the 2026-07-22 fix: it used to append
+  `nth( 0 subStrings )` after `subStrings` had been reassigned to the property
+  chunks, i.e. `VALUE="12pF"` instead of the refdes;
+- the "does this block end on this line" test compares the last chunk against
+  `")\n"`, which holds because `parseString` splits on **spaces only** - the
+  trailing newline stays attached to the closing paren. That is also why
+  `strcmp( line "\t\t(base\n" )` works at all.
+
+So a component that a variant only *re-specifies* counts as installed there, and
+under round 49's rule it is exported in that variant and **dropped in the other
+one** - which is right, and was invisible before, when everything unmentioned
+was exported everywhere.
+
+`tests/test_variant_path.py` [7] transliterates that branch on the real line
+from the user's file: the refdes must come out `C43` and not `VALUE="12pF"`, and
+a block that continues onto the next line must not be read as finished.
+
+### One thing the parser leaves behind
+
+Splitting on spaces means a line ending in `" )"` yields a bare `"\n"` token,
+which survives the character-class strip (it has no `\n` in it) and lands in the
+variant's symbol list. It can never match a refdes, so it has never changed an
+export - but it did add one to `variant list covers N of M`. `s3dIsRefdesToken`
+now filters tokens with no alphanumeric in them, in both tables.
+
+## Update 2026-07-27 (round 49) — the variant rule, inverted back on purpose
+
+The user built a board FOR this: `variants_test-b0.brd` in `My Test Board`, with
+its own `Variants.lst` - one variant `ALL`, 33 refdes, **space**-separated (the
+other files on that disk use commas; the parser handles both). The exported JSON
+carried **40** components. The seven extra: `R1 R2 R3 R4 R8` and `A1 A2`.
+
+### Where it broke, precisely
+
+`2026-07-22`. The comment is still in the source:
+
+> was `symbols = variantSymbolList[variant]`, i.e. the parsed variant list WAS
+> the export list, so a symbol the parser did not return could not be exported
+> at all - which is how mechanical components went missing.
+
+That fixed mechanical parts and broke this. The replacement rule was *subtract
+only a refdes the table mentions SOMEWHERE*, and a component the file never
+names - `R3` - is then not variant-controlled and rides into every variant. Both
+readings are defensible; both are wrong on the other case.
+
+### What separates R3 from a bracket
+
+Not whether the file mentions it. **Whether the part comes from the schematic at
+all.** `s3dIsMechanical` now answers that, three reads, each in an `errset`:
+
+1. **no logical component** (`sym->component` is nil) - a symbol placed in the
+   layout that the netlist has never heard of. A part that is not in the
+   schematic cannot be in a variant list generated from it, so its absence there
+   says nothing. This is the one that covers "the designer dropped something on
+   the board that will never be in a variant";
+2. **symbol type** `MECHANICAL` - an `.osm` placed directly;
+3. **compdef class** `MECHANICAL` (`sym->component->compdef->class`, confirmed in
+   `skill_db_attributes.txt`: *Component classification*) - a placed part with a
+   refdes and no BOM line. `A1`/`A2` on the test board are MOLEX housings
+   sitting exactly on `XP1`/`XP2`.
+
+Everything else with a refdes obeys the list: installed -> exported, absent ->
+dropped. With no variant table at all, nothing is dropped, exactly as before.
+
+`NO_STEP_EXPORT` is unchanged and still wins over all of it - it is the answer
+for a mechanical part that must not be in the model at any time.
+
+### And the stub now stops the export
+
+Under the old rule an empty variant list exported everything; under this one it
+would export a board with only its mechanical parts. Both are wrong, so
+`s3dVariantFit` raises on it rather than picking a wrong answer quietly.
+
+`probe_variants.il` prints, per variant, the refdes it would DROP, and a table of
+everything outside the variant system with **which of the three tests fired** -
+`in netlist / symbol type / compdef class` - so a part that is kept or dropped
+can be traced to the reason instead of guessed at.
+`tests/test_variant_path.py` [6] pins the six cases.
+
+**Not verified in Allegro yet**: that `A1`/`A2` really do come back mechanical
+by one of the three tests. If they do not, they will appear in the probe's
+"dropped" line, and the fix is theirs to choose - a `MECHANICAL` class on the
+compdef, or `NO_STEP_EXPORT` if they should never be in the model.
+
+## Update 2026-07-27 (round 48) — the variant list that is not this board's
+
+Reported straight after 47b: the path resolves now, and the 3D **still** carries
+components that should not be on the board. It is not the subtraction rule -
+that works. It is the file.
+
+### What is actually on the user's disk
+
+Looked, rather than asked. `find d:/Projects/OrCAD -iname Variants.lst` returns
+**twelve** files across unrelated projects, and they are **two files copied
+around**: `md5 2c47440f…` in seven projects and `md5 949a3de5…` in five.
+
+- `949a3de5` is a **stub**: one variant called `"dummy"` whose base list is
+  literally `( )`.
+- `2c47440f` is a real-looking list whose "variants" are part-number groupings
+  (`"CC0603KRX7R9BB104"`, `"C other"`, `"DA DD"`, `"VD"`, `"VT"`, `"X"`) - and
+  it is the SAME list of refdes in every project that carries it, so in all but
+  at most one of them it describes a different board.
+
+### Why either one exports the whole board
+
+The export's rule is *the variant table only subtracts, and only for a refdes it
+KNOWS* - which is what makes mechanical parts work (round 19) and must not
+change. Both files defeat it from the other side:
+
+- the stub knows **nothing**, so `known[refdes]` is false for everything and
+  nothing is ever subtracted;
+- another project's file knows plenty, **none of it on this board**, with the
+  same result.
+
+Either way every component lands in every variant file, under real-looking
+variant names. Round 6's check does not fire: it catches a file that parses into
+ZERO variants, and both of these parse into one or twelve.
+
+### s3dVariantFit
+
+Asked once, before the variant loop, and it does not change what is exported:
+
+- **no refdes known at all** -> a warning naming the file: nothing can be
+  subtracted, every component goes into every variant file, this is what a stub
+  does, replace it or delete it.
+- **known refdes, none placed here** (and the board does have refdes) ->
+  `error()`, the same shape round 6 uses: the file belongs to a different
+  project, it would write one copy of the whole board per variant name, and
+  nothing downstream could tell.
+- otherwise -> `variant list covers N of M placed component(s)`, which is the
+  line that makes a half-matching file visible too.
+
+`probe_variants.il` grew section 2b with the same three numbers, and
+`tests/test_variant_path.py` [5] pins the three branches plus the call site.
+
 ## Update 2026-07-27 (round 47b) — Variants.lst is read from beside the board
 
 The user settled the question the round below leaves open: **Variants.lst always
