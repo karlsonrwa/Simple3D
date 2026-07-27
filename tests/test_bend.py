@@ -526,6 +526,68 @@ check("folding neither loses nor invents material",
       abs(folded_v - flat_v) / flat_v < 0.01, (folded_v, flat_v))
 
 # --------------------------------------------------------------------------- #
+print("\n[11b] a feature INSIDE the bend area survives the fold")
+
+# Round 44, from the user's flex2-a0: the outline runs straight past BEND_1 and
+# then curves outward INSIDE the bend area, reaching 0.0252 mm beyond the
+# straight part by the far edge of the strip. That is 0.04% of the strip's
+# volume - under PRISM_TOLERANCE - so the prism test, which compared volumes
+# only, called the strip straight, revolved one cross-section through the whole
+# arc and dropped the curve. The board came out with a 25 micron ledge along the
+# edge of the flex exactly where the bend ended, and that is what was reported.
+#
+# The same thing in miniature here, and deliberately well under the old
+# tolerance: a 0.5 x 0.03 mm ear on the far edge, wholly inside the bend area,
+# 0.008% of the strip's volume. The fold turns about an axis parallel to y, so
+# the ear's y is untouched by it: material past y = 80 exists in the result if
+# and only if the ear survived. It must, whichever construction builds the bend.
+eared = json.loads((ROOT / "demo/ap-214/demo.json").read_text())
+eared["format"] = "simple3d"
+eared["format_version"] = 7
+eared["pcb"]["edges"] = [[
+    {"type": "segment", "start": [0.0, 0.0], "end": [160.0, 0.0]},
+    {"type": "segment", "start": [160.0, 0.0], "end": [160.0, 80.0]},
+    {"type": "segment", "start": [160.0, 80.0], "end": [121.0, 80.0]},
+    {"type": "segment", "start": [121.0, 80.0], "end": [121.0, 80.03]},
+    {"type": "segment", "start": [121.0, 80.03], "end": [120.5, 80.03]},
+    {"type": "segment", "start": [120.5, 80.03], "end": [120.5, 80.0]},
+    {"type": "segment", "start": [120.5, 80.0], "end": [0.0, 80.0]},
+    {"type": "segment", "start": [0.0, 80.0], "end": [0.0, 0.0]},
+]]
+eared["bends"] = demo["bends"]
+ear_file = OUT / "eared.json"
+ear_file.write_text(json.dumps(eared))
+
+# the bend area with k = 0.5 is x in [118.784, 121.216] - the ear is inside it
+check("the ear really is inside the bend area",
+      120.0 - dev_demo / 2 < 120.5 and 121.0 < 120.0 + dev_demo / 2,
+      (120.0 - dev_demo / 2, 120.0 + dev_demo / 2))
+
+ear_logs = []
+core.generate(step_dir=ROOT / "demo/step_files", json_file=ear_file, output_dir=OUT,
+              output_name="eared", minimize_size=False, log=ear_logs.append)
+ear_reader = STEPControl_Reader()
+ear_reader.ReadFile(str(OUT / "eared.step"))
+ear_reader.TransferRoots()
+ear_shape = ear_reader.OneShape()
+
+from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
+
+# Cut at 80.005 rather than at 80: a boolean against a plane coincident with the
+# solid's own face is the one that comes back empty on one board in twenty.
+past_edge = BRepPrimAPI_MakeBox(gp_Pnt(100.0, 80.005, -60.0),
+                                gp_Pnt(160.0, 81.0, 60.0)).Shape()
+cut = BRepAlgoAPI_Common(ear_shape, past_edge)
+cut.Build()
+ear_volume = volume(cut.Shape()) if cut.IsDone() else 0.0
+# the fold preserves volume, so the ear keeps 0.5 x 0.025 x 1.096 above the cut
+check("the ear inside the bend is still there after folding",
+      ear_volume > 0.005, f"{ear_volume:.6f} mm3 past y=80.005")
+check("and it is the whole ear, not a remnant",
+      near(ear_volume, 0.5 * 0.025 * 1.096, 0.002),
+      (ear_volume, 0.5 * 0.025 * 1.096))
+
+# --------------------------------------------------------------------------- #
 print("\n[12] a board with no bends is left exactly as it was")
 
 plain = json.loads((ROOT / "demo/ap-214/demo.json").read_text())
