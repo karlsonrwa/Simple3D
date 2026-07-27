@@ -437,21 +437,52 @@ Simple 3D: no Variants.lst beside the board (looked for d:/Projects/board/Varian
 With one present, the export writes **one JSON per variant**, named
 `<design>_<variant>`, and the window builds every one of them into its own STEP.
 
-**A variant can only remove.** A refdes the variant table mentions somewhere but
-not in the variant being built is treated as not installed and skipped. A refdes
-the table never mentions at all is not variant-controlled, so it is exported in
-every variant.
+**A `Variants.lst` that is not this board's is caught.** Two kinds parse
+perfectly and then quietly export the whole board under variant names, which
+looks exactly like variants working:
 
-That last rule is what makes **mechanical components work**. A part with
-`Component Class: MECHANICAL` — a connector, a mounting hole, a bracket — is a
-real symbol with a real `PKGDEF_STEP_FILE`, but it has no electrical
-connections, and whether it turns up in the parsed variant list is not something
-to depend on. Because the export list is built from the design and the variant
-table only subtracts from it, such a part is exported either way. The console
-says how many were in that position:
+| what it is | what happens now |
+|---|---|
+| a **stub** — one variant, usually `"dummy"`, with an empty component list | the export stops: every variant would install nothing, leaving a board with only its mechanical parts |
+| **another project's file** — plenty of refdes, none of them on this board | the export stops and says so, naming a few of the refdes it was given |
+
+The ordinary case prints the coverage instead:
+`variant list covers 47 of 51 placed component(s)`.
+
+**The variant list decides what is installed.** A component that comes from the
+schematic is exported only if the variant being built lists it. Absence from the
+list is the list saying *not installed* — that is what it is for.
+
+**A part the variant system cannot describe is exported in every variant.**
+Three ways to be one, and they are told apart by what the part **is**, not by
+whether the file happens to mention it:
+
+- **it is not in the netlist at all** — a bracket, a mating connector, anything
+  the designer dropped straight onto the board in Allegro. A part that is not in
+  the schematic cannot appear in a variant list generated from that schematic,
+  so its absence there says nothing;
+- **its symbol type is `MECHANICAL`** — an `.osm` placed directly, usually with
+  no refdes;
+- **its component class is `MECHANICAL`** — a placed part that does have a
+  refdes but no BOM line.
+
+**A variant may also override properties on individual components**, as a block
+per component after its base list:
 
 ```
-Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.
+(C43 VALUE="12pF" JEDEC_TYPE="CAPC100X50X55L25N" TOL="1" )
+```
+
+Those components **are** installed in that variant — they are simply built from
+a different part — so their refdes joins that variant's list and they are
+exported with it, and only with it. (The 3D model itself comes from the STEP
+mapping, so the overridden properties do not change what is drawn.)
+
+`NO_STEP_EXPORT` is still how any of them is kept out of the model altogether.
+The console says how many were kept this way:
+
+```
+Simple 3D: 4 mechanical symbol(s) are outside the variant system; exported in every variant.
 ```
 
 **A mechanical symbol needs no reference designator.** A part placed straight
@@ -1201,21 +1232,52 @@ Simple 3D: no Variants.lst beside the board (looked for d:/Projects/board/Varian
 Когда файл есть, экспорт пишет **по одному JSON на вариант** с именем
 `<плата>_<вариант>`, и окно собирает каждый из них в собственный STEP.
 
-**Вариант умеет только убирать.** Позиционное обозначение, которое таблица
-вариантов где-то упоминает, но не в собираемом варианте, считается
-неустановленным и пропускается. Обозначение, которого в таблице нет вовсе,
-вариантами не управляется — и экспортируется во всех.
+**Чужой `Variants.lst` теперь ловится.** Два вида разбираются без единой
+ошибки, а потом молча экспортируют всю плату под именами вариантов — со стороны
+неотличимо от работающих вариантов:
 
-Именно это правило заставляет работать **механические компоненты**. Деталь с
-`Component Class: MECHANICAL` — разъём, монтажное отверстие, кронштейн — это
-настоящий символ с настоящим `PKGDEF_STEP_FILE`, но электрических подключений у
-неё нет, и полагаться на то, попадёт ли она в разобранный список варианта,
-нельзя. Поскольку список на экспорт строится от проекта, а таблица вариантов
-только вычитает, такая деталь экспортируется в любом случае. Сколько их было,
-видно в консоли:
+| что это | что происходит теперь |
+|---|---|
+| **заглушка** — один вариант, обычно `"dummy"`, с пустым списком компонентов | экспорт останавливается: каждый вариант установил бы ничего, и на плате осталась бы одна механика |
+| **файл от другого проекта** — обозначений много, но ни одного с этой платы | экспорт останавливается и говорит об этом, называя несколько полученных обозначений |
+
+В обычном случае печатается покрытие:
+`variant list covers 47 of 51 placed component(s)`.
+
+**Что установлено — решает список варианта.** Компонент, пришедший из схемы,
+экспортируется, только если собираемый вариант его перечисляет. Отсутствие в
+списке — это и есть «не установлен», ради этого список и существует.
+
+**Деталь, которую система вариантов описать не может, экспортируется во всех
+вариантах.** Быть такой можно тремя способами, и различаются они по тому, чем
+деталь **является**, а не по тому, упомянута ли она в файле:
+
+- **её нет в списке соединений вообще** — кронштейн, ответная часть разъёма, всё
+  что конструктор поставил на плату прямо в Allegro. Детали, которой нет в схеме,
+  неоткуда взяться в списке вариантов, сгенерированном из этой схемы, поэтому её
+  отсутствие там ничего не значит;
+- **тип символа `MECHANICAL`** — напрямую поставленный `.osm`, обычно вообще без
+  позиционного обозначения;
+- **класс компонента `MECHANICAL`** — поставленная деталь с обозначением, но без
+  строки в BOM.
+
+**Вариант может ещё и переопределять свойства отдельных компонентов** — блоком
+на компонент после базового списка:
 
 ```
-Simple 3D: 4 symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.
+(C43 VALUE="12pF" JEDEC_TYPE="CAPC100X50X55L25N" TOL="1" )
+```
+
+Такие компоненты в этом варианте **установлены**, просто собираются из другой
+детали, — поэтому их обозначения попадают в список этого варианта и
+экспортируются вместе с ним, и только с ним. (Сама 3D-модель берётся из
+STEP-маппинга, так что переопределённые свойства на геометрию не влияют.)
+
+`NO_STEP_EXPORT` по-прежнему убирает любую из них из модели совсем. Сколько
+деталей осталось по этому правилу, видно в консоли:
+
+```
+Simple 3D: 4 mechanical symbol(s) are outside the variant system; exported in every variant.
 ```
 
 **Механическому символу позиционное обозначение не нужно.** Деталь, поставленная

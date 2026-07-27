@@ -448,17 +448,135 @@ procedure( s3dHasStepModel( o_sym )
 ; Every refdes the variant table mentions anywhere, upper-cased.
 ; A refdes in here but missing from the current variant is deliberately not
 ; installed. A refdes the table never mentions is not variant-controlled at all.
+; Is this token from the variant list a reference designator at all?
+;
+; The parser splits its lines on spaces and strips a fixed set of characters,
+; which leaves the odd bare "\n" behind when a line ends in " )". Such a token
+; can never match a real refdes, so it has never changed an export - but it does
+; land in the counts ("variant list covers N of M"), and a diagnostic number
+; that is quietly one too big is worse than no number.
+procedure( s3dIsRefdesToken( t_token )
+    stringp( t_token ) && rexMatchp( "[A-Za-z0-9]" t_token )
+)
+
 procedure( s3dVariantKnownRefdes( g_variantSymbolList )
     let( ( known )
         known = makeTable( "s3dKnownRefdes" nil )
         when( g_variantSymbolList
             foreach( variant g_variantSymbolList
                 foreach( refdes g_variantSymbolList[variant]
-                    when( stringp( refdes )  known[upperCase( refdes )] = t )
+                    when( s3dIsRefdesToken( refdes )
+                        known[upperCase( refdes )] = t
+                    )
                 )
             )
         )
         known
+    )
+)
+
+; Is this symbol OUTSIDE the variant system - a mechanical part?
+;
+; The distinction the variant rule turns on. Allegro's variant list covers what
+; is assembled from the BOM; a mechanical part is not in it and never will be,
+; so its absence from the list says nothing at all. An electrical component's
+; absence says everything: it is not installed.
+;
+; THREE ways to be outside it, in order of how strongly they say so. All read
+; defensively - a board can carry a symbol in an unusual state, and none of
+; these reads is worth an aborted export:
+;
+;   * NO LOGICAL COMPONENT. A symbol placed in the layout that the netlist does
+;     not know has no `component` at all - and a part that is not in the
+;     schematic cannot possibly be in a variant list generated from it. This is
+;     the one that matters for a bracket or a mating connector added in Allegro
+;     alone, whatever class its symbol happens to carry.
+;   * the SYMBOL's own type, "MECHANICAL" (an .osm placed directly, usually
+;     without a refdes at all).
+;   * the component definition's CLASS, where a PLACED part with a refdes says
+;     it is mechanical. On variants_test-b0, A1 and A2 are MOLEX housings
+;     sitting exactly on XP1 and XP2 - refdes, a STEP model, no BOM line.
+procedure( s3dIsMechanical( o_sym )
+    let( ( kind cls comp )
+        kind = nil
+        cls = nil
+        comp = nil
+        errset( kind = o_sym->type )
+        errset( comp = o_sym->component )
+        errset( cls = o_sym->component->compdef->class )
+        !comp ||
+        (stringp( kind ) && (upperCase( kind ) == "MECHANICAL")) ||
+        (stringp( cls ) && (upperCase( cls ) == "MECHANICAL"))
+    )
+)
+
+; How well the parsed variant table fits THIS board - said out loud, once.
+;
+; Round 6 caught the Variants.lst that parses into ZERO variants. Two more ways
+; the same mistake arrives parse perfectly and then quietly export the whole
+; board under variant names, which is indistinguishable from variants working:
+;
+;   * a STUB - one variant, usually called "dummy", whose base list is empty.
+;     There is nothing to subtract with, so every component lands in every
+;     variant file. Several projects on this disk carry exactly that file.
+;   * a file belonging to a DIFFERENT project: plenty of refdes, none of which
+;     exists on this board. Same outcome, and more convincing still, because
+;     the variant names look real.
+;
+; The rule the export follows - "the variant table only subtracts, and only for
+; a refdes it knows" - is what makes mechanical parts work and does not change
+; here. This only names what is about to happen.
+;
+; Returns t to go on, and raises for the foreign file: a board exported under
+; another project's variant names is worse than no export at all, because
+; nothing downstream can tell.
+procedure( s3dVariantFit( g_variantSymbolList t_path )
+    prog( ( known nKnown nBoard onBoard refdes examples )
+        known = s3dVariantKnownRefdes( g_variantSymbolList )
+        nKnown = 0
+        examples = nil
+        foreach( key known
+            nKnown = nKnown + 1
+            when( length( examples ) < 5  examples = cons( key examples ) )
+        )
+
+        nBoard = 0
+        onBoard = 0
+        foreach( sym axlDBGetDesign()->symbols
+            refdes = sym->refdes
+            when( refdes
+                nBoard = nBoard + 1
+                when( known[upperCase( refdes )]  onBoard = onBoard + 1 )
+            )
+        )
+
+        when( nKnown == 0
+            error( strcat(
+                sprintf( nil "Simple 3D: %s names variants but lists no components.\n" t_path )
+                "Every variant would install nothing, so the export would be a\n"
+                "board with only its mechanical parts on it. That is what a stub\n"
+                "Variants.lst - one empty \"dummy\" variant - produces; several\n"
+                "projects carry one by accident.\n"
+                "Replace it with this board's own Variants.lst, or delete it to\n"
+                "export everything once, without variants.\n" ) )
+        )
+
+        when( (nBoard > 0) && (onBoard == 0)
+            error( strcat(
+                sprintf( nil "Simple 3D: %s does not describe this board.\n" t_path )
+                sprintf( nil "None of the %d component(s) it lists is placed here, and %d are.\n"
+                         nKnown nBoard )
+                sprintf( nil "It lists, for example: %L\n" reverse( examples ) )
+                "That file belongs to a different project. Exporting with it would\n"
+                "write one copy of the WHOLE board per variant name, which nothing\n"
+                "downstream could tell from a real set of variants.\n"
+                "Replace it with this board's own Variants.lst, or delete it to\n"
+                "export everything once, without variants.\n" ) )
+        )
+
+        printf( "Simple 3D: variant list covers %d of %d placed component(s).\n"
+                onBoard nBoard )
+        t
     )
 )
 
@@ -467,13 +585,17 @@ procedure( s3dVariantKnownRefdes( g_variantSymbolList )
 ; already has the symbol in hand, so nothing has to be looked up again by
 ; refdes - which is one less way for a symbol to go missing.
 procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
-    let( ( out known installed refdes label ( nNoExport 0 ) ( nNotInVariant 0 ) ( nUntracked 0 ) )
+    let( ( out installed refdes label ( nNoExport 0 ) ( nNotInVariant 0 ) ( nUntracked 0 ) )
         out = tconc( nil nil )
-        known = s3dVariantKnownRefdes( g_variantSymbolList )
+        ; Only what THIS variant installs is needed now. The union over all
+        ; variants (s3dVariantKnownRefdes) is still built, once, by
+        ; s3dVariantFit - to judge whether the file describes this board at all.
         installed = makeTable( "s3dInstalled" nil )
         when( g_variantSymbolList && t_variant
             foreach( refdes g_variantSymbolList[t_variant]
-                when( stringp( refdes )  installed[upperCase( refdes )] = t )
+                when( s3dIsRefdesToken( refdes )
+                    installed[upperCase( refdes )] = t
+                )
             )
         )
 
@@ -500,15 +622,26 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
                         printf( "Simple 3D: %s - NOT exported: the symbol carries the %s property.\n"
                                 label S3D_NoExportProp )
                     )
-                    ; The variant table only subtracts, and it keys on refdes; a
-                    ; no-refdes mechanical symbol can never be "not installed",
-                    ; so guard both key lookups against a nil refdes.
-                    ( refdes && g_variantSymbolList && known[upperCase( refdes )] &&
+                    ; With a variant table, an ELECTRICAL component is exported
+                    ; only if this variant installs it. Absence from the list is
+                    ; the list saying "not installed" - that is what it is for.
+                    ;
+                    ; This used to read "only subtract a refdes the table knows
+                    ; somewhere", which was written (2026-07-22) to stop
+                    ; mechanical parts going missing when the variant list WAS
+                    ; the export list. It fixed that and broke this: a component
+                    ; the file never mentions - R3 on variants_test-b0 - was
+                    ; treated as not variant-controlled and exported in every
+                    ; variant. Mechanical parts are now told apart by what they
+                    ; ARE (s3dIsMechanical) rather than by whether the file
+                    ; happens to mention them, so both hold at once.
+                    ( g_variantSymbolList && refdes && !s3dIsMechanical( sym ) &&
                       !installed[upperCase( refdes )]
                         nNotInVariant = nNotInVariant + 1
                     )
                     ( t
-                        unless( refdes && g_variantSymbolList && known[upperCase( refdes )]
+                        when( g_variantSymbolList &&
+                              (!refdes || s3dIsMechanical( sym ))
                             nUntracked = nUntracked + 1
                         )
                         tconc( out sym )
@@ -525,7 +658,7 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
                     nNotInVariant t_variant )
         )
         when( nUntracked > 0
-            printf( "Simple 3D: %d symbol(s) are not listed in any variant (mechanical and the like); exported in all of them.\n"
+            printf( "Simple 3D: %d mechanical symbol(s) are outside the variant system; exported in every variant.\n"
                     nUntracked )
         )
         cdr( car( out ) )
@@ -3320,6 +3453,11 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                         "Delete or replace the Variants.lst in the design "
                         "folder, or remove it to export all components.\n" ) )
                 )
+
+                ; Does the table describe THIS board? A file that parses but
+                ; names another project's components, or none at all, exports
+                ; the whole board under variant names and says nothing.
+                s3dVariantFit( variantSymbolList variantFile )
 
                 foreach( variant variantSymbolList
                     printf( "Exporting .json for variant: %s\n" variant )
