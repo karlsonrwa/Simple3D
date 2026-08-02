@@ -16,10 +16,19 @@ one settled.
 
 | | |
 |---|---|
-| Repo (this working copy) | `D:\Projects\AI\Claude\Test` — branch `main` |
+| Repo (this working copy) | `D:\Projects\AI\Claude\Simple3D` — branch `main` (renamed from `Test` on 2026-08-02) |
 | The user's install | `d:/Projects/OrCAD/Scripts/Simple3D/` — files are copied there by hand |
 | Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
 | `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
+
+Three tools grew out of this project and now have repositories of their own.
+Nothing here depends on them, and no copy of their code belongs in this tree:
+
+| | |
+|---|---|
+| `step2html` | `D:\Projects\AI\Claude\step2html` — a STEP assembly to one self-contained WebGL HTML file. Split out 2026-07-30; a stale pre-split copy sat in `tools/step_to_html.py` here until 2026-08-02 |
+| `3dproperties` | `D:\Projects\AI\Claude\3dproperties` — STEP library tooling: inventory table, headless Inventor merge, before/after visual report |
+| `checkBase` | `D:\Projects\AI\Claude\checkBase` — cross-checks the CIS component tables against the 3D, OLB and PDF files. Written 2026-08-02 as `tools/check_base.py` in this repo by mistake, moved out the same day |
 
 Three pieces ship: `makeVariant3dIntermediates.il` (reads Allegro, writes JSON),
 `simple3d.il` (menu item + launcher), `stepbuilder/` (Python + OpenCASCADE,
