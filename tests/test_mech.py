@@ -57,8 +57,12 @@ from OCP.STEPControl import STEPControl_Reader
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopAbs import TopAbs_SOLID
 txt = step.read_text(encoding="utf-8", errors="replace")
-for tag in ("symbols_top", "symbols_bot", "CR2032_MECH1", "CR2032_MECH2", "cap_D8x10mm"):
-    print(f"  in STEP text: {tag:16} {'YES' if tag in txt else 'no'}")
+# The board-name postfix is checked here, not just the bare group name: a bare
+# "symbols_top" is what two boards in one CAD session collide on, and a
+# substring test for it would keep passing after the postfix was dropped.
+for tag in ("symbols_top_mech_test", "symbols_bot_mech_test",
+            "CR2032_MECH1", "CR2032_MECH2", "cap_D8x10mm"):
+    print(f"  in STEP text: {tag:22} {'YES' if tag in txt else 'no'}")
 
 rdr = STEPControl_Reader(); rdr.ReadFile(str(step)); rdr.TransferRoots()
 shp = rdr.OneShape()
@@ -67,6 +71,6 @@ while exp.More(): n += 1; exp.Next()
 print("solids in shape:", n)
 
 ok = (res.components_placed == 2 and not res.components_skipped
-      and "symbols_top" in txt and "symbols_bot" in txt)
+      and "symbols_top_mech_test" in txt and "symbols_bot_mech_test" in txt)
 print("\nRESULT:", "PASS" if ok else "FAIL")
 sys.exit(0 if ok else 1)

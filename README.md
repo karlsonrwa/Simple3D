@@ -240,10 +240,10 @@ green.
 ├── PCB_<board>             one solid at the finished thickness
 ├── silkscreen_top_<board>  printed legend, top    (only if enabled and present)
 ├── silkscreen_bot_<board>  printed legend, bottom
-├── symbols_top             top-side components
+├── symbols_top_<board>     top-side components
 │   ├── cap_D8x10mm         part, named after its STEP file, placed in situ
 │   └── cap_D8x10mm         the same part instanced again if the model repeats
-└── symbols_bot             bottom-side components
+└── symbols_bot_<board>     bottom-side components
 ```
 
 * One **part** per distinct STEP model, named after the model file. Ten identical
@@ -251,9 +251,10 @@ green.
 * Under `symbols_top` / `symbols_bot` the model parts are placed **directly** —
   each entry is an instance carrying its STEP file's own name, with no per-refdes
   wrapper sub-assembly. Identical footprints share the one part.
-* The **board part** is named `PCB_<board>` (not a bare `PCB`), so importing
-  several boards into one CAD session never lets one board's PCB silently
-  substitute another's.
+* **Every top-level node carries the board name** — `PCB_<board>`,
+  `silkscreen_top_<board>`, `symbols_top_<board>` and so on, never a bare `PCB`
+  or `symbols_top` — so importing several boards into one CAD session never lets
+  one board's part or group silently substitute another's.
 * Each **silkscreen side is its own part**, so it can be hidden or recolored in
   the viewer without touching the board.
 
@@ -1031,10 +1032,10 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 ├── PCB_<плата>             одно тело итоговой толщины
 ├── silkscreen_top_<плата>  шелкография сверху (если включена и есть)
 ├── silkscreen_bot_<плата>  шелкография снизу
-├── symbols_top             компоненты верхней стороны
+├── symbols_top_<плата>     компоненты верхней стороны
 │   ├── cap_D8x10mm         деталь с именем своего STEP-файла, на месте
 │   └── cap_D8x10mm         та же деталь ещё раз, если модель повторяется
-└── symbols_bot             компоненты нижней стороны
+└── symbols_bot_<плата>     компоненты нижней стороны
 ```
 
 * Одна **деталь** на каждую уникальную STEP-модель, названа по имени файла
@@ -1042,9 +1043,10 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 * Под `symbols_top` / `symbols_bot` детали моделей размещаются **напрямую** —
   каждый элемент это вхождение с именем своего STEP-файла, без обёртки-подсборки
   на каждый рефдес. Одинаковые посадочные места делят одну деталь.
-* **Деталь платы** называется `PCB_<плата>` (а не просто `PCB`), поэтому импорт
-  нескольких плат в одну сессию CAD не даёт детали одной платы подменить деталь
-  другой.
+* **Имя платы несёт каждый узел верхнего уровня** — `PCB_<плата>`,
+  `silkscreen_top_<плата>`, `symbols_top_<плата>` и так далее, а не просто `PCB`
+  или `symbols_top` — поэтому импорт нескольких плат в одну сессию CAD не даёт
+  детали или группе одной платы подменить другую.
 * **Каждая сторона шелкографии — отдельная деталь**, поэтому её можно скрыть или
   перекрасить в просмотрщике, не трогая плату.
 
