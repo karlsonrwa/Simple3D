@@ -2906,6 +2906,35 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-02 (round 51) — the two component groups get the board name too
+
+The user: the board-name postfix reaches the board body and the silkscreen, but
+not the component assemblies. Correct, and it was one line — `group_for()` in
+`core.py` named its group with the bare `side` string, so every export in
+existence carried a `symbols_top` and a `symbols_bot`. `PCB_<stem>` got its
+postfix in round 8 and `silkscreen_top_<stem>` in round 10; the groups were
+added earlier than both and were simply never revisited.
+
+Now `_sanitize(f"{side}_{json_stem}")`, the same expression the legend uses —
+which also gives the group names the sanitising they never had. The reason is
+the round-8 reason unchanged: two boards imported into one CAD session collide
+on any name that is not per board, and a group is exactly as substitutable as a
+part.
+
+Worth noticing about the test that did not catch it: `test_mech.py` asserted
+`"symbols_top" in txt`, a **substring** of the correct name, so it passed both
+before and after. It now asks for `symbols_top_mech_test`, which fails on either
+half of the change being reverted. A containment test on a name that is a prefix
+of the right answer cannot tell the two apart.
+
+README, both languages: the assembly tree shows `symbols_top_<board>` /
+`symbols_bot_<board>`, and the bullet that used to single out the board part now
+states the rule for every top-level node. `tools/audit_docs.py` looks for the
+bare labels as substrings, so it stayed green on its own; 20/20 suites pass.
+
+**Not verified in Allegro yet** — this is a rename in the STEP tree, so it wants
+one live export opened in CAD to confirm the two groups read as expected.
+
 ## Update 2026-07-27 (round 50) — the variant that changes a part, not the list
 
 Round 49 confirmed live: `R1 R2 R3 R4 R8` gone, `A1`/`A2` kept as mechanical.

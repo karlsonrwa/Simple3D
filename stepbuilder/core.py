@@ -2107,12 +2107,16 @@ def generate(
 
     # ---- component group assemblies (symbols_top / symbols_bot) ---------- #
     # Created lazily so a single-sided board does not get an empty group.
+    # Named per board (<side>_<jsonstem>) for the same reason the board part and
+    # the legend are: two boards imported into one CAD session would otherwise
+    # each bring a "symbols_top", and one can silently substitute the other.
     groups: dict[str, TDF_Label] = {}
 
     def group_for(side: str) -> TDF_Label:
         if side not in groups:
             grp = shape_tool.NewShape()
-            TDataStd_Name.Set_s(grp, TCollection_ExtendedString(side))
+            TDataStd_Name.Set_s(
+                grp, TCollection_ExtendedString(_sanitize(f"{side}_{json_stem}")))
             shape_tool.AddComponent(main_assembly, grp, TopLoc_Location(gp_Trsf()))
             groups[side] = grp
         return groups[side]
