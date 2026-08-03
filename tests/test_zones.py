@@ -12,7 +12,6 @@ if str(_ROOT) not in _sys.path:
 
 """Multi-stackup, built from the real zone data of the user's rigid-flex board."""
 import json, sys
-from pathlib import Path
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))
 from stepbuilder import core
@@ -92,7 +91,7 @@ def place(zone):
               "offset_z":0.0},"is_mirrored":False,"x":8.0,"y":5.0,"angle":0.0,
               "zone":zone}
     f=OUT/f"c_{zone or 'none'}.json"; f.write_text(json.dumps(dd))
-    res=core.generate(step_dir=ROOT/"demo/step_files", json_file=f, output_dir=OUT,
+    core.generate(step_dir=ROOT/"demo/step_files", json_file=f, output_dir=OUT,
                       output_name=f"c_{zone or 'none'}", log=lambda m: None)
     rr=STEPControl_Reader(); rr.ReadFile(str(OUT/f"c_{zone or 'none'}.step")); rr.TransferRoots()
     from OCP.Bnd import Bnd_Box
@@ -119,7 +118,7 @@ res2=core.generate(step_dir=ROOT/"demo/step_files", json_file=f2, output_dir=OUT
 check("no multi-stackup log", not [m for m in logs2 if "Multi-stackup" in m])
 r2=STEPControl_Reader(); r2.ReadFile(str(OUT/"plain.step")); r2.TransferRoots()
 p2=GProp_GProps(); BRepGProp.VolumeProperties_s(r2.OneShape(), p2)
-check(f"plain volume = outline x 1.096", abs(p2.Mass()-(41.6*32.0*1.096))/(41.6*32.0*1.096)<1e-6,
+check("plain volume = outline x 1.096", abs(p2.Mass()-(41.6*32.0*1.096))/(41.6*32.0*1.096)<1e-6,
       f"{p2.Mass():.4f}")
 check("empty zones list behaves as no zones", True)
 

@@ -12,7 +12,6 @@ if str(_ROOT) not in _sys.path:
 
 """Embedded-vs-disk cross-check."""
 import json, sys
-from pathlib import Path
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))
 from stepbuilder import core

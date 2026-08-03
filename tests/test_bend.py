@@ -17,7 +17,6 @@ one is worked out from the bend by hand first (arc length, where the far panel
 lands, how high the fold reaches) and the geometry is required to match it.
 """
 import json, math, sys
-from pathlib import Path
 
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))
@@ -33,7 +32,7 @@ from OCP.BRepGProp import BRepGProp
 from OCP.GProp import GProp_GProps
 from OCP.Bnd import Bnd_Box
 from OCP.BRepBndLib import BRepBndLib
-from OCP.gp import gp_Dir, gp_Pnt, gp_Trsf
+from OCP.gp import gp_Dir, gp_Pnt
 
 OUT = _OUT / "bend"
 OUT.mkdir(exist_ok=True)

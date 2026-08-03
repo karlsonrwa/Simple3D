@@ -12,7 +12,6 @@ if str(_ROOT) not in _sys.path:
 
 """Per-layer stackup build, from the real xsection of the user's board."""
 import json, sys
-from pathlib import Path
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))
 from stepbuilder import core
@@ -60,7 +59,7 @@ def build(name, s2_shape=None):
                 {"name":"F2","stackup":"FLEX","contour":rect(0,11.38,41,26.5)}]}
     jf=OUT/f"{name}.json"; jf.write_text(json.dumps(d))
     logs=[]
-    res=core.generate(step_dir=ROOT/"demo/step_files",json_file=jf,output_dir=OUT,
+    core.generate(step_dir=ROOT/"demo/step_files",json_file=jf,output_dir=OUT,
                       output_name=name,log=logs.append)
     from OCP.STEPControl import STEPControl_Reader
     from OCP.GProp import GProp_GProps
@@ -92,7 +91,7 @@ check("габарит Z не изменился", abs(bb2.CornerMax().Z()-bb1.Co
 print("\n[3] пустота в шейпе становится отверстием")
 ring=[{"outline":rect(1,1,10.315,10.315),"voids":[rect(4,4,7,7)]}]
 v3,bb3,_,_ = build("withvoid", s2_shape=ring)
-check(f"объём меньше ещё на 3x3x2.0=18.0", abs((v2-v3)-18.0)<0.01, f"{v2-v3:.3f}")
+check("объём меньше ещё на 3x3x2.0=18.0", abs((v2-v3)-18.0)<0.01, f"{v2-v3:.3f}")
 
 print("\n[4] шейп обрезается контуром зоны")
 big=[{"outline":rect(-50,-50,50,50),"voids":[]}]     # намного больше зоны

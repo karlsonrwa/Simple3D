@@ -12,7 +12,6 @@ if str(_ROOT) not in _sys.path:
 
 """Body stitching must work on an ORDINARY single-stackup board too."""
 import json, sys
-from pathlib import Path
 ROOT=_ROOT; sys.path.insert(0,str(ROOT))
 from stepbuilder import core
 OUT=_OUT / "plainmodes"; OUT.mkdir(exist_ok=True)

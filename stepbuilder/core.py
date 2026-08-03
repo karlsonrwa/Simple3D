@@ -1366,6 +1366,11 @@ class BuildResult:
     components_placed: int = 0
     components_skipped: list[str] = field(default_factory=list)
     missing_step_files: list[str] = field(default_factory=list)
+    # Model files that are on disk but could not be turned into geometry -
+    # locked, empty, or a dialect OCCT declines. A separate list from the
+    # missing ones because the fix is a different one, and because the
+    # embedded-model advice does not apply to a file that is right there.
+    unreadable_step_files: list[str] = field(default_factory=list)
     # Models the board carries a copy of, that were not found on disk. A
     # different problem from a plain missing file: the geometry exists, it is
     # just not where this tool can read it. See _report_embedded_only.
@@ -2159,33 +2164,54 @@ def generate(
                 result.missing_step_files.append(step_name)
                 label_cache[step_name] = []
             else:
+                # A model file that is PRESENT but unusable costs its own
+                # component and nothing more - the same treatment a missing one
+                # gets. It used to raise, which meant one file locked by another
+                # application, one zero-byte copy or one dialect OCCT declines
+                # took the whole board down. The three ways it can fail are
+                # reported separately: they have different causes.
                 log(f"Reading {step_name}")
                 reader = STEPCAFControl_Reader()
                 reader.SetColorMode(True)
                 reader.SetNameMode(True)
 
-                if reader.ReadFile(str(path)) != IFSelect_ReturnStatus.IFSelect_RetDone:
-                    raise StepBuilderError(f"Could not read STEP file: {path}")
+                problem = None
+                new_labels: list[TDF_Label] = []
+                try:
+                    if reader.ReadFile(str(path)) != IFSelect_ReturnStatus.IFSelect_RetDone:
+                        problem = ("could not be read (locked, empty, or not a "
+                                   "STEP file OCCT accepts)")
+                    else:
+                        # FIX: diff the free shapes around the transfer instead
+                        # of assuming everything from index 2 belongs to this file.
+                        before = _free_shape_entries(shape_tool)
+                        if not reader.Transfer(doc):
+                            problem = "could not be transferred into the assembly"
+                        else:
+                            after = _free_shape_entries(shape_tool)
+                            new_labels = [lab for e, lab in after.items()
+                                          if e not in before]
+                            if not new_labels:
+                                problem = "contained no shapes"
+                except Exception as exc:                # OCCT can throw here
+                    problem = f"raised {exc.__class__.__name__}: {exc}"
 
-                # FIX: diff the free shapes around the transfer instead of
-                # assuming everything from index 2 belongs to this file.
-                before = _free_shape_entries(shape_tool)
-                if not reader.Transfer(doc):
-                    raise StepBuilderError(f"Could not transfer STEP file: {path}")
-                after = _free_shape_entries(shape_tool)
-
-                new_labels = [lab for e, lab in after.items() if e not in before]
-                if not new_labels:
-                    raise StepBuilderError(f"{step_name} contained no shapes")
-
-                # Name the shared part after the model file (stem), once.
-                part_name = _sanitize(Path(step_name).stem)
-                if part_name and part_name not in named_parts:
-                    TDataStd_Name.Set_s(
-                        new_labels[0], TCollection_ExtendedString(part_name)
-                    )
-                    named_parts.add(part_name)
-                label_cache[step_name] = new_labels
+                if problem is not None:
+                    # Kept apart from missing_step_files on purpose: the file IS
+                    # on disk, so the "it is inside the board, not on your disk"
+                    # advice _report_embedded_only gives would be wrong here.
+                    log(f"warning: {step_name} {problem}: {path}")
+                    result.unreadable_step_files.append(step_name)
+                    label_cache[step_name] = []
+                else:
+                    # Name the shared part after the model file (stem), once.
+                    part_name = _sanitize(Path(step_name).stem)
+                    if part_name and part_name not in named_parts:
+                        TDataStd_Name.Set_s(
+                            new_labels[0], TCollection_ExtendedString(part_name)
+                        )
+                        named_parts.add(part_name)
+                    label_cache[step_name] = new_labels
 
         roots = label_cache[step_name]
         if not roots:

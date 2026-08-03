@@ -912,11 +912,16 @@ def plan_from_json(data: dict, board_top_z: float, board_bottom_z: float,
         thinnest = min((lv for _, _, lv in polys), key=lambda lv: lv[0] - lv[1],
                        default=(board_top_z, board_bottom_z))
 
-        def stack_at(x: float, y: float, _polys=polys, _thin=thinnest):
-            for name, poly, level in _polys:
+        # Bound to the name below rather than defined as `stack_at` directly:
+        # shadowing the None above reads as a redefinition to every linter, and
+        # the reader has to check which one wins.
+        def _stack_at(x: float, y: float, _polys=polys, _thin=thinnest):
+            for _, poly, level in _polys:
                 if poly and point_in_polygon((x, y), poly):
                     return level
             return _thin
+
+        stack_at = _stack_at
 
     # The design's own anchor, if a future Allegro ever writes one: it beats the
     # setting, because it is what the designer marked on the board.

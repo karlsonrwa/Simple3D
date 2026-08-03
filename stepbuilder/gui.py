@@ -1021,6 +1021,18 @@ class StepBuilderApp(tk.Tk):
         self._worker.start()
 
     def _drain_queue(self) -> None:
+        # The reschedule sits in a finally, and that is the whole point: this
+        # method is the ONLY thing that keeps the loop alive, so anything that
+        # escapes it - a Tk error in the log widget, an empty message where a
+        # line was expected - would stop the window updating for the rest of the
+        # session. The build then finishes invisibly: no log, no progress, no
+        # completion. Cheaper to survive the exception than to enumerate them.
+        try:
+            self._drain_once()
+        finally:
+            self._drain_job = self.after(100, self._drain_queue)
+
+    def _drain_once(self) -> None:
         try:
             while True:
                 kind, payload = self._queue.get_nowait()
@@ -1042,12 +1054,16 @@ class StepBuilderApp(tk.Tk):
                     self._append_log(payload, "error")
                     self.status.set("Failed")
                     self._set_busy(False)
-                    messagebox.showerror("StepBuilder", payload.strip().splitlines()[-1])
+                    # The last line, when there is one: a traceback's last line
+                    # is the exception itself. An empty message would leave
+                    # splitlines() with nothing to index.
+                    lines = payload.strip().splitlines()
+                    messagebox.showerror("StepBuilder",
+                                         lines[-1] if lines else "The build failed")
         except queue.Empty:
             pass
 
         self._check_worker_alive()
-        self._drain_job = self.after(100, self._drain_queue)
 
     def _check_worker_alive(self) -> None:
         """A build that died without saying so still has to be reported.

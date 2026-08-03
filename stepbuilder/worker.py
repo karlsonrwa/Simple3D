@@ -163,6 +163,10 @@ def _run(settings: BuildSettings, channel) -> None:
         if result.missing_step_files:
             warnings.append(f"{result.output.name}: "
                             f"{len(result.missing_step_files)} STEP missing")
+        if result.unreadable_step_files:
+            warnings.append(f"{result.output.name}: "
+                            f"{len(result.unreadable_step_files)} STEP file(s) on "
+                            f"disk could not be read (see the log)")
         if result.embedded_not_on_disk:
             warnings.append(
                 f"{result.output.name}: {len(result.embedded_not_on_disk)} of "

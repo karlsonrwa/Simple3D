@@ -9,7 +9,8 @@
 ;  (https://github.com/juulsA/exportStep). This copy has been
 ;  modified for the Simple 3D toolchain. Changes vs the original are
 ;  marked inline with "FIX (simple3d)" or "NEW (simple3d)":
-;    * addIndent() - was called 8x but never defined in the repo; added.
+;    * addIndent() - was called 8x but never defined in the repo; added here
+;      as s3dAddIndent(), prefixed so it cannot collide with the real one.
 ;    * getVariantInfo -> gdsysGetVariantInfo (the defined name).
 ;    * calculateBoardThickness - only SOLDERMASK counts toward the mask
 ;      thickness; SILKSCREEN/PASTEMASK are also layerType "MASK" and were
@@ -160,10 +161,16 @@ procedure( s3dVariantFilePath()
     )
 )
 
-; addIndent( t_string [ x_levels ] ) -> prefix every line with x_levels tabs.
+; s3dAddIndent( t_string [ x_levels ] ) -> prefix every line with x_levels tabs.
 ; Reconstructed from the call sites; output matches the reference demo.json
 ; byte-for-byte. (The original repo used this but never shipped its source.)
-procedure( addIndent( t_string @optional ( x_levels 1 ) )
+;
+; PREFIXED as of 2026-08-04, and this one matters more than most: the upstream
+; script CALLS addIndent without defining it, so the name belongs to something
+; else on the machine that runs it. Ours is a reconstruction - if the real one
+; is loaded after this file, the JSON's indentation silently becomes whatever
+; that version does, and if its arity differs the export dies mid-write.
+procedure( s3dAddIndent( t_string @optional ( x_levels 1 ) )
     let( ( pad lines i )
         pad = ""
         for( i 1 x_levels
@@ -1295,9 +1302,39 @@ procedure( s3dConductorSpan( l_layers )
 ; quote or backslash in any of them would break the whole file - not one entry,
 ; the whole export. Unlikely in a layer name, but a broken intermediate is a
 ; total failure while escaping costs one pass over a short string.
+; A control character OTHER than tab, newline and carriage return - those three
+; have escapes of their own below and must not trip this. Compiled once, and
+; only ever used to ask a WHOLE string whether it needs the slow path - see
+; s3dJsonQuote. Wrapped in errset and allowed to be nil: if this Allegro's PCRE
+; will not take the pattern, the quoting falls back to exactly what it did
+; before rather than failing to load.
+S3D_CtrlChars = nil
+errset( S3D_CtrlChars = pcreCompile( "[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f]" ) )
+
 procedure( s3dJsonQuote( g_value )
-    let( ( out c )
+    let( ( out c ( scan nil ) )
         if( stringp( g_value ) then
+            ; JSON forbids a raw control character inside a string, and ONE of
+            ; them anywhere - a stray CR pasted into a layer or symbol name -
+            ; makes the WHOLE intermediate unparsable, with an error that names
+            ; JSON rather than the name that carries it. The three that have a
+            ; spelling of their own are escaped; anything else below 0x20 is
+            ; replaced by a space, because SKILL has no verified way here to
+            ; turn a character into its code and \u00XX cannot be built without
+            ; one. Corrupt data either way - but the file still parses and the
+            ; console says which string it was.
+            ;
+            ; Asked once per STRING, not once per character: the per-character
+            ; test would run on every ordinary character of every name on the
+            ; board, and this is called thousands of times on a dense legend.
+            when( S3D_CtrlChars
+                scan = pcreMatchp( S3D_CtrlChars g_value )
+            )
+            when( scan
+                s3dWarn( sprintf( nil
+                    "Simple 3D: a control character in %s was replaced by a space (the string comes from the design and would break the JSON)."
+                    g_value ) )
+            )
             out = "\""
             for( i 1 strlen( g_value )
                 c = substring( g_value i 1 )
@@ -1307,6 +1344,8 @@ procedure( s3dJsonQuote( g_value )
                         ( c == "\\"  "\\\\" )
                         ( c == "\t"  "\\t" )
                         ( c == "\n"  "\\n" )
+                        ( c == "\r"  "\\r" )
+                        ( scan && pcreMatchp( S3D_CtrlChars c )  " " )
                         ( t          c )
                     ) )
             )
@@ -1336,7 +1375,7 @@ procedure( s3dContourJson( o_dbid )
             )
         )
         when( contour
-            strcat( "[\n" addIndent( buildString( car( contour ) ",\n" ) ) "\n]" )
+            strcat( "[\n" s3dAddIndent( buildString( car( contour ) ",\n" ) ) "\n]" )
         )
     )
 )
@@ -1392,7 +1431,7 @@ procedure( s3dShapeJson( o_shape )
     let( ( outline voids body ( firstVoid t ) )
         outline = s3dContourJson( o_shape )
         when( outline
-            body = strcat( "{\n\t\"outline\": " addIndent( outline ) )
+            body = strcat( "{\n\t\"outline\": " s3dAddIndent( outline ) )
 
             voids = nil
             errset( voids = o_shape->voids )
@@ -1402,7 +1441,7 @@ procedure( s3dShapeJson( o_shape )
                     when( s3dContourJson( v )
                         unless( firstVoid  body = strcat( body ",\n" ) )
                         firstVoid = nil
-                        body = strcat( body addIndent( s3dContourJson( v ) 2 ) )
+                        body = strcat( body s3dAddIndent( s3dContourJson( v ) 2 ) )
                     )
                 )
                 body = strcat( body "\n\t]" )
@@ -1475,7 +1514,7 @@ procedure( s3dLayerShapesJson( t_layerName )
                 when( one
                     unless( first  body = strcat( body ",\n" ) )
                     first = nil
-                    body = strcat( body addIndent( one ) )
+                    body = strcat( body s3dAddIndent( one ) )
                 )
             )
             unless( first  strcat( body "\n]" ) )
@@ -1635,12 +1674,12 @@ procedure( s3dStackupJson( t_name g_stackup )
                     "\t\"z_bottom\": " sprintf( nil "%f" zBot ) ",\n"
                     "\t\"negative\": " if( s3dLayerIsNegative( layer ) then "true" else "false" ) ",\n"
                     "\t\"function\": " s3dJsonQuote( layer->layerFunction ) ",\n"
-                    "\t\"shapes\": " if( shapes then addIndent( shapes ) else "null" ) "\n"
+                    "\t\"shapes\": " if( shapes then s3dAddIndent( shapes ) else "null" ) "\n"
                     "}"
                 )
                 unless( first  out = strcat( out ",\n" ) )
                 first = nil
-                out = strcat( out addIndent( body 2 ) )
+                out = strcat( out s3dAddIndent( body 2 ) )
             )
         )
         strcat( out "\n\t]\n}" )
@@ -1658,7 +1697,7 @@ procedure( s3dStackupsJson()
                 when( stringp( s )
                     unless( first  out = strcat( out ",\n" ) )
                     first = nil
-                    out = strcat( out addIndent( s3dStackupJson( s s ) ) )
+                    out = strcat( out s3dAddIndent( s3dStackupJson( s s ) ) )
                 )
             )
             strcat( out "\n}" )
@@ -1674,7 +1713,7 @@ procedure( s3dStackupsJson()
             ; here: on a rigid-flex design nil 'all returns the combined "All
             ; Stackups" view, which is not any real stackup (round 27).
             strcat( "\"stackups\": {\n"
-                    addIndent( s3dStackupJson( "Primary" nil ) )
+                    s3dAddIndent( s3dStackupJson( "Primary" nil ) )
                     "\n}" )
         )
     )
@@ -1699,10 +1738,10 @@ procedure( s3dZonesJson()
                         "{\n"
                         "\t\"name\": " s3dJsonQuote( car( z ) ) ",\n"
                         "\t\"stackup\": " s3dJsonQuote( cadr( z ) ) ",\n"
-                        "\t\"contour\": " addIndent( contour ) "\n"
+                        "\t\"contour\": " s3dAddIndent( contour ) "\n"
                         "}"
                     )
-                    out = strcat( out addIndent( body ) )
+                    out = strcat( out s3dAddIndent( body ) )
                 )
             )
             out = strcat( out "\n]" )
@@ -1951,7 +1990,7 @@ procedure( s3dBendsJson()
                         unless( first  out = strcat( out ",\n" ) )
                         first = nil
                         made = made + 1
-                        out = strcat( out addIndent( body ) )
+                        out = strcat( out s3dAddIndent( body ) )
                     )
                 )
             )
@@ -1999,7 +2038,7 @@ procedure( makePcbContour( dsn )
                 cut = buildString( car( cut ) ",\n" )
                 cut = strcat(
                     "[\n"
-                    addIndent( cut )
+                    s3dAddIndent( cut )
                     "\n]"
                 )
 
@@ -2174,7 +2213,7 @@ procedure( symbolReturnPinHoles()
 
                         hole = strcat(
                             "[\n"
-                                addIndent( buildString( element ",\n" ) )
+                                s3dAddIndent( buildString( element ",\n" ) )
                             "\n]"
                         )
                     else
@@ -2183,7 +2222,7 @@ procedure( symbolReturnPinHoles()
 
                         hole = strcat(
                             "[\n"
-                                addIndent( hole )
+                                s3dAddIndent( hole )
                             "\n]"
                         )
                     )
@@ -2237,18 +2276,18 @@ procedure( makePcb( thicknesses edges cuts color )
                 "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
                 "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
                 "\t},\n"
-                addIndent(
+                s3dAddIndent(
                     pcbColor
                 )
                 ",\n"
                 "\t\"edges\": [\n"
                 "\t\t[\n"
-                addIndent(
+                s3dAddIndent(
                     buildString( car( edges ) ",\n" ),
                     3
                 )
                 "\n\t\t],\n"
-                addIndent(
+                s3dAddIndent(
                     buildString( car( cuts ) ",\n" ),
                     2
                 )
@@ -2267,13 +2306,13 @@ procedure( makePcb( thicknesses edges cuts color )
                 "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
                 "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
                 "\t},\n"
-                addIndent( 
+                s3dAddIndent( 
                     pcbColor
                 )
                 ",\n"
                 "\t\"edges\": [\n"
                 "\t\t[\n"
-                addIndent(
+                s3dAddIndent(
                     buildString( car( edges ) ",\n" ),
                     3
                 )

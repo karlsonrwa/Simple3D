@@ -666,6 +666,20 @@ A model that is missing from disk and *not* in the board gets the ordinary
 "could not find" warning: there is no copy to recover, and the file has to come
 from wherever the library keeps it.
 
+**A model file that is present but unusable costs only its own component.** A
+file locked by another application, a zero-byte copy from a transfer that
+failed, a dialect OpenCASCADE declines — each is reported with the reason and
+the path, the component is left out, and the rest of the board is built:
+
+```
+warning: broken.step could not be read (locked, empty, or not a STEP file OCCT accepts): d:/lib/broken.step
+warning: 1 STEP file(s) are on disk but could not be read (see above)
+```
+
+It is counted separately from the missing ones, because the file *is* where it
+should be and the advice above about recovering it from the board does not
+apply.
+
 **The case of the filename does not matter.** The name comes from Allegro's STEP
 mapping table, where it is typed by hand, and the file on disk is named by
 whoever supplied the library — so `MODEL.STEP` and `model.step` are the same
@@ -1459,6 +1473,19 @@ warning: 2 model(s) are stored inside the board but were not found on disk:
 Модель, которой нет ни на диске, ни в плате, получает обычное предупреждение
 «could not find»: восстанавливать нечего, файл нужно брать там, где лежит
 библиотека.
+
+**Файл модели, который есть, но не читается, стоит только своего компонента.**
+Файл, занятый другим приложением, нулевой после сорвавшегося копирования,
+диалект, который OpenCASCADE не принимает, — каждый называется вместе с причиной
+и путём, компонент пропускается, остальная плата собирается:
+
+```
+warning: broken.step could not be read (locked, empty, or not a STEP file OCCT accepts): d:/lib/broken.step
+warning: 1 STEP file(s) are on disk but could not be read (see above)
+```
+
+Считается отдельно от отсутствующих: файл лежит там, где должен, и совет выше о
+восстановлении его из платы к нему не относится.
 
 **Регистр имени файла значения не имеет.** Имя приходит из таблицы
 сопоставления STEP в Allegro, где его набирают руками, а файл на диске назван

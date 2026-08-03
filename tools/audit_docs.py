@@ -12,7 +12,6 @@ if str(_ROOT) not in _sys.path:
 
 """Mechanical audit of README.md + QUICKSTART.md against the code."""
 import json, re, sys
-from pathlib import Path
 
 ROOT = _ROOT
 readme = (ROOT / "README.md").read_text(encoding="utf-8")

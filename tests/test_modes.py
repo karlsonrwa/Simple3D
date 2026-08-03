@@ -12,10 +12,9 @@ if str(_ROOT) not in _sys.path:
 
 """The three board modes, on the real STIFFENER2 / FLEX stackups."""
 import json, sys
-from pathlib import Path
 ROOT = _ROOT; sys.path.insert(0, str(ROOT))
 from stepbuilder import core
-from stepbuilder.colors import layer_kind, DEFAULT_LAYER_COLORS, LAYER_KINDS
+from stepbuilder.colors import layer_kind
 
 OUT = _OUT / "modes"; OUT.mkdir(exist_ok=True)
 fails = []
