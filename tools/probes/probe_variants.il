@@ -112,20 +112,41 @@ procedure( s3dProbeVariants()
                 printf( "  -> the list and the board agree.\n" ) )
         )
 
-        ; Which side of the rule each placed part falls on. An electrical
-        ; component absent from the variant is DROPPED; a mechanical one is kept
-        ; whatever the file says, because the variant list covers the BOM and a
-        ; mechanical part is not in it.
-        printf( "\n  outside the variant system (kept in every variant):\n" )
+        ; Which side of the rule each placed part falls on. Everything with a
+        ; refdes obeys the list - mechanical or not, since a refdes is what makes
+        ; a part nameable there. A symbol WITHOUT one can never appear in the
+        ; file, so nothing but NO_STEP_EXPORT can remove it.
+        printf( "\n  outside the variant system (no refdes; kept in every variant):\n" )
+        printf( "    symbol name           symbol type  compdef class  has model\n" )
+        nCovered = 0
+        foreach( sym axlDBGetDesign()->symbols
+            unless( sym->refdes
+                nCovered = nCovered + 1
+                when( nCovered <= 15
+                    ; The type and class are printed even though they no longer
+                    ; decide anything: a part that surprises the user here is
+                    ; usually one whose refdes they expected to exist.
+                    printf( "    %-20L  %-11L  %-13L  %L\n"
+                            sym->name
+                            sym->type
+                            car( errset( sym->component->compdef->class ) )
+                            s3dHasStepModel( sym ) )
+                )
+            )
+        )
+        printf( "    %d in total\n" nCovered )
+
+        ; The mirror image, and the one that changed on 2026-08-03: these used to
+        ; be kept in every variant on the strength of being mechanical. They now
+        ; obey the list like anything else, so a MOLEX housing missing from a
+        ; variant will show up in that variant's "dropped" line below.
+        printf( "\n  mechanical BUT carrying a refdes (the list governs these):\n" )
         printf( "    refdes            in netlist  symbol type  compdef class\n" )
         nCovered = 0
         foreach( sym axlDBGetDesign()->symbols
-            when( s3dIsMechanical( sym )
+            when( sym->refdes && s3dIsMechanical( sym )
                 nCovered = nCovered + 1
                 when( nCovered <= 15
-                    ; Which of the three tests fired, so a part that is kept -
-                    ; or dropped - can be traced to the reason rather than
-                    ; guessed at. "in netlist: nil" is the layout-only part.
                     printf( "    %-16L  %-10L  %-11L  %L\n"
                             sym->refdes
                             if( car( errset( sym->component ) ) then t else nil )
@@ -159,8 +180,7 @@ procedure( s3dProbeVariants()
             )
             printf( "     dropped: " )
             foreach( sym axlDBGetDesign()->symbols
-                when( sym->refdes && !s3dIsMechanical( sym ) &&
-                      !instTab[upperCase( sym->refdes )]
+                when( sym->refdes && !instTab[upperCase( sym->refdes )]
                     printf( "%s " sym->refdes )
                 )
             )

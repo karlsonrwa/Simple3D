@@ -445,9 +445,11 @@ procedure( s3dHasStepModel( o_sym )
     )
 )
 
-; Every refdes the variant table mentions anywhere, upper-cased.
-; A refdes in here but missing from the current variant is deliberately not
-; installed. A refdes the table never mentions is not variant-controlled at all.
+; Every refdes the variant table mentions anywhere, upper-cased. Used to judge
+; whether the FILE describes this board (s3dVariantFit), not to decide any one
+; symbol's fate: a refdes the table never mentions is not exported either, since
+; the list governs everything that has one.
+;
 ; Is this token from the variant list a reference designator at all?
 ;
 ; The parser splits its lines on spaces and strips a fixed set of characters,
@@ -475,14 +477,20 @@ procedure( s3dVariantKnownRefdes( g_variantSymbolList )
     )
 )
 
-; Is this symbol OUTSIDE the variant system - a mechanical part?
+; Is this symbol a mechanical part? DIAGNOSTIC ONLY - it does not decide an
+; export.
 ;
-; The distinction the variant rule turns on. Allegro's variant list covers what
-; is assembled from the BOM; a mechanical part is not in it and never will be,
-; so its absence from the list says nothing at all. An electrical component's
-; absence says everything: it is not installed.
+; It used to be the variant rule (round 49). The rule is now simply "has a
+; refdes -> the variant list governs it" (user decision, 2026-08-03), because a
+; MECHANICAL-class part with a refdes CAN be named in the list, and when the
+; list does not name it the honest reading is "not installed" - the same as for
+; any other part. What survives of round 49 is its first test: a symbol with no
+; refdes has no logical component either (the docs: refdes is "nil if no
+; associated component"), so the two are one condition and the export tests the
+; simpler one.
 ;
-; THREE ways to be outside it, in order of how strongly they say so. All read
+; Kept because probe_variants.il reports WHICH KIND of part each symbol is, and
+; the three reads below are the only place that question is answered. All read
 ; defensively - a board can carry a symbol in an unusual state, and none of
 ; these reads is worth an aborted export:
 ;
@@ -517,15 +525,16 @@ procedure( s3dIsMechanical( o_sym )
 ; board under variant names, which is indistinguishable from variants working:
 ;
 ;   * a STUB - one variant, usually called "dummy", whose base list is empty.
-;     There is nothing to subtract with, so every component lands in every
-;     variant file. Several projects on this disk carry exactly that file.
+;     It installs nothing, so under the current rule every part with a refdes is
+;     dropped and the variant file holds only the symbols that have none.
+;     Several projects on this disk carry exactly that file.
 ;   * a file belonging to a DIFFERENT project: plenty of refdes, none of which
 ;     exists on this board. Same outcome, and more convincing still, because
 ;     the variant names look real.
 ;
-; The rule the export follows - "the variant table only subtracts, and only for
-; a refdes it knows" - is what makes mechanical parts work and does not change
-; here. This only names what is about to happen.
+; The rule the export follows - "the list governs every part that has a refdes;
+; a symbol without one is outside it" - does not change here. This only names
+; what is about to happen.
 ;
 ; Returns t to go on, and raises for the foreign file: a board exported under
 ; another project's variant names is worse than no export at all, because
@@ -554,9 +563,9 @@ procedure( s3dVariantFit( g_variantSymbolList t_path )
             error( strcat(
                 sprintf( nil "Simple 3D: %s names variants but lists no components.\n" t_path )
                 "Every variant would install nothing, so the export would be a\n"
-                "board with only its mechanical parts on it. That is what a stub\n"
-                "Variants.lst - one empty \"dummy\" variant - produces; several\n"
-                "projects carry one by accident.\n"
+                "bare board carrying only the symbols that have no refdes. That\n"
+                "is what a stub Variants.lst - one empty \"dummy\" variant -\n"
+                "produces; several projects carry one by accident.\n"
                 "Replace it with this board's own Variants.lst, or delete it to\n"
                 "export everything once, without variants.\n" ) )
         )
@@ -568,8 +577,9 @@ procedure( s3dVariantFit( g_variantSymbolList t_path )
                          nKnown nBoard )
                 sprintf( nil "It lists, for example: %L\n" reverse( examples ) )
                 "That file belongs to a different project. Exporting with it would\n"
-                "write one copy of the WHOLE board per variant name, which nothing\n"
-                "downstream could tell from a real set of variants.\n"
+                "install none of this board's components, writing one STRIPPED\n"
+                "board per variant name, which nothing downstream could tell from\n"
+                "a real set of variants.\n"
                 "Replace it with this board's own Variants.lst, or delete it to\n"
                 "export everything once, without variants.\n" ) )
         )
@@ -622,26 +632,35 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
                         printf( "Simple 3D: %s - NOT exported: the symbol carries the %s property.\n"
                                 label S3D_NoExportProp )
                     )
-                    ; With a variant table, an ELECTRICAL component is exported
-                    ; only if this variant installs it. Absence from the list is
-                    ; the list saying "not installed" - that is what it is for.
+                    ; With a variant table, ANYTHING THAT HAS A REFDES is
+                    ; exported only if this variant installs it - mechanical or
+                    ; not. Absence from the list is the list saying "not
+                    ; installed", and a refdes is exactly what makes a part
+                    ; nameable in the list at all.
                     ;
-                    ; This used to read "only subtract a refdes the table knows
-                    ; somewhere", which was written (2026-07-22) to stop
-                    ; mechanical parts going missing when the variant list WAS
-                    ; the export list. It fixed that and broke this: a component
-                    ; the file never mentions - R3 on variants_test-b0 - was
-                    ; treated as not variant-controlled and exported in every
-                    ; variant. Mechanical parts are now told apart by what they
-                    ; ARE (s3dIsMechanical) rather than by whether the file
-                    ; happens to mention them, so both hold at once.
-                    ( g_variantSymbolList && refdes && !s3dIsMechanical( sym ) &&
+                    ; Two earlier rules stood here (user decision, 2026-08-03):
+                    ; "the variant list IS the export list" lost mechanical
+                    ; parts; "subtract only what the table mentions somewhere"
+                    ; kept R3 in every variant; and "subtract only what is not
+                    ; s3dIsMechanical" kept a MECHANICAL-class part with a
+                    ; refdes - A1/A2/A4, MOLEX housings - in variants that do
+                    ; not install it. The distinction is now the one the data
+                    ; actually carries: a refdes can be listed, so the list
+                    ; governs it; a symbol without one never can be, so nothing
+                    ; but NO_STEP_EXPORT governs it. See s3dIsMechanical, which
+                    ; remains for the probe and no longer decides an export.
+                    ;
+                    ; t_variant is tested for the same reason `installed` is
+                    ; built under it: a table with no variant named fills nothing
+                    ; in, and under this rule that would drop EVERY component
+                    ; rather than a few. No caller does it - both do exist, so
+                    ; the guard costs one comparison and removes a silent one.
+                    ( g_variantSymbolList && t_variant && refdes &&
                       !installed[upperCase( refdes )]
                         nNotInVariant = nNotInVariant + 1
                     )
                     ( t
-                        when( g_variantSymbolList &&
-                              (!refdes || s3dIsMechanical( sym ))
+                        when( g_variantSymbolList && !refdes
                             nUntracked = nUntracked + 1
                         )
                         tconc( out sym )
@@ -658,7 +677,7 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
                     nNotInVariant t_variant )
         )
         when( nUntracked > 0
-            printf( "Simple 3D: %d mechanical symbol(s) are outside the variant system; exported in every variant.\n"
+            printf( "Simple 3D: %d symbol(s) have no refdes and cannot be named in a variant; exported in every variant.\n"
                     nUntracked )
         )
         cdr( car( out ) )
