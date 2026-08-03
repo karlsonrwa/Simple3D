@@ -141,43 +141,57 @@ check("both bad files stop the export rather than exporting something wrong",
       len(re.findall(r"error\(\s*strcat\(", src)) >= 2)
 
 print("\n[6] who obeys the variant list, and who is outside it")
-# The rule this replaced only subtracted a refdes the table mentioned SOMEWHERE,
-# which left a component the file never names - R3 on variants_test-b0 - in
-# every variant. What separates R3 from a bracket is not whether the file
-# mentions it: it is whether the part comes from the schematic at all.
+# The rule, settled by the user on 2026-08-03: a refdes is what makes a part
+# nameable in a Variants.lst, so the list governs EVERYTHING that has one -
+# mechanical or not. A symbol without a refdes can never be named there, so only
+# NO_STEP_EXPORT can remove it. Two earlier rules stood here and each was wrong
+# on the other's case: "the list IS the export list" lost mechanical parts;
+# "subtract only what is not mechanical" kept a MECHANICAL-class MOLEX housing
+# (A1/A2/A4 on variants_test-b0) in variants that do not install it.
 
 
-def exported(*, refdes, in_netlist, sym_type, cls, installed, has_table=True):
+def exported(*, refdes, installed, has_table=True, no_step_export=False,
+             variant="ALL"):
     """s3dSymbolsToExport's cond, for one symbol."""
-    mechanical = (not in_netlist
-                  or (sym_type or "").upper() == "MECHANICAL"
-                  or (cls or "").upper() == "MECHANICAL")
-    if has_table and refdes and not mechanical and not installed:
+    if no_step_export:
+        return False
+    if has_table and variant and refdes and not installed:
         return False
     return True
 
 
-R3 = dict(refdes="R3", in_netlist=True, sym_type="PACKAGE", cls="DISCRETE")
+R3 = dict(refdes="R3")
 check("an electrical part the variant does not install is dropped",
       not exported(**R3, installed=False))
 check("...and kept when it does",
       exported(**R3, installed=True))
-check("a part the netlist has never heard of is kept",
-      exported(refdes="A1", in_netlist=False, sym_type="PACKAGE", cls=None,
-               installed=False))
-check("a MECHANICAL-class part with a refdes is kept",
-      exported(refdes="A1", in_netlist=True, sym_type="PACKAGE",
-               cls="MECHANICAL", installed=False))
-check("a MECHANICAL symbol with no refdes is kept",
-      exported(refdes=None, in_netlist=False, sym_type="MECHANICAL", cls=None,
-               installed=False))
+check("a MECHANICAL-class part with a refdes obeys the list too",
+      not exported(refdes="A4", installed=False))
+check("...and is exported when the variant does install it",
+      exported(refdes="A4", installed=True))
+check("a symbol with no refdes is outside the list entirely",
+      exported(refdes=None, installed=False))
+check("NO_STEP_EXPORT removes it even so",
+      not exported(refdes=None, installed=False, no_step_export=True))
+check("NO_STEP_EXPORT wins over a variant that installs the part",
+      not exported(**R3, installed=True, no_step_export=True))
+check("absence from the variant drops it whatever the property says",
+      not exported(**R3, installed=False, no_step_export=True))
 check("with no variant table nothing is dropped",
       exported(**R3, installed=False, has_table=False))
 
-check("the exporter tells the two apart by what the part IS",
-      re.search(r"!s3dIsMechanical\(\s*sym\s*\)", src))
-check("and being absent from the netlist is one of the ways",
-      re.search(r"!comp\s*\|\|", src))
+# The transliteration above is only as good as its resemblance to the source.
+# These pin the two halves of the cond it models.
+check("a table with no variant named subtracts nothing, rather than everything",
+      exported(**R3, installed=False, variant=None))
+
+check("the exporter subtracts on the refdes alone, with no mechanical test",
+      re.search(r"g_variantSymbolList\s*&&\s*t_variant\s*&&\s*refdes\s*&&\s*\n?\s*"
+                r"!installed\[\s*upperCase\(\s*refdes\s*\)\s*\]", src))
+check("s3dIsMechanical no longer decides an export",
+      not re.search(r"!s3dIsMechanical\(\s*sym\s*\)", src))
+check("a symbol with no refdes is what counts as outside the system",
+      re.search(r"when\(\s*g_variantSymbolList\s*&&\s*!refdes", src))
 
 print("\n[7] a variant that overrides properties on some components")
 # A Variants.lst variant may carry, after its base list, one block per component

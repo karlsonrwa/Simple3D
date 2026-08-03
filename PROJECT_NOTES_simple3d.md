@@ -446,7 +446,7 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | 5 | minimise size / reuse | done; surfacecurve.mode=0 (~49% smaller) + one shared part per model |
 | 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
 | 7 | silkscreen export (user, 2026-07-22) | **done and confirmed on the user's boards** (rounds 10–12). `format_version: 2`; polygons carry Allegro's own area and the reader resolves the vertex-radius reading against it (settled: axis / positive-sits-left / first-radius-closes). Solid or flat, per side, White/Black, clipped to outline−cutouts. Flat faces are unioned; solid ones deliberately are not. |
-| 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11; **extended in round 19 and confirmed live 2026-07-24** to mechanical symbols that carry a STEP model (`PKGDEF_STEP_FILE`) but have **no refdes** — they were silently dropped by the refdes gate before, now they export (`axlStepGet` on a mechanical instance returns the mapping; no `sym->definition` fallback needed). Export list comes from the design, the variant table only subtracts, so a symbol Variants.lst does not mention is exported in every variant. `NO_STEP_EXPORT` excludes outright and is logged by refdes — **confirmed live 2026-07-24: `axlDBGetProperties` sees the property and marked symbols are excluded.** |
+| 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11; **extended in round 19 and confirmed live 2026-07-24** to mechanical symbols that carry a STEP model (`PKGDEF_STEP_FILE`) but have **no refdes** — they were silently dropped by the refdes gate before, now they export (`axlStepGet` on a mechanical instance returns the mapping; no `sym->definition` fallback needed). Export list comes from the design and the variant table only subtracts — but since **round 52** it subtracts on the refdes alone: a symbol with a refdes that the variant does not install is dropped even if it is mechanical, and only a symbol with NO refdes is outside the variant system. `NO_STEP_EXPORT` excludes outright and is logged by refdes — **confirmed live 2026-07-24: `axlDBGetProperties` sees the property and marked symbols are excluded.** |
 | 10 | silkscreen layers chosen in the GUI (user, 2026-07-23) | done in rounds 14-17; `format_version: 3`. Every polygon carries its layer, the panel offers what the JSON contains, exclusions are persisted, a side switched off greys its layers. Zero-width objects reported by layer and position. Console colored by severity via `axlUIWPrint` — no green severity exists. |
 | 11 | multi-stackup + bent flex (user, 2026-07-25) | **multi-stackup done in round 26**; `format_version: 5`. Zones read from the design with their own outline and stackup thickness, fused into one board, components placed on their own zone's surface, zones aligned on the shared conductor core. Fixed two live defects on the way (see round 26). **Bends deliberately NOT done** — the data is available but folding is a separate effort of comparable size to the whole tool, and the bend parameters live in an undocumented `IDX_BEND_TYPE_INFO` property. Board is exported flat. |
 | 9 | one settings file (user, 2026-07-22) | done in round 10h. `simple3d_config.json` holds every user setting, read by both halves; only `S3D_ScriptDir` stays in SKILL source, for bootstrap. Rounds 12–13 fixed two ways the GUI could damage it. |
@@ -2905,6 +2905,79 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-08-03 (round 52) — the variant rule, settled on the refdes
+
+The user brought a third case and decided the rule with it. `A4` on their board:
+a MOLEX housing, **refdes, a component in the netlist, compdef class
+`MECHANICAL`, a `PKGDEF_STEP_FILE`, no `NO_STEP_EXPORT`** — so round 49's third
+test fired and it rode into every variant. Their decision, stated twice:
+
+> если у символа есть рефдес и в папке есть список вариантов, то смотрим
+> список. Если компонент есть — проверяем `NO_STEP_EXPORT`. Если в списке
+> рефдеса нет — не экспортируем вне зависимости от свойства.
+
+So the rule is now **one question: does the symbol have a refdes?**
+
+| | |
+|---|---|
+| refdes + variant list | the list governs it, mechanical or not. Installed and unmarked → exported; installed and marked → not; absent → not, whatever the property says |
+| refdes, no `Variants.lst` | only `NO_STEP_EXPORT` |
+| no refdes | only `NO_STEP_EXPORT`, always — it can never be named in a list |
+
+**This is not as much of a reversal as it looks.** Round 49's first test was "no
+logical component", and the docs settle that it is the same condition written
+longer: `refdes` is *"nil if no associated component (for example, mechanical)"*
+(`skill_db_attributes.txt`, Symbol Instance Attributes). What is dropped is
+tests 2 and 3 — symbol type and compdef class — and with them the idea that a
+part can be told apart from the variant system by what it IS. It can be told
+apart by whether it is **nameable** there, which is the property that actually
+decides whether the file's silence means anything.
+
+**What it costs, stated before it was done and accepted:** `A1`/`A2` on
+`variants_test-b0` are not among the 33 refdes that file lists (round 49 counted
+them in the seven extras), so they will now be dropped from the `ALL` variant.
+If a housing must survive a variant that does not list it, the variant list is
+where to say so.
+
+`s3dIsMechanical` **stays**, unused by the export and marked as diagnostic:
+`probe_variants.il` is the only thing that can answer "what kind of part is
+this", and after this change that question is more likely to be asked, not less.
+The probe grew a second table — mechanical parts that DO carry a refdes, i.e.
+exactly the ones whose behaviour changed — and its "dropped" line no longer
+exempts them.
+
+Two messages were quietly wrong the moment the rule moved, and both are fixed:
+the stub guard said the export would leave "a board with only its mechanical
+parts" (now: only the symbols with no refdes), and the foreign-file guard said
+it would write "one copy of the WHOLE board per variant name" — under this rule
+a foreign file installs nothing of this board, so it would write one STRIPPED
+board per name. A guard whose message describes the previous rule is a guard
+nobody can act on.
+
+`NO_STEP_EXPORT` is still tested first. The user put the variant first; the
+outcomes are identical either way (both lead to "not exported"), and testing the
+property first is what keeps `FID2 - NOT exported: the symbol carries the
+NO_STEP_EXPORT property` in the console for a part that is also uninstalled.
+Confirmed with them: the property is attached **to the placed symbol**
+(`Properties attached to symbol`), which `axlDBGetProperties(sym)` reads — no
+`sym->definition` fallback is needed, though the STEP properties beside it do
+live on the symbol definition.
+
+One guard was added that the old rule did not need: the subtraction now tests
+`t_variant` as well, the same condition `installed` is built under. A variant
+table with no variant named fills that table with nothing, which used to drop a
+few components and would now drop **every** one of them. No caller does it —
+both call sites pass a variant — so it costs one comparison and removes a silent
+catastrophe.
+
+`tests/test_variant_path.py` [6] was rewritten: ten cases including the two the
+old rule got wrong, plus source greps that now assert `!s3dIsMechanical(sym)` is
+**absent** from the cond. 20/20 suites green.
+
+**Not verified in Allegro yet** — needs one export of `variants_test-b0` to
+confirm `A1`/`A2` disappear from `ALL` and that a listed `A4` still comes
+through.
 
 ## Update 2026-08-02 (round 51) — the two component groups get the board name too
 

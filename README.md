@@ -444,28 +444,24 @@ looks exactly like variants working:
 
 | what it is | what happens now |
 |---|---|
-| a **stub** — one variant, usually `"dummy"`, with an empty component list | the export stops: every variant would install nothing, leaving a board with only its mechanical parts |
+| a **stub** — one variant, usually `"dummy"`, with an empty component list | the export stops: every variant would install nothing, leaving a bare board carrying only the symbols that have no refdes |
 | **another project's file** — plenty of refdes, none of them on this board | the export stops and says so, naming a few of the refdes it was given |
 
 The ordinary case prints the coverage instead:
 `variant list covers 47 of 51 placed component(s)`.
 
-**The variant list decides what is installed.** A component that comes from the
-schematic is exported only if the variant being built lists it. Absence from the
-list is the list saying *not installed* — that is what it is for.
+**The variant list decides what is installed, and it decides for everything
+that has a reference designator.** A refdes is exactly what makes a part
+nameable in a `Variants.lst`, so mechanical parts with one — a MOLEX housing
+sitting on a connector, say — obey the list like any other component: listed and
+without `NO_STEP_EXPORT`, it is exported; listed and marked, it is not; absent
+from the list, it is not, whatever the property says.
 
-**A part the variant system cannot describe is exported in every variant.**
-Three ways to be one, and they are told apart by what the part **is**, not by
-whether the file happens to mention it:
-
-- **it is not in the netlist at all** — a bracket, a mating connector, anything
-  the designer dropped straight onto the board in Allegro. A part that is not in
-  the schematic cannot appear in a variant list generated from that schematic,
-  so its absence there says nothing;
-- **its symbol type is `MECHANICAL`** — an `.osm` placed directly, usually with
-  no refdes;
-- **its component class is `MECHANICAL`** — a placed part that does have a
-  refdes but no BOM line.
+**A symbol with no reference designator is outside the variant system, and is
+exported in every variant.** Allegro leaves the refdes nil when there is no
+associated component, so such a part can never be named in a list generated from
+the schematic — nothing there can say anything about it, and `NO_STEP_EXPORT` is
+the only thing that removes it.
 
 **A variant may also override properties on individual components**, as a block
 per component after its base list:
@@ -480,20 +476,21 @@ exported with it, and only with it. (The 3D model itself comes from the STEP
 mapping, so the overridden properties do not change what is drawn.)
 
 `NO_STEP_EXPORT` is still how any of them is kept out of the model altogether.
-The console says how many were kept this way:
+The console says how many symbols were outside the list to begin with:
 
 ```
-Simple 3D: 4 mechanical symbol(s) are outside the variant system; exported in every variant.
+Simple 3D: 4 symbol(s) have no refdes and cannot be named in a variant; exported in every variant.
 ```
 
 **A mechanical symbol needs no reference designator.** A part placed straight
 onto the board — a battery holder, a bracket — often has a `PKGDEF_STEP_FILE` on
-its symbol definition but no refdes at all (Allegro leaves the refdes nil when
-there is no associated component). It is exported on the strength of its STEP
-model, counted in the "not listed in any variant" line above, and its instance
-is keyed internally as `<SymbolName>_MECH1`, `_MECH2`, … (unique per export). The
-key is not shown in the tree — the placed instance carries its STEP file's name,
-like every other component.
+its symbol definition but no refdes at all. It is exported on the strength of its
+STEP model, counted in the line above, and its instance is keyed internally as
+`<SymbolName>_MECH1`, `_MECH2`, … (unique per export). The key is not shown in
+the tree — the placed instance carries its STEP file's name, like every other
+component. Attach `NO_STEP_EXPORT` to the placed symbol itself to leave one out;
+that is where the export reads it (along with the component and its definition,
+which a symbol without a refdes does not have).
 
 ## Multi-stackup and rigid-flex
 
@@ -1240,28 +1237,24 @@ Simple 3D: no Variants.lst beside the board (looked for d:/Projects/board/Varian
 
 | что это | что происходит теперь |
 |---|---|
-| **заглушка** — один вариант, обычно `"dummy"`, с пустым списком компонентов | экспорт останавливается: каждый вариант установил бы ничего, и на плате осталась бы одна механика |
+| **заглушка** — один вариант, обычно `"dummy"`, с пустым списком компонентов | экспорт останавливается: каждый вариант установил бы ничего, и осталась бы голая плата с одними символами без обозначений |
 | **файл от другого проекта** — обозначений много, но ни одного с этой платы | экспорт останавливается и говорит об этом, называя несколько полученных обозначений |
 
 В обычном случае печатается покрытие:
 `variant list covers 47 of 51 placed component(s)`.
 
-**Что установлено — решает список варианта.** Компонент, пришедший из схемы,
-экспортируется, только если собираемый вариант его перечисляет. Отсутствие в
-списке — это и есть «не установлен», ради этого список и существует.
+**Что установлено — решает список варианта, и решает для всего, у чего есть
+позиционное обозначение.** Обозначение — это ровно то, чем деталь можно назвать
+в `Variants.lst`, поэтому механика с обозначением (скажем, корпус MOLEX на
+разъёме) подчиняется списку наравне с любым компонентом: перечислена и без
+`NO_STEP_EXPORT` — экспортируется; перечислена и помечена — нет; в списке её
+нет — нет, независимо от свойства.
 
-**Деталь, которую система вариантов описать не может, экспортируется во всех
-вариантах.** Быть такой можно тремя способами, и различаются они по тому, чем
-деталь **является**, а не по тому, упомянута ли она в файле:
-
-- **её нет в списке соединений вообще** — кронштейн, ответная часть разъёма, всё
-  что конструктор поставил на плату прямо в Allegro. Детали, которой нет в схеме,
-  неоткуда взяться в списке вариантов, сгенерированном из этой схемы, поэтому её
-  отсутствие там ничего не значит;
-- **тип символа `MECHANICAL`** — напрямую поставленный `.osm`, обычно вообще без
-  позиционного обозначения;
-- **класс компонента `MECHANICAL`** — поставленная деталь с обозначением, но без
-  строки в BOM.
+**Символ без позиционного обозначения находится вне системы вариантов и
+экспортируется во всех.** Allegro оставляет refdes пустым, когда связанного
+компонента нет, поэтому такую деталь физически нечем назвать в списке,
+сгенерированном из схемы — сказать о ней там нечего, и убрать её может только
+`NO_STEP_EXPORT`.
 
 **Вариант может ещё и переопределять свойства отдельных компонентов** — блоком
 на компонент после базового списка:
@@ -1276,20 +1269,22 @@ Simple 3D: no Variants.lst beside the board (looked for d:/Projects/board/Varian
 STEP-маппинга, так что переопределённые свойства на геометрию не влияют.)
 
 `NO_STEP_EXPORT` по-прежнему убирает любую из них из модели совсем. Сколько
-деталей осталось по этому правилу, видно в консоли:
+символов вообще оказалось вне списка, видно в консоли:
 
 ```
-Simple 3D: 4 mechanical symbol(s) are outside the variant system; exported in every variant.
+Simple 3D: 4 symbol(s) have no refdes and cannot be named in a variant; exported in every variant.
 ```
 
 **Механическому символу позиционное обозначение не нужно.** Деталь, поставленная
 прямо на плату — держатель батарейки, кронштейн, — часто несёт `PKGDEF_STEP_FILE`
-на определении символа, но позиционного обозначения не имеет вовсе (Allegro
-оставляет refdes пустым, когда связанного компонента нет). Она экспортируется на
-основании своей STEP-модели, попадает в строку «not listed in any variant» выше,
-а её экземпляр внутри ключуется как `<ИмяСимвола>_MECH1`, `_MECH2`, … (уникально
-на каждый экспорт). В дереве этот ключ не виден — размещённый экземпляр носит имя
-своего STEP-файла, как и любой другой компонент.
+на определении символа, но позиционного обозначения не имеет вовсе. Она
+экспортируется на основании своей STEP-модели, попадает в строку выше, а её
+экземпляр внутри ключуется как `<ИмяСимвола>_MECH1`, `_MECH2`, … (уникально на
+каждый экспорт). В дереве этот ключ не виден — размещённый экземпляр носит имя
+своего STEP-файла, как и любой другой компонент. Чтобы исключить такую деталь,
+вешайте `NO_STEP_EXPORT` на сам поставленный символ — оттуда экспорт свойство и
+читает (а также с компонента и его определения, которых у символа без
+обозначения нет).
 
 ## Мультистэкап и rigid-flex
 
