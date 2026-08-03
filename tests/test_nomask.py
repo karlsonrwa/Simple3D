@@ -11,7 +11,6 @@ if str(_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_ROOT))
 
 import json, sys
-from pathlib import Path
 ROOT=_ROOT; sys.path.insert(0,str(ROOT))
 from stepbuilder import core
 OUT=_OUT / "nomask"; OUT.mkdir(exist_ok=True)

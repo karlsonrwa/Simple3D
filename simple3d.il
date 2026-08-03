@@ -128,15 +128,6 @@ procedure( s3dSlashes( t_path )
     )
 )
 
-; Decide where the JSON and STEP go.
-;
-; Historically the script author keeps brd files in a  pcb  folder and puts
-; mechanical output in a sibling  cad  folder (…/rev/pcb -> …/rev/cad). So:
-;   * if the design sits in a  pcb  folder AND a sibling  cad  folder exists,
-;     use  cad ;
-;   * otherwise (any other structure, or no  cad  folder) write next to the brd
-;     itself, in the design's own folder - not everyone uses the pcb/cad layout.
-; The output folder is always created if missing.
 ; Decide where the JSON and STEP go, given the design's own folder.
 ;
 ; The author's historical layout is  root/rev/pcb  for the .brd and
@@ -144,39 +135,56 @@ procedure( s3dSlashes( t_path )
 ; "pcb" folder that has a sibling "cad", output goes to "cad". For any other
 ; layout - no "pcb" folder, or a "pcb" folder without a "cad" sibling - output
 ; goes into the SAME folder as the .brd, so the tool works regardless of how
-; the project is organised.
+; the project is organised. The output folder is always created if missing.
+;
+; nil in means the working directory could not be read at all, which is what
+; the load-time self-test at the bottom of this file warns about. Say the same
+; thing here rather than letting parseString fail on nil: a raw SKILL trace is
+; exactly what that self-test exists to prevent.
+; NOTE: if/else, not an early return - return() is legal only inside a prog,
+; and this is a let. (The same trap s3dExportCommand's own note describes.)
 procedure( s3dResolveCadDir( t_designDir )
     let( ( parts n leaf parent cad )
-        t_designDir = s3dSlashes( t_designDir )
-        parts = parseString( t_designDir "/" )
-        n = length( parts )
-        leaf = if( n >= 1 then nth( n - 1 parts ) else nil )
+        if( !stringp( t_designDir ) then
+            s3dWarn( "Simple 3D: could not read the design's folder - getWorkingDir() answered nothing. Edit s3dDesignDir() in simple3d.il to use your install's working-directory function." )
+            nil
+        else
+            t_designDir = s3dSlashes( t_designDir )
+            parts = parseString( t_designDir "/" )
+            n = length( parts )
+            leaf = if( n >= 1 then nth( n - 1 parts ) else nil )
 
-        if( leaf && (upperCase( leaf ) == "PCB") then
-            ; …/rev/pcb -> candidate …/rev/cad
-            parent = buildString( headList( parts n - 1 ) "/" )
-            cad = strcat( parent "/cad" )
-            if( isDir( cad ) then
-                ; sibling cad exists -> use it (author's standard layout)
-                printf( "Simple 3D: output folder (cad): %s\n" cad )
-                cad
+            if( leaf && (upperCase( leaf ) == "PCB") then
+                ; …/rev/pcb -> candidate …/rev/cad
+                parent = buildString( s3dHeadList( parts n - 1 ) "/" )
+                cad = strcat( parent "/cad" )
+                if( isDir( cad ) then
+                    ; sibling cad exists -> use it (author's standard layout)
+                    printf( "Simple 3D: output folder (cad): %s\n" cad )
+                    cad
+                else
+                    ; pcb layout but no cad sibling -> write beside the brd
+                    printf( "Simple 3D: no 'cad' folder next to 'pcb'; output goes beside the brd: %s\n" t_designDir )
+                    s3dMakeDirs( t_designDir )
+                    t_designDir
+                )
             else
-                ; pcb layout but no cad sibling -> write beside the brd
-                printf( "Simple 3D: no 'cad' folder next to 'pcb'; output goes beside the brd: %s\n" t_designDir )
+                ; not a pcb folder -> write in the design's own folder
+                printf( "Simple 3D: output folder (beside brd): %s\n" t_designDir )
                 s3dMakeDirs( t_designDir )
                 t_designDir
             )
-        else
-            ; not a pcb folder -> write in the design's own folder
-            printf( "Simple 3D: output folder (beside brd): %s\n" t_designDir )
-            s3dMakeDirs( t_designDir )
-            t_designDir
         )
     )
 )
 
-; headList( lst n ) -> first n elements of lst (helper; SKILL has no builtin).
-procedure( headList( lst x_n )
+; s3dHeadList( lst n ) -> first n elements of lst (helper; SKILL has no builtin).
+;
+; PREFIXED, like everything else this project defines. SKILL has one global
+; namespace and these files are loaded into a session alongside whatever else
+; the user runs, so a helper called "headList" is a name collision waiting to
+; happen - and the winner is decided by load order, silently.
+procedure( s3dHeadList( lst x_n )
     let( ( out ( i 0 ) )
         out = tconc( nil nil )
         foreach( e lst

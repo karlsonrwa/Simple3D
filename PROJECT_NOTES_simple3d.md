@@ -2906,6 +2906,71 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-04 (round 53) — full review, and all seven findings fixed
+
+A read of the shipped code as it stands: `simple3d.il` and `core.py` end to end,
+`worker.py`, `__main__.py`, the config and queue halves of `gui.py`, the
+export rule and JSON writer of `makeVariant3dIntermediates.il`, plus pyflakes
+over the whole Python side and the docs audit. Seven findings, all fixed in this
+round. The two that mattered:
+
+**1. A model file that was present but unusable took the whole board down.**
+`core.py` treated a MISSING file gently - log, `missing_step_files`, carry on -
+but raised `StepBuilderError` when `ReadFile`, `Transfer` or the free-shape diff
+failed. So one file locked by another application, one zero-byte copy, one
+dialect OCCT declines, and the export of that board was over. Against the
+project's own rule, written three feet away in the same file: *one malformed
+glyph must not cost the whole board.* Now the three failures are caught
+(including anything OCCT throws), reported with the reason and the path, and the
+component is skipped like a missing one.
+
+They land in a **new** `unreadable_step_files`, deliberately not in
+`missing_step_files`: `_report_embedded_only` tells the user to recover the model
+from the board's own copy, which is exactly wrong advice for a file that is
+sitting right there. `tests/test_index.py` [9] builds a board with one good model
+and one junk file and pins all of it - board built, good part placed, bad part
+skipped, listed as unreadable and NOT as missing.
+
+**2. `s3dJsonQuote` escaped four characters and needed six.** `"`, `\`, tab and
+newline were handled; a carriage return - or any other control character - went
+into the file raw, and JSON forbids those in a string. One of them anywhere in
+any name makes the WHOLE intermediate unparsable, with an error that names JSON
+rather than the name carrying it.
+
+CR is now escaped. The rest could not be: `\u00XX` needs the character's code,
+and **`charToInt` is not in the local API reference**, which is exactly the bet
+round 47 lost on `axlDirName`. PCRE is used elsewhere in this file, so it is
+known to work here - so any other control character is detected with
+`pcreCompile( "[\x01-\x08\x0b\x0c\x0e-\x1f]" )` and replaced by a space, with a
+console warning naming the string. The pattern deliberately excludes tab,
+newline and CR so the warning cannot fire for characters that ARE handled, and
+it is asked **once per string**, not once per character: the per-character form
+would run on every ordinary character of every name on a dense board.
+`tests/test_quote.py` now walks 0x01-0x1f and requires the document to parse.
+
+The other five, each a line or two: the GUI's queue drain reschedules in a
+`finally` (anything escaping it stopped the window updating for the rest of the
+session - no log, no progress, no completion, while the build ran on); a failed
+`getWorkingDir()` now produces the same sentence the load-time self-test prints
+instead of `parseString` failing on nil (and it is an `if`, not a `return` -
+`return` is prog-only, and the trap is documented in this very file);
+`headList` -> `s3dHeadList` and `addIndent` -> `s3dAddIndent`, because SKILL has
+one global namespace and **the upstream script calls `addIndent` without
+defining it**, so that name belongs to something else on the machine and load
+order decides whose wins; `_gui_prefill`'s docstring listed 6 of the 13 flags it
+takes; and `s3dResolveCadDir` carried its header comment twice, in two
+redactions.
+
+pyflakes is now clean across `stepbuilder`, `tools` and `tests` - it was 25
+lines of known noise, which is the state in which a real warning goes unread.
+The only shipped-code entry was `bend.py`'s `stack_at`, rebound rather than
+shadowed. 20/20 suites green.
+
+**Not verified in Allegro yet**: the two SKILL changes (the control-character
+path and the nil-working-directory message). Neither is on the ordinary route -
+the first needs corrupt data, the second a different Allegro - but both are new
+code in a file that only Allegro can run.
+
 ## Update 2026-08-03 (round 52) — the variant rule, settled on the refdes
 
 The user brought a third case and decided the rule with it. `A4` on their board:

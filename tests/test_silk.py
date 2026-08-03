@@ -12,8 +12,7 @@ if str(_ROOT) not in _sys.path:
 
 """Silkscreen path as a real package import (exercises `from .colors import`),
 plus layer filtering, flat mode, warnings and the area cross-check."""
-import json, math, sys
-from pathlib import Path
+import json, sys
 
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))

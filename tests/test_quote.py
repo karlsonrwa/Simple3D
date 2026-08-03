@@ -31,9 +31,22 @@ def s3dJsonQuote(value):
             out += '\\t'
         elif c == '\n':
             out += '\\n'
+        elif c == '\r':
+            out += '\\r'
+        elif _is_other_control(c):
+            # SKILL has no verified way to turn a character into its code here,
+            # so \u00XX cannot be built; the character is replaced instead. The
+            # point of the branch is that the FILE still parses.
+            out += ' '
         else:
             out += c
     return out + '"'
+
+
+def _is_other_control(c):
+    """The SKILL side's [\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f], as a predicate."""
+    n = ord(c)
+    return 0x01 <= n <= 0x1f and c not in "\t\n\r"
 
 
 fails = []
@@ -55,7 +68,7 @@ for v, label in [('has"quote', 'quote'), ('back\\slash', 'backslash'),
                  ('tab\there', 'tab'), ('nl\nhere', 'newline'),
                  ('both"\\mixed', 'quote+backslash'), ('', 'empty'),
                  ('"', 'bare quote'), ('\\', 'bare backslash'),
-                 ('\\"', 'backslash-quote')]:
+                 ('\\"', 'backslash-quote'), ('cr\rhere', 'carriage return')]:
     got = s3dJsonQuote(v)
     try:
         parsed = json.loads('{"k": ' + got + '}')["k"]
@@ -64,6 +77,27 @@ for v, label in [('has"quote', 'quote'), ('back\\slash', 'backslash'),
     except Exception as exc:
         ok, detail = False, f"does not parse: {exc}"
     check(f"{label:18} {v!r}", ok, detail)
+
+print("\n[2b] every other control character, which JSON also forbids raw")
+# One of these anywhere in any string makes the WHOLE intermediate unparsable,
+# and the message names JSON rather than the name that carries it. They cannot
+# round-trip - the character is replaced - so what is checked is that the file
+# still parses and nothing else in the string is disturbed.
+for n in list(range(0x01, 0x20)):
+    c = chr(n)
+    v = f"LAYER{c}NAME"
+    got = s3dJsonQuote(v)
+    try:
+        parsed = json.loads('{"k": ' + got + '}')["k"]
+        ok = parsed in (v, "LAYER NAME")
+        detail = f"got {parsed!r}"
+    except Exception as exc:
+        ok, detail = False, f"does not parse: {exc}"
+    check(f"0x{n:02x} in a layer name", ok, detail)
+
+check("the SKILL source escapes CR too",
+      '( c == "\\r"  "\\\\r" )' in
+      (_ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8"))
 
 print("\n[3] a whole emitted object still parses")
 doc = ("{" + s3dJsonQuote("FLEX") + ': {"layers": [{"name": '

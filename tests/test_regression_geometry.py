@@ -12,7 +12,6 @@ if str(_ROOT) not in _sys.path:
 
 """Baseline comparison with masks zeroed, which is how 12073.309477 was measured."""
 import sys, json
-from pathlib import Path
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))
 # The PACKAGE import: core.py imports its siblings relatively inside the

@@ -17,7 +17,6 @@ window report the requested size, not where it actually is, which silently
 invalidates every placement assertion.
 """
 import json, re, shutil, sys
-from pathlib import Path
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))
 from stepbuilder.gui import StepBuilderApp

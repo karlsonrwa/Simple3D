@@ -12,7 +12,6 @@ if str(_ROOT) not in _sys.path:
 
 """StepFileIndex as an ordered search path."""
 import sys, shutil
-from pathlib import Path
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))
 from stepbuilder.core import StepFileIndex, StepBuilderError
@@ -110,6 +109,47 @@ check("the case report is capped, not one line per component",
       len([m for m in logs4 if "differ only in case" in m]) == 10, str(len(logs4)))
 check("and it says there were more",
       any("further model names" in m for m in logs4), str(logs4))
+
+print("\n[9] a model file that is present but unusable costs its own component")
+# It used to raise, so ONE file locked by another application, one zero-byte
+# copy or one dialect OCCT declines took the whole board down - while the same
+# model simply being absent cost only that component. Same treatment now, and
+# the two are still reported apart: the fixes are different, and the
+# "it is inside the board, not on your disk" advice is wrong for a file that
+# is right there.
+import json
+from stepbuilder import core
+
+W = _OUT / "unreadable"
+shutil.rmtree(W, ignore_errors=True)
+(W / "models").mkdir(parents=True)
+shutil.copy(ROOT / "demo/step_files/cap_D8x10mm.stp", W / "models")
+(W / "models" / "broken.step").write_text("this is not a STEP file at all\n")
+
+demo = json.load(open(ROOT / "demo/ap-214/demo.json"))
+board = {"name": demo["name"], "pcb": demo["pcb"]}
+board["C1"] = json.loads(json.dumps(demo["C1"]))              # a good model
+bad = json.loads(json.dumps(demo["C1"]))                      # the broken one
+bad["step_mapping"]["step_name"] = "broken.step"
+board["C2"] = bad
+jf = W / "board.json"
+jf.write_text(json.dumps(board, indent=1))
+
+logs = []
+res = core.generate(step_dir=W / "models", json_file=jf, output_dir=W,
+                    output_name="unreadable_test", log=logs.append)
+check("the board is still built", (W / "unreadable_test.step").exists())
+check("the good component is placed", res.components_placed == 1,
+      str(res.components_placed))
+check("the bad one is skipped, not fatal", res.components_skipped == ["C2"],
+      str(res.components_skipped))
+check("it is reported as unreadable", res.unreadable_step_files == ["broken.step"],
+      str(res.unreadable_step_files))
+check("and NOT as missing - the file is on disk", res.missing_step_files == [],
+      str(res.missing_step_files))
+check("the log names the file and the reason",
+      any("broken.step" in m and m.startswith("warning:") for m in logs),
+      str([m for m in logs if "broken" in m]))
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

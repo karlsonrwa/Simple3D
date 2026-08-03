@@ -15,7 +15,6 @@ if str(_ROOT) not in _sys.path:
 Uses a COPY of simple3d_config.json so the repo's file is never written.
 """
 import json, shutil, sys
-from pathlib import Path
 
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))                 # so `stepbuilder` is importable
@@ -146,7 +145,7 @@ check("no key at all -> empty list, no crash", app4.step_dirs() == [], str(app4.
 app4.destroy()
 
 print(chr(10) + "[7b] board mode + layer colours")
-from stepbuilder.gui import BOARD_MODES, _mode_key, _mode_label
+from stepbuilder.gui import _mode_key, _mode_label
 app.board_mode.set(_mode_label("layers"))
 check("mode round-trips through the label", _mode_key(app.board_mode.get()) == "layers")
 check("snapshot carries the key, not the label", app._snapshot().board_mode == "layers")

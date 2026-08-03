@@ -37,8 +37,24 @@ def _split_dirs(values) -> list[str]:
 def _gui_prefill(argv: list[str]) -> int:
     """Open the GUI with paths and options prefilled from the Allegro launcher.
 
-    Recognised flags: --step-dir, --json-dir (a folder of variant JSONs),
-    --output-dir, --brd-name, --dated-name, --color.
+    Recognised flags, all optional and all overriding what the config
+    remembered, for this run only:
+
+      --config FILE        settings file to read instead of the default
+      --step-dir DIR       repeatable; each may be a ';'-separated list
+      --json-dir DIR       a folder of variant JSONs (all built on Generate)
+      --json-file FILE     a single intermediate
+      --output-dir DIR     where the .step files go
+      --brd-name NAME      the board's name in its original case
+      --dated-name         name the output <brd>_simple_DD_MM_YYYY
+      --color NAME         board color theme
+      --silk-color NAME    legend ink, White or Black
+      --no-silkscreen      neither side
+      --no-silk-top / --no-silk-bottom
+      --flat-silkscreen    legend as surfaces rather than thin solids
+
+    The shipped launcher passes only --config, --json-dir, --output-dir,
+    --brd-name and --dated-name; the rest exist for driving the window by hand.
     """
     p = argparse.ArgumentParser(prog="stepbuilder --gui", add_help=False)
     p.add_argument("--gui", action="store_true")
@@ -333,6 +349,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if result.missing_step_files:
             log(f"warning: {len(result.missing_step_files)} STEP file(s) not found")
+        if result.unreadable_step_files:
+            log(f"warning: {len(result.unreadable_step_files)} STEP file(s) are on "
+                f"disk but could not be read (see above)")
         if result.embedded_not_on_disk:
             log(f"warning: {len(result.embedded_not_on_disk)} of them are stored "
                 f"inside the board (see above for what to do)")

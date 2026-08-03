@@ -14,7 +14,6 @@ if str(_ROOT) not in _sys.path:
 (CR2032_MECH1 / _MECH2, no refdes) must build, place under symbols_top and
 symbols_bot, and share one part between the two identical models."""
 import json, sys
-from pathlib import Path
 
 ROOT = _ROOT
 sys.path.insert(0, str(ROOT))
