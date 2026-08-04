@@ -2906,6 +2906,60 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-04 (round 56) — the whole board, beside the variants
+
+The user, right after round 54 landed: with a `Variants.lst` present there must
+still be a way to get **every** component except `NO_STEP_EXPORT`. Same need as
+`ALWAYS_STEP_EXPORT` and a different scale - that property answers it part by
+part, this answers it for the board at once.
+
+**Where the control had to go, and why not the window.** The filtering happens
+in SKILL, before Python starts: what a variant does not install is not in the
+JSON, so no checkbox in the window can bring it back. The user asked for a knob
+in the dialog and got one, but it is a different knob - see below.
+
+**The export path already existed.** It is the no-variant branch:
+`s3dSymbolsToExport( nil nil )` -> `<design>.json`. It simply was not reached
+with a variant table present. So the change is that branch running again after
+the variant loop, under `settings.exportFullBoard` (default true), which is
+about six lines.
+
+Three details that are not obvious:
+
+- **The name.** `<design>.json` cannot collide with `<design>_<variant>.json`,
+  and it is the name the no-variant export already uses. It also retires the
+  round-47 nuisance where a stale `<design>.json` from an older export sat in
+  the folder and was quietly built as an extra STEP: that file is now written
+  every time and means something.
+- **The marker, not the name.** The file carries `"full_board": true` and the
+  window reads that. Telling the two apart by filename is a guess - a variant
+  may be called anything, including something that reproduces the design name.
+  `core.py`'s `_reserved` tuple gained the key, per the comment in the SKILL
+  writer that says every top-level key must be listed there or the reader walks
+  it as if it were a component.
+- **`create3dIntermediateFormat` takes the flag as an ARGUMENT**, not off a
+  global. A global read at write time is the round-42 shape: it would describe
+  whatever the previous call set, the moment this one forgot to.
+
+**The knob in the window is honest about what it does.** *Build the full-board
+file too* decides whether a queued FOLDER includes that file in the batch. It
+cannot ignore variants, so it does not claim to. And a file the user pointed at
+directly is built regardless, with a log line saying so: a checkbox that
+silently refuses the one file you selected is worse than one that appears to do
+nothing.
+
+`S3D_ExportFullBoard` is reset to its default **before** the config is read,
+which `S3D_NegativeLayers` beside it is not: these files load once per session,
+so a key deleted from the config would otherwise leave the last board's value in
+place. Round 42 again.
+
+`tests/test_variant_path.py` [8] pins the SKILL side by source and the reader by
+behaviour - four real files, one marked, one variant, one written before the key
+existed, one not ours at all.
+
+**Not verified in Allegro yet**: that the extra file appears on a board with
+variants. The Python half is verified by test.
+
 ## Update 2026-08-04 (round 55) — the README halved, the changelog moved out
 
 The user: the README is very long, the quick-start too short, and a person using

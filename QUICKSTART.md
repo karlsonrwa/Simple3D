@@ -78,6 +78,12 @@ per model, plus dropping the parametric surface curves.
 looked for there and nowhere else; when there is none, the console says which
 path it tried and exports every component into one file.
 
+Even with variants, the export also writes **the whole board** — every component
+except those marked `NO_STEP_EXPORT` — as `<board>.json`, for the drawing that
+has to show the bare board rather than one assembly. `settings.exportFullBoard`
+turns it off; the **Build the full-board file too** checkbox decides whether a
+queued folder builds it.
+
 ## Worth knowing
 
 - **Board thickness** = dielectrics + planes + conductors + both soldermasks.
@@ -189,6 +195,12 @@ path it tried and exports every component into one file.
 добавляется `_`. Если рядом с `.brd` лежит `Variants.lst` — один STEP на каждый
 вариант. Ищется он только там, рядом с платой; если его нет, консоль пишет, по
 какому пути смотрела, и экспортирует все компоненты одним файлом.
+
+Даже при вариантах экспорт дополнительно пишет **всю плату** — все компоненты,
+кроме помеченных `NO_STEP_EXPORT`, — файлом `<плата>.json`: для чертежа, которому
+нужна голая плата, а не конкретная сборка. Отключается через
+`settings.exportFullBoard`; галочка **Build the full-board file too** решает,
+собирать ли его, когда в очереди папка.
 
 ## Что важно знать
 

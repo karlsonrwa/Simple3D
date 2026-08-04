@@ -1466,6 +1466,25 @@ def is_simple3d_json(path: str | Path) -> bool:
     return isinstance(data, dict) and data.get("format") == FORMAT_MARKER
 
 
+def is_full_board(path: str | Path) -> bool:
+    """True if this intermediate is the WHOLE board, with variants ignored.
+
+    Written beside the per-variant files when `settings.exportFullBoard` is on,
+    because the variant list says what is INSTALLED and a drawing sometimes has
+    to show the bare board regardless. Told apart by a marker in the file rather
+    than by its name: `<design>.json` against `<design>_<variant>.json` is a
+    guess, and a variant is free to be called anything.
+
+    False for anything unreadable or older - the key is optional, and an
+    intermediate written before it simply does not have it.
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(data, dict) and bool(data.get("full_board"))
+
+
 def silkscreen_layers(path: str | Path) -> dict[str, dict[str, int]]:
     """{"top": {layer: polygon count}, "bottom": {...}} for one intermediate.
 
@@ -2130,7 +2149,7 @@ def generate(
     # Anything not reserved is a refdes. "silkscreen" MUST be listed here or it
     # would be walked as if it were a component.
     _reserved = ("name", "pcb", "format", "format_version", "silkscreen",
-                 "embedded_models", "zones", "stackups", "bends")
+                 "embedded_models", "zones", "stackups", "bends", "full_board")
     components = {k: v for k, v in data.items() if k not in _reserved}
     result = BuildResult(
         output=output_dir / f"{json_stem}.step",

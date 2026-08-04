@@ -122,6 +122,7 @@ Most controls say what they do. These are the ones worth knowing about:
 | **Silkscreen layers** | A tick per layer *found in this JSON*, with its polygon count. Untick and press Generate again — no re-export needed. |
 | **Fold flex bends** | Fold along the bend areas. Off exports the board flat. Does nothing on a board without them. |
 | **Compact STEP** | Drops parametric surface curves — roughly half the file, identical geometry. |
+| **Build the full-board file too** | With a folder queued, whether the batch also builds `<board>.json` — the whole board, variants ignored (`settings.exportFullBoard` is what writes it). A file you point at directly is always built: choosing it is choice enough. |
 
 The log is color-coded: orange warnings, dark red errors, green on success. The
 progress bar covers the whole build and the line beside it says which stage.
@@ -151,13 +152,14 @@ The keys worth setting by hand — the rest mirror controls in the window:
 |---|---|---|
 | `allegro` | `python` / `pythonw` | The interpreter. `pythonw` opens the window with **no console**; `""` falls back to `python`. |
 | | `menuLabel` / `commandName` | Menu text and command name. Read at load time, so a change needs a SKILL reload. |
-| | `defineAlwaysExportProp` | Create the **`ALWAYS_STEP_EXPORT`** property in the open design's property dictionary — at load and before every export — so it can be attached from Allegro's own Properties dialog. A part carrying it stays in every variant. Defining it is a change to the board, so `false` leaves every design untouched; the export still reads the property wherever it is already defined. See *What gets exported*. |
+| | `defineAlwaysExportProp` | Create the **`ALWAYS_STEP_EXPORT`** property in the open design's property dictionary — when a board is opened and before every export — so it can be attached from Allegro's own Properties dialog. A part carrying it stays in every variant. Defining it is a change to the board, so `false` leaves every design untouched; the export still reads the property wherever it is already defined. See *What gets exported*. |
 | `gui` | `stepDirs` | The model folders, in search order (see the table above). |
 | | `boardMode` | `solid` / `layers` / `inspect` — the *Body stitching* control. |
 | | `layerColors` | Color per layer kind (`copper`, `base`, `coverlay`, `adhesive`, `stiffener`, `soldermask`, `other`). The defaults are **Allegro's own material colors**, so the export looks like the same board does in Allegro's 3D canvas. |
 | | `foldAnchor` | The point that stays in the XY plane, `[x, y]`. **`[0, 0]` by convention** — see *Folding*. `"auto"` holds the largest piece instead. |
 | | `foldNeutral` | Where the neutral axis sits, as a fraction of thickness (default `0.5`). **Set it to `0` on a board whose bend areas touch** — see *Folding*. |
 | | `foldSliceAngle` | Arc per slice for a bend that has to be faceted (default `7.5`). Bends built as true cylinders ignore it. |
+| | `exportFullBoard` | With a `Variants.lst` present, also write `<design>.json` — the whole board with variants ignored (`NO_STEP_EXPORT` still applies). See *What gets exported*. |
 | `settings` | `negativeLayers` | Stackup layers whose drawn shapes are **openings** rather than material, matched as a case-insensitive substring. Coverlay, soldermask and pastemask are drawn that way by convention; stiffener, adhesive and epoxy are the opposite. Add a layer here if its bodies come out inverted. |
 | `silkscreen` | `top` / `bottom` | Which Allegro layers are **collected** — see *Silkscreen*. |
 
@@ -170,6 +172,8 @@ The rest of `gui` mirrors the window and is written back when it closes —
   the two are not coplanar and do not flicker. Default `0.001`. Not the ink
   thickness; that is `settings.silkscreenThickness`, and it applies to solid
   mode only.
+* `buildFullBoard` — whether a queued **folder** also builds the whole-board
+  file. The checkbox above.
 * `silkscreenLayersOff` — **exclusions, not inclusions**, so a layer that turns
   up on a board for the first time is drawn rather than silently missing.
 * `jsonFile`, `outputDir` — the last paths you picked **in the window**. An
@@ -241,6 +245,19 @@ Three consequences:
 
 Attach it to a **component definition** to cover every instance of a library
 part at once: mark the pad in the library, and no board needs touching again.
+
+**The whole board, variants ignored.** With a `Variants.lst` present the export
+also writes **`<design>.json`** — every component except those marked
+`NO_STEP_EXPORT`, with the variant list taking nothing away. A drawing sometimes
+has to show what is on the bare board rather than what one assembly installs,
+and that is a different question from `ALWAYS_STEP_EXPORT`: the property answers
+it part by part, this file answers it for the whole board at once. It carries
+`"full_board": true`, which is how the window names it in the queue — telling
+`<design>.json` from `<design>_<variant>.json` by name alone is a guess, and a
+variant may be called anything. Its STEP comes out as
+`<design>_simple_DD_MM_YYYY.step`. `settings.exportFullBoard: false` stops it
+being written; the **Build the full-board file too** checkbox decides whether a
+queued folder builds it.
 
 `Variants.lst` is read **from the folder holding the `.brd`**, which is where
 Allegro keeps it, and nowhere else; the console names the path it tried when
@@ -622,6 +639,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **Silkscreen layers** | Галочка на каждый слой, *найденный в этом JSON*, с числом полигонов. Снимите и нажмите Generate снова — повторный экспорт не нужен. |
 | **Fold flex bends** | Сгибать по областям сгиба. Выключено — плата экспортируется плоской. На плате без сгибов ничего не меняет. |
 | **Compact STEP** | Убирает параметрические кривые на поверхностях — примерно вдвое меньший файл при той же геометрии. |
+| **Build the full-board file too** | Когда в очереди папка — собирать ли вместе с вариантами `<плата>.json`, всю плату без учёта вариантов (пишет его `settings.exportFullBoard`). Файл, выбранный напрямую, собирается всегда: выбор и есть выбор. |
 
 Лог раскрашен: оранжевый — предупреждения, тёмно-красный — ошибки, зелёный —
 успех. Прогресс охватывает всю сборку, а строка рядом говорит, какой это этап.
@@ -651,13 +669,14 @@ stitched*, которая ничего не сшивает, или более г
 |---|---|---|
 | `allegro` | `python` / `pythonw` | Интерпретатор. `pythonw` открывает окно **без консоли**; `""` откатывается на `python`. |
 | | `menuLabel` / `commandName` | Текст пункта меню и имя команды. Читаются при загрузке, поэтому изменение требует перезагрузки SKILL. |
-| | `defineAlwaysExportProp` | Заводить свойство **`ALWAYS_STEP_EXPORT`** в словаре свойств открытого проекта — при загрузке и перед каждым экспортом, — чтобы его можно было вешать из штатного диалога свойств Allegro. Деталь с этим свойством остаётся во всех вариантах. Заведение меняет плату, поэтому `false` не трогает ни один проект; экспорт при этом по-прежнему читает свойство там, где оно уже заведено. См. *Что попадает в экспорт*. |
+| | `defineAlwaysExportProp` | Заводить свойство **`ALWAYS_STEP_EXPORT`** в словаре свойств открытого проекта — при открытии платы и перед каждым экспортом, — чтобы его можно было вешать из штатного диалога свойств Allegro. Деталь с этим свойством остаётся во всех вариантах. Заведение меняет плату, поэтому `false` не трогает ни один проект; экспорт при этом по-прежнему читает свойство там, где оно уже заведено. См. *Что попадает в экспорт*. |
 | `gui` | `stepDirs` | Папки моделей в порядке поиска (см. таблицу выше). |
 | | `boardMode` | `solid` / `layers` / `inspect` — то же, что *Body stitching*. |
 | | `layerColors` | Цвет на каждый вид слоя (`copper`, `base`, `coverlay`, `adhesive`, `stiffener`, `soldermask`, `other`). По умолчанию — **собственные цвета материалов Allegro**, чтобы экспорт выглядел так же, как та же плата в 3D-канвасе Allegro. |
 | | `foldAnchor` | Точка, остающаяся в плоскости XY, `[x, y]`. **По соглашению `[0, 0]`** — см. *Сгибание*. `"auto"` держит самый большой кусок. |
 | | `foldNeutral` | Положение нейтральной оси как доля толщины (по умолчанию `0.5`). **Поставьте `0`, если области сгиба на плате соприкасаются** — см. *Сгибание*. |
 | | `foldSliceAngle` | Угол дольки для сгиба, который пришлось гранить (по умолчанию `7.5`). Сгибы, построенные истинными цилиндрами, его игнорируют. |
+| | `exportFullBoard` | Когда есть `Variants.lst`, писать ещё и `<плата>.json` — всю плату без учёта вариантов (`NO_STEP_EXPORT` продолжает действовать). См. *Что попадает в экспорт*. |
 | `settings` | `negativeLayers` | Слои стека, чьи нарисованные фигуры — **окна**, а не материал; сравнение по подстроке без учёта регистра. Покрытие, маска и паста рисуются так по соглашению; стиффенер, клей и эпоксид — наоборот. Добавьте слой сюда, если его тела получаются инвертированными. |
 | `silkscreen` | `top` / `bottom` | Какие слои Allegro **собираются** — см. *Шелкография*. |
 
@@ -669,6 +688,8 @@ stitched*, которая ничего не сшивает, или более г
 * `silkscreenFlatHeight` — мм между гранью платы и **плоской** легендой, чтобы
   они не были копланарны и не мерцали. По умолчанию `0.001`. Это не толщина
   краски: она в `settings.silkscreenThickness` и относится только к режиму тел.
+* `buildFullBoard` — собирать ли вместе с вариантами файл всей платы, когда в
+  очереди **папка**. Та самая галочка выше.
 * `silkscreenLayersOff` — **исключения, а не включения**, поэтому слой, впервые
   появившийся на плате, рисуется, а не пропадает молча.
 * `jsonFile`, `outputDir` — последние пути, выбранные **в окне**. Экспорт,
@@ -741,6 +762,19 @@ BOOLEAN и дальше не вмешивается: на что вешать �
 Повесьте свойство на **определение компонента** — и оно закроет все экземпляры
 библиотечной детали сразу: пометьте площадку в библиотеке, и платы править не
 придётся.
+
+**Вся плата, без учёта вариантов.** Когда `Variants.lst` есть, экспорт
+дополнительно пишет **`<плата>.json`** — все компоненты, кроме помеченных
+`NO_STEP_EXPORT`, и список вариантов из них ничего не вычитает. Чертежу иногда
+нужно показать то, что есть на голой плате, а не то, что ставится в конкретной
+сборке; от `ALWAYS_STEP_EXPORT` это отличается масштабом: свойство решает вопрос
+подетально, а этот файл — сразу для всей платы. В нём стоит
+`"full_board": true` — по этому признаку окно и называет его в очереди:
+отличать `<плата>.json` от `<плата>_<вариант>.json` по имени значит гадать, а
+вариант может называться как угодно. STEP получается
+`<плата>_simple_ДД_ММ_ГГГГ.step`. `settings.exportFullBoard: false` отключает
+запись; галочка **Build the full-board file too** решает, собирать ли его, когда
+в очереди папка.
 
 `Variants.lst` читается **из папки, где лежит `.brd`** — там, где его держит
 Allegro, — и больше нигде; если файла там нет, консоль называет проверенный

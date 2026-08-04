@@ -11,6 +11,28 @@ to use the tool.
 
 ---
 
+- **2026-08-04** — **The whole board, beside the variants.** With a
+  `Variants.lst` present the export now also writes `<design>.json`: every
+  component except those marked `NO_STEP_EXPORT`, with the variant list taking
+  nothing away. A drawing sometimes has to show what is on the bare board rather
+  than what one assembly installs — the same need `ALWAYS_STEP_EXPORT` answers
+  part by part, answered for the whole board at once. The file carries
+  `"full_board": true`, so the window can name it in the queue instead of
+  guessing from a filename a variant is free to collide with. Written under
+  `settings.exportFullBoard`; the **Build the full-board file too** checkbox
+  decides whether a queued folder builds it, while a file you point at directly
+  is always built.
+  / **Вся плата рядом с вариантами.** Когда есть `Variants.lst`, экспорт теперь
+  пишет ещё и `<плата>.json`: все компоненты, кроме помеченных
+  `NO_STEP_EXPORT`, и список вариантов из них ничего не вычитает. Чертежу иногда
+  нужно показать голую плату, а не конкретную сборку — та же задача, которую
+  `ALWAYS_STEP_EXPORT` решает подетально, решённая сразу для всей платы. В файле
+  стоит `"full_board": true`, чтобы окно называло его в очереди, а не гадало по
+  имени, с которым вариант волен совпасть. Пишется под
+  `settings.exportFullBoard`; галочка **Build the full-board file too** решает,
+  собирать ли его, когда в очереди папка, а файл, выбранный напрямую,
+  собирается всегда.
+
 - **2026-08-04** — **`ALWAYS_STEP_EXPORT`: a part that stays in every variant.**
   Since the variant rule was settled on the reference designator, anything
   carrying one obeys `Variants.lst` — right for a connector housing, wrong for a
@@ -19,8 +41,8 @@ to use the tool.
   indistinguishable, so the intent is now written on the part. `NO_STEP_EXPORT`
   still outranks it. The property is **not one of Allegro's own** and does not
   exist until it is created, so `simple3d.il` defines it (as BOOLEAN) in the open
-  design's dictionary, at load and before every export — a dictionary belongs to
-  a design, not to the installation. Attaching it is then ordinary
+  design's dictionary — when a board is opened and again before every export,
+  because a dictionary belongs to a design, not to the installation. Attaching it is then ordinary
   Edit → Properties work. Defining it is a change to the board;
   `allegro.defineAlwaysExportProp: false` switches that off and the export still
   reads the property wherever it is already defined.
@@ -32,8 +54,8 @@ to use the tool.
   поэтому намерение теперь записывается на самой детали. `NO_STEP_EXPORT`
   по-прежнему сильнее. Свойство **не штатное** и не существует, пока его не
   заведут, поэтому `simple3d.il` создаёт его (типа BOOLEAN) в словаре открытого
-  проекта — при загрузке и перед каждым экспортом, так как словарь принадлежит
-  проекту, а не установке. Дальше оно вешается обычным Edit → Properties.
+  проекта — при открытии платы и ещё раз перед каждым экспортом, так как словарь
+  принадлежит проекту, а не установке. Дальше оно вешается обычным Edit → Properties.
   Заведение меняет плату; `allegro.defineAlwaysExportProp: false` это отключает,
   а экспорт всё равно читает свойство там, где оно уже заведено.
 

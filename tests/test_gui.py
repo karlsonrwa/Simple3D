@@ -241,7 +241,8 @@ EXPECTED = {"step_dirs","json_file","output_dir","z_datum","board_color",
             "rim_color","silk_top","silk_bottom","silk_color","silk_flat",
             "silk_flat_height","silk_layers_off","minimize","board_mode",
             "layer_colors","ignore_soldermask","fold_bends","fold_anchor",
-            "fold_neutral","fold_slice_angle","brd_name","dated_name"}
+            "fold_neutral","fold_slice_angle","brd_name","dated_name",
+            "build_full_board"}
 got = set(snap.__dataclass_fields__)
 check("snapshot carries exactly the expected fields", got == EXPECTED,
       f"missing {EXPECTED-got}, unexpected {got-EXPECTED}")
