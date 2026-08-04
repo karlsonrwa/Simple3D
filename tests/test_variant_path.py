@@ -332,5 +332,59 @@ check("the exporter filters them in both tables",
       re.search(r"procedure\(\s*s3dIsRefdesToken", src)
       and src.count("s3dIsRefdesToken(") >= 3)
 
+print("\n[8] the whole board, written beside the variants")
+# The variant list says what is INSTALLED; a drawing sometimes has to show the
+# bare board instead. The path that writes it already existed - it is the
+# no-variant branch - so this is about it being reached with a Variants.lst
+# present, guarded, marked, and named so it cannot collide with a variant.
+check("the full board is written with NO variant table, so only NO_STEP_EXPORT applies",
+      re.search(r"when\(\s*S3D_ExportFullBoard[\s\S]{0,200}?"
+                r"s3dSymbolsToExport\(\s*nil\s+nil\s*\)", src))
+check("under the config switch",
+      re.search(r'when\(\s*s3dJsonHas\(\s*settings\s+"exportFullBoard"\s*\)', src))
+check("whose default is restored before every read, not left from the last board",
+      re.search(r"S3D_ExportFullBoard = t\s*\n\s*when\(\s*s3dJsonHas", src))
+check("it is named <design>.json, which no <design>_<variant> can collide with",
+      re.search(r"when\(\s*S3D_ExportFullBoard[\s\S]{0,400}?"
+                r"variantName = lowerCase\(\s*dsnName\s*\)", src))
+check("and marked in the file rather than left to be guessed from its name",
+      re.search(r'if\(\s*g_fullBoard\s+then\s+"\\"full_board\\": true', src))
+check("the marker is a reserved key, or the reader walks it as a component",
+      '"full_board"' in (_ROOT / "stepbuilder/core.py").read_text(encoding="utf-8")
+      and re.search(r'_reserved = \([^)]*"full_board"',
+                    (_ROOT / "stepbuilder/core.py").read_text(encoding="utf-8"), re.S))
+
+# The Python half decides only whether a BATCH includes it. A file the user
+# pointed at directly is never dropped: a checkbox that silently refuses the one
+# file you selected is worse than one that appears to do nothing.
+worker = (_ROOT / "stepbuilder/worker.py").read_text(encoding="utf-8")
+check("a queued folder can leave the full-board file out",
+      re.search(r"if len\(jobs\) > 1 and not settings\.build_full_board", worker))
+check("but a single file chosen by hand is built anyway, and says so",
+      re.search(r"elif len\(jobs\) == 1 and not settings\.build_full_board", worker))
+
+# And the reader itself, on real files rather than on the source of it.
+import json as _json
+from stepbuilder.core import is_full_board, is_simple3d_json
+
+FB = _OUT / "fullboard"
+FB.mkdir(parents=True, exist_ok=True)
+base = {"format": "simple3d", "format_version": 7, "pcb": {}}
+(FB / "board.json").write_text(_json.dumps({**base, "name": "board",
+                                            "full_board": True}))
+(FB / "board_lsm.json").write_text(_json.dumps({**base, "name": "board_lsm"}))
+(FB / "old.json").write_text(_json.dumps({**base, "name": "old"}))
+(FB / "notours.json").write_text(_json.dumps({"hello": "world"}))
+
+check("the marked file is recognised", is_full_board(FB / "board.json"))
+check("a variant file is not", not is_full_board(FB / "board_lsm.json"))
+check("nor an intermediate written before the key existed",
+      not is_full_board(FB / "old.json"))
+check("nor a json that is not ours at all", not is_full_board(FB / "notours.json"))
+check("and the marker does not disturb the format check",
+      is_simple3d_json(FB / "board.json"))
+check("a missing file is False, not an exception",
+      not is_full_board(FB / "no_such_file.json"))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

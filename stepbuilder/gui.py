@@ -137,6 +137,10 @@ class StepBuilderApp(tk.Tk):
         # MFRPN DISABLED (property attachment unreliable); kept for future:
         # self.mfr_pn_in_name = tk.BooleanVar(value=False)
         self.minimize = tk.BooleanVar(value=True)
+        # The whole-board file the export writes beside the variant ones.
+        # On by default: it only exists when the Allegro side was told to
+        # write it, and someone who asked for it usually wants it built.
+        self.build_full = tk.BooleanVar(value=True)
         self.board_mode = tk.StringVar(value=BOARD_MODES[0][1])
         self.layer_colors: dict[str, tuple[int, int, int]] = dict(DEFAULT_LAYER_COLORS)
         self.ignore_soldermask = tk.BooleanVar(value=False)
@@ -396,6 +400,13 @@ class StepBuilderApp(tk.Tk):
         # thickness, this one shares geometry and skips surface curves.
         ttk.Checkbutton(checks, text="Compact STEP (reuse component geometry)",
                         variable=self.minimize).pack(side="left")
+        # Only meaningful with a folder queued: it decides whether the batch
+        # includes the whole-board file. Pointed straight at that file, the
+        # build happens anyway and the log says so.
+        self._full_box = ttk.Checkbutton(
+            checks, text="Build the full-board file too",
+            variable=self.build_full)
+        self._full_box.pack(side="left", padx=(16, 0))
 
         # --- log ---
         log_frame = ttk.LabelFrame(self, text="Log", padding=4)
@@ -982,6 +993,7 @@ class StepBuilderApp(tk.Tk):
             silk_flat_height=self.silk_flat_height,
             silk_layers_off=frozenset(self._current_layers_off()),
             minimize=self.minimize.get(),
+            build_full_board=self.build_full.get(),
             board_mode=_mode_key(self.board_mode.get()),
             layer_colors=dict(self.layer_colors),
             ignore_soldermask=self.ignore_soldermask.get(),
@@ -1188,6 +1200,7 @@ class StepBuilderApp(tk.Tk):
         # MFRPN DISABLED (kept for future):
         # self.mfr_pn_in_name.set(gui.get("mfrPnInName", False))
         self.minimize.set(gui.get("minimizeFileSize", True))
+        self.build_full.set(gui.get("buildFullBoard", True))
         # debugLayers was the previous shape of this setting: a single boolean
         # meaning "inspect". Read once so an existing config keeps working, and
         # dropped on save - see _save_config.
@@ -1306,6 +1319,7 @@ class StepBuilderApp(tk.Tk):
             # MFRPN DISABLED (kept for future):
             # "mfrPnInName": self.mfr_pn_in_name.get(),
             "minimizeFileSize": self.minimize.get(),
+            "buildFullBoard": self.build_full.get(),
             "boardMode": _mode_key(self.board_mode.get()),
             "layerColors": {k: "#%02X%02X%02X" % v
                             for k, v in self.layer_colors.items()},

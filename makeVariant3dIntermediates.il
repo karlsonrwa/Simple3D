@@ -1456,6 +1456,19 @@ procedure( s3dContourJson( o_dbid )
 ; Overridden from settings.negativeLayers in simple3d_config.json.
 S3D_NegativeLayers = list( "COVERLAY" "SOLDERMASK" "PASTEMASK" )
 
+; Write <design>.json - the WHOLE board, variants ignored - beside the
+; per-variant files. Overridden from settings.exportFullBoard.
+;
+; Why it is wanted: the variant list decides what is INSTALLED, and a drawing
+; sometimes has to show what is on the bare board regardless - the same reason
+; ALWAYS_STEP_EXPORT exists, but for the whole board at once rather than part by
+; part. NO_STEP_EXPORT still applies: it is tested before any variant question.
+;
+; The file has the name the no-variant export already uses, which cannot collide
+; with <design>_<variant>.json, and it carries "full_board": true so the window
+; can name it in the queue rather than showing one nameless extra file.
+S3D_ExportFullBoard = t
+
 ; t if this layer's shapes are openings rather than material.
 ;
 ; Determined by IPC-2581 layer FUNCTION where the design carries one -
@@ -2714,6 +2727,16 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
                     printf( "Simple 3D: negative (opening) layers: %L\n"
                             S3D_NegativeLayers )
                 )
+
+                ; Default restored FIRST, every time. These files load once per
+                ; Allegro session, so a global left as the previous export set
+                ; it outlives the design that set it - the round-42 trap. Here
+                ; that would mean a config edited to remove the key silently
+                ; keeping whatever the last board used.
+                S3D_ExportFullBoard = t
+                when( s3dJsonHas( settings "exportFullBoard" )
+                    S3D_ExportFullBoard = s3dJsonGet( settings "exportFullBoard" )
+                )
                 when( stringp( s3dJsonGet( settings "endCapType" ) )
                     ; only the three Allegro end-cap keywords are accepted; a
                     ; typo silently becoming 'SQUARE would be hard to notice.
@@ -3357,7 +3380,11 @@ procedure( s3dWriteSilkscreen( p_port l_silk )
     )
 )
 
-procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName @optional ( silk nil ) )
+; g_fullBoard: this file is the WHOLE board with variants ignored, and says so
+; in the JSON. An explicit argument rather than a global, because a global read
+; at write time is the round-42 shape - it would describe whatever the previous
+; call set if this one ever forgot to.
+procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName @optional ( silk nil ) ( g_fullBoard nil ) )
     let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) body )
         ; Number each variant's no-refdes mechanicals from 1 (see symbolReturn3DElements).
         S3D_MechSeq = 0
@@ -3400,9 +3427,6 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; add name + a format marker so the Python side can tell a Simple 3D
         ; intermediate from any other .json that happens to sit in the folder.
         ; Files without "format": "simple3d" are ignored by the GUI.
-        ; add name + a format marker so the Python side can tell a Simple 3D
-        ; intermediate from any other .json that happens to sit in the folder.
-        ; Files without "format": "simple3d" are ignored by the GUI.
         ; NOTE: no embedded \t here - the line writer below prefixes every line
         ; with one tab, so embedding another would double-indent these keys
         ; (still valid JSON, but inconsistent with the rest of the file).
@@ -3423,6 +3447,10 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
             "\"format\": \"simple3d\",\n"
             "\"format_version\": 7,\n"
             "\"name\": \"" variantName "\",\n"
+            ; Optional, and only ever true: the whole board, variants ignored.
+            ; A reader that does not know the key sees an ordinary intermediate,
+            ; which is what every version before this one will do.
+            if( g_fullBoard then "\"full_board\": true,\n" else "" )
             s3dEmbeddedModelsJson() ",\n"
             s3dStackupsJson() ",\n"
             s3dZonesJson() ",\n"
@@ -3625,6 +3653,23 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                     variantName = lowerCase( strcat( dsnName "_" variant ) )
                     fileName = lowerCase( strcat( dir "/" variantName ".json" ) )
                     create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName silk )
+                )
+
+                ; And the whole board, variants ignored, as one more file. Same
+                ; routine with no variant table - so NO_STEP_EXPORT still
+                ; excludes, and nothing else does. The name is the one the
+                ; no-variant export uses, which cannot collide with
+                ; <design>_<variant>.json; the window tells it apart by the
+                ; "full_board" marker rather than by guessing from the name.
+                when( S3D_ExportFullBoard
+                    symbols = s3dSymbolsToExport( nil nil )
+                    variantName = lowerCase( dsnName )
+                    fileName = strcat( dir "/" variantName ".json" )
+                    create3dIntermediateFormat( thicknesses edgeCuts pcbColor
+                                                symbols variantName fileName
+                                                silk t )
+                    printf( "Simple 3D: plus the whole board (variants ignored) -> %s.json\n"
+                            variantName )
                 )
 
                 ; print() quotes its argument and adds no newline; this is a
