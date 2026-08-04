@@ -29,6 +29,9 @@ FILES = [str(_ROOT / "makeVariant3dIntermediates.il"),
 # Each probe is loaded on its own in a live Allegro session, so each is checked
 # against its own definitions only.
 PROBES = sorted(str(p) for p in (_ROOT / "tools" / "probes").glob("*.il"))
+# Standalone .il helpers directly under tools/ are loaded by hand in a live
+# Allegro session too, so they get the same treatment as the probes.
+PROBES += sorted(str(p) for p in (_ROOT / "tools").glob("*.il"))
 
 
 def strip_line_comment(line):

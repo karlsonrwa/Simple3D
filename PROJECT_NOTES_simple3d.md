@@ -2906,6 +2906,158 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-04 (round 54) — ALWAYS_STEP_EXPORT, and where a property lives
+
+Round 52 left a case with no answer, and the user found it: **pads for soldering
+wires**. They carry a refdes, they carry a STEP model shaped like the pad, they
+are not in the BOM and therefore in no variant — and since round 52 that means
+they are exported nowhere. But a draughtsman wants them visible, especially on a
+board with no silkscreen. The only way out was to put them in a variant's BOM,
+which is wrong on the drawing that matters.
+
+**No rule can fix this, and it is worth being clear why.** A wire pad and a
+MOLEX housing (`A1`/`A2`, round 49) are the same object in the database: refdes,
+STEP model, no BOM line, named in no variant. The housing must vanish with its
+connector; the pad must not. The difference is intent, and intent has to be
+written down. So: a property.
+
+### The property is not Allegro's, and that changed the design
+
+I assumed `NO_STEP_EXPORT` was ours and that whatever created it would serve
+again. **It is one of Allegro's own** — the user corrected this, and their
+`axlDBGetPropDict('user)` shows ten user properties, none of them ours. So
+`ALWAYS_STEP_EXPORT` had to be *created* before it could be attached at all: not
+from the Properties dialog, not from SKILL, not at all.
+
+`tools/s3d_userprop_test.il` was written for the user to run by hand before any
+of this was coded — **the only file in the project that writes to the design**,
+and it says so in its header. On their live board it answered every question in
+one go: the dictionary took the name, `axlDBAddProp` was accepted, and
+`axlDBGetProperties` handed it back on the symbol. Allegro also printed,
+unprompted, the sentence the documentation had already promised:
+
+> *WARNING* (axlDBAddProp): Adding Boolean property "ALWAYS_STEP_EXPORT",
+> despite 'nil' being provided as the value. To make the property 'False'
+> instead, call axlDBDeleteProp() to remove it.
+
+which is why the property is BOOLEAN and why presence is the whole test — and
+why "un-mark" is a delete, not a false. The user then confirmed the part that
+mattered most: with the dictionary entry in place, the property attaches
+**correctly from Allegro's own Properties dialog**, arriving as true.
+
+### Where it is created, and why in two places
+
+The user asked for it at load of `simple3d.il`. That is done — and it is also
+done at the top of every export, because **a property dictionary belongs to a
+DESIGN, not to the installation** (`axlDBGetPropDict`: "entries in the current
+design"). Defining it once at startup would reach only the board that happened
+to be open at that moment; a board opened afterwards would have the export
+reading a property nothing could attach. Both calls read the dictionary and
+return when the entry is there.
+
+A design-open trigger would be tidier still, but the supported trigger names
+have to be read from a live session (`axlTriggerSet(nil nil)`) and this project
+does not bet on unverified names — round 47 lost that bet on `axlDirName`.
+
+`allegro.defineAlwaysExportProp` (default true) turns the creation off entirely,
+because **creating a dictionary entry modifies the board** and someone will not
+want every design they open marked as changed. The export still reads the
+property wherever it is already defined; reading was never the part that wrote.
+
+### The rule
+
+`s3dAlwaysStepExport` mirrors `s3dNoStepExport` exactly — symbol, component,
+compdef — so marking a library part covers every instance on every board. In the
+cond it is tested **last**, in the variant branch's `&&` chain: never outranks
+always, and the property read is reached only for a symbol the variant was about
+to drop. The console reports the kept ones by count and variant, and
+`probe_variants.il` now prints them by name beside the dropped ones.
+
+`tests/test_variant_path.py` grew four decision cases and a [6b] block that pins
+the SKILL side: created as BOOLEAN, called at load AND at export, switch honours
+a literal `false` (the JSON reader maps `false` to nil, so presence has to be
+tested with `s3dJsonHas` - a plain truthiness test would read "off" as "unset"
+and turn it back on).
+
+### And then it did not work, for a reason this file already warned about
+
+The user reloaded, opened a board, exported - and `axlDBGetPropDict('user)` still
+did not list the property. The cause:
+
+```
+prog( ( dict ( found nil ) name made )
+```
+
+**prog locals are bare symbols.** The `(var value)` init form is `let`-only, and
+prog rejects the whole procedure with "local vars must be symbol" - at CALL
+time, so the file loads clean. Both call sites wrapped it in `errset`, so the
+failure was silent and the export looked entirely normal. `s3dPreflight`, a
+hundred lines above in the same file, carries a comment about exactly this trap.
+
+Three things came out of it, and the fix is the least of them:
+
+- **`errset` around a call must not swallow the diagnosis.** Both sites now
+  report a fault, which is possible to tell from a legitimate nil because errset
+  returns nil ONLY on error - a real nil comes back as `(nil)`.
+- **`tools/skill_checks.py` grew a fourth check**: every `prog(` has its local
+  list read, and an init form in it fails the file. It carries a **self-test**
+  that runs before the real files - a known-bad fragment must be caught, a
+  known-good one must not, and a `let` with the same form must not, since there
+  it is legal. A check written after the escape it should have prevented is
+  worth nothing unless it is proven to fire.
+- The suite's own assertion "it is defined at load time" then failed on the
+  reworded call site, which is the test doing its job; it now pins both call
+  sites by position, that neither swallows a failure, and that the locals are
+  bare.
+
+### Then it crashed the editor, and what that settled
+
+Installed, the batch made Allegro crash on startup, repeatedly, offering to
+recover a `.sav`. The load-time call went out immediately - and so did the OTHER
+load-time action the same batch had added, round 53's `pcreCompile` for the
+control-character scan, which is now compiled on first use. Not because either
+was proven guilty: because with two new load-time statements and no way to run
+SKILL here, leaving one in would have wasted the user's next attempt.
+
+**The rule taken from it is blunt and worth keeping: loading these files defines
+procedures and sets variables, and does nothing else.** A tool that can stop the
+editor from starting cannot be debugged from. `tests/test_variant_path.py` pins
+it - no call to `s3dEnsureAlwaysProp` after `axlCmdRegister`, and the regex
+compiled lazily.
+
+The user then supplied the likely cause, and it is worth writing down because it
+is a property of their Allegro rather than of this code: **started from its own
+icon, the editor sometimes comes up on an empty placeholder instead of the
+previous board.** The API answers every question about it, and editing it
+produces errors that make no sense. That is almost certainly what the load-time
+version was writing a property dictionary entry into.
+
+So `s3dRealDesign()` now asks the only question that separates the two: is there
+a **drawing file on disk** behind this design (`axlGetDrawingName` +`isFile`)?
+A name proves nothing; `axlCurrentDesign` answers for the placeholder too. It
+guards the property creation, and the export command now refuses such a design
+outright with a message naming what it is - previously it would have gone on to
+export a board that is not there.
+
+### The open trigger, now that its name is known
+
+`axlTriggerSet(nil nil)` in the user's session: **open save close exit menu
+xprobe select window xsection**. So `s3dOpenTrigger` is registered on `open`,
+TriggerClear-then-Set like the menu one, and the property is defined as soon as
+a board is opened rather than after the first export. Registering a trigger at
+load is not doing work - it asks to be called later, when the database is in a
+state to be written to - so it does not breach the rule above.
+
+The trigger takes one argument (the documentation: a function of any other shape
+is simply not called), keeps its work to a dictionary read, and is wrapped in
+`errset` so it cannot stop a board from opening.
+
+**Verified live by the user, in this order:** the property appeared at export
+time, they attached it to the symbol they wanted through Allegro's own
+Properties dialog, exported, and the part came through in a variant that does
+not list it. What is NOT yet verified is the open trigger itself and the
+placeholder guard - both are new since that session.
+
 ## Update 2026-08-04 (round 53) — full review, and all seven findings fixed
 
 A read of the shipped code as it stands: `simple3d.il` and `core.py` end to end,

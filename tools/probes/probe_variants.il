@@ -180,7 +180,15 @@ procedure( s3dProbeVariants()
             )
             printf( "     dropped: " )
             foreach( sym axlDBGetDesign()->symbols
-                when( sym->refdes && !instTab[upperCase( sym->refdes )]
+                when( sym->refdes && !instTab[upperCase( sym->refdes )] &&
+                      !s3dAlwaysStepExport( sym )
+                    printf( "%s " sym->refdes )
+                )
+            )
+            printf( "\n     kept by %s: " S3D_AlwaysExportProp )
+            foreach( sym axlDBGetDesign()->symbols
+                when( sym->refdes && !instTab[upperCase( sym->refdes )] &&
+                      s3dAlwaysStepExport( sym )
                     printf( "%s " sym->refdes )
                 )
             )

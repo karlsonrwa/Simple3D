@@ -3,7 +3,9 @@
         "python": "python",
         "pythonw": "pythonw",
         "menuLabel": "Simple 3D",
-        "commandName": "simple_3d_export"
+        "commandName": "simple_3d_export",
+        "_comment_defineAlwaysExportProp": "Create the ALWAYS_STEP_EXPORT property in the open design's property dictionary, at load and before every export, so it can be attached from Allegro's own Properties dialog. A part carrying it stays in EVERY variant, whatever Variants.lst says - which is what a wire-solder pad needs, since it is part of the bare board rather than of the assembly. Unlike NO_STEP_EXPORT this property is not one of Allegro's own, so it does not exist until it is defined, and a property dictionary belongs to a DESIGN rather than to the installation. Defining it is a change to the board and Allegro will want it saved; set this to false to leave every design untouched. The export still reads the property wherever it is already defined.",
+        "defineAlwaysExportProp": true
     },
     "gui": {
         "_comment_stepDirs": "Folders holding the component STEP models, searched IN ORDER - the first one that holds a given model file wins. So a project-local folder listed above the shared library overrides individual models. Each folder is searched recursively, so subfolders need no entry of their own. Edit here or in the GUI, one folder per line.",

@@ -151,11 +151,11 @@ print("\n[6] who obeys the variant list, and who is outside it")
 
 
 def exported(*, refdes, installed, has_table=True, no_step_export=False,
-             variant="ALL"):
+             always_export=False, variant="ALL"):
     """s3dSymbolsToExport's cond, for one symbol."""
     if no_step_export:
         return False
-    if has_table and variant and refdes and not installed:
+    if has_table and variant and refdes and not installed and not always_export:
         return False
     return True
 
@@ -184,6 +184,99 @@ check("with no variant table nothing is dropped",
 # These pin the two halves of the cond it models.
 check("a table with no variant named subtracts nothing, rather than everything",
       exported(**R3, installed=False, variant=None))
+
+# ALWAYS_STEP_EXPORT, the way out of the rule above. A wire-solder pad and a
+# connector housing are indistinguishable in the database - refdes, a STEP
+# model, no BOM line, named in no variant - so the pad has to say what it is.
+check("a marked part survives a variant that does not install it",
+      exported(refdes="X4", installed=False, always_export=True))
+check("...and is still exported when the variant does install it",
+      exported(refdes="X4", installed=True, always_export=True))
+check("NO_STEP_EXPORT outranks it - never beats always",
+      not exported(refdes="X4", installed=True, always_export=True,
+                   no_step_export=True))
+check("it changes nothing without a variant table",
+      exported(refdes="X4", installed=False, always_export=True,
+               has_table=False))
+
+check("the exporter reads the property at all three levels, as NO_STEP_EXPORT does",
+      len(re.findall(r"s3dObjectHasProp\(\s*\w+(?:->\w+)*\s+S3D_AlwaysExportProp\s*\)",
+                     src)) == 3)
+check("and tests it LAST, so it cannot rescue a NO_STEP_EXPORT symbol",
+      re.search(r"!installed\[\s*upperCase\(\s*refdes\s*\)\s*\]\s*&&\s*\n?\s*"
+                r"!s3dAlwaysStepExport\(\s*sym\s*\)", src))
+
+print("\n[6b] the property has to be created before it can be attached")
+# NO_STEP_EXPORT is one of Allegro's own; ALWAYS_STEP_EXPORT does not exist
+# until something defines it, and a property dictionary belongs to a DESIGN -
+# so defining it once at load would only ever reach the board open at that
+# moment. Both call sites are what make it reach a board opened later.
+launcher = (_ROOT / "simple3d.il").read_text(encoding="utf-8")
+check("the dictionary entry is created as BOOLEAN",
+      re.search(r'axlDBCreatePropDictEntry\(\s*S3D_AlwaysExportProp\s*"BOOLEAN"\s*t\s*\)',
+                launcher))
+calls = [m.start() for m in
+         re.finditer(r"errset\(\s*s3dEnsureAlwaysProp\(\s*\)\s*\)", launcher)]
+check("there are exactly two call sites", len(calls) == 2, str(len(calls)))
+check("one is the open trigger",
+      any(launcher.index("procedure( s3dOpenTrigger") < c
+          < launcher.index("procedure( s3dExportCommand") for c in calls))
+check("the other is in the export command, before the folder is resolved",
+      any(launcher.index("procedure( s3dExportCommand") < c
+          < launcher.index("designDir = s3dDesignDir()") for c in calls))
+# NOTHING at load may touch the database. A load-time call stood here for one
+# round and Allegro then crashed on startup, repeatedly, offering to recover a
+# .sav; which statement did it was never established, and a tool that can stop
+# the editor from starting cannot be debugged from. So the rule is blunt:
+# loading these files defines procedures and sets variables, nothing else.
+tail = launcher[launcher.index("axlCmdRegister("):]
+check("nothing calls it at load time",
+      "s3dEnsureAlwaysProp(" not in tail, tail[:200])
+# Registering a trigger is not doing work: it asks to be called later, when a
+# board is open and the database can be written to. `open` is one of the nine
+# triggers this Allegro reports (axlTriggerSet(nil nil) -> open save close exit
+# menu xprobe select window xsection).
+check("the open trigger is registered at load, and cleared first",
+      re.search(r"errset\(\s*axlTriggerClear\(\s*'open\s+'s3dOpenTrigger\s*\)\s*\)\s*\n"
+                r"errset\(\s*axlTriggerSet\(\s*'open\s+'s3dOpenTrigger\s*\)\s*\)", launcher))
+check("the trigger function takes exactly one argument, as triggers must",
+      re.search(r"procedure\(\s*s3dOpenTrigger\(\s*\w+\s*\)", launcher))
+check("and it cannot stop a board from opening",
+      re.search(r"procedure\(\s*s3dOpenTrigger\([\s\S]{0,200}?"
+                r"errset\(\s*s3dEnsureAlwaysProp\(\s*\)\s*\)", launcher))
+
+print("\n[6c] a name is not a board")
+# Started from its own icon, Allegro sometimes comes up on an empty placeholder
+# instead of the previous design; the API answers every question about it, and
+# editing it produces errors that make no sense. Nothing this tool writes may
+# land there - that placeholder is the likeliest thing the load-time version
+# was writing to when the editor began crashing on startup.
+check("the export refuses a design with no board file behind it",
+      re.search(r"unless\(\s*s3dRealDesign\(\s*\)", launcher))
+check("the property is never defined on one either",
+      re.search(r"unless\(\s*s3dRealDesign\(\s*\)\s+return\(\s*nil\s*\)\s*\)", launcher))
+check("and the test is the drawing FILE, not just the name",
+      re.search(r"procedure\(\s*s3dRealDesign\([\s\S]{0,600}?isFile\(\s*path\s*\)",
+                launcher))
+check("and the exporter compiles its regex on first use, not at load",
+      re.search(r"^S3D_CtrlChars = 'unset", src, re.M)
+      and re.search(r"procedure\(\s*s3dCtrlCharPattern", src))
+# A silent errset is how the first version of this went missing entirely: the
+# procedure had let-style locals, prog rejected it at call time, and the
+# wrapper swallowed the error. errset returns nil ONLY on a fault - a genuine
+# nil return arrives as (nil) - so the two are distinguishable, and now said.
+check("the call does not swallow a failure",
+      len(re.findall(r"unless\(\s*errset\(\s*s3dEnsureAlwaysProp\(\s*\)\s*\)\s*\n\s*s3dWarn\(",
+                     launcher)) == 1)
+check("and the procedure's own locals are bare symbols, as prog demands",
+      re.search(r"prog\(\s*\(\s*dict\s+found\s+name\s+made\s*\)", launcher))
+check("the config switch can turn the whole thing off",
+      "defineAlwaysExportProp" in launcher
+      and re.search(r"unless\(\s*S3D_DefineAlwaysProp\s+return\(\s*nil\s*\)\s*\)",
+                    launcher))
+check("and false in the config really reads as false",
+      re.search(r"S3D_DefineAlwaysProp\s*=\s*if\(\s*value\s*==\s*nil\s*then\s*nil\s*else\s*t\s*\)",
+                launcher))
 
 check("the exporter subtracts on the refdes alone, with no mechanical test",
       re.search(r"g_variantSymbolList\s*&&\s*t_variant\s*&&\s*refdes\s*&&\s*\n?\s*"

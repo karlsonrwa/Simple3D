@@ -1,4 +1,123 @@
-# Simple 3D — краткая справка
+# Simple 3D — quick reference / краткая справка
+
+[English](#english) · [Русский](#русский)
+
+<a name="english"></a>
+
+# English
+
+Exports an Allegro board to a STEP assembly: the board solid at its true
+thickness with cutouts and holes, the component 3D models from Allegro's STEP
+mapping, and optionally the silkscreen. The full description is in
+[README.md](README.md); this is the short version.
+
+## Running it
+
+1. In Allegro PCB Editor: **File → Export → Simple 3D**.
+2. The script reads the board, writes the intermediate `<board>.json` into the
+   `cad` folder and opens the window with the paths already filled in. While
+   that happens Allegro's own progress form is on screen and names each stage —
+   our window appears at the very end.
+3. Press **Generate**.
+
+The design units must be **mm**.
+
+## The window
+
+**Input**
+- **STEP files** — folders holding the component STEP models, **one per line**.
+  Searched top to bottom: the first folder that has the file wins, so put a
+  project folder **above** the shared library to override individual models.
+  Subfolders are searched on their own and need no entry. **Add...** appends a
+  folder; the order is edited in the text itself.
+- **JSON file** — the intermediate JSON (filled in for you).
+- **Output** — where the STEP goes.
+
+**Board options**
+- **Board color** — 8 themes from Allegro's own palette (Dark_green and so on).
+- **Board edge color** — the rim: `Same as board`, `Cream` or `Custom…`. For
+  `Custom…` the swatch beside it becomes live; click it to pick.
+- **Z = 0 at** — which board face the origin sits on, top or bottom.
+- **Body stitching** — how the board body is put together. Multi-stackup /
+  rigid-flex only:
+  - `Solid` — one body in one color, the smallest file;
+  - `Solid colored layers` — one body, but the layer interfaces are kept and
+    every face is colored by the kind of layer, so the rim shows the stack;
+  - `Not stitched` — every layer its own part, for taking the board apart by eye.
+  For the last two there is a row of swatches below: copper, base, coverlay,
+  adhesive, stiffener, soldermask. Click one to pick its color; **Reset colors**
+  puts Allegro's material colors back.
+- **Do not include soldermask layers** — leave the mask out; the stack closes up
+  toward the core by what was removed, so the board really does get thinner.
+- **Fold flex bends** — fold the board along Allegro's bend areas (*Setup –
+  Bend*): the board, the legend and the components all move together. On by
+  default; does nothing on a board without bend areas. Unticked gives the flat
+  board.
+  **The part of the board over the ORIGIN is the part that stays in the XY
+  plane** — put whatever should lie flat over it, or name another point in
+  `gui.foldAnchor`.
+  If the log says two bends claim the same material while their drawn bend areas
+  do not overlap, set `gui.foldNeutral` to `0`: that is how Allegro lays its flat
+  pattern out, and on a board whose bend areas touch (a flex rolled into a ring)
+  it is the only value that fits. The log names the number itself.
+
+**Silk options**
+- **Top**/**Bottom** tickboxes, **White/Black** for the ink, and on its own line
+  **Make surface (minimum file size)** — surfaces instead of thin solids. With
+  both sides off the whole group greys out.
+- Inside it, a **Layers** group — which layers count as silkscreen (tickboxes;
+  **All**/**None**). A side that is switched off greys its own layers.
+
+**Compact STEP (reuse component geometry)** — a smaller file: one shared part
+per model, plus dropping the parametric surface curves.
+
+## The result
+
+`<board>_simple_DD_MM_YYYY.step`. A name that already exists gets a trailing
+`_`. With a `Variants.lst` beside the `.brd` you get one STEP per variant. It is
+looked for there and nowhere else; when there is none, the console says which
+path it tried and exports every component into one file.
+
+## Worth knowing
+
+- **Board thickness** = dielectrics + planes + conductors + both soldermasks.
+  Silkscreen and paste are not part of it.
+- **Mechanical parts** (holders, brackets) are exported even without a reference
+  designator — a `PKGDEF_STEP_FILE` on the symbol is enough.
+- **`NO_STEP_EXPORT`** on the symbol / component / component definition keeps a
+  part out of the export; each one is named in the console.
+- **The variant list decides what is installed**: everything with a reference
+  designator reaches the model only if the variant being built lists it. A
+  symbol **without** one (a bracket, a holder — anything placed straight in
+  Allegro) cannot be named in the list, so it is in every variant.
+- **`ALWAYS_STEP_EXPORT`** is the opposite: a part carrying it stays in every
+  variant even when the list does not name it. This is for wire-solder pads —
+  they have a refdes, they are not in the BOM, and a drawing needs them. Simple
+  3D creates the property in the board when it opens (and again before every
+  export); attaching it is ordinary Edit → Properties work.
+- **The silkscreen is the same in every variant** — the bare board is
+  manufactured once for all of them.
+
+## If something is wrong
+
+- Read the Allegro console (warnings orange, errors red) and the window's log.
+  The line `Settings loaded from …` confirms the settings were read.
+- Python 3.10 or newer and the `cadquery-ocp` package (OpenCASCADE) are
+  required. Before opening the window the script checks the interpreter and says
+  so if something is missing.
+- If the window vanished mid-build, OpenCASCADE died rather than Simple 3D: the
+  window survives that and shows the exit code together with advice. What
+  usually gets a board through: **Body stitching → Not stitched** (which fuses
+  nothing) or a coarser `gui.foldSliceAngle`.
+- If Allegro comes up on an empty design rather than your board — it does that
+  now and then when started from its own icon — the export refuses it and says
+  so. Open the `.brd` itself and run it again.
+
+---
+
+<a name="русский"></a>
+
+# Русский
 
 Экспорт платы Allegro в STEP-сборку: тело платы в истинной толщине с вырезами и
 отверстиями, 3D-модели компонентов из STEP-маппинга Allegro и, по желанию,
@@ -79,11 +198,16 @@
   них нет позиционного обозначения — достаточно `PKGDEF_STEP_FILE` на символе.
 - **`NO_STEP_EXPORT`** на символе / компоненте / его определении исключает
   деталь из экспорта; каждая названа в консоли.
-- **Что установлено, решает список варианта**: компонент из схемы попадает в
-  модель, только если собираемый вариант его перечисляет. Деталь, которой нет в
-  списке соединений вовсе (кронштейн, ответная часть разъёма — всё, что
-  поставлено прямо в Allegro), а также символ с типом или классом `MECHANICAL`
-  экспортируются во всех вариантах: список вариантов их описать не может.
+- **Что установлено, решает список варианта**: всё, у чего есть позиционное
+  обозначение, попадает в модель, только если собираемый вариант это
+  перечисляет. Символ **без** обозначения (кронштейн, держатель — всё, что
+  поставлено прямо в Allegro) списком описать нельзя, поэтому он есть во всех
+  вариантах.
+- **`ALWAYS_STEP_EXPORT`** — обратное: деталь с этим свойством остаётся во всех
+  вариантах, даже если список её не перечисляет. Для площадок под пайку
+  проводов: у них есть обозначение, но в BOM их нет, а на чертеже они нужны.
+  Свойство заводится в плате при её открытии (и ещё раз перед каждым экспортом),
+  а вешается штатно, через Edit → Properties.
 - **Шелкография одинакова во всех вариантах** — текстолит производится один раз
   под все сборки.
 
@@ -97,3 +221,6 @@
   переживает это и показывает код выхода вместе с советом. Что обычно помогает:
   **Body stitching → Not stitched** (там ничего не сплавляется) или более
   крупный `gui.foldSliceAngle`.
+- Если Allegro открылся на пустом проекте вместо вашей платы — так бывает при
+  запуске с его собственной иконки — экспорт откажется работать и скажет об
+  этом. Откройте сам `.brd` и запустите снова.

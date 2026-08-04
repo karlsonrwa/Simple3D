@@ -161,6 +161,7 @@ and whether it parsed. A byte-order mark left by an editor is tolerated.
 | `allegro` | `python` | Python executable. `"python"` if on PATH, else a full path like `"c:/Python312/python.exe"`. |
 | | `pythonw` | Console-less launcher (`pythonw.exe`). When set, the GUI opens with **no console window**. `""` uses `python` instead. |
 | | `menuLabel` / `commandName` | Menu item text and internal command name. Read at load time, so changing them needs a SKILL reload. |
+| | `defineAlwaysExportProp` | Create the **`ALWAYS_STEP_EXPORT`** property in the open design's property dictionary — at load and before every export — so it can be attached from Allegro's own Properties dialog. A part carrying it stays in every variant. Defining it is a change to the board, so `false` leaves every design untouched; the export still reads the property wherever it is already defined. See *What gets exported*. |
 | `gui` | `stepDirs` | Folders holding the footprint STEP models (referenced by `PKGDEF_STEP_FILE`) — the "STEP files" field. A **list, searched in order: the first folder holding a given model file wins**, so a project-local folder listed above the shared library overrides individual models. Each is searched recursively, so subfolders need no entry. |
 | | `outputDir`, `jsonFile` | The last paths you picked **in the GUI**. An export launched from Allegro fills these fields for the board being built but does not record them here — they describe a board, not a preference. |
 | | `boardMode` | How the board body is built on a **multi-stackup / rigid-flex** design; ignored on an ordinary board. `solid` — one solid in one color, coplanar faces merged, smallest file. `layers` — one solid whose layer interfaces are **kept**, so every face is colored by the kind of layer it belongs to and the rim shows the stack (about 4.7x `solid`). `inspect` — every layer of every zone as its own named part, for taking the board apart by eye. GUI: the **Body stitching** dropdown; CLI: `--board-mode`. |
@@ -463,6 +464,57 @@ associated component, so such a part can never be named in a list generated from
 the schematic — nothing there can say anything about it, and `NO_STEP_EXPORT` is
 the only thing that removes it.
 
+### `ALWAYS_STEP_EXPORT` — the way out of the variant rule
+
+**A part carrying `ALWAYS_STEP_EXPORT` stays in every variant**, whatever
+`Variants.lst` says. `NO_STEP_EXPORT` still outranks it: *never* beats *always*.
+The console says how many were kept this way and in which variant.
+
+It exists because of a case the data cannot settle. A **wire-solder pad** and a
+**connector housing** look identical in the database — both carry a reference
+designator, both carry a STEP model, neither has a BOM line, and neither is
+named in any variant. But the housing should disappear together with the
+connector it belongs to, while the pad is part of the *bare board* and belongs
+in the model of every variant: for a drawing, especially on a board with no
+silkscreen, those pads are what the fitter needs to see. No rule can tell the
+two apart, because the difference is intent — so the intent is written on the
+part.
+
+**This property is not one of Allegro's own, and has to be created before it can
+be attached.** `NO_STEP_EXPORT` is already on every symbol's property list;
+`ALWAYS_STEP_EXPORT` does not exist anywhere until something defines it, and
+until it is defined nothing can attach it — not the Properties dialog, not
+SKILL. So `simple3d.il` defines it, as a **BOOLEAN** user property, and then
+stays out of the way: *what* it goes on is entirely yours to decide, done the
+ordinary Allegro way through **Edit → Properties**.
+
+Three consequences worth knowing:
+
+* **A property dictionary belongs to a design, not to the installation**, so
+  the entry is created per board: on Allegro's `open` trigger, as soon as a
+  board is opened, and again at the top of every export. Both read the
+  dictionary and return when the entry is already there. **Nothing happens when
+  the SKILL files load** — a version that wrote at load time coincided with
+  Allegro crashing on startup, and loading these files now defines procedures
+  and sets variables, nothing else.
+* **A name is not a board.** Started from its own icon, Allegro sometimes comes
+  up on an empty placeholder instead of the previous design: the API answers
+  every question about it, and editing it produces errors that make no sense.
+  Nothing is written to a design with no `.brd` file behind it, and the export
+  refuses one outright, saying which it is.
+* **Defining it changes the board**, so Allegro will want the design saved. Set
+  `allegro.defineAlwaysExportProp` to `false` to switch that off entirely; the
+  export still *reads* the property wherever it is already defined, and never
+  writes anything.
+* **BOOLEAN properties have no value** — the property is either on the object or
+  it is not, which is exactly the test the export makes. To un-mark a part,
+  *delete* the property rather than setting it to false. Allegro says so itself
+  if you try: *"To make the property 'False' instead, call axlDBDeleteProp() to
+  remove it."*
+
+Attach it to a **component definition** to cover every instance of a library
+part at once — mark the pad in the library and no board needs touching again.
+
 **A variant may also override properties on individual components**, as a block
 per component after its base list:
 
@@ -702,12 +754,14 @@ python tests/run_all.py            all 20 suites, about 55 s
 python tests/run_all.py --quick    skip the OCCT-heavy geometry suites
 ```
 
-`tools/` holds four mechanical checks on the SKILL sources — parenthesis
+`tools/` holds five mechanical checks on the SKILL sources — parenthesis
 balance, string literals broken across a real newline, calls to procedures
-defined nowhere, and call arity — plus an audit of this README against the
-code. **Run them after any edit to a `.il` file:** SKILL resolves names at call
-time, so a file with a stale or wrong-arity call loads without complaint and
-fails only when that line executes.
+defined nowhere, call arity, and `prog()` locals written in `let`'s
+`(var value)` form — plus an audit of this README against the code. **Run them
+after any edit to a `.il` file:** SKILL resolves names at call time, so a file
+with a stale call, a wrong-arity call or a prog whose locals are not bare
+symbols loads without complaint and fails only when that line executes — and if
+the caller wrapped it in `errset`, silently.
 
 `tests/` holds the Python suites, including the geometry regression that pins
 the demo board against the original C++ implementation (volume 12073.309477,
@@ -962,6 +1016,7 @@ Settings loaded from d:/Projects/OrCAD/Scripts/Simple3D/simple3d_config.json
 | `allegro` | `python` | Исполняемый Python. `"python"`, если на PATH, иначе полный путь вроде `"c:/Python312/python.exe"`. |
 | | `pythonw` | Запуск без консоли (`pythonw.exe`). Когда задан, окно GUI открывается **без окна консоли**. `""` — использовать `python`. |
 | | `menuLabel` / `commandName` | Текст пункта меню и внутреннее имя команды. Читаются при загрузке, поэтому их изменение требует перезагрузки SKILL. |
+| | `defineAlwaysExportProp` | Заводить свойство **`ALWAYS_STEP_EXPORT`** в словаре свойств открытого проекта — при загрузке и перед каждым экспортом, — чтобы его можно было вешать из штатного диалога свойств Allegro. Деталь с этим свойством остаётся во всех вариантах. Заведение меняет плату, поэтому `false` не трогает ни один проект; экспорт при этом по-прежнему читает свойство там, где оно уже заведено. См. *Что попадает в экспорт*. |
 | `gui` | `stepDirs` | Папки с STEP-моделями посадочных мест (по `PKGDEF_STEP_FILE`) — поле «STEP files». **Список, просматриваемый по порядку: побеждает первая папка, где есть нужный файл**, поэтому проектная папка выше общей библиотеки переопределяет отдельные модели. Каждая просматривается рекурсивно, подпапки перечислять не нужно. |
 | | `outputDir`, `jsonFile` | Последние пути, выбранные **в самом окне**. Экспорт из Allegro заполняет эти поля под собираемую плату, но в файл их не записывает — они описывают плату, а не настройку. |
 | | `boardMode` | Как строится тело платы на **мультистэкапе / rigid-flex**; на обычной плате игнорируется. `solid` — одно тело одного цвета, копланарные грани слиты, самый лёгкий файл. `layers` — одно тело, но границы слоёв **сохранены**, каждая грань красится по виду своего слоя, и торец показывает стек (примерно в 4.7 раза больше `solid`). `inspect` — каждый слой каждой зоны отдельной именованной деталью, чтобы разобрать плату глазами. GUI: список **Body stitching**; CLI: `--board-mode`. |
@@ -1270,6 +1325,58 @@ Simple 3D: no Variants.lst beside the board (looked for d:/Projects/board/Varian
 сгенерированном из схемы — сказать о ней там нечего, и убрать её может только
 `NO_STEP_EXPORT`.
 
+### `ALWAYS_STEP_EXPORT` — выход из правила вариантов
+
+**Деталь со свойством `ALWAYS_STEP_EXPORT` остаётся во всех вариантах**, что бы
+ни говорил `Variants.lst`. `NO_STEP_EXPORT` по-прежнему сильнее: «никогда»
+побеждает «всегда». Консоль сообщает, сколько деталей так сохранено и в каком
+варианте.
+
+Свойство появилось из-за случая, который по данным не разрешается. **Площадка
+под пайку провода** и **корпус разъёма** в базе неотличимы: у обоих есть
+позиционное обозначение и STEP-модель, ни у одного нет строки в BOM, и ни один
+не назван ни в одном варианте. Но корпус должен исчезать вместе со своим
+разъёмом, а площадка — часть **голой платы** и нужна в модели каждого варианта:
+на чертеже, особенно на плате без шелкографии, именно эти площадки монтажнику и
+нужно видеть. Никакое правило их не различит, потому что разница в намерении —
+поэтому намерение записывается на самой детали.
+
+**Это свойство не из штатных, и его нужно создать, прежде чем вешать.**
+`NO_STEP_EXPORT` уже есть в списке свойств любого символа;
+`ALWAYS_STEP_EXPORT` не существует нигде, пока его кто-нибудь не заведёт, а
+пока не заведён — его невозможно прицепить ни из диалога свойств, ни из SKILL.
+Поэтому `simple3d.il` заводит его как пользовательское свойство типа **BOOLEAN**
+и дальше не вмешивается: **на что** его вешать — целиком ваше решение, обычным
+путём через **Edit → Properties**.
+
+Три следствия, о которых стоит знать:
+
+* **Словарь свойств принадлежит проекту, а не установке**, поэтому запись
+  создаётся на каждую плату: по штатному триггеру `open`, как только плата
+  открыта, и ещё раз в начале каждого экспорта. Оба вызова читают словарь и
+  сразу возвращаются, если запись уже есть. **При загрузке SKILL-файлов не
+  происходит ничего** — версия, которая писала в базу при загрузке, совпала с
+  падениями Allegro при старте, и теперь загрузка этих файлов только определяет
+  процедуры и переменные.
+* **Имя — ещё не плата.** Запущенный со своей иконки, Allegro иногда открывает
+  пустышку вместо прошлого проекта: API отвечает на любой вопрос о ней, а правка
+  выдаёт ошибки, в которых нет смысла. В проект, за которым нет файла `.brd`,
+  ничего не пишется, а экспорт прямо отказывается работать и говорит, в чём
+  дело.
+* **Заведение свойства меняет плату**, и Allegro попросит её сохранить. Чтобы
+  этого не происходило вовсе, поставьте `allegro.defineAlwaysExportProp` в
+  `false`: экспорт по-прежнему **читает** свойство там, где оно уже заведено, и
+  ничего не пишет.
+* **У BOOLEAN-свойств нет значения** — оно либо есть на объекте, либо нет, и
+  это ровно та проверка, которую делает экспорт. Чтобы снять пометку, свойство
+  надо **удалить**, а не выставить в false. Allegro сам об этом говорит при
+  попытке: *«To make the property 'False' instead, call axlDBDeleteProp() to
+  remove it»*.
+
+Повесив свойство на **определение компонента**, вы закрываете вопрос сразу для
+всех экземпляров библиотечной детали: пометьте площадку в библиотеке — и платы
+править больше не придётся.
+
 **Вариант может ещё и переопределять свойства отдельных компонентов** — блоком
 на компонент после базового списка:
 
@@ -1509,13 +1616,15 @@ python tests/run_all.py            все 20 наборов, около 55 с
 python tests/run_all.py --quick    без тяжёлых геометрических наборов
 ```
 
-В `tools/` — четыре механические проверки исходников SKILL: баланс скобок,
+В `tools/` — пять механических проверок исходников SKILL: баланс скобок,
 строковые литералы, разорванные настоящим переводом строки, вызовы процедур,
-которых нигде нет, и арность вызовов. Плюс сверка этого README с кодом.
+которых нигде нет, арность вызовов и локальные переменные `prog()`, записанные
+в форме `let` — `(имя значение)`. Плюс сверка этого README с кодом.
 **Запускайте их после любой правки `.il`:** SKILL разрешает имена в момент
-вызова, поэтому файл с устаревшим вызовом или неверным числом аргументов
-грузится без единой жалобы и падает лишь тогда, когда до этой строки дойдёт
-исполнение.
+вызова, поэтому файл с устаревшим вызовом, неверным числом аргументов или
+prog'ом, у которого локальные не голые символы, грузится без единой жалобы и
+падает лишь тогда, когда до этой строки дойдёт исполнение — а если вызов обёрнут
+в `errset`, то падает молча.
 
 В `tests/` — наборы на Python, включая регрессию геометрии, которая держит
 демонстрационную плату на значениях исходной реализации C++ (объём
@@ -1616,6 +1725,32 @@ stepbuilder/
 ---
 
 ## Changelog / История изменений
+
+- **2026-08-04** — **`ALWAYS_STEP_EXPORT`: a part that stays in every variant.**
+  Since the variant rule was settled on the reference designator, anything
+  carrying one obeys `Variants.lst` — right for a connector housing, wrong for a
+  wire-solder pad, which has a refdes and no BOM line but is part of the bare
+  board and belongs on every drawing. In the database the two are
+  indistinguishable, so the intent is now written on the part. `NO_STEP_EXPORT`
+  still outranks it. The property is **not one of Allegro's own** and does not
+  exist until it is created, so `simple3d.il` defines it (as BOOLEAN) in the open
+  design's dictionary, at load and before every export — a dictionary belongs to
+  a design, not to the installation. Attaching it is then ordinary
+  Edit → Properties work. Defining it is a change to the board;
+  `allegro.defineAlwaysExportProp: false` switches that off and the export still
+  reads the property wherever it is already defined.
+  / **`ALWAYS_STEP_EXPORT`: деталь, которая остаётся во всех вариантах.** С тех
+  пор как правило вариантов свелось к позиционному обозначению, всё, у чего оно
+  есть, подчиняется `Variants.lst` — верно для корпуса разъёма и неверно для
+  площадки под пайку провода: у неё есть обозначение и нет строки в BOM, но она
+  часть голой платы и нужна на каждом чертеже. В базе эти две детали неотличимы,
+  поэтому намерение теперь записывается на самой детали. `NO_STEP_EXPORT`
+  по-прежнему сильнее. Свойство **не штатное** и не существует, пока его не
+  заведут, поэтому `simple3d.il` создаёт его (типа BOOLEAN) в словаре открытого
+  проекта — при загрузке и перед каждым экспортом, так как словарь принадлежит
+  проекту, а не установке. Дальше оно вешается обычным Edit → Properties.
+  Заведение меняет плату; `allegro.defineAlwaysExportProp: false` это отключает,
+  а экспорт всё равно читает свойство там, где оно уже заведено.
 
 - **2026-07-27** — **A model file is found whatever case its name is in.** The
   name comes from Allegro's STEP mapping table, where it is typed by hand; the
