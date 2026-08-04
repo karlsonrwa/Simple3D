@@ -18,7 +18,8 @@ mapping, and optionally the silkscreen. The full description is in
    `cad` folder and opens the window with the paths already filled in. While
    that happens Allegro's own progress form is on screen and names each stage —
    our window appears at the very end.
-3. Press **Generate**.
+3. Press **Generate**. While it builds, the rest of the window is greyed out
+   and that button becomes **Cancel**.
 
 The design units must be **mm**.
 
@@ -135,7 +136,8 @@ queued folder builds it.
 2. Скрипт читает плату, пишет промежуточный `<плата>.json` в папку `cad` и
    открывает окно с уже заполненными путями. Пока это идёт, на экране висит
    форма прогресса Allegro и называет этап — окно появляется в самом конце.
-3. Нажать **Generate**.
+3. Нажать **Generate**. Пока идёт сборка, остальное окно погашено, а кнопка
+   превращается в **Cancel**.
 
 Единица измерения дизайна должна быть **мм**.
 

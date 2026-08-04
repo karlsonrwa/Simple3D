@@ -162,6 +162,13 @@ class StepBuilderApp(tk.Tk):
         self._brd_name: str | None = None      # base name for dated output
         self._dated_name: bool = False
         self._config_problem: str | None = None
+        # Busy is a state of the whole window, not just of the button: the
+        # color swatches are Canvases with a click binding and no state to
+        # disable, so they ask this instead. _frozen holds what each control
+        # was before the build, to be put back exactly - see _freeze_inputs.
+        self._busy = False
+        self._frozen: dict = {}
+        self._cancelled = False
         self._paths_from_launcher = False
         # Layers switched OFF, by name. Exclusions rather than inclusions: a
         # layer this build has never seen must default to ON, or a layer that
@@ -417,9 +424,13 @@ class StepBuilderApp(tk.Tk):
         # ran off the right edge with no horizontal scrollbar to reach them.
         self.log_view = tk.Text(log_frame, height=10, wrap="word", state="disabled")
         self.log_view.grid(row=0, column=0, sticky="nsew")
-        scroll = ttk.Scrollbar(log_frame, command=self.log_view.yview)
-        scroll.grid(row=0, column=1, sticky="ns")
-        self.log_view.configure(yscrollcommand=scroll.set)
+        # Named, and skipped by _freeze_inputs, so the log stays readable
+        # while the build runs. A ttk.Scrollbar has no -state option and
+        # would survive the freeze anyway; the guard is for the day this
+        # becomes a tk.Scrollbar, which does.
+        self._log_scroll = ttk.Scrollbar(log_frame, command=self.log_view.yview)
+        self._log_scroll.grid(row=0, column=1, sticky="ns")
+        self.log_view.configure(yscrollcommand=self._log_scroll.set)
         # severity colors: warnings orange, errors dark red
         self.log_view.tag_configure("warning", foreground="#d9791e")
         self.log_view.tag_configure("error", foreground="#8b0000")
@@ -604,6 +615,8 @@ class StepBuilderApp(tk.Tk):
                              cursor="hand2" if active else "")
 
     def _pick_layer_color(self, kind: str) -> None:
+        if self._busy:
+            return          # a Canvas cannot be greyed out; see _set_busy
         if _mode_key(self.board_mode.get()) not in ("layers", "inspect"):
             return
         from tkinter import colorchooser
@@ -710,6 +723,8 @@ class StepBuilderApp(tk.Tk):
                                    cursor="hand2" if active else "")
 
     def _pick_rim_color(self) -> None:
+        if self._busy:
+            return          # a Canvas cannot be greyed out; see _set_busy
         if (_mode_key(self.board_mode.get()) != "solid"
                 or self.rim_choice.get() != RIM_CUSTOM):
             return
@@ -1028,6 +1043,7 @@ class StepBuilderApp(tk.Tk):
             return
         self._set_busy(True)
         self._finished = False
+        self._cancelled = False
         self._worker = multiprocessing.Process(
             target=run_jobs, args=(settings, self._queue), daemon=True)
         self._worker.start()
@@ -1087,6 +1103,14 @@ class StepBuilderApp(tk.Tk):
         """
         if self._worker is None or self._worker.is_alive() or self._finished:
             return
+        if self._cancelled:
+            # Killed on purpose: the exit code is whatever terminate() gives,
+            # and reporting that as a crash would be a lie with a traceback
+            # attached.
+            self._cancelled = False
+            self._worker = None
+            self._finished = True
+            return
         code = self._worker.exitcode
         self._worker = None
         self._finished = True
@@ -1107,12 +1131,91 @@ class StepBuilderApp(tk.Tk):
         self._append_log(detail, "error")
         messagebox.showerror("StepBuilder", detail)
 
+    def _walk(self, parent=None):
+        """Every widget in the window, depth first."""
+        for child in (parent or self).winfo_children():
+            yield child
+            yield from self._walk(child)
+
+    def _freeze_inputs(self) -> None:
+        """Disable every control for the duration of a build.
+
+        **The previous state of each widget is remembered, not assumed.** Half
+        this window is greyed out by its own rules at any moment - the rim color
+        outside Solid mode, a side's silkscreen layers when that side is off,
+        the layer swatches in Solid - and re-enabling everything afterwards
+        would quietly switch those back on. So each widget's own `state` is
+        recorded and put back exactly.
+
+        The log stays enabled: a build is precisely when someone wants to read
+        and scroll it. The action button stays live too - it is the Cancel
+        button while the build runs.
+        """
+        self._frozen = {}
+        for widget in self._walk():
+            if widget in (self.log_view, self._log_scroll, self.generate_button):
+                continue
+            try:
+                previous = widget.cget("state")
+            except Exception:
+                continue          # frames, canvases: nothing to disable
+            try:
+                widget.configure(state="disabled")
+            except Exception:
+                continue
+            # str(): a ttk state comes back as a Tcl object, and putting that
+            # back verbatim is fine, but the tests compare against "readonly".
+            self._frozen[widget] = str(previous)
+
+    def _thaw_inputs(self) -> None:
+        for widget, previous in self._frozen.items():
+            try:
+                widget.configure(state=previous)
+            except Exception:
+                pass
+        self._frozen = {}
+
     def _set_busy(self, busy: bool) -> None:
-        for child in self._actions.winfo_children():
-            child.configure(state="disabled" if busy else "normal")
+        # The flag is what the click handlers on the color swatches test: a
+        # Canvas has no state to disable, so those are guarded rather than
+        # greyed - see _pick_rim_color and _pick_layer_color.
+        self._busy = busy
         if busy:
+            self._freeze_inputs()
+            # One button, two jobs. A build takes minutes on a real board, so
+            # leaving no way out of it is not an option; and a Cancel that sits
+            # beside a live-looking Generate would be the second confusing
+            # thing. The label says which one it is.
+            self.generate_button.configure(text="Cancel", command=self.on_cancel)
             self.status.set("Working...")
             self.progress["value"] = 0
+        else:
+            self._thaw_inputs()
+            self.generate_button.configure(text="Generate", command=self.on_generate)
+
+    def on_cancel(self) -> None:
+        """Stop the running build.
+
+        The build is a child PROCESS, so this is a real kill rather than a
+        polite request - which is the only thing that works: OCCT spends
+        minutes inside a single boolean and nothing checks a flag in there.
+
+        What it costs is said out loud: the file being written at that moment
+        can be left half finished, and a half-written STEP is not obviously
+        broken when you open it.
+        """
+        worker = self._worker
+        if worker is None or not worker.is_alive():
+            return
+        self._cancelled = True
+        self._append_log("Cancelled. Any file being written just now may be "
+                         "incomplete - check its size, or build it again.",
+                         "warning")
+        worker.terminate()
+        self._worker = None
+        self._finished = True
+        self._set_busy(False)
+        self.status.set("Cancelled")
 
     def _append_log(self, message: str, severity: str | None = None) -> None:
         # Auto-detect severity from the message if not given, so plain "log"

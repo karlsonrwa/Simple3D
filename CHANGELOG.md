@@ -11,6 +11,30 @@ to use the tool.
 
 ---
 
+- **2026-08-04** — **The window goes inert while it builds, and Generate
+  becomes Cancel.** Every control stayed live during a build: paths, colors and
+  checkboxes could be changed under a build that had already taken its snapshot
+  of them, and Generate could be pressed again. Now the whole window is greyed
+  out for the duration — except the log, which is what you read while you wait —
+  and each control's own state is remembered and put back exactly, so the ones
+  the window greys out by its own rules (the rim color outside *Solid*, a side's
+  silkscreen layers when that side is off) do not come back switched on.
+  **Cancel** kills the build outright, which is the only thing that works
+  against a boolean that has been inside OpenCASCADE for a minute; the file
+  being written at that moment may be left incomplete, and the log says so. A
+  cancelled build is not reported as a crash.
+  / **Окно гаснет на время сборки, а Generate становится Cancel.** Во время
+  сборки все элементы оставались доступными: пути, цвета и галочки можно было
+  менять под уже снятым снимком настроек, а Generate — нажать ещё раз. Теперь на
+  время сборки окно гаснет целиком, кроме лога, который в это время и читают, а
+  состояние каждого элемента запоминается и возвращается в точности — поэтому
+  то, что окно гасит по своим правилам (цвет торца вне режима *Solid*, слои
+  шелкографии выключенной стороны), не включается обратно. **Cancel** убивает
+  сборку немедленно: с булевой операцией, которая уже минуту внутри
+  OpenCASCADE, иначе нельзя. Файл, который писался в этот момент, может
+  остаться недописанным — лог об этом говорит. Отменённая сборка не выдаётся за
+  падение.
+
 - **2026-08-04** — **The whole board, beside the variants.** With a
   `Variants.lst` present the export now also writes `<design>.json`: every
   component except those marked `NO_STEP_EXPORT`, with the variant list taking

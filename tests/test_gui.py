@@ -251,6 +251,87 @@ try:
 except Exception:
     check("frozen (mutation refused)", True)
 
+print("\n[9] the window is inert while a build runs")
+# Pressing Generate used to leave every control live: paths, colors and
+# checkboxes could be changed under a build that had already taken its snapshot,
+# and Generate could be pressed again. What must NOT happen when it ends is the
+# opposite mistake - re-enabling controls the window greys out by its own rules
+# (the rim color outside Solid, a side's silk layers when that side is off).
+
+
+def states():
+    out = {}
+    for w in app._walk():
+        try:
+            out[str(w)] = str(w.cget("state"))
+        except Exception:
+            pass                      # frames, canvases, ttk scrollbars
+    return out
+
+
+before = states()
+preset = {k: v for k, v in before.items() if v != "normal"}
+check("some controls are already not-normal before the build", len(preset) > 0,
+      str(len(preset)))
+
+app._set_busy(True)
+busy = states()
+live = [k for k, v in busy.items() if v == "normal"]
+check("nothing is left enabled but the action button", len(live) == 1, str(live))
+check("and that button now says Cancel",
+      app.generate_button.cget("text") == "Cancel")
+check("the log stays readable", app.log_view.winfo_exists()
+      and str(app.log_view) not in live)      # disabled Text: read-only, scrollable
+check("a swatch click does nothing while busy", app._busy is True)
+
+app._set_busy(False)
+after = states()
+check("every control comes back exactly as it was", after == before,
+      str({k: (before[k], after.get(k)) for k in before if before[k] != after.get(k)}))
+check("including the ones that were already disabled",
+      all(after[k] == v for k, v in preset.items()))
+check("and the button says Generate again",
+      app.generate_button.cget("text") == "Generate")
+
+# Cancel with nothing running must be a no-op rather than an error.
+app._worker = None
+app.on_cancel()
+check("cancel with no build running is harmless",
+      app.generate_button.cget("text") == "Generate")
+
+
+# Cancelling a live build, with a stand-in for the process. Not the real thing:
+# spawning one from a test on Windows re-imports this module and re-runs the
+# whole file. What is checked here is this window's half of it - kill, restore,
+# and above all DON'T then report the kill as a crash.
+class _FakeWorker:
+    def __init__(self):
+        self.killed = False
+        self.exitcode = -15
+
+    def is_alive(self):
+        return not self.killed
+
+    def terminate(self):
+        self.killed = True
+
+
+fake = _FakeWorker()
+app._worker = fake
+app._set_busy(True)
+app.on_cancel()
+check("the build is terminated", fake.killed)
+check("the window comes back", app.generate_button.cget("text") == "Generate")
+check("and says so", app.status.get() == "Cancelled", app.status.get())
+check("controls are usable again", states() == before)
+# _check_worker_alive runs on the next drain and must stay quiet: a deliberate
+# kill has a non-zero exit code, and reporting that as a crash would be a lie
+# with a traceback attached.
+app._worker, app._finished, app._cancelled = fake, False, True
+app._check_worker_alive()
+check("a cancelled build is not reported as a crash",
+      app.status.get() == "Cancelled" and app._worker is None, app.status.get())
+
 app.destroy()
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

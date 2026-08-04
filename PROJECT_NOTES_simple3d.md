@@ -2906,6 +2906,44 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-04 (round 57) — the window while it works
+
+The user: pressing Generate leaves every control available, and they should not
+be; and there should be a Cancel, or the button should at least change.
+
+**Why it mattered more than it looked.** `_snapshot()` freezes the settings the
+moment Generate is pressed - deliberately, so a later edit cannot change a build
+in flight. The window then left every control live, which made that safety
+invisible: you could change the board color mid-build and watch the old one come
+out. `_set_busy` was disabling the children of one frame, which was the Generate
+button and nothing else.
+
+**The freeze remembers, it does not assume.** Half this window is greyed out by
+its own rules at any moment - the rim color outside *Solid*, a side's silkscreen
+layers when that side is off, the layer swatches in *Solid*. Re-enabling
+everything at the end would switch those back on, so each widget's own `state`
+is recorded and restored exactly. Measured on the real window: 51 controls, 6 of
+them already not-normal, all 51 restored byte for byte.
+
+Two things stay live on purpose: the **log**, which is what you read while you
+wait, and the action button. Two colour swatches are `tk.Canvas` with a click
+binding and no `-state` to disable, so they ask a `_busy` flag instead.
+
+**One button, two jobs.** Cancel beside a live-looking Generate would have been
+the second confusing thing, so the button relabels. Cancelling is
+`Process.terminate()` - a real kill, because OCCT spends minutes inside a single
+boolean and nothing in there checks a flag. What it costs is said in the log
+rather than hidden: a file being written at that moment can be left half
+finished. `_check_worker_alive` had to learn about it too, or a deliberate kill
+would have been reported as a crash, with the access-violation advice attached.
+
+`tests/test_gui.py` [9] pins all of it headless, including a stand-in worker for
+the cancel path: spawning a real one from a test re-imports the test module on
+Windows and re-runs the file.
+
+**Not verified in the real window yet** - it is Tk, tested headless, and the
+last word is the user's.
+
 ## Update 2026-08-04 (round 56) — the whole board, beside the variants
 
 The user, right after round 54 landed: with a `Variants.lst` present there must
