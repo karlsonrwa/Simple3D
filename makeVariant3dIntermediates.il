@@ -280,6 +280,22 @@ procedure( s3dAddIndent( t_string @optional ( x_levels 1 ) )
 
 S3D_NoExportProp = "NO_STEP_EXPORT"
 
+; The opt-out from the variant rule. Unlike NO_STEP_EXPORT, which is one of
+; Allegro's own symbol properties, this one does not exist until something
+; creates it: simple3d.il defines it in the design's property dictionary at
+; load and before every export (see s3dEnsureAlwaysProp there, and the config
+; switch allegro.defineAlwaysExportProp). Once defined it behaves like any
+; other property - it appears in Allegro's Properties dialog and is attached
+; the ordinary way.
+;
+; WHY IT HAS TO EXIST AT ALL. A wire-solder pad and a connector housing look
+; identical in the database: both carry a refdes, a STEP model and no BOM
+; line, and neither is named in a Variants.lst. But the housing should
+; disappear with the connector it belongs to, while the pad is part of the
+; bare board and belongs in every variant. No rule can tell those apart,
+; because the difference is intent - so the intent is written on the part.
+S3D_AlwaysExportProp = "ALWAYS_STEP_EXPORT"
+
 ; Per-export sequence for synthesising unique JSON keys for symbols that carry a
 ; STEP model but no refdes (mechanical parts). Reset at the top of every
 ; create3dIntermediateFormat so each variant numbers its mechanicals from 1.
@@ -356,6 +372,32 @@ procedure( s3dNoStepExport( o_sym )
         s3dObjectHasProp( o_sym S3D_NoExportProp ) ||
         (comp && s3dObjectHasProp( comp S3D_NoExportProp )) ||
         (comp && comp->compdef && s3dObjectHasProp( comp->compdef S3D_NoExportProp ))
+    )
+)
+
+; t if this symbol is marked ALWAYS_STEP_EXPORT - "keep me in every variant".
+;
+; Read at the same three levels as NO_STEP_EXPORT and for the same reason: on
+; the definition it covers every instance of a library part at once, which is
+; what a solder pad wants - mark the pad in the library and no board ever needs
+; touching again.
+;
+; Presence is the test, and for this property that is not a simplification: it
+; is created as BOOLEAN, and Allegro says of those that the value is ignored
+; and the property either exists or does not. Attaching it with a nil value
+; still attaches it; the way to say "no" is to DELETE it. Allegro prints that
+; itself when you try:
+;
+;   *WARNING* (axlDBAddProp): Adding Boolean property "ALWAYS_STEP_EXPORT",
+;   despite 'nil' being provided as the value. To make the property 'False'
+;   instead, call axlDBDeleteProp() to remove it.
+procedure( s3dAlwaysStepExport( o_sym )
+    let( ( comp )
+        comp = nil
+        errset( comp = o_sym->component )
+        s3dObjectHasProp( o_sym S3D_AlwaysExportProp ) ||
+        (comp && s3dObjectHasProp( comp S3D_AlwaysExportProp )) ||
+        (comp && comp->compdef && s3dObjectHasProp( comp->compdef S3D_AlwaysExportProp ))
     )
 )
 
@@ -602,7 +644,8 @@ procedure( s3dVariantFit( g_variantSymbolList t_path )
 ; already has the symbol in hand, so nothing has to be looked up again by
 ; refdes - which is one less way for a symbol to go missing.
 procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
-    let( ( out installed refdes label ( nNoExport 0 ) ( nNotInVariant 0 ) ( nUntracked 0 ) )
+    let( ( out installed refdes label ( nNoExport 0 ) ( nNotInVariant 0 )
+           ( nUntracked 0 ) ( nAlways 0 ) )
         out = tconc( nil nil )
         ; Only what THIS variant installs is needed now. The union over all
         ; variants (s3dVariantKnownRefdes) is still built, once, by
@@ -662,13 +705,25 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
                     ; in, and under this rule that would drop EVERY component
                     ; rather than a few. No caller does it - both do exist, so
                     ; the guard costs one comparison and removes a silent one.
+                    ;
+                    ; ALWAYS_STEP_EXPORT is the one way out, and it is tested
+                    ; LAST so that it cannot rescue a symbol NO_STEP_EXPORT has
+                    ; already excluded: "never" outranks "always". It is also
+                    ; the only test here that costs a property read per symbol,
+                    ; and the && chain reaches it only for a part the variant
+                    ; was about to drop.
                     ( g_variantSymbolList && t_variant && refdes &&
-                      !installed[upperCase( refdes )]
+                      !installed[upperCase( refdes )] &&
+                      !s3dAlwaysStepExport( sym )
                         nNotInVariant = nNotInVariant + 1
                     )
                     ( t
                         when( g_variantSymbolList && !refdes
                             nUntracked = nUntracked + 1
+                        )
+                        when( g_variantSymbolList && refdes &&
+                              !installed[upperCase( refdes )]
+                            nAlways = nAlways + 1
                         )
                         tconc( out sym )
                     )
@@ -686,6 +741,10 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
         when( nUntracked > 0
             printf( "Simple 3D: %d symbol(s) have no refdes and cannot be named in a variant; exported in every variant.\n"
                     nUntracked )
+        )
+        when( nAlways > 0
+            printf( "Simple 3D: %d component(s) not installed in variant %s but kept by %s.\n"
+                    nAlways t_variant S3D_AlwaysExportProp )
         )
         cdr( car( out ) )
     )
@@ -1303,16 +1362,28 @@ procedure( s3dConductorSpan( l_layers )
 ; the whole export. Unlikely in a layer name, but a broken intermediate is a
 ; total failure while escaping costs one pass over a short string.
 ; A control character OTHER than tab, newline and carriage return - those three
-; have escapes of their own below and must not trip this. Compiled once, and
-; only ever used to ask a WHOLE string whether it needs the slow path - see
-; s3dJsonQuote. Wrapped in errset and allowed to be nil: if this Allegro's PCRE
-; will not take the pattern, the quoting falls back to exactly what it did
-; before rather than failing to load.
-S3D_CtrlChars = nil
-errset( S3D_CtrlChars = pcreCompile( "[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f]" ) )
+; have escapes of their own below and must not trip this. Used only to ask a
+; WHOLE string whether it needs the slow path - see s3dJsonQuote.
+;
+; COMPILED ON FIRST USE, not at load. This file is loaded from allegro.ilinit
+; while the editor is starting, and after a batch that added load-time work
+; Allegro began crashing on startup (2026-08-04). Which statement did it was
+; never established, so the rule taken from it is the blunt one: loading these
+; files does nothing but define procedures. `unset` rather than nil marks "not
+; tried yet", so a pattern this Allegro will not take is attempted once and
+; then left alone - and the quoting simply falls back to what it did before.
+S3D_CtrlChars = 'unset
+
+procedure( s3dCtrlCharPattern()
+    when( S3D_CtrlChars == 'unset
+        S3D_CtrlChars = nil
+        errset( S3D_CtrlChars = pcreCompile( "[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f]" ) )
+    )
+    S3D_CtrlChars
+)
 
 procedure( s3dJsonQuote( g_value )
-    let( ( out c ( scan nil ) )
+    let( ( out c ( scan nil ) pattern )
         if( stringp( g_value ) then
             ; JSON forbids a raw control character inside a string, and ONE of
             ; them anywhere - a stray CR pasted into a layer or symbol name -
@@ -1327,8 +1398,9 @@ procedure( s3dJsonQuote( g_value )
             ; Asked once per STRING, not once per character: the per-character
             ; test would run on every ordinary character of every name on the
             ; board, and this is called thousands of times on a dense legend.
-            when( S3D_CtrlChars
-                scan = pcreMatchp( S3D_CtrlChars g_value )
+            pattern = s3dCtrlCharPattern()
+            when( pattern
+                scan = pcreMatchp( pattern g_value )
             )
             when( scan
                 s3dWarn( sprintf( nil
@@ -1345,7 +1417,7 @@ procedure( s3dJsonQuote( g_value )
                         ( c == "\t"  "\\t" )
                         ( c == "\n"  "\\n" )
                         ( c == "\r"  "\\r" )
-                        ( scan && pcreMatchp( S3D_CtrlChars c )  " " )
+                        ( scan && pcreMatchp( pattern c )  " " )
                         ( t          c )
                     ) )
             )

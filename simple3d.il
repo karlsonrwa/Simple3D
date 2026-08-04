@@ -76,6 +76,20 @@ S3D_PythonW = "pythonw"
 S3D_CommandVisible = "Simple 3D"
 S3D_CommandName = "simple_3d_export"
 
+; Define ALWAYS_STEP_EXPORT in the design's property dictionary, so it can be
+; attached from Allegro's own Properties dialog. See s3dEnsureAlwaysProp for
+; what it is for and why it has to be created rather than simply used.
+; Set allegro.defineAlwaysExportProp to false to leave the design alone.
+S3D_DefineAlwaysProp = t
+
+; The property name itself lives in makeVariant3dIntermediates.il, which is
+; loaded first. Defined here too if that load order was not followed, so this
+; file cannot fail on an unbound name - and never redefined, so there is only
+; ever one value of it in the session.
+unless( boundp( 'S3D_AlwaysExportProp )
+    S3D_AlwaysExportProp = "ALWAYS_STEP_EXPORT"
+)
+
 ; Re-read on every export as well as at load time, so editing the config takes
 ; effect without reloading the SKILL files. The menu label is the exception -
 ; the menu is built at load time, so a changed label needs a reload.
@@ -105,6 +119,14 @@ procedure( s3dLoadSettings()
 
                 value = s3dJsonGet( allegro "commandName" )
                 when( stringp( value )  S3D_CommandName = value )
+
+                ; Presence decides, not truthiness: the value is a boolean and
+                ; false is a meaningful setting, which a plain `when( value )`
+                ; would read as "not set" and quietly turn back on.
+                when( s3dJsonHas( allegro "defineAlwaysExportProp" )
+                    value = s3dJsonGet( allegro "defineAlwaysExportProp" )
+                    S3D_DefineAlwaysProp = if( value == nil then nil else t )
+                )
             else
                 s3dWarn( sprintf( nil "Simple 3D: could not parse %s; using built-in settings."
                                   S3D_ConfigFile ) )
@@ -210,6 +232,129 @@ procedure( s3dDesignDir()
 )
 
 ;=====================================================================
+;  ALWAYS_STEP_EXPORT - the one property this tool has to create
+;
+;  NO_STEP_EXPORT is Allegro's own: it is on every symbol's property list
+;  already, and the export only reads it. ALWAYS_STEP_EXPORT does not exist
+;  anywhere until something defines it, and until it is defined it cannot be
+;  attached to anything - not from SKILL and not from the Properties dialog.
+;  So the tool defines it, and then stays out of the way: WHAT it goes on is
+;  entirely the user's business, done the ordinary Allegro way.
+;
+;  WHY THE PROPERTY EXISTS. Since the variant rule was settled on the refdes,
+;  anything carrying one obeys Variants.lst - which is right for a connector
+;  housing (it should vanish with the connector it belongs to) and wrong for a
+;  wire-solder pad (it is part of the bare board and belongs in every variant).
+;  In the database the two are indistinguishable: refdes, a STEP model, no BOM
+;  line, named in no variant. The difference is intent, so it is written on the
+;  part.
+;
+;  WHY AT LOAD TIME, AND ALSO AT EXPORT TIME. A property dictionary belongs to
+;  a DESIGN, not to the installation - axlDBGetPropDict reports "entries in the
+;  current design" - so defining it once at startup would only ever reach the
+;  board that happened to be open then. It is therefore done at load AND at the
+;  top of every export, which between them cover a board opened at any point.
+;  Both calls are cheap: they read the dictionary and return.
+;
+;  It is created as BOOLEAN because Allegro's own documentation says a BOOLEAN
+;  property has no value - it either exists on the object or it does not - and
+;  that is exactly the test the export makes. A STRING property could carry the
+;  word "FALSE" while its presence said yes.
+;
+;  THE DESIGN IS CHANGED BY THIS. A dictionary entry is stored in the board, so
+;  Allegro will want the design saved. Set allegro.defineAlwaysExportProp to
+;  false to switch it off entirely; the export then reads the property if some
+;  other board already has it, and never writes anything.
+;=====================================================================
+
+; Is a REAL board open - as opposed to the empty placeholder Allegro sometimes
+; comes up with?
+;
+; The user's observation, and it matches what happened here: starting the editor
+; from its own icon (rather than by opening a .brd) sometimes lands in "nothing"
+; - a design that is open as far as the API is concerned but is not a board, and
+; editing it produces errors that make no sense. Anything this tool writes must
+; be able to tell the two apart.
+;
+; The test is the drawing FILE. axlCurrentDesign gives a name whether or not
+; there is anything behind it; axlGetDrawingName gives the path, and a real
+; board has one that exists on disk. A brand-new board that has never been saved
+; also fails this test, which is the conservative side to fail on: it gets the
+; property at export time instead.
+procedure( s3dRealDesign()
+    let( ( name path )
+        name = nil
+        errset( name = axlCurrentDesign() )
+        path = nil
+        errset( path = axlGetDrawingName() )
+        stringp( name ) && (name != "") &&
+        stringp( path ) && (path != "") && isFile( path )
+    )
+)
+
+procedure( s3dEnsureAlwaysProp()
+    ; prog locals are BARE SYMBOLS - the (var value) init form is let-only and
+    ; prog rejects the whole procedure with "local vars must be symbol". The
+    ; same trap s3dPreflight documents; it cost this feature a live round,
+    ; because both call sites wrap this in errset and the failure was silent.
+    prog( ( dict found name made )
+        found = nil
+        unless( S3D_DefineAlwaysProp  return( nil ) )
+        ; No board, nothing to write to. Silent: this is the ordinary state
+        ; while the editor is starting, and the state of the placeholder design
+        ; it sometimes opens instead of a board.
+        unless( s3dRealDesign()       return( nil ) )
+
+        dict = nil
+        errset( dict = axlDBGetPropDict( 'user ) )
+        foreach( entry dict
+            name = if( stringp( entry ) then entry else sprintf( nil "%L" entry ) )
+            when( upperCase( name ) == upperCase( S3D_AlwaysExportProp )  found = t )
+        )
+        when( found  return( t ) )
+
+        made = nil
+        errset( made = axlDBCreatePropDictEntry( S3D_AlwaysExportProp "BOOLEAN" t ) )
+        if( made then
+            printf( "Simple 3D: defined the %s property in this design.\n"
+                    S3D_AlwaysExportProp )
+            printf( "Simple 3D: attach it to a symbol (Edit - Properties) to keep that part\n" )
+            printf( "  in EVERY variant, whatever Variants.lst says. The design now has an\n" )
+            printf( "  unsaved change; set allegro.defineAlwaysExportProp to false to stop this.\n" )
+            return( t )
+        else
+            ; Not fatal, and not even necessarily wrong: a design that already
+            ; has the name from somewhere else lands here too, and the export
+            ; reads the property either way.
+            s3dWarn( sprintf( nil "Simple 3D: could not define %s in this design; it can still be attached if it is already defined."
+                              S3D_AlwaysExportProp ) )
+            return( nil )
+        )
+    )
+)
+
+; Called by Allegro when a design has been OPENED. `open` is one of the nine
+; triggers this release supports (axlTriggerSet(nil nil) answers: open save
+; close exit menu xprobe select window xsection), and it is the right hook for
+; this: the property is then in place before the first export rather than after
+; it, which is what "the pads are missing from my drawing" needs.
+;
+; A trigger function takes ONE argument and must keep its work short - the
+; documented restrictions - and it must not be able to stop a board from
+; opening, hence errset. Everything it does is guarded again inside
+; s3dEnsureAlwaysProp: no switch, no real board, entry already there -> return.
+;
+; This is the second attempt at defining the property automatically. The first
+; ran at LOAD time and coincided with Allegro crashing on startup; the design it
+; would have written to was most likely the empty placeholder the editor
+; sometimes comes up with instead of a board. s3dRealDesign is what tells the
+; two apart now, and the switch below turns all of it off.
+procedure( s3dOpenTrigger( g_arg )
+    errset( s3dEnsureAlwaysProp() )
+    t
+)
+
+;=====================================================================
 ;  PROGRESS METER
 ;
 ;  Why this exists: pressing Export looked like nothing happening. The board is
@@ -265,6 +410,34 @@ procedure( s3dExportCommand()
         unless( designName
             axlUIWPrint( nil "Simple 3D: no design is open." )
             return( nil )
+        )
+
+        ; A NAME is not a BOARD. Started from its own icon, Allegro sometimes
+        ; comes up on an empty placeholder rather than on the previous design -
+        ; the API answers every question about it, and editing it produces
+        ; errors that make no sense. Say so here rather than exporting a board
+        ; that is not there and leaving the user to interpret whatever comes out
+        ; the far end.
+        unless( s3dRealDesign()
+            printf( "Simple 3D: %L is open, but there is no board file behind it (%L).\n"
+                    designName errset( axlGetDrawingName() ) )
+            printf( "  This is the empty design Allegro sometimes starts on instead of a board.\n" )
+            printf( "  Open the .brd itself and run the export again.\n" )
+            axlUIWPrint( nil
+                "Simple 3D: no board file behind this design - see the console." )
+            return( nil )
+        )
+
+        ; The board open now may not be the one that was open at load time, and
+        ; the property dictionary belongs to the design - so this is the call
+        ; that actually reaches every board the user exports. It returns at once
+        ; when the entry is already there.
+        ;
+        ; errset returns nil ONLY when the call errored - a legitimate nil
+        ; return comes back as (nil). So this says so instead of swallowing it:
+        ; a silent errset is exactly how the first version of this went missing.
+        unless( errset( s3dEnsureAlwaysProp() )
+            s3dWarn( "Simple 3D: s3dEnsureAlwaysProp() failed - ALWAYS_STEP_EXPORT was not defined in this design." )
         )
 
         designDir = s3dDesignDir()
@@ -515,6 +688,19 @@ axlCmdRegister( S3D_CommandName 's3dExportCommand ?cmdType "interactive" )
 s3dMenuTrigger( "none" )
 errset( axlTriggerClear( 'menu 's3dMenuTrigger ) )
 axlTriggerSet( 'menu 's3dMenuTrigger )
+
+; NO CALL AT LOAD TIME, deliberately. There was one here, and after it was
+; installed Allegro crashed on startup, repeatedly, offering to recover a .sav
+; (2026-08-04). Loading these files defines procedures and sets variables and
+; does nothing else: a tool that can stop the editor from starting cannot be
+; debugged from.
+;
+; Registering the open trigger is not doing work - it is asking to be called
+; later, when a board is open and the database is in a state to be written to.
+; TriggerClear first, like the menu trigger above, so a re-load does not stack
+; up registrations.
+errset( axlTriggerClear( 'open 's3dOpenTrigger ) )
+errset( axlTriggerSet( 'open 's3dOpenTrigger ) )
 
 when( axlVersion( 'version ) != 24.1
     s3dWarn( "Simple 3D: simple3d.il was tested under Allegro 24.1" )
