@@ -110,9 +110,30 @@ for f in ("makeVariant3dIntermediates.il", "simple3d.il", "simple3d_config.json"
 # "White/Black".
 #
 # The dropdown CONTENTS live in colors.py, not in gui.py, so both are searched.
+#
+# Scoped to the section that DESCRIBES THE WINDOW, because bold is bold: once
+# the quick-start gained an English half, "**Board thickness**" and
+# "**Mechanical parts**" - ordinary emphasis in a prose bullet - read to this
+# check as control names that the GUI had lost. The Russian half had carried
+# the same shape all along and never tripped it, only because the pattern
+# starts at [A-Z]. So the rule is now what it always meant: a control named in
+# the window section must exist.
+def window_section(text):
+    """The '## The window' / '## Окно' blocks, where bold means a control."""
+    out = []
+    for match in re.finditer(r"^##\s+(The window|Окно)\s*$", text, re.M):
+        rest = text[match.end():]
+        nxt = re.search(r"^##\s", rest, re.M)
+        out.append(rest[:nxt.start()] if nxt else rest)
+    return "\n".join(out)
+
+quick_window = window_section(quick)
+if not quick_window.strip():
+    note("QUICKSTART", "no window section found - the control check ran on nothing")
+
 PROSE = {"Custom…": "Custom...", "White/Black": "White"}
 widget_text = gui_py + (ROOT / "stepbuilder/colors.py").read_text(encoding="utf-8")
-for label in re.findall(r"\*\*([A-Z][A-Za-z0-9 =/…]+?)\*\*", quick):
+for label in re.findall(r"\*\*([A-Z][A-Za-z0-9 =/…]+?)\*\*", quick_window):
     lab = label.strip()
     if lab in ("Input", "Board options", "Silk options", "Layers", "Log"):
         if f'text="{lab}"' not in gui_py:
