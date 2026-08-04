@@ -79,6 +79,11 @@ DISPLAY_SWATCH = dict(SWATCH, highlightthickness=1, highlightbackground="#888",
 PICKER_SWATCH = dict(SWATCH, highlightthickness=0, relief="raised",
                      borderwidth=2, cursor="hand2")
 
+# The grey a swatch wears when it does not apply - the mode ignores it, or a
+# build is running. One name, because "looks live but is not" is the exact
+# complaint this colour answers.
+INACTIVE_SWATCH = "#d9d9d9"
+
 RIM_SAME = "Same as board"
 RIM_CREAM = "Cream (dielectric)"
 RIM_CUSTOM = "Custom..."
@@ -168,6 +173,7 @@ class StepBuilderApp(tk.Tk):
         # was before the build, to be put back exactly - see _freeze_inputs.
         self._busy = False
         self._frozen: dict = {}
+        self._dimmed: dict = {}
         self._cancelled = False
         self._paths_from_launcher = False
         # Layers switched OFF, by name. Exclusions rather than inclusions: a
@@ -609,7 +615,7 @@ class StepBuilderApp(tk.Tk):
         self._reset_colors_btn.state(["!disabled"] if active else ["disabled"])
         for key, canvas in self._swatches.items():
             rgb = self.layer_colors.get(key, DEFAULT_LAYER_COLORS[key])
-            canvas.configure(bg="#%02x%02x%02x" % rgb if active else "#d9d9d9",
+            canvas.configure(bg="#%02x%02x%02x" % rgb if active else INACTIVE_SWATCH,
                              relief="raised" if active else "flat",
                              borderwidth=2 if active else 1,
                              cursor="hand2" if active else "")
@@ -711,7 +717,7 @@ class StepBuilderApp(tk.Tk):
         solid = _mode_key(self.board_mode.get()) == "solid"
         self._rim_box.configure(state="readonly" if solid else "disabled")
         active = solid and self.rim_choice.get() == RIM_CUSTOM
-        color = "#d9d9d9"
+        color = INACTIVE_SWATCH
         if active:
             try:
                 color = "#%02x%02x%02x" % parse_hex(self.rim_custom.get())
@@ -1152,6 +1158,26 @@ class StepBuilderApp(tk.Tk):
         button while the build runs.
         """
         self._frozen = {}
+        # A tk.Text refuses edits when disabled but keeps its white field, and
+        # a Canvas swatch keeps its colour whatever its state - so both go on
+        # looking live while everything around them greys out. They are dimmed
+        # by hand, to the same grey the window already uses for a swatch that
+        # does not apply, and put back from what was recorded.
+        self._dimmed = {}
+        for canvas in (self._swatch, self._rim_swatch, self._silk_swatch,
+                       *self._swatches.values()):
+            self._dimmed[canvas] = {k: canvas.cget(k) for k in
+                                    ("bg", "relief", "borderwidth", "cursor")}
+            canvas.configure(bg=INACTIVE_SWATCH, relief="flat", borderwidth=1,
+                             cursor="")
+        # The theme decides what disabled looks like, so ask it rather than
+        # inventing a grey that matches this Windows and no other.
+        style = ttk.Style(self)
+        field = style.lookup("TEntry", "fieldbackground", ["disabled"]) or "#f0f0f0"
+        text = style.lookup("TEntry", "foreground", ["disabled"]) or "#6d6d6d"
+        self._dimmed[self._step_text] = {k: self._step_text.cget(k)
+                                         for k in ("bg", "fg")}
+        self._step_text.configure(bg=field, fg=text)
         for widget in self._walk():
             if widget in (self.log_view, self._log_scroll, self.generate_button):
                 continue
@@ -1174,6 +1200,12 @@ class StepBuilderApp(tk.Tk):
             except Exception:
                 pass
         self._frozen = {}
+        for widget, options in self._dimmed.items():
+            try:
+                widget.configure(**options)
+            except Exception:
+                pass
+        self._dimmed = {}
 
     def _set_busy(self, busy: bool) -> None:
         # The flag is what the click handlers on the color swatches test: a

@@ -2926,8 +2926,19 @@ is recorded and restored exactly. Measured on the real window: 51 controls, 6 of
 them already not-normal, all 51 restored byte for byte.
 
 Two things stay live on purpose: the **log**, which is what you read while you
-wait, and the action button. Two colour swatches are `tk.Canvas` with a click
-binding and no `-state` to disable, so they ask a `_busy` flag instead.
+wait, and the action button.
+
+**Disabled is not always a look.** The user came back with the two widgets that
+proved it: a `tk.Canvas` swatch keeps its colour whatever its state, and a
+`tk.Text` refuses edits while keeping its white field - so the colour squares
+and the STEP-paths box went on looking live in a window that had greyed out
+around them. Both are now dimmed by hand and restored from what was recorded:
+the swatches to `INACTIVE_SWATCH`, the same grey the window already uses for a
+swatch that does not apply, and the paths field to whatever the THEME says a
+disabled entry looks like (`style.lookup("TEntry", ..., ["disabled"])`) rather
+than to a grey picked to match this Windows and no other. The swatches also lose
+their hand cursor, and their click handlers ask a `_busy` flag, since a Canvas
+has no state to refuse with.
 
 **One button, two jobs.** Cancel beside a live-looking Generate would have been
 the second confusing thing, so the button relabels. Cancelling is
