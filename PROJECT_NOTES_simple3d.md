@@ -3082,11 +3082,15 @@ The trigger takes one argument (the documentation: a function of any other shape
 is simply not called), keeps its work to a dictionary read, and is wrapped in
 `errset` so it cannot stop a board from opening.
 
-**Verified live by the user, in this order:** the property appeared at export
-time, they attached it to the symbol they wanted through Allegro's own
-Properties dialog, exported, and the part came through in a variant that does
-not list it. What is NOT yet verified is the open trigger itself and the
-placeholder guard - both are new since that session.
+**Verified live by the user, all of it.** In order: the property appeared at
+export time; they attached it to the symbol they wanted through Allegro's own
+Properties dialog; the part then came through in a variant that does not list
+it; and after the trigger was added, the `open` trigger and the refusal to
+export a design with no board file behind it were confirmed too.
+
+Round 52's rule is confirmed by the same session from the other side: the
+problem the user brought - solder pads vanishing from every variant - **is** the
+refdes rule doing exactly what it was built to do, on a real board.
 
 ## Update 2026-08-04 (round 53) — full review, and all seven findings fixed
 
@@ -3222,9 +3226,11 @@ catastrophe.
 old rule got wrong, plus source greps that now assert `!s3dIsMechanical(sym)` is
 **absent** from the cond. 20/20 suites green.
 
-**Not verified in Allegro yet** — needs one export of `variants_test-b0` to
-confirm `A1`/`A2` disappear from `ALL` and that a listed `A4` still comes
-through.
+**Confirmed live in round 54**, from the other side and on a real board: the
+problem the user brought that round - solder pads with a refdes, no BOM line and
+no mention in any variant, vanishing from every variant file - is this rule
+doing exactly what it was built to do. `ALWAYS_STEP_EXPORT` is the deliberate
+way back out of it.
 
 ## Update 2026-08-02 (round 51) — the two component groups get the board name too
 
