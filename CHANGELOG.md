@@ -15,8 +15,10 @@ to use the tool.
   becomes Cancel.** Every control stayed live during a build: paths, colors and
   checkboxes could be changed under a build that had already taken its snapshot
   of them, and Generate could be pressed again. Now the whole window is greyed
-  out for the duration — except the log, which is what you read while you wait —
-  and each control's own state is remembered and put back exactly, so the ones
+  out for the duration — except the log, which is what you read while you wait.
+  The colour swatches and the STEP-paths field are dimmed by hand, because a
+  `Canvas` and a `Text` keep their bright look however disabled they are, and
+  each control's own state is remembered and put back exactly, so the ones
   the window greys out by its own rules (the rim color outside *Solid*, a side's
   silkscreen layers when that side is off) do not come back switched on.
   **Cancel** kills the build outright, which is the only thing that works
@@ -26,8 +28,10 @@ to use the tool.
   / **Окно гаснет на время сборки, а Generate становится Cancel.** Во время
   сборки все элементы оставались доступными: пути, цвета и галочки можно было
   менять под уже снятым снимком настроек, а Generate — нажать ещё раз. Теперь на
-  время сборки окно гаснет целиком, кроме лога, который в это время и читают, а
-  состояние каждого элемента запоминается и возвращается в точности — поэтому
+  время сборки окно гаснет целиком, кроме лога, который в это время и читают.
+  Квадраты цвета и поле путей к STEP гасятся вручную: `Canvas` и `Text`
+  остаются яркими, в каком бы состоянии ни были. Состояние каждого элемента
+  запоминается и возвращается в точности — поэтому
   то, что окно гасит по своим правилам (цвет торца вне режима *Solid*, слои
   шелкографии выключенной стороны), не включается обратно. **Cancel** убивает
   сборку немедленно: с булевой операцией, которая уже минуту внутри

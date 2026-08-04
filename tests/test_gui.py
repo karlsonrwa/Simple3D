@@ -269,10 +269,23 @@ def states():
     return out
 
 
+# A mode where the layer swatches actually carry colours, so dimming them is
+# something to see rather than a no-op: plain Solid greys them by its own rule.
+import stepbuilder.gui as gui_mod
+app.board_mode.set("Solid colored layers")
+app._on_mode_changed()
+app.update_idletasks()
+
 before = states()
 preset = {k: v for k, v in before.items() if v != "normal"}
 check("some controls are already not-normal before the build", len(preset) > 0,
       str(len(preset)))
+swatch_bg_before = [str(c.cget("bg")) for c in
+                    [app._swatch, app._rim_swatch, app._silk_swatch,
+                     *app._swatches.values()]]
+text_bg_before = str(app._step_text.cget("bg"))
+check("the swatches are showing real colours to begin with",
+      len(set(swatch_bg_before)) > 1, str(sorted(set(swatch_bg_before))))
 
 app._set_busy(True)
 busy = states()
@@ -284,8 +297,28 @@ check("the log stays readable", app.log_view.winfo_exists()
       and str(app.log_view) not in live)      # disabled Text: read-only, scrollable
 check("a swatch click does nothing while busy", app._busy is True)
 
+# The two kinds of widget whose "disabled" has no LOOK. A tk.Text refuses edits
+# and keeps its white field; a Canvas swatch keeps its colour whatever its
+# state. Both then sit there bright while everything round them greys out, which
+# is what the window was reported for.
+swatches = [app._swatch, app._rim_swatch, app._silk_swatch, *app._swatches.values()]
+check("every swatch is dimmed while busy",
+      {str(c.cget("bg")) for c in swatches} == {gui_mod.INACTIVE_SWATCH},
+      str(sorted({str(c.cget("bg")) for c in swatches})))
+check("and none of them still offers a hand cursor",
+      {str(c.cget("cursor")) for c in swatches} == {""})
+check("the STEP paths field is greyed, not just read-only",
+      str(app._step_text.cget("bg")) != text_bg_before
+      and str(app._step_text.cget("state")) == "disabled",
+      f"{app._step_text.cget('bg')} / {app._step_text.cget('state')}")
+
 app._set_busy(False)
 after = states()
+check("the swatches come back to their own colours",
+      [str(c.cget("bg")) for c in swatches] == swatch_bg_before,
+      str([str(c.cget("bg")) for c in swatches]))
+check("and the paths field to its own",
+      str(app._step_text.cget("bg")) == text_bg_before)
 check("every control comes back exactly as it was", after == before,
       str({k: (before[k], after.get(k)) for k in before if before[k] != after.get(k)}))
 check("including the ones that were already disabled",
