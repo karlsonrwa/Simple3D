@@ -2906,6 +2906,36 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-04 (round 55) — the README halved, the changelog moved out
+
+The user: the README is very long, the quick-start too short, and a person using
+the tool has no reason to read how it was built. So the README was rewritten at
+**1004 lines against 2079**, bilingual as before.
+
+**What came out:** the measurements kept as evidence for decisions already made
+(the silkscreen size table, "117 faces -> 112 in 0.08 s", per-layer volumes on
+the test board), the checks-and-tests section, the zero-width diagnostics in
+detail, the C++ porting history, the three bend constructions written out one by
+one. **What stayed: every "why".** Parts sit on the mask because solder lifts
+them there; zones align on copper or the board tears at every boundary; the
+solid legend is not fused because fusing makes the file *larger*; the variant
+list governs anything with a refdes because a refdes is what makes a part
+nameable in it; `k = 0` for a ring because Allegro draws bend areas at the inner
+arc; the anchor is the origin because Allegro's own anchor point never reaches
+the file.
+
+**The changelog moved to `CHANGELOG.md`** rather than into this memo. They are
+different documents: a changelog answers "what changed in the version I just
+copied", which a user needs; this memo answers "why, and what was tried", which
+only work *on* the tool needs. Folding one into the other would have buried it
+in five thousand lines.
+
+`tools/audit_docs.py` is what made the swap safe rather than hopeful: the first
+draft dropped 17 config keys and a default, the audit named all 18, and they
+went back in as a compact block. The short README was checked by temporarily
+standing in for the real one, so the audit ran against it exactly as it will
+from now on.
+
 ## Update 2026-08-04 (round 54) — ALWAYS_STEP_EXPORT, and where a property lives
 
 Round 52 left a case with no answer, and the user found it: **pads for soldering
