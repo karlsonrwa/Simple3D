@@ -2679,6 +2679,114 @@ procedure( s3dJsonList( g_node t_key )
 )
 
 ;---------------------------------------------------------------------
+;  The settings file, and the local one on top of it
+;
+;  simple3d_config.json is under version control and holds the SHIPPED
+;  DEFAULTS. simple3d_config.local.json sits beside it, is gitignored, and
+;  holds whatever this installation does differently - the model folders, and
+;  anything else someone wants to pin. The two are merged on read, local
+;  winning key by key, so:
+;
+;    * pulling an update never touches your file and never conflicts;
+;    * an improved layer list or a new default DOES reach you, because the
+;      base file is still the one being updated;
+;    * your absolute paths never enter a commit.
+;
+;  The window writes ONLY the local file. Nothing writes the base one.
+;---------------------------------------------------------------------
+
+; t if this is a parsed JSON object.
+procedure( s3dJsonIsObj( g_node )
+    listp( g_node ) && (car( g_node ) == 'jobj)
+)
+
+; The entry for a key in a parsed object's alist, or nil.
+;
+; Written out rather than using assoc: this file already learned that SKILL's
+; member compares with eq, which two equal strings are not, and betting the
+; settings on assoc's comparison being the other one is not worth the line it
+; would save. `==` on strings compares contents.
+procedure( s3dJsonEntry( t_key l_alist )
+    let( ( ( hit nil ) )
+        foreach( entry l_alist
+            when( listp( entry ) && stringp( car( entry ) ) &&
+                  (car( entry ) == t_key) && !hit
+                hit = entry
+            )
+        )
+        hit
+    )
+)
+
+; base with over laid on top of it. Objects are merged key by key; anything
+; else is REPLACED whole - a list or a number in the local file wins entirely,
+; which is the only reading that lets it turn something off or shorten a list.
+;
+; PRESENCE in the alist decides, never truthiness. JSON false parses to nil
+; here, so a test like `when( value ... )` would silently drop exactly the
+; overrides that switch a setting off.
+procedure( s3dJsonMerge( g_base g_over )
+    prog( ( out entry hit )
+        unless( s3dJsonIsObj( g_over ) && s3dJsonIsObj( g_base )
+            return( g_over )
+        )
+        out = nil
+        foreach( entry cadr( g_base )
+            hit = s3dJsonEntry( car( entry ) cadr( g_over ) )
+            if( hit then
+                out = cons( list( car( entry )
+                                  s3dJsonMerge( cadr( entry ) cadr( hit ) ) ) out )
+            else
+                out = cons( entry out )
+            )
+        )
+        foreach( entry cadr( g_over )
+            unless( s3dJsonEntry( car( entry ) cadr( g_base ) )
+                out = cons( entry out )
+            )
+        )
+        return( list( 'jobj reverse( out ) ) )
+    )
+)
+
+; "…/simple3d_config.json" -> "…/simple3d_config.local.json"
+procedure( s3dLocalConfigFile( t_file )
+    let( ( n )
+        n = strlen( t_file )
+        if( (n > 5) && (lowerCase( substring( t_file n - 4 5 ) ) == ".json") then
+            strcat( substring( t_file 1 n - 5 ) ".local.json" )
+        else
+            strcat( t_file ".local" )
+        )
+    )
+)
+
+; The settings as both halves of the tool see them: the tracked defaults with
+; the local file merged over them. Either may be missing; a local file that
+; will not parse is reported and ignored, because ignoring it leaves a working
+; tool while failing on it would leave none.
+procedure( s3dConfigRead( t_file )
+    let( ( base localFile local )
+        base = nil
+        when( t_file && isFile( t_file )
+            errset( base = s3dJsonRead( t_file ) )
+        )
+        localFile = if( t_file then s3dLocalConfigFile( t_file ) else nil )
+        local = nil
+        when( localFile && isFile( localFile )
+            errset( local = s3dJsonRead( localFile ) )
+            if( s3dJsonIsObj( local ) then
+                printf( "Simple 3D: local settings on top: %s\n" localFile )
+            else
+                s3dWarn( sprintf( nil "Simple 3D: %s could not be parsed and was ignored."
+                                  localFile ) )
+            )
+        )
+        if( s3dJsonIsObj( local ) then s3dJsonMerge( base local ) else base )
+    )
+)
+
+;---------------------------------------------------------------------
 ;  Silkscreen configuration
 ;---------------------------------------------------------------------
 
@@ -2699,7 +2807,10 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
         unless( t_file  t_file = "simple3d_config.json" )
 
         if( isFile( t_file ) then
-            cfg = s3dJsonRead( t_file )
+            ; The tracked defaults with the local file merged over them - see
+            ; s3dConfigRead. Reading the base alone would ignore whatever this
+            ; installation set for itself.
+            cfg = s3dConfigRead( t_file )
             if( cfg then
                 printf( "Simple 3D: silkscreen config: %s\n" t_file )
                 silk = s3dJsonGet( cfg "silkscreen" )

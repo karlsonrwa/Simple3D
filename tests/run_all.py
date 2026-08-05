@@ -41,6 +41,7 @@ JOBS = [
     ("JSON quoting",                            TESTS / "test_quote.py", False),
     ("launcher command shape",                  TESTS / "test_launch_cmd.py", False),
     ("where Variants.lst is looked for",        TESTS / "test_variant_path.py", False),
+    ("settings: defaults + the local file",     TESTS / "test_config_merge.py", False),
     ("GUI widgets and config",                  TESTS / "test_gui.py", False),
     ("GUI window placement",                    TESTS / "test_geom.py", False),
 ]

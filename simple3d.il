@@ -100,7 +100,9 @@ procedure( s3dLoadSettings()
     let( ( cfg allegro value )
         when( (S3D_ConfigFile != "") && isFile( S3D_ConfigFile )
             cfg = nil
-            errset( cfg = s3dJsonRead( S3D_ConfigFile ) )
+            ; Defaults plus simple3d_config.local.json on top - see
+            ; s3dConfigRead in makeVariant3dIntermediates.il, which loads first.
+            errset( cfg = s3dConfigRead( S3D_ConfigFile ) )
             if( cfg then
                 allegro = s3dJsonGet( cfg "allegro" )
 
@@ -136,7 +138,10 @@ procedure( s3dLoadSettings()
     )
 )
 
-s3dLoadSettings()
+; NOT CALLED HERE. The settings live in a file found relative to
+; S3D_ScriptDir, and S3D_ScriptDir can be overridden by the environment - so
+; the folder has to be settled first. The call is a few lines below, after
+; s3dResolveScriptDir.
 
 ;=====================================================================
 ;  PATH HELPERS
@@ -149,6 +154,40 @@ procedure( s3dSlashes( t_path )
         buildString( parseString( t_path "\\" ) "/" )
     )
 )
+
+; The project folder, taken from the Allegro environment when it is set there.
+;
+; WHY: this file is under version control, and S3D_ScriptDir is the one line
+; every installation has to change - so every update would either conflict with
+; it or overwrite it. An Allegro env variable lives in the user's own
+; pcbenv/env, which no update touches:
+;
+;     set SIMPLE3D_DIR = d:/Projects/OrCAD/Scripts/Simple3D
+;
+; The assignment at the top of this file stays as the fallback, so an install
+; that has always worked keeps working with nothing set anywhere.
+;
+; S3D_ConfigFile is recomputed with it - but only if it is still the path
+; derived from the old folder. Someone who pointed it somewhere else by hand
+; meant it, and this must not quietly undo that.
+procedure( s3dResolveScriptDir()
+    let( ( value wasDefault )
+        wasDefault = (S3D_ConfigFile == strcat( S3D_ScriptDir "/simple3d_config.json" ))
+        value = nil
+        errset( value = axlGetVariable( "SIMPLE3D_DIR" ) )
+        when( stringp( value ) && (value != "")
+            S3D_ScriptDir = s3dSlashes( value )
+            when( wasDefault
+                S3D_ConfigFile = strcat( S3D_ScriptDir "/simple3d_config.json" )
+            )
+            printf( "Simple 3D: script folder from SIMPLE3D_DIR: %s\n" S3D_ScriptDir )
+        )
+        S3D_ScriptDir
+    )
+)
+
+errset( s3dResolveScriptDir() )
+s3dLoadSettings()
 
 ; Decide where the JSON and STEP go, given the design's own folder.
 ;
