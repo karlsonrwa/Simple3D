@@ -11,6 +11,34 @@ to use the tool.
 
 ---
 
+- **2026-08-05** — **Your settings no longer live in a tracked file.**
+  `simple3d_config.json` is under version control *and* was rewritten by the
+  window on every close, so an update could not help but conflict with your
+  model folders — and every commit carried someone's window position. It now
+  holds the shipped defaults only. Beside it, **`simple3d_config.local.json`**
+  holds what this installation does differently; the two are merged on read, key
+  by key, local winning, and the window writes only the local one. It is
+  gitignored, it is created for you on the first close, and deleting a key from
+  it goes back to the shipped default. Improvements to the shared defaults still
+  reach you, because the base file is still the one being updated. The one path
+  that cannot live in a config — `S3D_ScriptDir`, which is what *finds* the
+  config — can now come from your own Allegro environment file instead:
+  `set SIMPLE3D_DIR = d:/…/Simple3D` in `%HOME%\pcbenv\env`, with the literal in
+  `simple3d.il` left as the fallback.
+  / **Ваши настройки больше не лежат в отслеживаемом файле.**
+  `simple3d_config.json` был и под контролем версий, и переписывался окном при
+  каждом закрытии — обновление не могло не конфликтовать с вашими папками
+  моделей, а в каждый коммит попадало чьё-то положение окна. Теперь в нём только
+  поставляемые умолчания. Рядом — **`simple3d_config.local.json`** с тем, что
+  отличается у этой установки; при чтении они сливаются ключ за ключом, локальный
+  побеждает, и окно пишет только его. Он в `.gitignore`, создаётся сам при первом
+  закрытии, а удаление ключа из него возвращает поставляемое значение. Улучшения
+  общих умолчаний при этом продолжают доходить, потому что обновляется по-прежнему
+  базовый файл. Единственный путь, которому в конфиге места нет, — `S3D_ScriptDir`,
+  который сам этот конфиг и находит, — теперь можно задать в своём файле окружения
+  Allegro: `set SIMPLE3D_DIR = d:/…/Simple3D` в `%HOME%\pcbenv\env`; значение в
+  `simple3d.il` остаётся запасным.
+
 - **2026-08-04** — **The window goes inert while it builds, and Generate
   becomes Cancel.** Every control stayed live during a build: paths, colors and
   checkboxes could be changed under a build that had already taken its snapshot

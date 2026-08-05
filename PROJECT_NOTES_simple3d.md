@@ -2906,6 +2906,69 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-05 (round 58) — settings out of the tracked file
+
+The user, thinking about pulling updates from GitLab: the absolute paths - the
+model library and where the scripts live - sit in files git tracks, and an
+update would walk over them.
+
+**The problem was bigger than the two lines, and saying so was the useful part
+of the answer.** `simple3d_config.json` is not merely a tracked file with a path
+in it: **the window rewrites it on every close** - window geometry, last paths,
+colours. A tracked file that the tool itself edits every session conflicts on
+every update whatever the user does, and every commit carries someone's window
+position. Their own workflow hid it: they hand-copy into an install, so the file
+git sees is not the file the window writes. The moment that copy step ran the
+other way, their settings would go.
+
+### What was built (their choice of the five offered)
+
+**A local file over the tracked one.** `simple3d_config.json` = shipped
+defaults, still tracked, still the thing that gets improved. `simple3d_config.
+local.json` = this installation's overrides, gitignored. Merged on read, key by
+key, local winning; **the window writes only the local file**. Both halves merge
+identically - `s3dJsonMerge` in SKILL, `_merge_config` in Python - and
+`tests/test_config_merge.py` runs the two over the same ten cases and compares
+them, because a merge that disagrees between the halves is a setting that
+applies in one and not the other.
+
+Three decisions inside it:
+
+- **Objects merge; anything else is replaced whole.** A list that could only be
+  extended is a list you cannot shorten - the local file has to be able to say
+  "only this one folder".
+- **Presence of a key decides, never truthiness.** JSON `false` parses to nil in
+  the SKILL reader, so `when( value ... )` would silently drop exactly the
+  overrides that switch something off. Same trap as `defineAlwaysExportProp`
+  two rounds ago, and it now has a test each side.
+- **The "never write a file you did not understand" rule had to be said twice.**
+  The window now validates one file and writes a different one, so a local file
+  hand-edited into invalid JSON needed its own guard - it holds the user's
+  settings, and overwriting it with whatever the widgets happen to show is the
+  exact failure the original rule exists to prevent. Refusing on the BASE file
+  too is deliberate: with it unreadable the widgets hold defaults, and writing
+  those as local overrides would mask the base permanently once repaired.
+
+**And `S3D_ScriptDir` from the Allegro environment**: `axlGetVariable(
+"SIMPLE3D_DIR" )`, read in the user's own `pcbenv/env`, with the literal left as
+the fallback so an install that works keeps working. It cannot move into the
+config - it is what finds the config - and a SKILL file cannot ask where it was
+loaded from, at least not through anything in the verified API list. The
+resolution had to move ABOVE the `s3dLoadSettings()` call, which meant moving
+that call: reading the settings before the folder is settled reads the wrong
+file.
+
+### The tests moved, and that was the point
+
+Four suites asserted that settings land in the tracked file. They now assert the
+opposite, which is the stronger claim: **the tracked file is byte-identical
+after a save**. Two of them also needed the leftover local file deleted at
+start-up - it survives a run, and a fixture that quietly inherits the previous
+run's answer is worse than one that fails.
+
+**Not verified in Allegro yet**: the SKILL merge and `SIMPLE3D_DIR` on a live
+board. The Python half and both merges are covered by tests; 21 suites green.
+
 ## Update 2026-08-04 (round 57) — the window while it works
 
 The user: pressing Generate leaves every control available, and they should not

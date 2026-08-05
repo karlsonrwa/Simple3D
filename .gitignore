@@ -215,6 +215,14 @@ __marimo__/
 signoise.run/
 *.dbg
 
+# THIS INSTALLATION's settings. simple3d_config.json is tracked and holds the
+# shipped defaults; this one holds whatever you do differently - the model
+# folders above all - and is merged over the defaults on read. Keeping it out
+# of git is the point: an update can then never conflict with your paths or
+# overwrite them, and your window position never lands in a commit.
+simple3d_config.local.json
+simple3d_config.local.json.tmp
+
 # Scratch files this tool itself writes into the design folder.
 # (simple3d_crash.log is already covered by the *.log rule above.)
 _simple3d_launch.bat

@@ -101,9 +101,22 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/makeVariant3dIntermediates.il")
 load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 ```
 
-`File → Export → Simple 3D` appears. One setting stays in `simple3d.il` and has
-to match where you put the files: **`S3D_ScriptDir`**. It cannot move into the
-config, because it is what finds the config.
+`File → Export → Simple 3D` appears.
+
+**Where you put the files is the one thing the tool cannot work out for
+itself** — `S3D_ScriptDir` finds the config, so it cannot live in the config,
+and a SKILL file has no way to ask where it was loaded from. Set it in **your
+own Allegro environment file** (`%HOME%\pcbenv\env`), which no update ever
+touches:
+
+```
+set SIMPLE3D_DIR = d:/Projects/OrCAD/Scripts/Simple3D
+```
+
+The literal at the top of `simple3d.il` stays as the fallback, so an install
+that already works keeps working with nothing set. Editing it there instead is
+fine — but that file is under version control, so the next update will bring its
+own value back.
 
 ## The window
 
@@ -138,14 +151,25 @@ through — *Not stitched*, which fuses nothing, or a coarser fold slice angle.
 
 Everything lives in **`simple3d_config.json`**, beside the two `.il` files.
 Both halves read it: SKILL takes `allegro`, the window takes `gui`, the exporter
-takes `silkscreen` and `settings`. The window writes its own section back when
-it closes, so what you last set is what the next run starts with.
+takes `silkscreen` and `settings`.
 
-**If that file cannot be read — missing, or edited into invalid JSON — nothing
-is written back for the rest of the session**, even if you repair it while the
-window is open. The fields on screen are defaults at that point, not your
-settings, and saving them would overwrite the file you just fixed. The log says
-which file was read and whether it parsed, on every start.
+**Two files, and only one of them is yours.** `simple3d_config.json` is under
+version control and holds the shipped defaults. Beside it,
+**`simple3d_config.local.json`** holds whatever this installation does
+differently — your model folders above all. The two are merged on read, key by
+key, with the local one winning, and **the window writes only the local file**.
+
+That is what makes an update safe: pulling a new version can neither conflict
+with your paths nor overwrite them, improvements to the shared defaults still
+reach you, and your absolute paths and window position never land in a commit.
+You do not have to create it — the window writes one the first time it closes.
+To go back to a shipped default, delete that key from the local file.
+
+**If either file cannot be read — missing, or edited into invalid JSON —
+nothing is written back for the rest of the session**, even if you repair it
+while the window is open. The fields on screen are defaults at that point, not
+your settings, and saving them would overwrite the file you just fixed. The log
+names both files on every start.
 
 The keys worth setting by hand — the rest mirror controls in the window:
 
@@ -618,9 +642,21 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/makeVariant3dIntermediates.il")
 load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 ```
 
-Появится `File → Export → Simple 3D`. Одна настройка остаётся в `simple3d.il` и
-должна совпадать с тем, куда вы положили файлы: **`S3D_ScriptDir`**. В конфиг её
-перенести нельзя — именно она находит конфиг.
+Появится `File → Export → Simple 3D`.
+
+**Куда вы положили файлы — единственное, что инструмент не может выяснить сам.**
+`S3D_ScriptDir` находит конфиг, поэтому в конфиге жить не может, а SKILL-файл не
+имеет способа спросить, откуда его загрузили. Задайте её в **своём файле
+окружения Allegro** (`%HOME%\pcbenv\env`), которого обновления не касаются
+никогда:
+
+```
+set SIMPLE3D_DIR = d:/Projects/OrCAD/Scripts/Simple3D
+```
+
+Значение в начале `simple3d.il` остаётся запасным, поэтому уже работающая
+установка продолжит работать, ничего не задавая. Править прямо там тоже можно —
+но этот файл под контролем версий, и следующее обновление вернёт своё значение.
 
 ## Окно программы
 
@@ -656,14 +692,25 @@ stitched*, которая ничего не сшивает, или более г
 
 Всё лежит в **`simple3d_config.json`** рядом с двумя `.il`. Читают обе
 половины: SKILL берёт секцию `allegro`, окно — `gui`, экспортёр — `silkscreen`
-и `settings`. Окно записывает свою секцию при закрытии, поэтому следующий
-запуск начинается с того, на чём вы остановились.
+и `settings`.
 
-**Если файл не читается — его нет или он отредактирован в невалидный JSON —
-ничего не записывается до конца сессии**, даже если вы почините его при
+**Файлов два, и ваш из них только один.** `simple3d_config.json` под контролем
+версий и содержит поставляемые умолчания. Рядом с ним
+**`simple3d_config.local.json`** содержит то, что отличается именно у этой
+установки, — прежде всего ваши папки с моделями. При чтении они сливаются ключ
+за ключом, локальный побеждает, и **окно пишет только локальный файл**.
+
+Это и делает обновление безопасным: новая версия не может ни конфликтовать с
+вашими путями, ни затереть их, улучшения общих умолчаний до вас по-прежнему
+доходят, а абсолютные пути и положение окна не попадают в коммиты. Создавать
+файл руками не нужно — окно напишет его при первом закрытии. Чтобы вернуть
+поставляемое значение, удалите этот ключ из локального файла.
+
+**Если не читается любой из двух — его нет или он отредактирован в невалидный
+JSON — ничего не записывается до конца сессии**, даже если вы почините его при
 открытом окне. Поля на экране в этот момент содержат значения по умолчанию, а не
 ваши настройки, и их запись затёрла бы только что исправленный файл. Лог при
-каждом старте говорит, какой файл прочитан и разобрался ли он.
+каждом старте называет оба файла.
 
 Ключи, которые имеет смысл править руками, — остальные повторяют элементы окна:
 

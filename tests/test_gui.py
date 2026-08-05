@@ -24,6 +24,12 @@ TMP = _OUT / "cfgtest"
 TMP.mkdir(exist_ok=True)
 cfg = TMP / "simple3d_config.json"
 shutil.copy(ROOT / "simple3d_config.json", cfg)
+# The window writes the LOCAL file, which survives the run. Copying a fresh
+# base while leaving it behind would start every run from the last one's
+# leftovers - and it does not fail loudly, it just quietly answers a different
+# question than the one each case asks.
+for stale in TMP.glob("*.local.json"):
+    stale.unlink()
 
 fails = []
 def check(name, cond, detail=""):
@@ -71,10 +77,35 @@ try:
 except ValueError:
     check("bad hex raises ValueError", True)
 
-print("\n[3] config round-trip preserves every section and comment key")
-before = json.loads(cfg.read_text(encoding="utf-8"))
+print("\n[3] the tracked file is never written; settings go to the local one")
+# The tracked file holds the shipped defaults and is under version control,
+# while this window rewrites its settings every time it closes - a combination
+# that guaranteed a conflict on every update and someone else's window position
+# in every commit. It writes simple3d_config.local.json instead, which is
+# merged over the defaults on read.
+raw_before = cfg.read_text(encoding="utf-8")
+before = json.loads(raw_before)
+local_cfg = cfg.with_name(cfg.stem + ".local" + cfg.suffix)
 app.rim_choice.set(RIM_CUSTOM); app.rim_custom.set("#123456")
 app._save_config()
+check("the tracked file is byte-identical",
+      cfg.read_text(encoding="utf-8") == raw_before)
+check("the local file was created", local_cfg.exists())
+local = json.loads(local_cfg.read_text(encoding="utf-8"))
+check("the edited value is in the local file",
+      local["gui"]["boardEdgeCustom"] == "#123456",
+      str(local["gui"].get("boardEdgeCustom")))
+check("and the file says what it is", "_comment" in local)
+
+# Read back through a fresh window: the merge is what the tool actually sees.
+app_m = StepBuilderApp(cfg); app_m.withdraw()
+check("the local value wins on read", app_m.rim_custom.get() == "#123456",
+      app_m.rim_custom.get())
+check("a default the local file does not mention still arrives",
+      app_m.silk_color.get() == before["gui"]["silkColor"], app_m.silk_color.get())
+app_m.destroy()
+
+# The sections the SKILL half reads live in the base file and stay there.
 after = json.loads(cfg.read_text(encoding="utf-8"))
 check("all four sections survive", sorted(after) == sorted(before),
       f"{sorted(before)} -> {sorted(after)}")
@@ -82,10 +113,8 @@ check("silkscreen layer lists intact", after["silkscreen"] == before["silkscreen
 check("allegro section intact", after["allegro"] == before["allegro"])
 check("settings section intact", after["settings"] == before["settings"])
 comments = [k for k in before["gui"] if k.startswith("_comment")]
-check(f"comment keys kept ({len(comments)})",
+check(f"comment keys kept in the defaults ({len(comments)})",
       all(k in after["gui"] for k in comments))
-check("edited value written", after["gui"]["boardEdgeCustom"] == "#123456",
-      after["gui"].get("boardEdgeCustom"))
 
 print("\n[4] a config that was unreadable at load is never written")
 bad = TMP / "broken.json"
@@ -96,6 +125,31 @@ check("load flagged a problem", app2._config_problem is not None)
 app2._save_config()
 check("broken file left byte-identical", bad.read_text(encoding="utf-8") == raw_before)
 app2.destroy()
+
+print("\n[4b] a LOCAL file that will not parse is never written over either")
+# The same rule as the base file, and it has to be said twice because the
+# window now writes a different file from the one it validates first. A local
+# file someone hand-edited into invalid JSON holds their settings: overwriting
+# it with what the widgets happen to show would destroy exactly the file the
+# rule exists to protect.
+pair_base = TMP / "pair.json"
+pair_local = TMP / "pair.local.json"
+pair_base.write_text(json.dumps({"gui": {"silkColor": "Black"}}), encoding="utf-8")
+pair_local.write_text("{ half an edit", encoding="utf-8")
+raw_local = pair_local.read_text(encoding="utf-8")
+app5 = StepBuilderApp(pair_base); app5.withdraw()
+check("the base still loads", app5._config_problem is None, str(app5._config_problem))
+check("the broken local one is reported", app5._local_problem is not None)
+app5._save_config()
+check("and left byte-identical", pair_local.read_text(encoding="utf-8") == raw_local)
+app5.destroy()
+
+# Repaired, it applies and is written normally.
+pair_local.write_text(json.dumps({"gui": {"silkColor": "White"}}), encoding="utf-8")
+app6 = StepBuilderApp(pair_base); app6.withdraw()
+check("a repaired local file loads", app6._local_problem is None)
+check("and overrides the base", app6.silk_color.get() == "White", app6.silk_color.get())
+app6.destroy()
 
 print("\n[5] STEP folders: ordered multi-line search path")
 app.set_step_dirs(["d:/lib/a", "d:/lib/b"])
@@ -113,7 +167,7 @@ check("snapshot carries a tuple", isinstance(app._snapshot().step_dirs, tuple))
 print("\n[6] config: stepDirs written, the superseded stepDir is removed")
 app.set_step_dirs(["d:/first", "d:/second"])
 app._save_config()
-saved = json.loads(cfg.read_text(encoding="utf-8"))["gui"]
+saved = json.loads(local_cfg.read_text(encoding="utf-8"))["gui"]
 check("stepDirs written as a list", saved["stepDirs"] == ["d:/first", "d:/second"],
       str(saved.get("stepDirs")))
 check("stepDir gone from the file", "stepDir" not in saved,
@@ -127,12 +181,16 @@ app3 = StepBuilderApp(legacy); app3.withdraw()
 check("single stepDir becomes a one-entry list",
       app3.step_dirs() == ["d:/legacy/lib"], str(app3.step_dirs()))
 app3._save_config()
-after = json.loads(legacy.read_text(encoding="utf-8"))
-check("migrated into stepDirs", after["gui"]["stepDirs"] == ["d:/legacy/lib"],
-      str(after["gui"].get("stepDirs")))
-check("old key dropped", "stepDir" not in after["gui"], str(after["gui"].keys()))
-check("other sections untouched by the migration", after["settings"] == {"keepMe": 1},
-      str(after.get("settings")))
+legacy_local = legacy.with_name(legacy.stem + ".local" + legacy.suffix)
+written = json.loads(legacy_local.read_text(encoding="utf-8"))
+check("migrated into stepDirs", written["gui"]["stepDirs"] == ["d:/legacy/lib"],
+      str(written["gui"].get("stepDirs")))
+check("old key dropped from what is written",
+      "stepDir" not in written["gui"], str(written["gui"].keys()))
+# The old key stays in the base file, because nothing writes that file any
+# more. Harmless: it is migrated again on every read and stepDirs wins.
+check("the legacy file itself is untouched",
+      json.loads(legacy.read_text(encoding="utf-8"))["settings"] == {"keepMe": 1})
 app3.destroy()
 app3b = StepBuilderApp(legacy); app3b.withdraw()
 check("setting survives the reopen", app3b.step_dirs() == ["d:/legacy/lib"],
@@ -159,7 +217,7 @@ check("swatches greyed in any other mode",
 app.board_mode.set(_mode_label("layers"))
 app.layer_colors["copper"] = (1, 2, 3)
 app._save_config()
-g = json.loads(cfg.read_text(encoding="utf-8"))["gui"]
+g = json.loads(local_cfg.read_text(encoding="utf-8"))["gui"]
 check("boardMode saved as the key", g["boardMode"] == "layers", str(g.get("boardMode")))
 check("layerColors saved as hex", g["layerColors"]["copper"] == "#010203",
       str(g["layerColors"].get("copper")))
@@ -182,7 +240,7 @@ check("on by default - a board with bend areas is meant to be seen folded",
 check("the snapshot carries it", app._snapshot().fold_bends is True)
 app.fold_bends.set(False)
 app._save_config()
-g = json.loads(cfg.read_text(encoding="utf-8"))["gui"]
+g = json.loads(local_cfg.read_text(encoding="utf-8"))["gui"]
 check("saved to the config", g["foldBends"] is False, str(g.get("foldBends")))
 app7 = StepBuilderApp(cfg); app7.withdraw()
 check("and survives a reopen", app7.fold_bends.get() is False)

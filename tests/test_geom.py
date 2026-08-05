@@ -33,6 +33,12 @@ def parse(g):
 
 def make(cfgdata, name):
     p = TMP/name; p.write_text(json.dumps(cfgdata), encoding="utf-8")
+    # The window writes a LOCAL file beside the one it is given, and that file
+    # outlives the run. Left in place it would carry one case's geometry into
+    # the next one's fixture - each case here states its own starting point and
+    # must get it.
+    local = p.with_name(p.stem + ".local" + p.suffix)
+    local.unlink(missing_ok=True)
     a = StepBuilderApp(p)
     a.deiconify(); a.update()
     return a, p
@@ -63,7 +69,9 @@ print("\n[3] closing writes the geometry back")
 app,p = make({"gui": {}}, "write.json")
 app.geometry("880x640+210+90"); app.update()
 app._save_config()
-g = json.loads(p.read_text(encoding="utf-8"))["gui"]
+# The window writes the LOCAL file now; the tracked one is defaults only.
+local = p.with_name(p.stem + ".local" + p.suffix)
+g = json.loads(local.read_text(encoding="utf-8"))["gui"]
 check("windowGeometry written", g.get("windowGeometry") == "880x640+210+90",
       str(g.get("windowGeometry")))
 check("windowState written", g.get("windowState") == "normal", str(g.get("windowState")))
@@ -107,7 +115,9 @@ app,p = make({"gui": {}}, "zoom.json")
 app.geometry("870x630+240+140"); app.update()
 app.state("zoomed"); app.update()
 app._save_config()
-g = json.loads(p.read_text(encoding="utf-8"))["gui"]
+# The window writes the LOCAL file now; the tracked one is defaults only.
+local = p.with_name(p.stem + ".local" + p.suffix)
+g = json.loads(local.read_text(encoding="utf-8"))["gui"]
 check("state saved as zoomed", g.get("windowState") == "zoomed", str(g.get("windowState")))
 check("geometry is the restored rect, not the maximized one",
       g.get("windowGeometry") == "870x630+240+140", str(g.get("windowGeometry")))
