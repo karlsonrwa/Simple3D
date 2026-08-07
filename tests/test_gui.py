@@ -96,6 +96,16 @@ check("the edited value is in the local file",
       local["gui"]["boardEdgeCustom"] == "#123456",
       str(local["gui"].get("boardEdgeCustom")))
 check("and the file says what it is", "_comment" in local)
+# Only the DEVIATIONS. Writing the whole section would pin every key at
+# whatever this installation had on the day, and an improved default upstream
+# could then never reach it - half the reason for splitting the file.
+check("a value equal to the shipped default is not written",
+      "silkColor" not in local["gui"],
+      str(sorted(local["gui"])))
+check("only what differs is", set(local["gui"]) <= {"boardEdge", "boardEdgeCustom",
+                                                   "windowGeometry", "windowState",
+                                                   "jsonFile", "outputDir", "stepDirs"},
+      str(sorted(local["gui"])))
 
 # Read back through a fresh window: the merge is what the tool actually sees.
 app_m = StepBuilderApp(cfg); app_m.withdraw()

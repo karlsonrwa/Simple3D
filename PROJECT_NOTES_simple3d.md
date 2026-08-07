@@ -2906,6 +2906,58 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-05 (round 59) — the last paths out, and a review of the whole
+
+The user, on reading round 58: if there is an env variable now, **why are the
+absolute paths still in the .il files?** Fair, and the answer was "because I
+left a fallback", which is not good enough - a fallback in a tracked file is
+still one installation's path shipped to everyone.
+
+**Six places held one, and only one of them mattered.** `simple3d.il` had the
+`S3D_ScriptDir` literal (the real one), two `load()` examples and the
+`SIMPLE3D_DIR` example in comments; `simple3d_config.json` had `gui.stepDirs`;
+`tools/s3d_userprop_test.il` had a `load()` example. The literal is now `""`,
+the config ships `[]`, and the examples say `d:/Tools/Simple3D` - obviously an
+example rather than someone's disk.
+
+**Two sources, in order, and a refusal.** `SIMPLE3D_DIR` first, because someone
+who sets it means it. Then the folder this file was loaded from, captured at
+load with `get_filename( piport )` - core-SKILL names this project has not
+verified, so it is wrapped in `errset` and can only ever be the SECOND answer.
+When neither answers, the export prints what to set and stops: it would not
+find its own Python package anyway, and every later failure would be less
+obvious than this one. `s3dFolderOf` cuts the folder by SCANNING for the last
+separator rather than with `parseString`, for the round-47b reason - parseString
+collapses separators and would turn a UNC path into a relative one.
+
+### What the review turned up
+
+Read: everything that changed since round 53, plus a pass over the load-time
+statements of both `.il` files (they define and assign, nothing else - the
+round-54 rule holds). Two real findings, both fixed:
+
+- **The local settings file was accumulating the WHOLE `gui` section.** It
+  worked, but it pinned every key at whatever the installation had on the day,
+  so an improved default upstream could never reach it again - which is half of
+  what splitting the file was for. It now writes **only what differs from the
+  shipped default**, which also means setting a value back to the default
+  removes it from the local file rather than freezing today's value forever.
+- **`_freeze_inputs` could be entered twice**, and the second entry would record
+  "disabled" as the state to restore - leaving the window dead after the build.
+  Nothing reaches it today (a second Generate cannot start while a worker is
+  alive), and the guard is one comparison.
+
+Everything else came back clean: 21 suites, pyflakes over `stepbuilder`,
+`tools` and `tests`, the four SKILL checks, the docs audit, and a grep for
+TODO/FIXME markers (none outside a comment about `\uXXXX`).
+
+### The one-time step for an existing install
+
+The tracked config no longer names a model folder, so an installation that
+copies the new file over the old one and has no local file yet will have to
+set **STEP files** once in the window. Closing it writes
+`simple3d_config.local.json`, and it never has to be done again.
+
 ## Update 2026-08-05 (round 58) — settings out of the tracked file
 
 The user, thinking about pulling updates from GitLab: the absolute paths - the

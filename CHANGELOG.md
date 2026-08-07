@@ -11,6 +11,28 @@ to use the tool.
 
 ---
 
+- **2026-08-05** — **No absolute path is written into any shipped file.** The
+  last two were `S3D_ScriptDir` in `simple3d.il` and the model folder in
+  `simple3d_config.json`; both were one installation's path shipped to everyone
+  and overwritten in everyone's working copy by the next update. Where the tool
+  is installed now comes from `SIMPLE3D_DIR` in your own `pcbenv/env`, or from
+  the folder `simple3d.il` was loaded from, and the console says which answered;
+  when neither does, the export refuses to run rather than guessing. Model
+  folders go in the window or in `simple3d_config.local.json`, which the window
+  now writes **only where a value differs from the shipped default** — so
+  setting one back to the default removes it again, and an improved default
+  still reaches you.
+  / **Ни одного абсолютного пути в поставляемых файлах.** Последними оставались
+  `S3D_ScriptDir` в `simple3d.il` и папка моделей в `simple3d_config.json` —
+  оба были путём одной установки, разосланным всем и затираемым в каждой рабочей
+  копии очередным обновлением. Где установлен инструмент, теперь берётся из
+  `SIMPLE3D_DIR` в вашем `pcbenv/env` либо из папки, откуда загружен
+  `simple3d.il`; консоль называет сработавший источник, а если не ответил ни
+  один — экспорт честно отказывается работать, вместо того чтобы гадать. Папки
+  моделей задаются в окне или в `simple3d_config.local.json`, куда окно теперь
+  пишет **только то, что отличается от поставляемого умолчания**: возврат
+  значения к умолчанию убирает ключ, а улучшенное умолчание по-прежнему доходит.
+
 - **2026-08-05** — **Your settings no longer live in a tracked file.**
   `simple3d_config.json` is under version control *and* was rewritten by the
   window on every close, so an update could not help but conflict with your

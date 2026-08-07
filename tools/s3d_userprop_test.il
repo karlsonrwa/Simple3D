@@ -13,7 +13,7 @@
 ;  which is what the exporter reads with - hand it back afterwards?
 ;
 ;  Usage:
-;      load("d:/Projects/OrCAD/Scripts/Simple3D/tools/s3d_userprop_test.il")
+;      load("d:/Tools/Simple3D/tools/s3d_userprop_test.il")
 ;
 ;      s3dPropDict()                  ; what user properties exist now
 ;      s3dPropShow( "A4" )            ; every property on that symbol today

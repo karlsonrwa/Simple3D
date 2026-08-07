@@ -110,10 +110,12 @@ queued folder builds it.
 - Read the Allegro console (warnings orange, errors red) and the window's log.
   The line `Settings loaded from …` confirms the settings were read.
 - **Your settings live in `simple3d_config.local.json`**, beside the tracked
-  `simple3d_config.json`. The window writes only the local one and it is not
-  in git, so an update cannot conflict with your model folders or overwrite
-  them. Where the tool itself is installed is the exception - put
-  `set SIMPLE3D_DIR = …` in your own `pcbenv\env`.
+  `simple3d_config.json`. The window writes only the local one, only what
+  differs from the shipped default, and it is not in git - so an update can
+  neither conflict with your model folders nor overwrite them. **No path is
+  written into the shipped files at all**: where the tool is installed comes
+  from `set SIMPLE3D_DIR = …` in your own `pcbenv\env`, or from the folder
+  `simple3d.il` was loaded from. The console says which.
 - Python 3.10 or newer and the `cadquery-ocp` package (OpenCASCADE) are
   required. Before opening the window the script checks the interpreter and says
   so if something is missing.
@@ -235,10 +237,12 @@ queued folder builds it.
 - Смотрите консоль Allegro (предупреждения — оранжевым, ошибки — красным) и лог
   в окне. Строка `Settings loaded from …` подтверждает, что настройки прочитаны.
 - **Ваши настройки лежат в `simple3d_config.local.json`** рядом с отслеживаемым
-  `simple3d_config.json`. Окно пишет только локальный файл, и его нет в git —
-  поэтому обновление не может ни конфликтовать с вашими папками моделей, ни
-  затереть их. Исключение — где установлен сам инструмент: для этого
-  `set SIMPLE3D_DIR = …` в вашем `pcbenv\env`.
+  `simple3d_config.json`. Окно пишет только локальный файл и только то, что
+  отличается от поставляемого умолчания, и его нет в git — поэтому обновление
+  не может ни конфликтовать с вашими папками моделей, ни затереть их. **В
+  поставляемых файлах путей нет вообще**: где установлен инструмент, берётся
+  из `set SIMPLE3D_DIR = …` в вашем `pcbenv\env` либо из папки, откуда
+  загружен `simple3d.il`. Консоль говорит, что сработало.
 - Нужен Python 3.10 или новее и пакет `cadquery-ocp` (OpenCASCADE). Перед
   запуском GUI скрипт проверяет интерпретатор и сообщает, если чего-то нет.
 - Если окно исчезло во время сборки — упал OpenCASCADE, а не Simple 3D: окно

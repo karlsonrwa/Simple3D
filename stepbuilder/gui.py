@@ -1187,7 +1187,14 @@ class StepBuilderApp(tk.Tk):
         The log stays enabled: a build is precisely when someone wants to read
         and scroll it. The action button stays live too - it is the Cancel
         button while the build runs.
+
+        Freezing twice would record "disabled" as the state to restore and
+        leave the window dead after the build. Nothing does that today - a
+        second Generate cannot start while a worker is alive - but the cost of
+        being sure is one comparison.
         """
+        if self._frozen:
+            return
         self._frozen = {}
         # A tk.Text refuses edits when disabled but keeps its white field, and
         # a Canvas swatch keeps its colour whatever its state - so both go on
@@ -1541,6 +1548,22 @@ class StepBuilderApp(tk.Tk):
         if not self._paths_from_launcher:
             gui["jsonFile"] = self.json_file.get()
             gui["outputDir"] = self.output_dir.get()
+
+        # ONLY WHAT DIFFERS FROM THE SHIPPED DEFAULT is kept. Writing the whole
+        # section would work, but it would pin every key at whatever this
+        # installation happened to have on the day - and then an improved
+        # default upstream could never reach it again, which is half of what
+        # the split was for. It also means setting a value back to the shipped
+        # one REMOVES it here, rather than freezing today's default forever.
+        #
+        # Keys the base does not mention are kept as they are: they are either
+        # ours and new, or someone else's and none of our business.
+        base, problem = self._read_config_file()
+        base_gui = base.get("gui") if problem is None else None
+        if isinstance(base_gui, dict):
+            gui = {key: value for key, value in gui.items()
+                   if key.startswith("_comment")
+                   or key not in base_gui or base_gui[key] != value}
         data["gui"] = gui
         # A note for whoever opens the file wondering what it is. Written only
         # when the file is being created, so it cannot fight a hand edit.
