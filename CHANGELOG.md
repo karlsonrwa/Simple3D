@@ -11,6 +11,36 @@ to use the tool.
 
 ---
 
+- **2026-08-07** — **The docs said *Body stitching* worked on rigid-flex boards
+  only. It works on every board**, and has since 2026-07-25: an ordinary board
+  has no zones, so its outline becomes one implicit zone on its single stackup
+  and all three modes apply — *Solid colored layers* shows the stack on the rim
+  of a plain two-layer board exactly as it does on a flex one. The two non-solid
+  modes need the stackup layers, so an intermediate written by an older version
+  says so in the log and falls back to one solid. The same wrong claim sat in
+  `simple3d_config.json`, in `--board-mode --help` and in the builder's own
+  docstring; all four are corrected. Found while checking the rest of the docs
+  against the code, and also fixed: the ZIP-install note named the retired
+  `S3D_ScriptDir` rather than `SIMPLE3D_DIR`; `settings.negativeLayers` matches
+  a **substring**, not a prefix; the intermediate goes beside the `.brd` when
+  there is no `cad` folder; and a part absent from a variant list is left out
+  unless it carries `ALWAYS_STEP_EXPORT`. `QUICKSTART.md` says the same in
+  fewer words.
+  / **В документации было написано, что *Body stitching* работает только на
+  rigid-flex. Он работает на любой плате**, и так с 2026-07-25: у обычной платы
+  зон нет, поэтому её контур становится одной неявной зоной на единственном
+  стекапе и применимы все три режима — *Solid colored layers* показывает стек на
+  торце обычной двухслойки ровно так же, как на флексе. Двум режимам, кроме
+  `Solid`, нужны слои стека, поэтому интермедиат от старой версии сообщает об
+  этом в логе и собирается одним телом. То же неверное утверждение стояло в
+  `simple3d_config.json`, в `--board-mode --help` и в докстринге сборщика —
+  исправлены все четыре. Найдено при сверке остальной документации с кодом и
+  тоже исправлено: в заметке про установку из ZIP упоминался снятый
+  `S3D_ScriptDir` вместо `SIMPLE3D_DIR`; `settings.negativeLayers` сравнивается
+  как **подстрока**, а не префикс; интермедиат пишется рядом с `.brd`, если папки
+  `cad` нет; деталь, отсутствующую в списке варианта, оставляет только
+  `ALWAYS_STEP_EXPORT`. `QUICKSTART.md` говорит то же самое короче.
+
 - **2026-08-05** — **No absolute path is written into any shipped file.** The
   last two were `S3D_ScriptDir` in `simple3d.il` and the model folder in
   `simple3d_config.json`; both were one installation's path shipped to everyone

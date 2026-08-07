@@ -256,10 +256,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--board-mode", choices=["solid", "layers", "inspect"], default="solid",
-        help="multi-stackup boards only. solid: one solid, one color "
-             "(default, smallest). layers: one solid whose faces are colored "
-             "by layer kind, so the rim shows the stack. inspect: every layer "
-             "a separate named part",
+        help="how the board body is built, on any board. solid: one solid, one "
+             "color (default, smallest). layers: one solid whose faces are "
+             "colored by layer kind, so the rim shows the stack. inspect: every "
+             "layer a separate named part. The last two need the stackup layers "
+             "in the JSON",
     )
     parser.add_argument(
         "--no-minimize", action="store_true",
