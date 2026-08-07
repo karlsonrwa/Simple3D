@@ -16,9 +16,13 @@
 ;  simple3d_config.json, next to these two files - see S3D_ConfigFile.
 ;
 ;  LOAD ORDER (e.g. from allegro.ilinit or manually). The whole tool lives in
-;  ONE folder, so both loads share the same base - match it to S3D_ScriptDir:
-;      load("d:/Projects/OrCAD/Scripts/Simple3D/makeVariant3dIntermediates.il")  ; incl. fixes + MFRPN helpers
-;      load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")                    ; this file
+;  ONE folder; put yours in place of the example below:
+;      load("d:/Tools/Simple3D/makeVariant3dIntermediates.il")  ; incl. fixes + MFRPN helpers
+;      load("d:/Tools/Simple3D/simple3d.il")                    ; this file
+;
+;  Nothing in these files needs editing to match. Where the tool is installed
+;  comes from the Allegro variable SIMPLE3D_DIR (in your own pcbenv/env), or
+;  from the folder this file was loaded from - see s3dResolveScriptDir.
 ;
 ;  Follows the menu-insertion idiom from the user's own addeskd_v30.il
 ;  (idempotent find/insert + menu trigger + TriggerClear before TriggerSet).
@@ -29,15 +33,15 @@
 ;=====================================================================
 ;  SETTINGS
 ;
-;  ONE setting lives here. Everything else is in simple3d_config.json, next to
-;  this file - Python paths, the model library, the menu label, every GUI
-;  default, and the silkscreen layer lists. Editing settings in three places
-;  (this file, the GUI's own store, the layer config) was the arrangement
-;  before; it is now one file that both halves of the tool read.
+;  NO setting needs editing here any more. Everything the user chooses is in
+;  simple3d_config.json (shipped defaults, tracked) with
+;  simple3d_config.local.json on top (yours, gitignored) - Python paths, the
+;  model library, the menu label, every GUI default and the silkscreen layer
+;  lists. Editing settings in three places was the arrangement before.
 ;
-;  Why this one cannot move: the config is found relative to the project
-;  folder, so the project folder has to be known before the config can be read.
-;  That is the whole bootstrap, and it is why S3D_ScriptDir stays in source.
+;  The one thing that cannot live in the config is where the tool itself is:
+;  the config is found relative to it. That comes from the environment or from
+;  the load path instead of from a literal - see s3dResolveScriptDir.
 ;
 ;  Plain assignment (=), NOT defvar: defvar only sets a value the first time
 ;  and is ignored on reload, so a user edit would silently not take effect.
@@ -45,12 +49,29 @@
 
 ; The Simple 3D project folder - the ONE folder that holds this whole tool:
 ; both .il files, simple3d_config.json AND the "stepbuilder" package sit here
-; together. Used to launch Python without depending on the current directory
-; (which is what caused the "No module named stepbuilder" error). This is the
-; single path to match to wherever you unpacked the project; the load() lines
-; in the header above use the same folder. If you named the folder something
-; other than "Simple3D", change it here (and in those two load lines).
-S3D_ScriptDir = "d:/Projects/OrCAD/Scripts/Simple3D"
+; together. It is needed for two things: the config is found relative to it,
+; and it is the working directory Python is started in, which is what makes
+; "-m stepbuilder" resolve.
+;
+; DELIBERATELY EMPTY, and no path belongs here. This file is under version
+; control, so a path written here is one installation's path shipped to
+; everyone and overwritten in everyone's working copy on the next update.
+; s3dResolveScriptDir fills it in, from - in order:
+;
+;   1. the Allegro variable SIMPLE3D_DIR, set in your own pcbenv/env;
+;   2. the folder this file was loaded from, when SKILL will say.
+;
+; If both come up empty the tool says so and does nothing, which is the honest
+; outcome: it cannot find its own Python package, and guessing would only move
+; the failure somewhere less obvious.
+S3D_ScriptDir = ""
+
+; Captured at LOAD time, while the port reading this file still exists - it is
+; the only moment SKILL can be asked. errset because `piport` and
+; `get_filename` are core-language names this project has not verified against
+; its Allegro; nil simply means the second source above is unavailable.
+S3D_LoadedFrom = nil
+errset( S3D_LoadedFrom = get_filename( piport ) )
 
 ; The settings file. Only change this if you deliberately keep the config
 ; somewhere other than the project folder. "" falls back to the built-in
@@ -155,32 +176,68 @@ procedure( s3dSlashes( t_path )
     )
 )
 
-; The project folder, taken from the Allegro environment when it is set there.
+; The folder part of a path, by SCANNING for the last separator.
 ;
-; WHY: this file is under version control, and S3D_ScriptDir is the one line
-; every installation has to change - so every update would either conflict with
-; it or overwrite it. An Allegro env variable lives in the user's own
-; pcbenv/env, which no update touches:
+; Not parseString: it collapses consecutive separators, so a UNC path
+; \\server\share\tools\x.il would come back as the relative server/share. The
+; same reason s3dDesignFolder in the exporter scans rather than splits.
+; Returns "" when there is no separator at all - a bare file name says nothing
+; about where it is, and pretending otherwise would point the tool at whatever
+; the working directory happens to be.
+procedure( s3dFolderOf( t_path )
+    let( ( ( cut 0 ) c )
+        unless( stringp( t_path )  t_path = "" )
+        for( i 1 strlen( t_path )
+            c = substring( t_path i 1 )
+            when( (c == "/") || (c == "\\")  cut = i )
+        )
+        if( cut > 1 then s3dSlashes( substring( t_path 1 cut - 1 ) ) else "" )
+    )
+)
+
+; Where this tool is installed. Two sources, in order, and no path in the file.
 ;
-;     set SIMPLE3D_DIR = d:/Projects/OrCAD/Scripts/Simple3D
+; 1. SIMPLE3D_DIR, an Allegro variable set in the user's own pcbenv/env:
 ;
-; The assignment at the top of this file stays as the fallback, so an install
-; that has always worked keeps working with nothing set anywhere.
+;        set SIMPLE3D_DIR = d:/Tools/Simple3D
 ;
-; S3D_ConfigFile is recomputed with it - but only if it is still the path
-; derived from the old folder. Someone who pointed it somewhere else by hand
-; meant it, and this must not quietly undo that.
+;    Explicit, per machine, and in a file no update touches. It wins, because
+;    someone who sets it means it.
+;
+; 2. The folder this file was loaded from, captured at load in S3D_LoadedFrom.
+;    Costs the user nothing when it works - the tool finds itself - but it
+;    depends on core-SKILL names this project has not verified in Allegro, so
+;    it can only ever be the second answer, never the only one.
+;
+; Nothing else. A literal here would be one installation's path shipped to
+; every other, and overwritten in every working copy by the next update - which
+; is the whole problem this replaced.
+;
+; S3D_ConfigFile follows the folder, but only while it is still the path
+; derived from it: someone who pointed it elsewhere by hand meant that.
 procedure( s3dResolveScriptDir()
-    let( ( value wasDefault )
+    let( ( value wasDefault ( source nil ) )
         wasDefault = (S3D_ConfigFile == strcat( S3D_ScriptDir "/simple3d_config.json" ))
+
         value = nil
         errset( value = axlGetVariable( "SIMPLE3D_DIR" ) )
-        when( stringp( value ) && (value != "")
+        if( stringp( value ) && (value != "") then
+            source = "SIMPLE3D_DIR"
+        else
+            value = s3dFolderOf( S3D_LoadedFrom )
+            when( value != ""  source = "the folder it was loaded from" )
+        )
+
+        when( source
             S3D_ScriptDir = s3dSlashes( value )
             when( wasDefault
                 S3D_ConfigFile = strcat( S3D_ScriptDir "/simple3d_config.json" )
             )
-            printf( "Simple 3D: script folder from SIMPLE3D_DIR: %s\n" S3D_ScriptDir )
+            printf( "Simple 3D: script folder from %s: %s\n" source S3D_ScriptDir )
+        )
+
+        unless( source
+            s3dWarn( "Simple 3D: I do not know where I am installed. Put   set SIMPLE3D_DIR = <folder holding simple3d.il>   in your pcbenv/env and reload. Nothing will run until then." )
         )
         S3D_ScriptDir
     )
@@ -441,6 +498,21 @@ procedure( s3dMeterOff()
 ; body's last value is NOT the result: every exit has to be an explicit return().
 procedure( s3dExportCommand()
     prog( ( designName designDir cadDir check noMfrPn noModel argTail pyOk )
+
+        ; The folder may have been set since this file loaded - and if it still
+        ; is not known, everything below would fail somewhere less obvious: the
+        ; config would not be found, and Python would be started in a directory
+        ; where "-m stepbuilder" means nothing.
+        errset( s3dResolveScriptDir() )
+        when( S3D_ScriptDir == ""
+            printf( "\n===== Simple 3D: I do not know where I am installed =====\n" )
+            printf( "Put this in your Allegro environment file (%%HOME%%/pcbenv/env):\n" )
+            printf( "    set SIMPLE3D_DIR = <the folder holding simple3d.il>\n" )
+            printf( "then reload the SKILL files or restart Allegro.\n" )
+            printf( "=========================================================\n\n" )
+            axlUIWPrint( nil "Simple 3D: SIMPLE3D_DIR is not set - see the console." )
+            return( nil )
+        )
 
         ; Pick up config edits without reloading the SKILL files.
         errset( s3dLoadSettings() )

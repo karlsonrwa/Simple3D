@@ -103,20 +103,33 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 
 `File → Export → Simple 3D` appears.
 
-**Where you put the files is the one thing the tool cannot work out for
-itself** — `S3D_ScriptDir` finds the config, so it cannot live in the config,
-and a SKILL file has no way to ask where it was loaded from. Set it in **your
-own Allegro environment file** (`%HOME%\pcbenv\env`), which no update ever
-touches:
+**Nothing in the shipped files needs editing to match your machine** — and that
+is deliberate: they are under version control, so a path written into one of
+them is one installation's path shipped to everyone, and overwritten in
+everyone's working copy by the next update.
 
-```
-set SIMPLE3D_DIR = d:/Projects/OrCAD/Scripts/Simple3D
-```
+Where the tool is installed is the one thing it cannot read from its own
+config, since that is what *finds* the config. It comes from, in order:
 
-The literal at the top of `simple3d.il` stays as the fallback, so an install
-that already works keeps working with nothing set. Editing it there instead is
-fine — but that file is under version control, so the next update will bring its
-own value back.
+1. **`SIMPLE3D_DIR`, in your own Allegro environment file** (`%HOME%\pcbenv\env`),
+   which no update touches:
+
+   ```
+   set SIMPLE3D_DIR = d:/Tools/Simple3D
+   ```
+
+2. **the folder `simple3d.il` was loaded from**, when SKILL will say. Costs you
+   nothing when it works; it is second because it rests on core-language names
+   this project has not verified against Allegro, so it can be a fallback and
+   never the only answer.
+
+The console names which one answered. If neither does, the tool says so and
+refuses to run rather than guessing — it would not find its own Python package
+anyway.
+
+**Your model folders go in the window** (*STEP files*), or in
+`simple3d_config.local.json`. The tracked config ships with none for the same
+reason.
 
 ## The window
 
@@ -644,19 +657,33 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 
 Появится `File → Export → Simple 3D`.
 
-**Куда вы положили файлы — единственное, что инструмент не может выяснить сам.**
-`S3D_ScriptDir` находит конфиг, поэтому в конфиге жить не может, а SKILL-файл не
-имеет способа спросить, откуда его загрузили. Задайте её в **своём файле
-окружения Allegro** (`%HOME%\pcbenv\env`), которого обновления не касаются
-никогда:
+**Ничего в поставляемых файлах править под свою машину не нужно** — и это
+намеренно: они под контролем версий, поэтому путь, вписанный в любой из них, —
+это путь одной установки, разосланный всем и затираемый в каждой рабочей копии
+следующим обновлением.
 
-```
-set SIMPLE3D_DIR = d:/Projects/OrCAD/Scripts/Simple3D
-```
+Где установлен сам инструмент — единственное, чего он не может прочитать из
+своего конфига, потому что именно этим конфиг и находится. Источники, по
+порядку:
 
-Значение в начале `simple3d.il` остаётся запасным, поэтому уже работающая
-установка продолжит работать, ничего не задавая. Править прямо там тоже можно —
-но этот файл под контролем версий, и следующее обновление вернёт своё значение.
+1. **`SIMPLE3D_DIR` в вашем файле окружения Allegro** (`%HOME%\pcbenv\env`),
+   которого обновления не касаются:
+
+   ```
+   set SIMPLE3D_DIR = d:/Tools/Simple3D
+   ```
+
+2. **папка, из которой загружен `simple3d.il`**, если SKILL её сообщит. Когда
+   работает — не стоит пользователю ничего; вторым идёт потому, что опирается
+   на имена ядра языка, не проверенные в этом Allegro, а значит может быть
+   запасным вариантом, но не единственным.
+
+Консоль называет, какой источник ответил. Если не ответил ни один, инструмент
+говорит об этом и отказывается работать, а не гадает: свой Python-пакет он всё
+равно не нашёл бы.
+
+**Папки с моделями задаются в окне** (*STEP files*) или в
+`simple3d_config.local.json`. В отслеживаемом конфиге их нет по той же причине.
 
 ## Окно программы
 

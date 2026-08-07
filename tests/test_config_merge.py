@@ -16,7 +16,7 @@ Two halves read the pair - SKILL for allegro/silkscreen/settings, Python for
 gui - and they have to agree about what "on top" means. The SKILL merge is
 transliterated here and both are run over the same cases.
 """
-import re, sys
+import json, re, sys
 
 from stepbuilder.gui import _merge_config
 
@@ -91,18 +91,41 @@ check("the local name is derived rather than spelled out twice",
 launcher = (_ROOT / "simple3d.il").read_text(encoding="utf-8")
 check("the launcher reads it too", "s3dConfigRead( S3D_ConfigFile )" in launcher)
 
-print("\n[4] the script folder can come from the environment")
-# The one line every installation has to change cannot live in the config - it
-# is what finds the config - so it comes from the user's own pcbenv/env, which
-# no update touches.
-check("SIMPLE3D_DIR is read", 'axlGetVariable( "SIMPLE3D_DIR" )' in launcher)
-check("with the literal left as the fallback",
-      re.search(r'S3D_ScriptDir = "[^"]+"', launcher))
+print("\n[4] where the tool is installed, with no path written down")
+# It cannot live in the config - it is what FINDS the config - and it cannot be
+# a literal either: this file is tracked, so a path in it is one installation's
+# path shipped to everyone and overwritten in every working copy by the next
+# update. Two sources, and an honest refusal when neither answers.
+check("SIMPLE3D_DIR is read first", 'axlGetVariable( "SIMPLE3D_DIR" )' in launcher)
+check("the load path is the second source",
+      "get_filename( piport )" in launcher
+      and re.search(r"s3dFolderOf\(\s*S3D_LoadedFrom\s*\)", launcher))
+check("and it is captured at load, the only moment it exists",
+      re.search(r"^S3D_LoadedFrom = nil\n^errset\( S3D_LoadedFrom = get_filename",
+                launcher, re.M))
+check("no absolute path is left in the file",
+      re.search(r'^S3D_ScriptDir = ""$', launcher, re.M)
+      and not re.search(r'^S3D_ScriptDir = "[a-zA-Z]:', launcher, re.M))
+check("the folder is cut by scanning, not by parseString",
+      re.search(r"procedure\(\s*s3dFolderOf", launcher)
+      and "parseString" not in launcher[launcher.index("procedure( s3dFolderOf"):
+                                        launcher.index("procedure( s3dResolveScriptDir")])
 check("and the config path follows it",
-      re.search(r"wasDefault[\s\S]{0,400}?S3D_ConfigFile = strcat\(", launcher))
+      re.search(r"wasDefault[\s\S]{0,600}?S3D_ConfigFile = strcat\(", launcher))
 check("resolved BEFORE the settings are read, or it would read the wrong file",
       launcher.index("errset( s3dResolveScriptDir() )")
       < launcher.index("\ns3dLoadSettings()"))
+check("the export refuses to run when it is still unknown",
+      re.search(r'when\(\s*S3D_ScriptDir == ""[\s\S]{0,600}?return\(\s*nil\s*\)', launcher))
+
+# The same rule for the tracked config: no machine's paths in it.
+cfg = json.loads((_ROOT / "simple3d_config.json").read_text(encoding="utf-8"))
+check("the shipped config names no model folder", cfg["gui"]["stepDirs"] == [],
+      str(cfg["gui"]["stepDirs"]))
+check("and no value in it looks like an absolute path",
+      not [v for v in json.dumps(cfg).split('"')
+           if re.match(r"^[a-zA-Z]:[/\\]", v)],
+      str([v for v in json.dumps(cfg).split('"') if re.match(r"^[a-zA-Z]:[/\\]", v)]))
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

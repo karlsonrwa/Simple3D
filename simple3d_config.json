@@ -8,10 +8,8 @@
         "defineAlwaysExportProp": true
     },
     "gui": {
-        "_comment_stepDirs": "Folders holding the component STEP models, searched IN ORDER - the first one that holds a given model file wins. So a project-local folder listed above the shared library overrides individual models. Each folder is searched recursively, so subfolders need no entry of their own. Edit here or in the GUI, one folder per line.",
-        "stepDirs": [
-            "d:/Projects/OrCAD/CIS/3D"
-        ],
+        "_comment_stepDirs": "EMPTY HERE ON PURPOSE - this file is tracked by git, so a path in it is one installation's path shipped to everyone. Put yours in simple3d_config.local.json beside it (the window writes that file for you when it closes), or type it into the STEP files field. Folders holding the component STEP models, searched IN ORDER - the first one that holds a given model file wins. So a project-local folder listed above the shared library overrides individual models. Each folder is searched recursively, so subfolders need no entry of their own. Edit here or in the GUI, one folder per line.",
+        "stepDirs": [],
         "jsonFile": "",
         "outputDir": "",
         "zDatum": "top",
