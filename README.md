@@ -37,7 +37,7 @@ bugs were fixed, and the features below were added.
 
 ```
 File → Export → Simple 3D          (simple3d.il, inside Allegro)
-   │  1. finds the design's  rev/cad  folder (sibling of  rev/pcb )
+   │  1. finds  rev/cad  (sibling of  rev/pcb ), or writes beside the .brd
    │  2. writes one JSON per variant into it, tagged "format": "simple3d"
    │  3. checks that Python can start, and says so if it cannot
    └─ 4. opens the window with the paths filled in
@@ -82,8 +82,8 @@ d:\Projects\OrCAD\Scripts\Simple3D\
 ```
 
 Downloading as a ZIP from GitHub wraps everything in `Simple3D-main\`. Either
-unpack its *contents*, or point `S3D_ScriptDir` at the wrapper — but do not
-leave the two disagreeing.
+unpack its *contents*, or point `SIMPLE3D_DIR` (below) at the wrapper — but do
+not leave it and the `load()` lines disagreeing.
 
 Check it from a `cmd`:
 
@@ -141,7 +141,7 @@ Most controls say what they do. These are the ones worth knowing about:
 | **JSON file** | One intermediate, or a folder of variants — then every one of them is built. Only files tagged `"format": "simple3d"` are touched; anything else in the folder is ignored and logged. |
 | **Z = 0 at** | Which face is the datum. Parts sit on the **soldermask** of their side, because real pads carry solder that lifts the part to mask level. |
 | **Board edge color** | Only *Solid* has one uniformly colored body for a rim to contrast with, so this greys out in the other two stitchings rather than being silently ignored. |
-| **Body stitching** | Multi-stackup boards only. *Solid* — one body, smallest. *Solid colored layers* — one body whose layer interfaces survive, so the rim shows the stack (~4.7× larger). *Not stitched* — every layer of every zone its own part, for taking the board apart by eye. |
+| **Body stitching** | How the body is put together, **on any board** — an ordinary one has no zones, so its outline becomes one implicit zone on its single stackup. *Solid* — one body, smallest. *Solid colored layers* — one body whose layer interfaces survive, so the rim shows the stack (~4.7× larger). *Not stitched* — every layer of every zone its own part, for taking the board apart by eye. The last two need the stackup layers: an intermediate written by an older version says so in the log and falls back to one solid. |
 | **Do not include soldermask** | Leaves the mask out and closes the stack up toward the core by exactly what was removed, each side independently. The board really does get thinner — check the total. |
 | **Silkscreen: Top / Bottom** | Both off skips the legend entirely and makes a noticeably smaller file. |
 | **Make surface** | The legend as surfaces rather than thin solids: about a quarter of its file size. The ink then has no thickness and cannot be used in boolean work. |
@@ -166,17 +166,18 @@ Everything lives in **`simple3d_config.json`**, beside the two `.il` files.
 Both halves read it: SKILL takes `allegro`, the window takes `gui`, the exporter
 takes `silkscreen` and `settings`.
 
-**Two files, and only one of them is yours.** `simple3d_config.json` is under
-version control and holds the shipped defaults. Beside it,
+**Two files, and only one of them is yours.** The tracked
+`simple3d_config.json` holds the shipped defaults; beside it,
 **`simple3d_config.local.json`** holds whatever this installation does
 differently — your model folders above all. The two are merged on read, key by
-key, with the local one winning, and **the window writes only the local file**.
+key, with the local one winning, and **the window writes only the local file**,
+only where a value differs from the default.
 
-That is what makes an update safe: pulling a new version can neither conflict
-with your paths nor overwrite them, improvements to the shared defaults still
-reach you, and your absolute paths and window position never land in a commit.
-You do not have to create it — the window writes one the first time it closes.
-To go back to a shipped default, delete that key from the local file.
+That is what makes an update safe: it can neither conflict with your paths nor
+overwrite them, improved defaults still reach you, and no absolute path or
+window position lands in a commit. You do not have to create the file — the
+window writes one the first time it closes; delete a key from it to go back to
+the shipped default.
 
 **If either file cannot be read — missing, or edited into invalid JSON —
 nothing is written back for the rest of the session**, even if you repair it
@@ -240,8 +241,8 @@ console.
 **The variant list governs everything that has a reference designator.** A
 refdes is exactly what makes a part nameable in a `Variants.lst`, so mechanical
 parts with one — a housing sitting on a connector — obey the list like any other
-component: listed and unmarked, it is exported; listed and marked, it is not;
-**absent from the list, it is not** — whatever `NO_STEP_EXPORT` says.
+component: **absence from the list is the list saying "not installed"**, and the
+part is left out unless it carries `ALWAYS_STEP_EXPORT`.
 
 **A symbol with no reference designator is outside the variant system** and is
 exported in every variant. Allegro leaves the refdes empty when there is no
@@ -253,27 +254,25 @@ the only thing that removes it.
 in every variant whatever the list says; `NO_STEP_EXPORT` still outranks it,
 because *never* beats *always*.
 
-It exists because of a case the data cannot settle. A **wire-solder pad** and a
+It exists because of a case the data cannot settle: a **wire-solder pad** and a
 **connector housing** are identical in the database — refdes, a STEP model, no
-BOM line, named in no variant — but the housing should vanish together with its
-connector, while the pad is part of the *bare board* and belongs in every
-variant: on a drawing, especially on a board with no silkscreen, those pads are
-what the fitter needs to see. The difference is intent, so it is written on the
-part.
+BOM line, named in no variant — but the housing should vanish with its
+connector, while the pad belongs to the *bare board* and so to every variant. On
+a drawing of a board with no silkscreen, those pads are what the fitter needs to
+see. The difference is intent, so it is written on the part.
 
 Unlike `NO_STEP_EXPORT`, which is one of Allegro's own, **this property does not
-exist until something creates it** — and until it is defined, nothing can attach
-it. So `simple3d.il` defines it as a BOOLEAN user property and then stays out of
-the way: what it goes on is yours to decide, through **Edit → Properties**.
-Three consequences:
+exist until something creates it**, and until it is defined nothing can attach
+it. So `simple3d.il` defines it as a BOOLEAN user property and stays out of the
+way: what it goes on is yours to decide, through **Edit → Properties**. Four
+consequences:
 
 * A property dictionary belongs to a **design**, not to the installation, so the
   entry is created per board: on Allegro's `open` trigger and again at the top of
   every export. Loading the SKILL files does nothing at all — a version that
   wrote at load time coincided with Allegro crashing on startup.
 * **A name is not a board.** Allegro sometimes starts on an empty placeholder
-  rather than a design; nothing is written to one, and the export says so
-  instead of building nothing.
+  rather than a design; nothing is written to one, and the export says so.
 * Defining it **changes the board**, so Allegro will want it saved. Set
   `allegro.defineAlwaysExportProp` to `false` to stop that; the export still
   reads the property wherever it is already defined.
@@ -414,7 +413,8 @@ solid if you mean to do boolean work on the ink.
 
 A rigid-flex design is several **zones**, each with its own stackup and
 thickness. The export reads them from the design and builds the board as those
-zones fused into one solid; a single-stackup board takes the ordinary path.
+zones fused into one solid. A single-stackup board has one zone — its own
+outline — which is why *Body stitching* works there too.
 
 **Zones line up on the copper, not on their outer faces.** A 2.44 mm stiffener
 zone and a 0.365 mm flex zone share the same conductor core, and the stiffener
@@ -527,6 +527,9 @@ python -m stepbuilder STEP_DIR JSON_FILE OUTPUT_DIR          # one JSON, headles
 python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # every variant
 ```
 
+`STEP_DIR` may be a `;`-separated list, and `--step-dir DIR` (repeatable) adds
+more after it — same search order as the window.
+
 Flags: `--batch`, `--z-datum {top,bottom}`, `--color NAME|r,g,b|#rrggbb`,
 `--rim-color …`, `--dated-name`, `--brd-name NAME` (names the output file; with
 several variants it is ignored and each JSON's own stem names its output, or
@@ -551,7 +554,7 @@ stepbuilder/
   worker.py      the build, in a child process, so a crash cannot take the window
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, 20 test suites, read-only probes
+tools/, tests/   SKILL checks, the docs audit, 18 test suites, read-only probes
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -592,7 +595,7 @@ C++ переписан на Python (то же ядро, без компилят�
 
 ```
 File → Export → Simple 3D          (simple3d.il, внутри Allegro)
-   │  1. находит папку  rev/cad  (соседнюю с  rev/pcb )
+   │  1. находит  rev/cad  (соседнюю с  rev/pcb ) или пишет рядом с .brd
    │  2. пишет туда по одному JSON на вариант с меткой "format": "simple3d"
    │  3. проверяет, что Python вообще запускается, и говорит, если нет
    └─ 4. открывает окно с уже заполненными путями
@@ -636,8 +639,8 @@ d:\Projects\OrCAD\Scripts\Simple3D\
 ```
 
 Скачивание ZIP с GitHub заворачивает всё в лишнюю папку `Simple3D-main\`. Либо
-распакуйте её *содержимое*, либо укажите `S3D_ScriptDir` на саму обёртку — но не
-оставляйте эти два несогласованными.
+распакуйте её *содержимое*, либо укажите на саму обёртку `SIMPLE3D_DIR` (ниже) —
+но не оставляйте её и строки `load()` несогласованными.
 
 Проверка из `cmd`:
 
@@ -696,7 +699,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **JSON file** | Один интермедиат или папка вариантов — тогда собираются все. Берутся только файлы с меткой `"format": "simple3d"`, остальное игнорируется и пишется в лог. |
 | **Z = 0 at** | Какая грань — база отсчёта. Детали стоят на **паяльной маске** своей стороны: реальные площадки несут припой, который поднимает деталь до уровня маски. |
 | **Board edge color** | Своё тело одного цвета, с которым может контрастировать торец, есть только у *Solid*, поэтому в двух других сшивках элемент гаснет, а не молча игнорируется. |
-| **Body stitching** | Только для мультистэкапа. *Solid* — одно тело, самое компактное. *Solid colored layers* — одно тело, но границы слоёв сохранены, и торец показывает стек (примерно в 4.7 раза больше). *Not stitched* — каждый слой каждой зоны отдельной деталью, чтобы разобрать плату глазами. |
+| **Body stitching** | Как собрано тело, **на любой плате**: у обычной зон нет, поэтому её контур становится одной неявной зоной на единственном стекапе. *Solid* — одно тело, самое компактное. *Solid colored layers* — одно тело, но границы слоёв сохранены, и торец показывает стек (примерно в 4.7 раза больше). *Not stitched* — каждый слой каждой зоны отдельной деталью, чтобы разобрать плату глазами. Двум последним нужны слои стека: интермедиат от старой версии их не несёт — лог об этом скажет и соберёт одно тело. |
 | **Do not include soldermask** | Убирает маску и смыкает стек к ядру ровно на снятую толщину, каждую сторону отдельно. Плата действительно становится тоньше — проверьте итог. |
 | **Silkscreen: Top / Bottom** | Обе выключены — шелкография не строится вовсе, и файл заметно меньше. |
 | **Make surface** | Легенда поверхностями, а не тонкими телами: примерно четверть её объёма в файле. Толщины у краски тогда нет, и в булевых операциях она не участвует. |
@@ -721,17 +724,17 @@ stitched*, которая ничего не сшивает, или более г
 половины: SKILL берёт секцию `allegro`, окно — `gui`, экспортёр — `silkscreen`
 и `settings`.
 
-**Файлов два, и ваш из них только один.** `simple3d_config.json` под контролем
-версий и содержит поставляемые умолчания. Рядом с ним
-**`simple3d_config.local.json`** содержит то, что отличается именно у этой
-установки, — прежде всего ваши папки с моделями. При чтении они сливаются ключ
-за ключом, локальный побеждает, и **окно пишет только локальный файл**.
+**Файлов два, и ваш из них только один.** Отслеживаемый `simple3d_config.json`
+содержит поставляемые умолчания; рядом с ним **`simple3d_config.local.json`**
+содержит то, что отличается именно у этой установки, — прежде всего ваши папки
+с моделями. При чтении они сливаются ключ за ключом, локальный побеждает, и
+**окно пишет только локальный файл** и только то, что отличается от умолчания.
 
-Это и делает обновление безопасным: новая версия не может ни конфликтовать с
-вашими путями, ни затереть их, улучшения общих умолчаний до вас по-прежнему
-доходят, а абсолютные пути и положение окна не попадают в коммиты. Создавать
-файл руками не нужно — окно напишет его при первом закрытии. Чтобы вернуть
-поставляемое значение, удалите этот ключ из локального файла.
+Это и делает обновление безопасным: оно не может ни конфликтовать с вашими
+путями, ни затереть их, улучшенные умолчания до вас по-прежнему доходят, а
+абсолютные пути и положение окна не попадают в коммиты. Создавать файл руками
+не нужно — окно напишет его при первом закрытии; удаление ключа из него
+возвращает поставляемое значение.
 
 **Если не читается любой из двух — его нет или он отредактирован в невалидный
 JSON — ничего не записывается до конца сессии**, даже если вы почините его при
@@ -794,8 +797,8 @@ JSON — ничего не записывается до конца сессии
 **Список варианта решает за всё, у чего есть позиционное обозначение.**
 Обозначение — это ровно то, чем деталь можно назвать в `Variants.lst`, поэтому
 механика с обозначением (корпус разъёма, например) подчиняется списку наравне с
-любым компонентом: перечислена и не помечена — экспортируется; перечислена и
-помечена — нет; **в списке её нет — нет**, что бы ни говорило `NO_STEP_EXPORT`.
+любым компонентом: **нет в списке — значит список говорит «не установлена»**, и
+деталь не экспортируется, если на ней нет `ALWAYS_STEP_EXPORT`.
 
 **Символ без позиционного обозначения находится вне системы вариантов** и
 экспортируется во всех. Allegro оставляет обозначение пустым, когда связанного
@@ -807,27 +810,26 @@ JSON — ничего не записывается до конца сессии
 остаётся во всех вариантах, что бы ни говорил список; `NO_STEP_EXPORT`
 по-прежнему сильнее, потому что «никогда» побеждает «всегда».
 
-Свойство появилось из-за случая, который по данным не разрешается. **Площадка
+Свойство появилось из-за случая, который по данным не разрешается: **площадка
 под пайку провода** и **корпус разъёма** в базе одинаковы — обозначение,
 STEP-модель, нет строки в BOM, не названы ни в одном варианте, — но корпус
-должен исчезать вместе со своим разъёмом, а площадка часть **голой платы** и
-нужна в каждом варианте: на чертеже, особенно на плате без шелкографии, именно
-эти площадки монтажнику и надо видеть. Разница в намерении, поэтому она
+должен исчезать вместе со своим разъёмом, а площадка часть **голой платы**, а
+значит нужна в каждом варианте. На чертеже платы без шелкографии именно эти
+площадки монтажнику и надо видеть. Разница в намерении, поэтому она
 записывается на детали.
 
 В отличие от `NO_STEP_EXPORT`, который штатный, **этого свойства не существует,
 пока его кто-нибудь не заведёт**, а пока не заведено — прицепить его нельзя
 ничем. Поэтому `simple3d.il` заводит его как пользовательское свойство типа
 BOOLEAN и дальше не вмешивается: на что вешать — решаете вы, через
-**Edit → Properties**. Три следствия:
+**Edit → Properties**. Четыре следствия:
 
 * Словарь свойств принадлежит **проекту**, а не установке, поэтому запись
   создаётся на каждую плату: по триггеру `open` и ещё раз в начале экспорта. При
   загрузке SKILL-файлов не происходит ничего — версия, писавшая в базу при
   загрузке, совпала с падениями Allegro при старте.
 * **Имя — ещё не плата.** Allegro иногда стартует на пустышке вместо проекта; в
-  неё ничего не пишется, а экспорт об этом говорит, вместо того чтобы собрать
-  пустоту.
+  неё ничего не пишется, а экспорт об этом говорит.
 * Заведение **меняет плату**, и Allegro попросит её сохранить. Чтобы этого не
   было, поставьте `allegro.defineAlwaysExportProp` в `false`: экспорт
   по-прежнему читает свойство там, где оно уже заведено.
@@ -968,8 +970,9 @@ Allegro, где его набирают руками, а файл на диск�
 ## Мультистэкап и rigid-flex
 
 Rigid-flex — это несколько **зон**, у каждой свой стек и своя толщина. Экспорт
-читает их из проекта и собирает плату как эти зоны, слитые в одно тело; плата с
-одним стекапом идёт обычным путём.
+читает их из проекта и собирает плату как эти зоны, слитые в одно тело. У платы
+с одним стекапом зона одна — её собственный контур, — поэтому *Body stitching*
+работает и там.
 
 **Зоны выравниваются по меди, а не по внешним граням.** Зона стиффенера 2.44 мм
 и зона флекса 0.365 мм имеют общее проводящее ядро, и стиффенер растёт от него
@@ -1082,6 +1085,9 @@ python -m stepbuilder STEP_DIR JSON_FILE OUTPUT_DIR          # один JSON, б
 python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # все варианты
 ```
 
+`STEP_DIR` может быть списком через `;`, а `--step-dir DIR` (можно повторять)
+дописывает папки после него — порядок поиска тот же, что и в окне.
+
 Флаги: `--batch`, `--z-datum {top,bottom}`, `--color NAME|r,g,b|#rrggbb`,
 `--rim-color …`, `--dated-name`, `--brd-name NAME` (имя выходного файла; при
 нескольких вариантах игнорируется — иначе они столкнулись бы в одно имя, — и
@@ -1106,7 +1112,7 @@ stepbuilder/
   worker.py      сборка в дочернем процессе, чтобы падение не унесло окно
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, 20 наборов тестов, зонды
+tools/, tests/   проверки SKILL, аудит документации, 18 наборов тестов, зонды
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

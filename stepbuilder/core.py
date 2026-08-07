@@ -1740,7 +1740,10 @@ def generate(
         Treat colors as sRGB (what you set is what you see). False reproduces
         the original C++ linear-RGB behaviour.
     board_mode:
-        How a MULTI-STACKUP board is built. Ignored on an ordinary board.
+        How the board body is built - on ANY board, not only a multi-stackup
+        one: with no zones, the outline becomes one implicit zone on the single
+        stackup. The two non-solid modes need the stackup layers, so a JSON
+        written before format_version 6 warns and falls back to one solid.
           "solid"   - one solid, one color, coplanar faces merged. Smallest.
           "layers"  - one solid, but the layer interfaces are kept and each
                       face is colored by what kind of layer it belongs to, so

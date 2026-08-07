@@ -32,9 +32,12 @@ Nothing here depends on them, and no copy of their code belongs in this tree:
 
 Three pieces ship: `makeVariant3dIntermediates.il` (reads Allegro, writes JSON),
 `simple3d.il` (menu item + launcher), `stepbuilder/` (Python + OpenCASCADE,
-writes the STEP). Plus `simple3d_config.json`, which holds **every** user
-setting and is read by both halves. Only `S3D_ScriptDir` remains in SKILL
-source, because the config is found relative to it.
+writes the STEP). Plus `simple3d_config.json`, the shipped defaults, and the
+gitignored `simple3d_config.local.json` beside it, which is the only one the
+window writes; both halves read the pair merged. **No absolute path is left in
+any tracked file** (round 59): where the tool is installed comes from the
+Allegro variable `SIMPLE3D_DIR` or from the folder `simple3d.il` was loaded
+from, and `S3D_ScriptDir` is now `""` in source.
 
 ### What works, verified on the user's real boards
 
@@ -2905,6 +2908,72 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-08-07 (round 60) — the docs claimed a control did nothing
+
+The user, reading QUICKSTART: "Body stitching acts only on multi-stackup /
+rigid-flex" — **but it acts on an ordinary board too.** They are right, and it
+has been true since **round 33 (2026-07-25)**, which made the ordinary case a
+case rather than an exception: a board with no zones gets its outline as one
+implicit zone on its single stackup, and all three modes apply. `test_plain_modes.py`
+has asserted exactly that ever since, and it passes. Only the documentation was
+never updated.
+
+**The claim had been copied into four places**, which is why it survived: the
+README table, both halves of QUICKSTART, `_comment_boardMode` in
+`simple3d_config.json`, the `--board-mode` help in `__main__.py`, and the
+`board_mode:` paragraph of `generate()`'s docstring. All corrected, each also
+gaining the one caveat that IS true — the two non-solid modes need the stackup
+layers, so a pre-format_version-6 intermediate warns and falls back to one solid.
+
+**Why `tools/audit_docs.py` did not catch it, and still would not.** It checks
+that *names* line up: CLI flags both directions, config keys, GUI labels
+verbatim, the assembly labels, two defaults. Every one of those passed here,
+because "Body stitching" existed, `boardMode` existed and the modes were spelled
+right. What was wrong was a **claim about scope**, and nothing mechanical can
+tell a true claim from a false one. So the rule is procedural rather than
+automated: **when a fix widens or narrows where a feature applies, grep for the
+old scope wording — in the docs, in the config comments and in every `help=`
+string — before closing the round.** That is what round 33 skipped.
+
+One hole in the audit was found while reading it and is worth knowing rather
+than fixing blind: its `format_version` check greps the `.il` for
+`"format_version"`, but the exporter writes that text escaped
+(`\"format_version\": 7`), so the regex never matches and the check has never
+run. Left as it is for now — it is a real gap, not a false pass.
+
+### Everything else the sweep turned up
+
+Checked the rest of README + QUICKSTART against the code, control by control and
+claim by claim. Wrong, and fixed:
+
+- The ZIP-install note still told the reader to point **`S3D_ScriptDir`** at the
+  wrapper folder. That variable was emptied in round 59; it is `SIMPLE3D_DIR` now.
+- `settings.negativeLayers` was documented in the config as matched **"as a
+  prefix"**. `s3dLayerIsNegative` walks the whole string — substring, over the
+  name *and* the layerFunction. The README already said substring; the config
+  comment did not.
+- "finds the design's `rev/cad` folder" omitted the fallback: with no `cad`
+  sibling the JSON is written beside the `.brd`, and `s3dResolveCadDir` says so
+  in the console.
+- The variant paragraph ended "absent from the list, it is not — whatever
+  `NO_STEP_EXPORT` says", which reads as a contradiction of the sentence two
+  paragraphs above and leaves out the one property that *does* override absence.
+  The rule, from the code: `NO_STEP_EXPORT` → the variant list → unless
+  `ALWAYS_STEP_EXPORT`.
+- "Three consequences:" over a list of four.
+- "20 test suites" — there are 18, plus the three mechanical checks, 21 jobs in
+  `run_all.py`.
+- `--step-dir` and the `;`-separated `STEP_DIR` were undocumented (the audit
+  exempts them as launcher plumbing; they are usable from the command line).
+
+Not wrong, checked and left: the eight board themes, the two silk colors, the
+control-by-control window table, `DEFAULT_FLAT_HEIGHT` 0.001, the thickness
+example, the assembly node names, the mechanical-part rule, the two rejected
+`Variants.lst` shapes, the rim greying out outside *Solid*.
+
+**QUICKSTART is ~9% shorter** for more content: the reasons moved out to the
+README, which is where they were already written in full. 21/21 suites green.
 
 ## Update 2026-08-05 (round 59) — the last paths out, and a review of the whole
 
