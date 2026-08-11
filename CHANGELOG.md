@@ -11,6 +11,39 @@ to use the tool.
 
 ---
 
+- **2026-08-11** — **A board could come out of the export with no board in it.**
+  Every file the exporter wrote after the first one carried the through-holes a
+  second time: the cutout list is collected once per board and was then shared
+  by every variant, each of which appended its own holes to it. With one variant
+  that hit the whole-board file, with two it hit the second variant as well, and
+  the repeat is not cosmetic — two identical holes make OpenCASCADE return an
+  empty result, so the STEP arrived with components and legend and no board.
+  Nothing said a word about it. **The exporter now gives every file its own copy
+  of the list**, and **the builder drops a cutout that exactly repeats another
+  one** — so an intermediate already on disk builds correctly too, with a line
+  in the log — and it **no longer accepts an empty boolean as a board**: a
+  boolean that produces nothing is now an error naming what to look at, instead
+  of a STEP quietly missing its largest part. Fixed in the same pass:
+  `settings.negativeLayers` and `settings.exportFullBoard` are restored to their
+  defaults before *every* export rather than only when a config file is found,
+  so a board exported with no config beside it no longer inherits whatever the
+  previous board in that Allegro session set.
+  / **Плата могла собраться без платы.** Каждый файл после первого нёс сквозные
+  отверстия по второму разу: список вырезов собирается один раз на плату, а
+  дальше был общим для всех вариантов, и каждый дописывал в него свои отверстия.
+  При одном варианте это доставалось файлу полной платы, при двух — уже второму
+  варианту. Повтор не косметический: два одинаковых отверстия заставляют
+  OpenCASCADE вернуть пустой результат, и в STEP приезжали компоненты,
+  шелкография и никакого тела платы. При этом нигде ни слова.
+  **Теперь у каждого файла своя копия списка**, а **сборщик отбрасывает вырез,
+  точно повторяющий другой** — так что уже записанный интермедиат тоже собирается
+  правильно, со строкой в логе, — и **пустой результат булевой операции больше не
+  считается платой**: теперь это ошибка с указанием, куда смотреть, а не молча
+  потерянная самая большая деталь. Заодно: `settings.negativeLayers` и
+  `settings.exportFullBoard` возвращаются к умолчаниям перед *каждым* экспортом,
+  а не только когда файл настроек найден, — плата, экспортированная без конфига
+  рядом, больше не наследует настройки предыдущей платы в той же сессии Allegro.
+
 - **2026-08-07** — **The docs said *Body stitching* worked on rigid-flex boards
   only. It works on every board**, and has since 2026-07-25: an ordinary board
   has no zones, so its outline becomes one implicit zone on its single stackup

@@ -118,6 +118,11 @@ builds it.
   coarser `gui.foldSliceAngle`.
 - Allegro sometimes comes up on an empty design rather than your board; the
   export refuses it and says so. Open the `.brd` itself and run it again.
+- **Components and legend in the STEP but no board?** An intermediate written
+  before 2026-08-11 repeated the through-holes in every file after the first —
+  usually the whole-board one — and two identical holes leave OpenCASCADE with
+  nothing to build. The current version drops the repeats and says so in the
+  log; re-export from Allegro to get a clean file.
 
 ---
 
@@ -237,3 +242,8 @@ builds it.
   крупный `gui.foldSliceAngle`.
 - Allegro иногда открывается на пустом проекте вместо вашей платы; экспорт
   откажется работать и скажет об этом. Откройте сам `.brd` и запустите снова.
+- **В STEP есть компоненты и шелкография, а тела платы нет?** Интермедиат,
+  записанный до 2026-08-11, повторял сквозные отверстия в каждом файле после
+  первого — обычно это файл полной платы, — а два одинаковых отверстия не
+  оставляют OpenCASCADE ничего. Текущая версия отбрасывает повторы и пишет об
+  этом в лог; переэкспортируйте плату из Allegro, чтобы файл был чистым.

@@ -5,7 +5,7 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-07-27
+## READ THIS FIRST — state as of 2026-08-11
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -106,7 +106,7 @@ from, and `S3D_ScriptDir` is now `""` in source.
   that a real board no longer reaches. Both bends of flex-b2 wrap; all five of
   flex3-a0 do since round 41.
 
-### Four traps that cost a round each — do not rediscover them
+### Six traps that cost a round each — do not rediscover them
 
 - **A command line handed to `cmd /c` must not begin with a quote** (round 43,
   and it is what round 5 misdiagnosed). cmd strips the first and the last quote
@@ -124,7 +124,23 @@ from, and `S3D_ScriptDir` is now `""` in source.
   `unless( G ... )` is still holding the previous board when the next one is
   exported. Everything of that kind must be reset at the top of
   `makeVariant3dIntermediates`; four globals are, and two of them only since
-  round 42.
+  round 42. **A global filled from the config is the same trap** — its default
+  must be restored *before the config is even looked for*, or a board exported
+  without one inherits the last board's setting (round 61, `S3D_NegativeLayers`).
+
+- **`tconc` is destructive, and a list built once and reused is SHARED**
+  (round 61). `cuts = cadr( edgeCuts )` is an alias; appending to it leaves the
+  addition in the caller's list for the next export. The first file written was
+  right and every one after it carried one more copy of every through-hole. When
+  exactly one of several outputs is wrong, **ask what order they were written
+  in** — and copy anything a loop is going to append to.
+
+- **A boolean can report success and have produced nothing** (round 61).
+  `BRepAlgoAPI_Cut` with two coincident prisms in the tool compound returns
+  `IsDone() == True` and a non-null COMPOUND holding **0 solids**, so a board
+  that checks only those two things accepts an empty result and writes a STEP
+  with no board in it. `core.has_solid` is the test; use it after every board
+  boolean, as `bend.py`'s `_is_empty` already did.
 
 - **`BRepBuilderAPI_MakeWire` drops edges it cannot join, and still reports
   `IsDone`** (round 41). It joins at `Precision::Confusion`, a hard 1e-7 that
@@ -2908,6 +2924,147 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-08-11 (round 61) — the whole-board file had no board in it
+
+The user put two intermediates from one board in `failed/`: `8231-a2.json` (the
+whole board) and `8231-a2_bom.json` (the variant). The variant built normally;
+the full board built **without the board body**, and said nothing about it.
+
+### What the data said, before any code was read
+
+The two files differ in exactly three things: the `full_board` marker, the
+`name`, and `pcb.edges` — **26 contours against 24**. Every component section is
+byte-identical, so the variant list had removed nobody. And:
+
+```
+edges[24] == edges[22]        the slot at x 2.5..3.0,  y 13.6..15.4
+edges[25] == edges[23]        the slot at x 26.0..26.5, y 13.6..15.4
+```
+
+Byte-identical repeats, at the end of the list. Measured through
+`make_board_geometry`:
+
+| input | solids | volume |
+|---|---|---|
+| the full board as delivered (26) | **0** | 0.0 |
+| the variant (24) | 1 | 724.1812 mm³ |
+| the full board minus the two repeats | 1 | 724.1812 mm³ |
+| the variant plus **one** repeat | **0** | 0.0 |
+
+So one duplicated cutout anywhere in the list erases the entire body, and the
+deduplicated full board is the variant to the last digit.
+
+### Why the duplicate is there — a destructive append on a shared list
+
+`makeVariant3dIntermediates` calls `makePcbContour( dsn )` **once** and hands the
+result to every `create3dIntermediateFormat` of the run. That routine did:
+
+```
+when( cadr( edgeCuts )  cuts = cadr( edgeCuts ) )    ; an ALIAS, not a copy
+...
+tconc( cuts symbolReturnPinHoles() )                 ; tconc appends IN PLACE
+```
+
+`tconc` mutates the structure it is given, so each export left its pin holes in
+the caller's list and the next export started with them already there. The
+comment above it said "reset base board contour"; nothing was reset.
+
+**The consequence is bigger than the reported symptom.** The variants are
+written in a loop and the whole-board file last, so:
+
+| file | pin-hole copies |
+|---|---|
+| variant 1 | 1 — correct |
+| variant 2 | 2 |
+| … | … |
+| whole board | n+1 |
+
+This board has one variant, which is why only the full-board file was wrong. **A
+board with two variants would have had a broken second variant and a working
+first one**, which is a far more confusing thing to be handed. The arithmetic
+also matches exactly: this design has two through-hole pins, both on slot
+padstacks, and `symbolReturnPinHoles` returns them as ONE string, so one leaked
+append = the two extra contours, 24 → 26.
+
+`edges` (`car( edgeCuts )`) is only ever read, so the outline was never affected.
+
+Fixed by copying: `foreach( baseCut car( cadr( edgeCuts ) ) ... )` builds a fresh
+tconc per export.
+
+### Why nothing said a word — `IsDone()` and `IsNull()` both pass
+
+`BRepAlgoAPI_Cut` with two coincident prisms in the tool compound returns
+`IsDone() == True` and a shape that is **not null** — a COMPOUND with **0 solids
+and 0 faces**. The board path checked exactly those two things, so an empty
+result was accepted as a board and the STEP was written with components, legend
+and nothing else. Confirmed at the minimum: board minus a compound holding the
+same slot prism twice, and nothing survives.
+
+`bend.py` had already learned this — `_cut_to_region` calls `_is_empty` after
+every `Common` — but `core.py`'s board path had not.
+
+Two guards now, on the Python side:
+
+- **`board_cutouts( contours, log )`** returns `edges[1:]` with exact repeats
+  dropped and a line in the log. Exact only: cutouts that merely *overlap* are
+  ordinary and OCC handles them, so a near-miss (`r=1.0` vs `r=1.0000001`) is
+  kept. This is what makes the intermediates already on people's disks build.
+- **`has_solid( shape )`** after the board's boolean, and after both stackup
+  fuses, whose `IsNull()` tests could be fooled the same way. A boolean that
+  produces nothing is now a `StepBuilderError` naming `pcb.edges`, not a silently
+  missing part.
+
+### The rest of the review
+
+- **`S3D_NegativeLayers` had no default to be restored to** — the round-42 trap,
+  still live. `S3D_ExportFullBoard` right beside it carried the restore and a
+  comment explaining why; the negative-layer list did not, so a board whose
+  config named `negativeLayers` left that list in place for every board exported
+  afterwards in the same Allegro session, and a coverlay would be read as
+  material or as an opening depending on what had been exported before it. Now
+  `S3D_NegativeLayersDefault` exists and is restored.
+- **Both restores moved above the `isFile( t_file )` branch.** Restoring inside
+  the branch that parses the config covered "the key was removed from the file"
+  but not "there is no config file at all" — that case kept the previous board's
+  values. They now sit with the local defaults at the top of `s3dSilkConfig`.
+- **The `format_version` audit check has been repaired.** Round 60 found it had
+  never run — the exporter writes the line inside a SKILL string, so the file
+  says `\"format_version\": 7` and the regex anchored on a bare quote. It runs
+  now, and the README states the version (and that every older one still builds).
+- Checked and left alone: every other `tconc` site (all of them build their own
+  structure), `s3dSymbolsToExport` (reads the variant table, mutates nothing),
+  the silkscreen structure that is likewise collected once and shared (read
+  only), `worker.py`'s per-job failure isolation, `resolve_json_jobs`,
+  `output_stem`. `pyflakes` over `stepbuilder/`, `tests/` and `tools/` is clean.
+
+### Tests
+
+- `tests/test_dupcuts.py`, new: which contours `board_cutouts` keeps, the board
+  volume with and without the repeats, the error when a boolean genuinely leaves
+  nothing, `has_solid` on a real solid and on an empty compound, and the
+  per-layer path.
+- `tests/test_variant_path.py` section [9] transliterates `tconc` and runs a
+  whole session through both versions — the aliased one reproducing 1, 2, 3
+  copies across three files, the copied one giving all three the same list — plus
+  a source check that the alias is gone. The negative control matters here: it
+  is the only way to be sure the model is of the bug and not of the fix.
+- 22/22 green in 60 s.
+
+### What this round is worth remembering for
+
+**Ask for the file.** Two JSONs from one board settled a "why does this board
+fail" question before any code was opened, because the difference was 26 against
+24 and the two extra entries were byte-identical to two others. The standing
+lesson from the arc-sign rounds, again.
+
+**A boolean that reports success can still have produced nothing.** `IsDone()`
+is not "it worked", and `IsNull()` is not "it is empty". Count the solids.
+
+**A list computed once and reused is shared, and SKILL's list operations are
+destructive.** The first consumer sees the truth; everything after it sees the
+accumulation. When exactly one of several outputs is wrong, ask what order they
+were written in.
 
 ## Update 2026-08-07 (round 60) — the docs claimed a control did nothing
 

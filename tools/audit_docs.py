@@ -68,7 +68,10 @@ for k in sorted(missing):
 
 # ---- format_version -------------------------------------------------------
 il = (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8", errors="replace")
-m = re.search(r'"format_version"\s*:\s*(\d+)', il)
+# The exporter writes this line INSIDE a SKILL string, so the quotes are
+# escaped: \"format_version\": 7. Anchoring on a bare quote matched nothing and
+# this check silently never ran - found in round 60, left open, fixed in 61.
+m = re.search(r'\\?"format_version\\?"\s*:\s*(\d+)', il)
 if m:
     written = m.group(1)
     if f"format_version: {written}" not in readme and f"format_version` {written}" not in readme \

@@ -50,6 +50,10 @@ STEP but knows nothing about Allegro. Everything the export decides in Allegro
 is in the file, so the model can be rebuilt — differently — without touching
 the board again.
 
+The exporter writes `format_version: 7`. Every earlier version still builds —
+each version only ever *added* something optional — so an intermediate you kept
+from an older release does not have to be re-exported to be used.
+
 Allegro's own progress form is on screen from the moment you press Export,
 because all of the above happens before any window of ours appears. Nothing
 temporary is written next to your board.
@@ -554,7 +558,7 @@ stepbuilder/
   worker.py      the build, in a child process, so a crash cannot take the window
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, 18 test suites, read-only probes
+tools/, tests/   SKILL checks, the docs audit, 19 test suites, read-only probes
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -606,6 +610,10 @@ File → Export → Simple 3D          (simple3d.il, внутри Allegro)
 SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE строит STEP, но
 ничего не знает про Allegro. Всё, что экспорт выяснил в Allegro, лежит в файле —
 поэтому модель можно пересобрать иначе, не открывая плату заново.
+
+Экспорт пишет `format_version: 7`. Все предыдущие версии по-прежнему
+собираются — каждая версия только *добавляла* необязательное, — так что
+интермедиат, оставшийся от старого релиза, переэкспортировать не обязательно.
 
 Штатный индикатор Allegro на экране с момента нажатия Export: всё перечисленное
 происходит до того, как появится наше окно. Рядом с платой ничего временного не
@@ -1112,7 +1120,7 @@ stepbuilder/
   worker.py      сборка в дочернем процессе, чтобы падение не унесло окно
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, 18 наборов тестов, зонды
+tools/, tests/   проверки SKILL, аудит документации, 19 наборов тестов, зонды
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

@@ -233,3 +233,8 @@ simple3d_config.json.tmp
 # Exported output. The demo's checked-in inputs (demo.brd, demo.json, the
 # reference .stp) stay tracked; generated assemblies do not.
 *_simple_*.step
+
+# Intermediates from a board that would not build, dropped here to be looked
+# at. They are real designs - keep them out of a public repository. The demo
+# board under demo/ is the one that IS meant to be tracked.
+failed/

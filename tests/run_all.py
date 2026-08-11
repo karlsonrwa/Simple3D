@@ -33,6 +33,7 @@ JOBS = [
     ("board: plain-board stitching",            TESTS / "test_plain_modes.py", True),
     ("board: soldermask exclusion",             TESTS / "test_nomask.py", True),
     ("board: negative layers",                  TESTS / "test_neg.py", True),
+    ("board: duplicated cutouts",               TESTS / "test_dupcuts.py", True),
     ("board: folding flex bends",               TESTS / "test_bend.py", True),
     ("silkscreen",                              TESTS / "test_silk.py", True),
     ("mechanical symbols",                      TESTS / "test_mech.py", True),

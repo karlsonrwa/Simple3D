@@ -343,7 +343,17 @@ check("the full board is written with NO variant table, so only NO_STEP_EXPORT a
 check("under the config switch",
       re.search(r'when\(\s*s3dJsonHas\(\s*settings\s+"exportFullBoard"\s*\)', src))
 check("whose default is restored before every read, not left from the last board",
-      re.search(r"S3D_ExportFullBoard = t\s*\n\s*when\(\s*s3dJsonHas", src))
+      re.search(r"S3D_ExportFullBoard = t\s*\n\s*S3D_NegativeLayers = "
+                r"S3D_NegativeLayersDefault", src))
+# ...and restored BEFORE the file is even looked for, so a board exported with
+# no config beside it does not inherit the last board's settings either. Both
+# globals, together, above the isFile branch.
+check("and restored whether or not a config file is found",
+      re.search(r"S3D_ExportFullBoard = t[\s\S]{0,200}?unless\(\s*t_file[\s\S]{0,200}?"
+                r"if\(\s*isFile\(\s*t_file\s*\)", src))
+check("the negative-layer list has a default to be restored to",
+      re.search(r"S3D_NegativeLayersDefault = list\(", src)
+      and re.search(r"S3D_NegativeLayers = S3D_NegativeLayersDefault", src))
 check("it is named <design>.json, which no <design>_<variant> can collide with",
       re.search(r"when\(\s*S3D_ExportFullBoard[\s\S]{0,400}?"
                 r"variantName = lowerCase\(\s*dsnName\s*\)", src))
@@ -385,6 +395,80 @@ check("and the marker does not disturb the format check",
       is_simple3d_json(FB / "board.json"))
 check("a missing file is False, not an exception",
       not is_full_board(FB / "no_such_file.json"))
+
+print("\n[9] the cutout list is copied per export, not shared")
+# makePcbContour runs ONCE and its result is handed to every export of the run.
+# create3dIntermediateFormat then appends that export's pin holes to it with
+# tconc, which mutates IN PLACE - so with an alias the holes stayed in the list
+# and the next file got them again. The first file written was right and every
+# one after it carried one more copy. Found on 8231-a2 (2026-08-11), where the
+# whole-board file had the two slot holes twice and OCC answered a coincident
+# pair of prisms with an empty result: no board body in the STEP, no error.
+
+
+class Tconc:
+    """SKILL's tconc structure - (list . last-cell). car() is the list."""
+
+    def __init__(self, first):
+        self.items = [first]
+
+    def car(self):
+        return self.items
+
+
+def tconc(structure, item):
+    """Destructive, exactly as SKILL's is."""
+    structure.items.append(item)
+    return structure
+
+
+def one_export(edge_cuts, holes, share):
+    """The cut half of create3dIntermediateFormat: share=True is the old bug."""
+    cuts = None
+    if edge_cuts[1]:
+        if share:
+            cuts = edge_cuts[1]                       # cuts = cadr( edgeCuts )
+        else:
+            for base in edge_cuts[1].car():           # foreach over car( cadr( ... ) )
+                cuts = Tconc(base) if cuts is None else tconc(cuts, base)
+    if holes:
+        cuts = tconc(cuts, holes) if cuts is not None else Tconc(holes)
+    return list(cuts.car()) if cuts is not None else []
+
+
+def session(share, exports=3):
+    """One run: makePcbContour once, then N files out of the same edgeCuts."""
+    edge_cuts = [None, Tconc("cutoutA")]
+    tconc(edge_cuts[1], "cutoutB")
+    return [one_export(edge_cuts, "PINHOLES", share) for _ in range(exports)]
+
+
+shared = session(share=True)
+check("the alias reproduces the bug: the first file is right",
+      shared[0].count("PINHOLES") == 1, shared[0])
+check("the second file already has the holes twice",
+      shared[1].count("PINHOLES") == 2, shared[1])
+check("and the whole-board file, written last, three times",
+      shared[2].count("PINHOLES") == 3, shared[2])
+
+copied = session(share=False)
+check("the copy gives every file the same contours",
+      all(f == copied[0] for f in copied), copied)
+check("each with its holes exactly once",
+      all(f.count("PINHOLES") == 1 for f in copied), copied)
+check("and the board's own cutouts still there, in order",
+      copied[0] == ["cutoutA", "cutoutB", "PINHOLES"], copied[0])
+check("a board with no cutouts at all still exports its holes",
+      one_export([None, None], "PINHOLES", False) == ["PINHOLES"])
+check("and one with neither exports nothing rather than failing",
+      one_export([None, None], None, False) == [])
+
+check("the source copies the list instead of aliasing it",
+      re.search(r"foreach\(\s*baseCut\s+car\(\s*cadr\(\s*edgeCuts\s*\)\s*\)", src))
+# Whole-line comments only - the FIX note above the fix quotes the old line, and
+# a naive search finds it there.
+code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith(";"))
+check("the alias is gone", not re.search(r"cuts\s*=\s*cadr\(\s*edgeCuts\s*\)", code))
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

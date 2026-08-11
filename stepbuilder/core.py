@@ -343,8 +343,7 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
     Cutouts are applied to each layer separately, so holes stay visible.
     """
     parts: list[tuple[str, dict, TopoDS_Shape]] = []
-    contours = pcb.get("edges") or []
-    cutouts = contours[1:] if len(contours) > 1 else []
+    cutouts = board_cutouts(pcb.get("edges") or [], log)
 
     for zone in zones:
         stackup = stackups.get(str(zone["stackup"]))
@@ -364,11 +363,76 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
             if cutouts:
                 solid = _cut_out(solid, cutouts, top + 0.01,
                                  gp_Vec(0, 0, -(height + 0.02)))
+                # A layer entirely consumed by the cutouts is not an error -
+                # a small drawn stiffener can sit inside a milled opening -
+                # but an empty shape must not become a part.
+                if solid.IsNull() or not has_solid(solid):
+                    log(f"warning: layer {layer.get('name')} of zone "
+                        f"{zone['name']} is left with nothing after its "
+                        f"cutouts; skipped")
+                    continue
             parts.append((str(zone["name"]), layer, solid))
 
     if not parts:
         raise StepBuilderError("No stackup layer produced a solid")
     return parts
+
+
+def has_solid(shape: TopoDS_Shape) -> bool:
+    """True if *shape* contains at least one solid.
+
+    The check a boolean needs, and the one `IsDone()` does not give. See
+    `board_cutouts` for what happens without it.
+    """
+    from OCP.TopAbs import TopAbs_SOLID
+    from OCP.TopExp import TopExp_Explorer
+
+    return TopExp_Explorer(shape, TopAbs_SOLID).More()
+
+
+def board_cutouts(contours: list, log: LogFn = _noop_log) -> list:
+    """`edges[1:]` - every contour after the outline - with repeats dropped.
+
+    A cutout that appears TWICE is not harmless. Two coincident prisms in the
+    tool compound make `BRepAlgoAPI_Cut` return an **empty compound** while
+    `IsDone()` is true and the result is not null - so both of the usual guards
+    pass and the STEP is written with components, legend, and no board at all.
+    Measured on 8231-a2, whose intermediate carried each of its two slot holes
+    twice: 0 solids instead of one 724.18 mm3 board, and not a word in the log.
+    One duplicate anywhere in the list is enough to erase the whole body.
+
+    Exact repeats only. Cutouts that merely overlap are ordinary - a slot
+    crossing a milled edge, two drawn shapes sharing a corner - and OCC deals
+    with them; only geometry that coincides exactly does this.
+
+    The SKILL side no longer emits duplicates (it used to append each export's
+    pin holes to a list shared by every export in the run), but intermediates
+    written before that fix are on disk and still have to build.
+    """
+    if len(contours) < 2:
+        return []
+
+    seen: set[str] = set()
+    cutouts = []
+    dropped = 0
+    for contour in contours[1:]:
+        try:
+            key = json.dumps(contour, sort_keys=True)
+        except (TypeError, ValueError):       # not comparable - keep it
+            cutouts.append(contour)
+            continue
+        if key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        cutouts.append(contour)
+
+    if dropped:
+        log(f"warning: {dropped} cutout(s) in this intermediate repeat another "
+            f"one exactly, and were dropped. Kept, they would have left the "
+            f"board with no body at all. Re-export from Allegro for a clean "
+            f"file.")
+    return cutouts
 
 
 def _cut_out(shape: TopoDS_Shape, contours: list, cut_z: float,
@@ -443,7 +507,9 @@ def fuse_keeping_faces(parts: list[tuple[str, dict, TopoDS_Shape]],
     if not op.IsDone():
         raise StepBuilderError("Could not fuse the stackup layers")
     fused = op.Shape()
-    if fused.IsNull():
+    # IsNull() is not the test - a boolean that produced nothing hands back a
+    # non-null, EMPTY compound. See board_cutouts.
+    if fused.IsNull() or not has_solid(fused):
         raise StepBuilderError("Fusing the stackup layers produced nothing")
 
     # input face -> layer, followed through the boolean
@@ -542,7 +608,7 @@ def fuse_and_unify(solids: list[TopoDS_Shape], log: LogFn) -> TopoDS_Shape:
     if not op.IsDone():
         raise StepBuilderError("Could not fuse the stackup layers")
     fused = op.Shape()
-    if fused.IsNull():
+    if fused.IsNull() or not has_solid(fused):
         raise StepBuilderError("Fusing the stackup layers produced nothing")
 
     # Merge the coplanar faces the fuse leaves behind at every layer
@@ -677,11 +743,12 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0,
         cut_z = z_offset
         cut_direction = gp_Vec(0, 0, -thickness)
 
-    if len(contours) > 1:
+    cutouts = board_cutouts(contours, log)
+    if cutouts:
         builder = BRep_Builder()
         compound = TopoDS_Compound()
         builder.MakeCompound(compound)
-        for i, cutout in enumerate(contours[1:], start=1):
+        for i, cutout in enumerate(cutouts, start=1):
             cut_wire = build_contour(cutout, cut_z)
             cut_face = BRepBuilderAPI_MakeFace(cut_wire, True)
             if not cut_face.IsDone():
@@ -695,6 +762,18 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0,
         board = cut.Shape()
         if board.IsNull():
             raise StepBuilderError("Board geometry is empty after cutting")
+        # IsDone() and IsNull() both pass on a boolean that produced NOTHING -
+        # see board_cutouts. Without this the build carries on and writes a
+        # STEP with components and legend but no board in it.
+        if not has_solid(board):
+            raise StepBuilderError(
+                f"Cutting the {len(cutouts)} hole(s) out of the board left no "
+                f"solid at all. OCC calls the boolean done and returns an "
+                f"empty result, which is what coincident or outline-sized "
+                f"cutouts do to it. Check the intermediate's pcb.edges.")
+    elif not has_solid(board):
+        # No cutouts at all, so nothing above has checked the body itself.
+        raise StepBuilderError("The board outline produced no solid")
 
     return board
 

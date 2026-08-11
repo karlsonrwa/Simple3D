@@ -1454,7 +1454,13 @@ procedure( s3dContourJson( o_dbid )
 
 ; Layer-name prefixes whose drawn shapes are OPENINGS, not material.
 ; Overridden from settings.negativeLayers in simple3d_config.json.
-S3D_NegativeLayers = list( "COVERLAY" "SOLDERMASK" "PASTEMASK" )
+;
+; Kept as a named default as well, because the override is a GLOBAL and these
+; files load once per Allegro session: without something to restore, the list
+; one board's config set outlives that board. See s3dSilkConfig, and the
+; round-42 note on S3D_ExportFullBoard just below.
+S3D_NegativeLayersDefault = list( "COVERLAY" "SOLDERMASK" "PASTEMASK" )
+S3D_NegativeLayers = S3D_NegativeLayersDefault
 
 ; Write <design>.json - the WHOLE board, variants ignored - beside the
 ; per-variant files. Overridden from settings.exportFullBoard.
@@ -2804,6 +2810,16 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
         endCap = 'ROUND
         doExport = t
 
+        ; The two settings that live in GLOBALS get their defaults back here,
+        ; with the locals above and before anything is read - these files load
+        ; once per Allegro session, so a global left as the previous export set
+        ; it outlives the design that set it (the round-42 trap). Restoring them
+        ; further down, inside the branch that parses the file, covered a config
+        ; with the key removed but not a board exported with NO config beside it
+        ; at all: that one kept the last board's values.
+        S3D_ExportFullBoard = t
+        S3D_NegativeLayers = S3D_NegativeLayersDefault
+
         unless( t_file  t_file = "simple3d_config.json" )
 
         if( isFile( t_file ) then
@@ -2833,18 +2849,16 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
                 ; than left hardcoded because it is fabricator/site convention,
                 ; not something the database states: negativeArtwork reads nil
                 ; on every layer even where the polarity is unambiguous.
+                ; Its default is restored at the top of this procedure, with
+                ; S3D_ExportFullBoard's - see the note there.
                 when( s3dJsonList( settings "negativeLayers" )
                     S3D_NegativeLayers = s3dJsonList( settings "negativeLayers" )
                     printf( "Simple 3D: negative (opening) layers: %L\n"
                             S3D_NegativeLayers )
                 )
 
-                ; Default restored FIRST, every time. These files load once per
-                ; Allegro session, so a global left as the previous export set
-                ; it outlives the design that set it - the round-42 trap. Here
-                ; that would mean a config edited to remove the key silently
-                ; keeping whatever the last board used.
-                S3D_ExportFullBoard = t
+                ; Default restored at the top of this procedure, every time -
+                ; see the note there.
                 when( s3dJsonHas( settings "exportFullBoard" )
                     S3D_ExportFullBoard = s3dJsonGet( settings "exportFullBoard" )
                 )
@@ -3496,7 +3510,7 @@ procedure( s3dWriteSilkscreen( p_port l_silk )
 ; at write time is the round-42 shape - it would describe whatever the previous
 ; call set if this one ever forgot to.
 procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName @optional ( silk nil ) ( g_fullBoard nil ) )
-    let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) body )
+    let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) baseCut body )
         ; Number each variant's no-refdes mechanicals from 1 (see symbolReturn3DElements).
         S3D_MechSeq = 0
         ; Rebuilt per export: a shape added between two runs in one session
@@ -3508,8 +3522,28 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
             edges = car( edgeCuts )
         )
 
+        ; The cutouts are collected ONCE, by makePcbContour, and the SAME list
+        ; is handed to every export of this run - one per variant, plus the
+        ; whole-board file. So it has to be COPIED here, not aliased.
+        ;
+        ; FIX (simple3d 2026-08-11): was  cuts = cadr( edgeCuts ), an alias.
+        ; The tconc below appends IN PLACE, so each export's pin holes stayed
+        ; in the caller's list and the next file got them a second time. The
+        ; first file written was correct and every one after it carried one
+        ; more copy of every through-hole - with one variant, that is the
+        ; whole-board file; with two, the second variant already. A duplicated
+        ; cutout is not cosmetic: two coincident prisms make OCC's boolean
+        ; return an empty result, and the board body disappears from the STEP
+        ; with no error anywhere. Found on 8231-a2, whose two slot holes came
+        ; out twice.
         when( cadr( edgeCuts )
-            cuts = cadr( edgeCuts )
+            foreach( baseCut car( cadr( edgeCuts ) )
+                if( boundp( 'cuts ) then
+                    tconc( cuts baseCut )
+                else
+                    cuts = tconc( nil baseCut )
+                )
+            )
         )
 
         ; export step package mapping information
