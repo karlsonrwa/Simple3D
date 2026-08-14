@@ -11,6 +11,31 @@ to use the tool.
 
 ---
 
+- **2026-08-15** — **A folded panel is no longer painted with the board edge
+  colour.** On a board with *Board edge color* set to something of its own, a
+  panel that a bend turns over could come back entirely in that colour — on
+  Cadence's demo board the whole 2398 mm² LCD stiffener panel did. The rim is
+  found by asking whether a face stands vertical **in the frame it was built
+  in**, since after a fold half a board's flat faces stand vertical; that frame
+  was being looked up by trying each region's inverse, and a wrong one does not
+  fail, it answers — it threw the panel's face out to z = 31 on a board 1.6 mm
+  thick, where it duly looked vertical. An unfolded face now has to land back
+  inside the board, and flat panels are tried before the facets of a bend. On
+  that board the rim goes from 4359 mm² to 2022, which is side walls and the
+  panel's own edges — a rim. Only *Solid* mode with a rim colour was affected.
+  / **Сложенная панель больше не красится цветом торца платы.** На плате, где
+  *Board edge color* задан отдельно, панель, перевёрнутая сгибом, могла целиком
+  прийти в этом цвете — на демо-плате Cadence так вышло со всей LCD-панелью
+  стиффенера, 2398 мм². Торец определяется вопросом, стоит ли грань вертикально
+  **в том кадре, где она была построена**, — после свёртки половина плоских
+  граней платы стоит вертикально; кадр искался перебором обратных трансформаций
+  областей, а неверная не отказывает, а отвечает — она выбрасывала грань панели
+  на z = 31 при толщине платы 1.6 мм, где та закономерно выглядела вертикальной.
+  Теперь развёрнутая грань обязана вернуться внутрь платы, а плоские панели
+  проверяются раньше долек сгиба. На той плате торец ужался с 4359 мм² до 2022 —
+  это боковые стенки и собственные кромки панели, то есть торец. Затронут был
+  только режим *Solid* с заданным цветом торца.
+
 - **2026-08-14** — **A rounded board edge stays round through a bend, and the log
   now says how much *K factor* your board can take.** Two things you could see in
   the model. A rounded arm end came out of the fold visibly faceted — not the

@@ -2925,6 +2925,60 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-15 (round 67) — a folded panel painted with the board edge colour
+
+The user's board came back with the whole LCD stiffener panel — 2398 mm² of flat
+face, most of what you see from that side — in the colour they had chosen for the
+board **edge**.
+
+### The mechanism
+
+`_rim_faces` asks "is this wall vertical" **in the frame the face was built in**,
+because after a fold half the board's flat faces stand vertical and half its
+walls do not. That much has been right since round 36. The frame comes from
+`flat_frame`, which tried each region's inverse and kept the first whose
+footprint the un-folded point landed in.
+
+A **wrong** region's inverse is a rotation about a different axis, and it does
+not fail — it answers. That panel's top face came back at **z = 31.08** through
+`BEND_3 slice 8/24`, on a board 1.63 mm thick. In that frame the panel stands
+vertical, so it was rim, so it was painted.
+
+### The fix, and why it was free
+
+Two tests, both of which were available all along:
+
+- **The un-folded point has to land back IN the board.** The plan now carries the
+  two faces of the flat board, and a region whose inverse misses that band by
+  more than a millimetre is not the frame this face came from. z = 31.08 against
+  0 … −1.63 is not a near miss.
+- **Panels are tried before slices.** A slice is a facet of a bend, only ever
+  real geometry when a bend could not be built exactly; it stays in `regions` to
+  answer "where does this point end up" and must not outrank the panel a face
+  actually belongs to.
+
+| | before | after |
+|---|---|---|
+| total rim area | 4359.4 mm² | **2022.5** |
+| largest rim face | 2398.5 mm² (the panel) | 153.9 mm² |
+
+What is left is side walls at mid-thickness (z ≈ −0.70 on a board whose faces are
+0 and −1.63) plus the panel's own edges at z ≈ 20.05 — which is what a rim is.
+
+### Two things about how this one was found
+
+**A wrong inverse does not fail, it answers.** Whenever something is identified
+by trying candidate transforms and taking the first that fits, the fit test has
+to be strong enough to exclude the wrong candidates. Here the missing test cost
+one comparison and the information for it was already in hand.
+
+**Ask which mode before measuring.** The first report said *Solid colored
+layers*. Two probes went into proving that the layered colouring was correct —
+which it is: the panel's faces trace to COVERLAY_INNER2 and STIFFNER_INNER1, and
+there is no large base-coloured face anywhere on the board. All true, all
+useless, because the build was **solid** mode with a board-edge colour set. The
+same picture has a different explanation per mode, and the mode is one question.
+
 ## Update 2026-08-14 (round 66) — the k a board can take, and a tolerance that changed jobs
 
 Two things, both raised by the user looking at the model rather than at a log.
