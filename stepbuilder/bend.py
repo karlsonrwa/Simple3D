@@ -58,7 +58,7 @@ from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakePrism
 from OCP.Bnd import Bnd_Box
 from OCP.TopAbs import TopAbs_ShapeEnum
 from OCP.TopExp import TopExp_Explorer
-from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
+from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Iterator, TopoDS_Shape
 from OCP.TopTools import TopTools_ListOfShape
 from OCP.gp import gp_Ax1, gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
@@ -415,6 +415,17 @@ class _Region:
     # subdivides it now - the slices of one strip. See _cut_into_pieces.
     poly: list[tuple[float, float]] | None = None
     face: object = None
+    _box: object = None
+
+    def face_box(self):
+        """The piece's bounding box, worked out once.
+
+        Asked for every shape folded against it, and the legend asks tens of
+        thousands of times - see FoldPlan.apply.
+        """
+        if self.face is not None and self._box is None:
+            self._box = _bbox(self.face)
+        return self._box
 
     def holds(self, x: float, y: float) -> bool:
         if self.poly is not None and not (point_in_polygon((x, y), self.poly)
@@ -444,6 +455,12 @@ class _Strip:
     facets: list[_Region] = field(default_factory=list)
     poly: list[tuple[float, float]] | None = None
     face: object = None
+    _box: object = None
+
+    def face_box(self):
+        if self.face is not None and self._box is None:
+            self._box = _bbox(self.face)
+        return self._box
 
     def holds(self, x: float, y: float) -> bool:
         if self.poly is not None and not (point_in_polygon((x, y), self.poly)
@@ -545,11 +562,42 @@ class FoldPlan:
         if box is None:
             return shape
 
+        # A COMPOUND of many small independent solids - the printed legend,
+        # thousands of glyphs and strokes - is folded one piece at a time.
+        # Folded whole it is a boolean between a 45000-face compound and every
+        # region in turn, and none of the cheap rejections can fire because the
+        # compound's own bounding box covers the entire board. Piece by piece,
+        # a glyph is a millimetre across: it lands in one region, is rejected by
+        # every other on its bounding box, and needs no boolean at all unless it
+        # straddles a bend. Only for fuse=False, which is what the legend uses -
+        # a board body is one solid and has nothing to gain here.
+        if not fuse:
+            children = []
+            it = TopoDS_Iterator(shape)
+            while it.More():
+                children.append(it.Value())
+                it.Next()
+            if len(children) > 1:
+                out = []
+                for child in children:
+                    done = self.apply(child, fuse=False, note=False, log=log)
+                    if done is not None and not _is_empty(done):
+                        out.append(done)
+                if not out:
+                    log("warning: folding cut the shape away entirely; left flat")
+                    return shape
+                builder = BRep_Builder()
+                compound = TopoDS_Compound()
+                builder.MakeCompound(compound)
+                for piece in out:
+                    builder.Add(compound, piece)
+                return compound
+
         pieces: list[TopoDS_Shape] = []
         for region in self.regions:
             if region.kind != "panel":
                 continue
-            piece = _cut_to_region(shape, region.bounds, box, region.face)
+            piece = _cut_to_region(shape, region.bounds, box, region)
             if piece is None:
                 continue
             if region.moved:
@@ -557,7 +605,7 @@ class FoldPlan:
             pieces.append(piece)
 
         for strip in self.strips:
-            flat = _cut_to_region(shape, strip.bounds, box, strip.face)
+            flat = _cut_to_region(shape, strip.bounds, box, strip)
             if flat is None:
                 continue
             bent = _revolve_strip(flat, strip)
@@ -570,7 +618,7 @@ class FoldPlan:
                     self._note_build(strip.bend.name, "faceted", log,
                                      why[0] if why else "")
                 for region in strip.facets:
-                    piece = _cut_to_region(shape, region.bounds, box, region.face)
+                    piece = _cut_to_region(shape, region.bounds, box, region)
                     if piece is None:
                         continue
                     pieces.append(
@@ -1261,7 +1309,7 @@ def _is_empty(shape: TopoDS_Shape) -> bool:
 
 def _cut_to_region(shape: TopoDS_Shape,
                    bounds: list[tuple[float, float, float, float]],
-                   box, face=None) -> TopoDS_Shape | None:
+                   box, piece=None) -> TopoDS_Shape | None:
     """The part of *shape* inside *face* and every one of *bounds*, or None.
 
     Each bound that the shape already satisfies is skipped rather than turned
@@ -1269,12 +1317,20 @@ def _cut_to_region(shape: TopoDS_Shape,
     held panel each costing a single cut, and the silkscreen on either of them
     costing none at all.
 
-    *face* is the piece of the flat board the region is, and it is what tells
-    one arm from another. It is applied LAST: the half-plane bounds are cheap
-    and often reject the shape outright, and there is no sense extruding a
-    piece to intersect with nothing.
+    *piece* is the region or strip, whose `face` is the part of the flat board
+    it covers - what tells one arm from another. Its bounding box is tried
+    FIRST, because it rejects outright and costs nothing: that is what makes
+    folding a legend one glyph at a time affordable.
     """
-    piece = shape
+    pbox = piece.face_box() if piece is not None else None
+    if pbox is not None:
+        xmin, ymin, _, xmax, ymax, _ = pbox
+        sxmin, symin, _, sxmax, symax, _ = box
+        if (sxmax < xmin - EPS or sxmin > xmax + EPS
+                or symax < ymin - EPS or symin > ymax + EPS):
+            return None
+
+    out = shape
     for nx, ny, lo, hi in bounds:
         low, high = _extent(box, nx, ny)
         if high < lo - EPS or low > hi + EPS:
@@ -1282,37 +1338,55 @@ def _cut_to_region(shape: TopoDS_Shape,
         if low >= lo - EPS and high <= hi + EPS:
             continue
         cutter = _slab(nx, ny, lo, hi, box)
-        common = BRepAlgoAPI_Common(piece, cutter)
+        common = BRepAlgoAPI_Common(out, cutter)
         if not common.IsDone():
             return None
-        piece = common.Shape()
-        if _is_empty(piece):
+        out = common.Shape()
+        if _is_empty(out):
             return None
 
-    if face is not None:
-        pbox = _bbox(face)
-        if pbox is not None:
-            # Cheap rejection first: a glyph, or a whole layer part, that is
-            # nowhere near this piece costs a bounding box and no boolean.
-            xmin, ymin, _, xmax, ymax, _ = pbox
-            sxmin, symin, _, sxmax, symax, _ = box
-            if (sxmax < xmin - EPS or sxmin > xmax + EPS
-                    or symax < ymin - EPS or symin > ymax + EPS):
+    if piece is not None and piece.face is not None:
+        # Wholly inside the piece? Then there is nothing to cut. A glyph is a
+        # millimetre across and a panel is most of the board, so this is the
+        # answer for nearly every polygon of a legend.
+        sxmin, symin, _, sxmax, symax, _ = box
+        corners = ((sxmin, symin), (sxmax, symin), (sxmax, symax), (sxmin, symax))
+        whole = (piece.poly is not None
+                 and all(point_in_polygon(c, piece.poly) for c in corners)
+                 and not _crosses(piece.poly, sxmin, symin, sxmax, symax))
+        if not whole:
+            zmin, zmax = box[2], box[5]
+            prism = BRepPrimAPI_MakePrism(
+                piece.face, gp_Vec(0, 0, (zmax - zmin) + 2.0)).Shape()
+            lift = gp_Trsf()
+            lift.SetTranslation(gp_Vec(0, 0, zmin - 1.0))
+            prism = BRepBuilderAPI_Transform(prism, lift, True).Shape()
+            common = BRepAlgoAPI_Common(out, prism)
+            if not common.IsDone():
                 return None
-        zmin, zmax = box[2], box[5]
-        prism = BRepPrimAPI_MakePrism(
-            face, gp_Vec(0, 0, (zmax - zmin) + 2.0)).Shape()
-        lift = gp_Trsf()
-        lift.SetTranslation(gp_Vec(0, 0, zmin - 1.0))
-        prism = BRepBuilderAPI_Transform(prism, lift, True).Shape()
-        common = BRepAlgoAPI_Common(piece, prism)
-        if not common.IsDone():
-            return None
-        piece = common.Shape()
-        if _is_empty(piece):
-            return None
+            out = common.Shape()
+            if _is_empty(out):
+                return None
 
-    return None if _is_empty(piece) else piece
+    return None if _is_empty(out) else out
+
+
+def _crosses(poly, xmin: float, ymin: float, xmax: float, ymax: float) -> bool:
+    """Does any edge of *poly* pass through the box?
+
+    All four corners of a box can be inside a polygon while an edge still cuts
+    across it - a piece with a notch in it. Cheap, and it has to be right: the
+    answer decides whether a boolean is skipped.
+    """
+    n = len(poly)
+    for i in range(n):
+        x0, y0 = poly[i]
+        x1, y1 = poly[(i + 1) % n]
+        if (max(x0, x1) < xmin or min(x0, x1) > xmax
+                or max(y0, y1) < ymin or min(y0, y1) > ymax):
+            continue
+        return True
+    return False
 
 
 # --------------------------------------------------------------------------- #

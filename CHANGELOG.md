@@ -11,6 +11,44 @@ to use the tool.
 
 ---
 
+- **2026-08-14** — **A rigid-flex board with arms going several ways now folds
+  correctly, and quickly.** Cadence's own demo board — three flex arms leaving
+  the middle in three directions, six bends — crashed the export outright. Two
+  readings behind that were wrong in the same way: a bend line was treated as a
+  cut across the *whole* board rather than a segment on one arm. So two bends on
+  opposite corners each counted as lying beyond the other (which is what
+  crashed it), two perpendicular bends on one arm counted as claiming the same
+  material and one of them was silently left flat, and — once the crash was
+  fixed — a quarter of the board was being built **twice**, in two places, with
+  the main board itself folded by a bend it has nothing to do with. The folded
+  model weighed 114.7% of the flat one. **The bend areas now cut the flat board
+  into pieces, and the pieces say what folds with what**: the piece your anchor
+  is on is held, and every other is folded by the bends on the path back to it.
+  Same board, same settings: 99.4% of the flat volume, a third of the geometry,
+  and nothing claimed twice — which is checked on every build and reported if it
+  ever is. **The printed legend is folded piece by piece instead of whole**,
+  which took that board's full build from *not finished in 23 minutes* to **107
+  seconds**. Also fixed: a stackup layer drawn only on the flex arms produced an
+  empty part in the assembly instead of none.
+  / **Rigid-flex с плечами в разные стороны теперь складывается правильно и
+  быстро.** Демо-плата самой Cadence — три гибких плеча из середины в три
+  стороны, шесть сгибов — валила экспорт. За этим стояли две ошибки одной
+  природы: линия сгиба считалась разрезом через **всю** плату, а не отрезком на
+  одном плече. Отсюда: два сгиба в противоположных углах считали друг друга
+  «дальше себя» (это и было падение); два перпендикулярных сгиба на одном плече
+  считались претендующими на один материал, и один из них молча оставался
+  плоским; а когда падение починили — четверть платы строилась **дважды**, в
+  двух местах, причём саму основную плату складывал сгиб, к которому она
+  отношения не имеет. Сложенная модель весила 114.7% от плоской. **Теперь
+  области сгиба режут плоскую плату на куски, и куски же говорят, что с чем
+  складывается**: кусок с якорем удерживается, каждый остальной складывают
+  сгибы на пути к нему. Та же плата, те же настройки: 99.4% от плоского объёма,
+  втрое меньше геометрии и ничего, заявленного дважды, — это проверяется на
+  каждой сборке и сообщается, если вдруг не так. **Шелкография складывается
+  по одному элементу, а не целиком** — полная сборка этой платы прошла из
+  «не закончилась за 23 минуты» в **107 секунд**. Заодно исправлено: слой стека,
+  нарисованный только на плечах, давал в сборке пустую деталь вместо ничего.
+
 - **2026-08-11** — **A board could come out of the export with no board in it.**
   Every file the exporter wrote after the first one carried the through-holes a
   second time: the cutout list is collected once per board and was then shared

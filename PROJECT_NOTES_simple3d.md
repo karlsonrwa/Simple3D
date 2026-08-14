@@ -2925,6 +2925,139 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-14 (round 62) — the fold, rebuilt on pieces instead of half-planes
+
+The user put `cadence_demo.json` in `failed/` — Cadence's own rigid-flex demo
+board, 7 zones, 6 bends, three arms leaving the middle in three directions — and
+`plan_fold` died with `KeyError: 1`. Three faults came out of it, each hiding
+the next.
+
+### 1. The crash: a containment test that was not antisymmetric
+
+`contains(outer, inner)` asked only whether one strip lies beyond another
+**along that one's normal**. Nothing makes that a partial order. BEND_5 at
+(93, −49) and BEND_1 at (143, 93) have near-perpendicular normals and sit 135 mm
+apart measured one way, 66 mm the other — both far past either strip, so **each
+contained the other**:
+
+```
+[1] BEND_5  above=[0,2,3]  parent=3
+[3] BEND_4  above=[0,2]    parent=2
+[2] BEND_1  above=[1]      parent=1      cycle: 1 → 3 → 2 → 1
+```
+
+The loop then walked `sorted(key=len(above))`, which assumes a parent always has
+fewer ancestors than its child — true only of a transitive relation — and
+reached a bend whose parent had not been placed. Note what the KeyError saved
+us from: `ancestry()` walks `parent` with `while k is not None`, so a cycle
+reached that way is an **infinite loop**, and a hang in a GUI build is worse
+than a crash.
+
+### 2. A real bend thrown away
+
+BEND_2 was being dropped as "cannot be read". It and BEND_1 are both on the
+FLEXI arm, **perpendicular to each other** at a corner, 33.9 mm between centres,
+sharing no material. The clash test compared two *bands* along one normal and
+saw 9.19 mm between strips 8.3 and 9.9 mm wide. A strip is a **rectangle** — as
+wide as its developed length, as long as its bend line — so the test is now a
+separating-axis test over the four edge directions. Touching still counts as
+separated, which is the ring case. All six bends fold now.
+
+### 3. What the first two were hiding: the model itself
+
+With the crash fixed the board built — and the folded body weighed **114.7% of
+the flat one**. A fold cannot add material. Sampling the outline at 1 mm:
+
+| | |
+|---|---|
+| claimed by exactly one region | 15026 points |
+| claimed by two | 3051 |
+| claimed by three | 1976 |
+
+and worse, **MAIN_PCB — the held panel — fell inside "panel after BEND_5"**.
+A region was an intersection of half-planes, and a half-plane crosses the whole
+board: "beyond BEND_5", whose normal is diagonal, sweeps across the LCD arm
+180 mm away and over the main board too.
+
+**Bounding every panel by every other bend was tried and is worse.** Double
+claiming goes to zero and 42.7% of the board then belongs to no region at all —
+two arms that each lie beyond the other are excluded from both. Neither reading
+is a tuning question: half-planes cannot say which ARM a point is on.
+
+### The rebuild
+
+Which arm a point is on is **connectivity**. So `_cut_into_pieces` cuts the flat
+outline by the bend strips with OCC and the connected faces that fall out are
+the panels — 7 panels and 6 strips on this board, in 0.14 s. From there:
+
+- The **held** piece is the one the anchor lands on (nearest, if the anchor is
+  off the board — the origin often is).
+- A **walk outwards** folds each strip away from whichever side is already
+  placed. No containment, no parent tree, no ordering, no cycle possible: a
+  piece is placed when it is reached.
+- A strip's neighbour may be **another strip** — a flex rolled into a ring is
+  two 180° areas meeting along a line with no panel between them — and the walk
+  crosses those the same way.
+- A bend is oriented **per bend**, by the side the walk arrives from, instead of
+  once globally against the anchor.
+- A piece nothing reaches is an **island**: left where it is, named in the log.
+
+One trap inside it: a band is infinite across its own direction, so
+`outline AND band` comes back in several pieces — BEND_5's band also clips the
+LCD arm. Only the piece the bend **line** is in is that bend's strip.
+
+Measured, same board, same settings:
+
+| | volume | z extent | STEP entities |
+|---|---|---|---|
+| flat | 22679.233 mm³ | −1.66 … −0.05 | 18211 |
+| folded, half-planes | 26012.911 mm³ (114.7%) | −24.05 … 105.96 | 107193 |
+| folded, pieces | 22535.457 mm³ (**99.4%**) | −24.03 … 20.62 | 31850 |
+
+The overlap is measured on every build now and warned about if it is ever not
+zero. It should not be — but silence is what made this cost a round.
+
+### The legend, folded piece by piece
+
+The full build with silkscreen had not finished in 23 minutes. `apply()` cut the
+**whole legend compound** — 2287 polygons, tens of thousands of faces — against
+every region in turn, and none of the cheap rejections could fire because that
+compound's bounding box covers the entire board. Folded one glyph at a time, a
+glyph is a millimetre across: it lands in one piece, is rejected by every other
+on its bounding box, and needs no boolean at all unless it straddles a bend.
+`_cut_to_region` now takes the region rather than its face, caches the piece
+bounding box, and skips the boolean entirely when the shape is wholly inside the
+piece — which needs `_crosses`, because four corners inside a polygon does not
+mean the box is (a piece with a notch in it).
+
+**The whole board, folded, with both legends: 107 seconds.** 2287 silkscreen
+solids, 1.96M STEP entities, 95 MB. Against "not finished in 23 minutes".
+
+### Also
+
+- A stackup layer whose drawn shapes lie entirely outside a zone — a stiffener
+  that is only on the flex arms — produced an **empty part** rather than none:
+  `IsNull()` does not catch an empty compound, the round-61 lesson in a second
+  place. Skipped now, with a line saying where.
+- `point_on_polygon` is new. Half-planes had EPS for a board corner or the seam
+  between two pieces; polygons need the same allowance spelled out, and without
+  it `transform_at` at a corner of the board returned the identity.
+- The stackup read was **cross-checked against the user's `Cadence_Demo.tcfx`**:
+  every named layer of PRIMARY matches to the micron. The exporter is reading
+  the cross-section correctly; nothing in this round was a stackup problem.
+
+### What to remember
+
+**A model that cannot represent the answer will produce a confident wrong one.**
+Both the cycle and the double-claiming were the same mistake seen twice: a bend
+line treated as a cut across the whole board rather than a segment on one arm.
+The crash was the lucky part — it made someone look.
+
+**Check the invariant, not just the tests.** Every existing suite passed on the
+half-plane model; the board it could not describe was not in the corpus, and no
+test asserted "no piece of the board is claimed twice". That check is now in
+`plan_fold` itself.
+
 ## Update 2026-08-11 (round 61) — the whole-board file had no board in it
 
 The user put two intermediates from one board in `failed/`: `8231-a2.json` (the

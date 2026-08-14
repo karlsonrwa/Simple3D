@@ -446,8 +446,11 @@ and reported — that is a design rule violation, not a modelling choice.
 **The radius is measured from the local stack**, since the flex surface can sit
 two millimetres below the top of a stiffener.
 
-**Which side moves — the anchor.** The piece containing the **origin** stays in
-the XY plane and everything beyond each bend swings from it. Allegro has the
+**Which side moves — the anchor.** The bend areas cut the flat board into
+pieces. The one containing the **origin** stays in the XY plane, and every other
+piece is folded by the bends on the path back to it — so what carries what is
+read from how the pieces actually join, and a board with arms leaving in three
+different directions folds each of them on its own. Allegro has the
 same idea (*Setup – Anchor 3D View*), but in 24.1 the point it asks for never
 reaches the board file, so the design cannot tell us and `[0, 0]` is the
 convention instead. **Put the part of the board that should lie flat over the
@@ -1007,8 +1010,11 @@ Simple 3D читает все три и складывает модель.
 **Радиус отсчитывается от местного стека**: поверхность флекса может лежать на
 два миллиметра ниже верха стиффенера.
 
-**Какая сторона двигается — якорь.** Кусок, содержащий **начало координат**,
-остаётся в плоскости XY, а всё за каждым сгибом поворачивается от него. У
+**Какая сторона двигается — якорь.** Области сгиба режут плоскую плату на куски.
+Тот, что содержит **начало координат**, остаётся в плоскости XY, а каждый
+остальной складывается теми сгибами, что лежат на пути обратно к нему — то есть
+кто кого несёт, читается по тому, как куски реально соединены, и плата с
+плечами, уходящими в три разные стороны, складывается по каждому отдельно. У
 Allegro есть та же идея (*Setup – Anchor 3D View*), но в 24.1 запрошенная точка
 до файла платы не доходит, поэтому проект нам её сообщить не может и соглашением
 служит `[0, 0]`. **Положите ту часть платы, которая должна лежать плоско, на
