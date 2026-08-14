@@ -419,6 +419,9 @@ class _Region:
     # This is what says which ARM the region belongs to; `bounds` only ever
     # subdivides it now - the slices of one strip. See _cut_into_pieces.
     poly: list[tuple[float, float]] | None = None
+    # Every fragment of the piece, when a pinch had to be repaired into several
+    # faces - see _piece_face. `poly` is the first and largest of them.
+    polys: list | None = None
     face: object = None
     _box: object = None
 
@@ -433,8 +436,9 @@ class _Region:
         return self._box
 
     def holds(self, x: float, y: float) -> bool:
-        if self.poly is not None and not (point_in_polygon((x, y), self.poly)
-                                          or point_on_polygon((x, y), self.poly)):
+        rings = self.polys or ([self.poly] if self.poly is not None else [])
+        if rings and not any(point_in_polygon((x, y), r)
+                             or point_on_polygon((x, y), r) for r in rings):
             return False
         return all(lo - EPS <= nx * x + ny * y <= hi + EPS
                    for nx, ny, lo, hi in self.bounds)
@@ -459,6 +463,7 @@ class _Strip:
     carried: gp_Trsf                  # what the bends before this one do to it
     facets: list[_Region] = field(default_factory=list)
     poly: list[tuple[float, float]] | None = None
+    polys: list | None = None
     face: object = None
     _box: object = None
 
@@ -468,8 +473,9 @@ class _Strip:
         return self._box
 
     def holds(self, x: float, y: float) -> bool:
-        if self.poly is not None and not (point_in_polygon((x, y), self.poly)
-                                          or point_on_polygon((x, y), self.poly)):
+        rings = self.polys or ([self.poly] if self.poly is not None else [])
+        if rings and not any(point_in_polygon((x, y), r)
+                             or point_on_polygon((x, y), r) for r in rings):
             return False
         return all(lo - EPS <= nx * x + ny * y <= hi + EPS
                    for nx, ny, lo, hi in self.bounds)
@@ -645,7 +651,24 @@ class FoldPlan:
             for piece in pieces:
                 builder.Add(compound, piece)
             return compound
-        return _fuse_all(pieces, log)
+
+        fused = _fuse_all(pieces, log)
+        # A fuse that hands back nothing is how a whole layer disappears without
+        # a word: one degenerate sliver among the pieces, and 173 mm3 of a flex
+        # arm's dielectric came back as a null shape. The pieces themselves are
+        # sound - they were cut and bent one at a time - so keep them as a
+        # compound rather than lose the part, and say what happened.
+        if fused is None or _is_empty(fused):
+            log(f"warning: the {len(pieces)} folded piece(s) of this shape "
+                f"could not be fused into one solid; keeping them as separate "
+                f"bodies so the material is not lost")
+            builder = BRep_Builder()
+            compound = TopoDS_Compound()
+            builder.MakeCompound(compound)
+            for piece in pieces:
+                builder.Add(compound, piece)
+            return compound
+        return fused
 
     def summary(self) -> list[str]:
         """One line per bend that did not build the same way throughout.
@@ -862,7 +885,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # bend strips taken out of it, and which piece a point is on is the only
     # question that has a right answer on a board whose arms leave in several
     # directions.
-    pieces = _cut_into_pieces(outline, kept) if outline else None
+    pieces = _cut_into_pieces(outline, kept, log) if outline else None
     if pieces is None:
         plan.notes.append(
             "  warning: the outline could not be cut into pieces, so there is "
@@ -878,7 +901,11 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # areas that meet along a line, with no flat panel between them.
     npanel = len(panels)
     parts = [face for _, face in panels] + [face for _, face in strip_pieces]
-    polys = [poly for poly, _ in panels] + [poly for poly, _ in strip_pieces]
+    rings = [rs for rs, _ in panels] + [rs for rs, _ in strip_pieces]
+    # One outline per piece for the measurements below - area, centroid, which
+    # side of a strip - and it is the largest fragment. Containment uses them
+    # all, through _Region.holds.
+    polys = [rs[0] for rs in rings]
     neighbours = [[] for _ in parts]
     for a in range(len(parts)):
         for b in range(a + 1, len(parts)):
@@ -893,18 +920,18 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # have to be inside the board - the origin often sits on a corner or just
     # off it - so a point outside every piece takes the nearest one.
     def piece_at(point) -> int:
-        for i, (poly, _) in enumerate(panels):
-            if point_in_polygon(point, poly):
+        for i, (rs, _) in enumerate(panels):
+            if any(point_in_polygon(point, r) for r in rs):
                 return i
         return min(range(len(panels)),
                    key=lambda i: min(math.hypot(vx - point[0], vy - point[1])
-                                     for vx, vy in panels[i][0]))
+                                     for r in panels[i][0] for vx, vy in r))
 
     if anchor is not None:
         held = piece_at(anchor)
     else:
         held = max(range(len(panels)),
-                   key=lambda i: abs(polygon_area(panels[i][0])))
+                   key=lambda i: sum(abs(polygon_area(r)) for r in panels[i][0]))
 
     def side_of(part: int, s: int) -> float:
         """Which way piece *part* lies from strip s: -1 before it, +1 beyond.
@@ -983,7 +1010,8 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
                 facets.append(_Region(
                     label=f"{bend.name} slice {j + 1}/{steps}",
                     bounds=[(nx, ny, hinge - overlap, hinge + step + overlap)],
-                    poly=strip_pieces[s][0], face=strip_pieces[s][1],
+                    poly=strip_pieces[s][0][0], polys=strip_pieces[s][0],
+                    face=strip_pieces[s][1],
                     trsf=_slice_trsf(base_trsf, nx, ny, lo, hinge, axis_z,
                                      sign * phi),
                     kind="slice"))
@@ -993,7 +1021,8 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
             # because that list answers "where does a point at (x, y) end up".
             plan.strips.append(_Strip(
                 bend=bend, bounds=[(nx, ny, lo, hi)], normal=(nx, ny),
-                poly=strip_pieces[s][0], face=strip_pieces[s][1],
+                poly=strip_pieces[s][0][0], polys=strip_pieces[s][0],
+                face=strip_pieces[s][1],
                 lo=lo, hi=hi, axis_z=axis_z, turn=sign * theta,
                 carried=base_trsf, facets=facets))
             plan.regions.extend(facets)
@@ -1016,7 +1045,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
             labels[i] = f"island {i}"
             plan.notes.append(
                 f"  note: a piece of the board around "
-                f"{panels[i][0][0][0]:.1f}, {panels[i][0][0][1]:.1f} is not "
+                f"{panels[i][0][0][0][0]:.1f}, {panels[i][0][0][0][1]:.1f} is not "
                 f"joined to the rest through any bend area; left where it is")
     for s, (bend, _, _, _, _, _) in enumerate(kept):
         if npanel + s not in carried:
@@ -1024,9 +1053,9 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
                 f"  note: {bend.name} is not reachable from the held piece, so "
                 f"nothing says which way it folds; left flat")
 
-    for i, (poly, face) in enumerate(panels):
+    for i, (rs, face) in enumerate(panels):
         plan.regions.append(_Region(
-            label=labels[i], bounds=[], poly=poly, face=face,
+            label=labels[i], bounds=[], poly=rs[0], polys=rs, face=face,
             trsf=carried[i], moved=(i != held)))
 
     # The invariant, checked rather than assumed: the pieces come out of one
@@ -1532,6 +1561,83 @@ def _face_poly(face) -> list[tuple[float, float]]:
     return pts
 
 
+def _piece_face(face, log: LogFn = _noop_log, what: str = "a piece"):
+    """One face out of the cut, made valid, as (face-or-compound, polygon).
+
+    A boolean between the outline and the strips can leave a face PINCHED: on
+    Cadence's demo board the wedge between BEND_6 and BEND_4 came back with a
+    zero-width slit running 19 mm up the arm's edge and back, because the
+    outline's edge and the strip's edge are collinear there. Its area was right
+    - 15.34 mm2 - and `BRepCheck_Analyzer` said invalid, and a prism raised on
+    it is unusable: 2 of the board's 57 layer parts intersected it instead of
+    all 8 in that zone, so the wedge was simply missing from the model.
+
+    ShapeFix splits the pinch into valid faces - two here, 0.085 and 15.42 mm2 -
+    and they are kept together as one piece, because a piece pinched in two by
+    the arithmetic is still one piece of board and must fold as one.
+    """
+    from OCP.BRepCheck import BRepCheck_Analyzer
+
+    if BRepCheck_Analyzer(face).IsValid():
+        return face, [_face_poly(face)]
+
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+    from OCP.ShapeFix import ShapeFix_Shape
+
+    # COPY first. ShapeFix edits in place, and every face out of one boolean
+    # shares its edges with the faces beside it - so repairing this one reaches
+    # into its neighbours and quietly damages them. Measured: without the copy
+    # the folded board lost 173.7 mm3 against the 22679.233 it is made of,
+    # while the pinch it was fixing is worth 7.
+    fix = ShapeFix_Shape(BRepBuilderAPI_Copy(face).Shape())
+    fix.Perform()
+    good = [f for f in _faces_of(fix.Shape()) if BRepCheck_Analyzer(f).IsValid()]
+    if not good:
+        log(f"warning: {what} of this board came out of the cut pinched and "
+            f"could not be repaired; it may be missing from the model")
+        return face, [_face_poly(face)]
+
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    def area(f):
+        props = GProp_GProps()
+        BRepGProp.SurfaceProperties_s(f, props)
+        return props.Mass()
+
+    good.sort(key=area, reverse=True)
+    # The repair leaves SLIVERS along the slit it opened, and a sliver is an
+    # artefact of the arithmetic rather than board: prism one and it is a
+    # degenerate solid, which is worse than nothing. Measured here - a 0.085 mm2
+    # chip beside a 15.42 mm2 wedge took the whole 173.763 mm3 dielectric of
+    # that arm down with it, because the fuse of the folded pieces then produced
+    # nothing at all. Anything under a hundredth of the piece goes, and the log
+    # says how much, so this can never quietly eat something real.
+    biggest = area(good[0])
+    slivers = [f for f in good[1:] if area(f) < 0.01 * biggest]
+    if slivers:
+        log(f"{what}: {len(slivers)} sliver(s) totalling "
+            f"{sum(area(f) for f in slivers):.4f} mm2 left by the repair were "
+            f"dropped, beside {biggest:.2f} mm2 of board")
+        good = [f for f in good if f not in slivers]
+
+    log(f"{what} came out of the cut pinched (a zero-width slit) and was "
+        f"repaired into {len(good)} valid face(s)")
+    if len(good) == 1:
+        return good[0], [_face_poly(good[0])]
+
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for f in good:
+        builder.Add(compound, f)
+    # EVERY surviving fragment's polygon is kept, largest first. "Is this point
+    # on this piece" has to be true for all of them - the anchor landing on the
+    # smaller half is not a special case, it is a coin toss - while the callers
+    # that want one outline (area, centroid) take the first.
+    return compound, [_face_poly(f) for f in good]
+
+
 def _touching(a, b, tol: float = 1.0e-6) -> bool:
     """Do two faces share a boundary?"""
     from OCP.BRepExtrema import BRepExtrema_DistShapeShape
@@ -1551,7 +1657,8 @@ def _closest_point(a, b) -> tuple[float, float] | None:
     return (p.X(), p.Y())
 
 
-def _cut_into_pieces(outline: list[tuple[float, float]], chain: list):
+def _cut_into_pieces(outline: list[tuple[float, float]], chain: list,
+                     log: LogFn = _noop_log):
     """Cut the flat outline by every bend strip.
 
     -> (panels, strips), each a list of (polygon, face); strips[i] belongs to
@@ -1584,15 +1691,17 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list):
         mid = bend.midpoint
         best, best_d = None, None
         for part in _faces_of(common.Shape()):
-            poly = _face_poly(part)
-            if len(poly) < 3:
+            part, polys = _piece_face(part, log, f"the strip of {bend.name}")
+            polys = [q for q in polys if len(q) >= 3]
+            if not polys:
                 continue
-            if point_in_polygon(mid, poly):
-                best, best_d = (poly, part), -1.0
+            if any(point_in_polygon(mid, q) for q in polys):
+                best, best_d = (polys, part), -1.0
                 break
-            d = min(math.hypot(vx - mid[0], vy - mid[1]) for vx, vy in poly)
+            d = min(math.hypot(vx - mid[0], vy - mid[1])
+                    for q in polys for vx, vy in q)
             if best_d is None or d < best_d:
-                best, best_d = (poly, part), d
+                best, best_d = (polys, part), d
         if best is None:
             return None
         strips.append(best)
@@ -1610,9 +1719,10 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list):
         return None
     panels = []
     for part in _faces_of(cut.Shape()):
-        poly = _face_poly(part)
-        if len(poly) >= 3:
-            panels.append((poly, part))
+        part, polys = _piece_face(part, log, "a flat piece of the board")
+        polys = [q for q in polys if len(q) >= 3]
+        if polys:
+            panels.append((polys, part))
     if not panels:
         return None
     return panels, strips
