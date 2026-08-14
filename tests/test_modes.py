@@ -97,6 +97,23 @@ for n, t, _ in S2:
 check("an unknown layer -> other",
       layer_kind({"name": "WHATEVER", "type": "MASK", "function": None}) == "other")
 
+# These names are typed by a person into the cross-section editor and Allegro
+# does not police them. Cadence's own demo board spells it STIFFNER, without the
+# second E, and its epoxy layer EXPOXY; both fell through to "other" and came
+# out as undifferentiated grey - 51 faces of it - which is exactly what a
+# layer-colored board exists to prevent.
+for name, want_kind in (("STIFFNER_INNER1", "stiffener"),
+                        ("STIFNER_TOP", "stiffener"),
+                        ("EXPOXY_INNER1", "adhesive"),
+                        ("EPOXY_TOP", "adhesive")):
+    got = layer_kind({"name": name, "type": "MASK", "function": None})
+    check(f"{name} -> {want_kind}", got == want_kind, got)
+# ...and an epoxy layer that DOES declare its function is caught by that first,
+# which is how this board's actually reads.
+check("layerFunction still wins where it is set",
+      layer_kind({"name": "EXPOXY_INNER1", "type": "MASK",
+                  "function": "ADHESIVE"}) == "adhesive")
+
 print("\n[2] the three modes")
 res = {}
 for mode in ("solid", "layers", "inspect"):

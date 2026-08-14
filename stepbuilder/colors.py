@@ -132,9 +132,23 @@ def layer_kind(layer: dict) -> str:
 
     probe = f"{layer.get('name') or ''} {layer.get('function') or ''}".upper()
     probe = "".join(c for c in probe if c.isalnum())
-    for marker, kind in (("SOLDERMASK", "soldermask"), ("COVERLAY", "coverlay"),
-                         ("ADHESIVE", "adhesive"), ("STIFFENER", "stiffener")):
-        if marker in probe:
+    # Several spellings per kind, because these names are typed by a person into
+    # the cross-section editor and Allegro does not police them. Cadence's own
+    # demo board spells it STIFFNER, without the second E, and its epoxy layer
+    # EXPOXY: both fell through to "other" and came out undifferentiated grey,
+    # which is what a layer-colored board is meant to prevent. Matching is on a
+    # substring of name + function with everything but letters and digits
+    # stripped, so STIFFNER_INNER1 and "Stiffner" alike land in the same place.
+    for markers, kind in ((("SOLDERMASK",), "soldermask"),
+                          (("COVERLAY",), "coverlay"),
+                          (("ADHESIVE",), "adhesive"),
+                          (("STIFFENER", "STIFFNER", "STIFNER"), "stiffener"),
+                          # An epoxy layer declares layerFunction ADHESIVE on
+                          # every board seen so far and is caught above by that;
+                          # this is for one that leaves the function blank, so
+                          # it joins the adhesive rather than becoming "other".
+                          (("EPOXY", "EXPOXY"), "adhesive")):
+        if any(marker in probe for marker in markers):
             return kind
     return "other"
 
