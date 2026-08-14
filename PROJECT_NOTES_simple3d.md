@@ -2925,6 +2925,99 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-14 (round 66) — the k a board can take, and a tolerance that changed jobs
+
+Two things, both raised by the user looking at the model rather than at a log.
+
+### "Can such bends always turn up at k = 0.5?"
+
+Yes, and structurally rather than by bad luck. Allegro lays its bend areas out at
+**k = 0** — the drawn area IS the inner arc — so at any higher k every strip is
+wider than the designer allowed, by `θ·k·t`. Two areas collide as soon as their
+clearance is less than the sum of the two growths measured in one direction. On a
+board whose areas were laid edge to edge that is certain, not possible.
+
+Three degrees, all of which this project has now met: the strips **graze** (a
+pinched piece, round 64), they **overlap** (a bend refused, the ring in the test
+corpus), or the panel between them **vanishes**.
+
+So the build now answers the question the user actually has — *what is the
+largest foldNeutral THIS board takes cleanly* — by bisecting: ten trial cuts
+between 0 and the chosen factor, and **only when there is trouble to explain**.
+About a second against a build measured in minutes.
+
+```
+note: this board's bend areas are laid out at k = 0, as Allegro draws them, and
+      the tightest pair on it takes foldNeutral up to 0.36. At the current 0.50
+      the strips reach each other and the piece between them had to be repaired.
+      foldNeutral 0 reproduces the drawing exactly; 0.36 is as physical as this
+      layout allows.
+```
+
+It is **advice, not trouble**, so it got its own severity: `note:` lines are blue
+in the window, beside orange warnings and dark red errors. The bend-area notes
+that already existed pick it up too, which is right — same kind of line.
+
+Getting the number needed the chain and the clash filter to be callable for a
+trial factor rather than only for the chosen one. Both are functions of k now;
+one copy of the arithmetic, which was the whole point — a ceiling computed by a
+second, slightly different formula would be worse than none.
+
+**Worth keeping from the same conversation**, because it is not obvious:
+
+- Each bend takes **its own** inner surface, for the axis and for the developed
+  length alike. Verified: on a synthetic S, `inner=bottom` puts the axis at
+  `bottom − R` and `inner=top` at `top + R`; on the real board BEND_1 sits at
+  −6.912 and BEND_2 at +4.713.
+- `inner_side` is a property of the MATERIAL's faces, not of the world. After a
+  180° fold the board is upside down, so its own "top" faces down — which is why
+  a *bottom-then-top* pair is **not** an S and does not come back to its plane.
+- **k barely moves where a panel lands.** A 180° bend does not move it at all:
+  the strip grows symmetrically about the bend line, so `u_final = lo + hi − u =
+  2·(bend line) − u` and the width cancels. Measured on all four 180° bends —
+  0.000 shift. Only bends that are not 180° move, and those do accumulate along
+  a chain: the CONN arm's 180° → 200° → 45° gives 0.000 → 0.189 → 0.346 mm.
+  What k really changes is **how much of the board is arc rather than flat**:
+  +5.214 mm of material over the six bends.
+
+### A tolerance that quietly changed jobs
+
+The user: a rounded arm end comes out visibly polygonal. Not the bend — every
+strip on that board is a true cylinder — the faceting was in the **edge**.
+
+`contour_points` samples an arc into **eight chords**, and its docstring said, in
+so many words, that a chord approximation "is not merely acceptable but the
+point" — because its answers were areas and containment tests. **Round 62 made
+the same function decide real geometry** (the pieces are cut from it) and nobody
+went back to the tolerance. On this outline — 48 segments, 22 arcs at r = 3, 4, 9
+and 14 — that is **67 µm of flat per chord** on the largest corner.
+
+`_cut_into_pieces` now takes the outline as the intermediate writes it and builds
+the face with `core.build_contour`, arcs intact; the flattened copy goes on doing
+the job it was accurate enough for. Nothing in the wrap needed changing —
+`_map_strip` already turns a circular edge into an exact ellipse in the
+cylinder's parameter space, and carries a note saying it had to, because sampling
+a relief notch as a spline used to throw the whole solid away. `_face_poly` had
+to learn to sample, since taking the vertices of a wire that is no longer
+polygonal cuts a rounded corner off entirely.
+
+Pieces now carry 7 circular edges on the held panel and 2–3 per arm strip where
+they carried none; they still tile the outline exactly (19484.35 against
+19484.29 mm²); the folded body is 22390.560 mm³ against the 22388.679 the board
+is made of, +0.008%.
+
+**The lesson, and it has cost two rounds now:** when code is repurposed, its
+tolerances come along without being re-read. The docstring even said what the
+old purpose was. Round 64's pinch and this round's facets are the same mistake
+seen twice — a number chosen for classification deciding geometry.
+
+### One more trap, for the record
+
+Comparing a fresh build against a STEP written **before the user re-exported the
+board** showed a 289 mm³ loss that did not exist. The board file had changed
+under the reference. Re-measure the baseline from the current input, never from a
+file on disk whose provenance is a few messages back.
+
 ## Update 2026-08-14 (round 65) — the legend printed on zones that are not printed on
 
 The user fixed the coverlay in the board itself rather than in the config —

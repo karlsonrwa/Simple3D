@@ -11,6 +11,30 @@ to use the tool.
 
 ---
 
+- **2026-08-14** — **A rounded board edge stays round through a bend, and the log
+  now says how much *K factor* your board can take.** Two things you could see in
+  the model. A rounded arm end came out of the fold visibly faceted — not the
+  bend, whose surfaces are true cylinders, but the *edge*: the flat board was
+  being cut with the outline sampled into eight chords per arc, which is 67 µm of
+  flat on a 14 mm corner. It is cut with the outline's own arcs now, and a
+  rounded end stays round. And when two bend areas that Allegro draws clear of
+  each other do reach each other once widened to the neutral axis, the log says
+  so **in blue** and names the largest `foldNeutral` that particular board takes
+  cleanly — so the choice is a number rather than a guess. Blue is new: `note:`
+  lines are advice, not trouble, and no longer look like warnings.
+  / **Скруглённый край платы остаётся круглым на сгибе, а лог теперь говорит,
+  какой *K-фактор* держит ваша плата.** Две вещи, заметные прямо в модели.
+  Скруглённый конец плеча выходил из свёртки заметно гранёным — дело не в сгибе,
+  его поверхности истинные цилиндры, а в **кромке**: плоская плата резалась по
+  контуру, развёрнутому в восемь хорд на дугу, то есть 67 мкм плоского на
+  скруглении радиусом 14 мм. Теперь режется по собственным дугам контура, и
+  скругление остаётся скруглением. А когда две области сгиба, нарисованные в
+  Allegro с зазором, всё же сходятся после расширения до нейтральной оси, лог
+  сообщает об этом **синим** и называет наибольшее `foldNeutral`, которое эта
+  плата держит чисто, — выбор становится числом, а не догадкой. Синий цвет
+  новый: строки `note:` — это совет, а не беда, и больше не выглядят как
+  предупреждение.
+
 - **2026-08-14** — **The printed legend stops at zones that are not printed on**
   (`format_version: 8`). A cross section assigns its mask and coating layers per
   stackup, so a rigid-flex board says *"no silkscreen on the stiffener zones"*
