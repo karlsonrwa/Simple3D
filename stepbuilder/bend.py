@@ -734,6 +734,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
               slice_angle: float = DEFAULT_SLICE_ANGLE,
               anchor: tuple[float, float] | None = DEFAULT_ANCHOR,
               neutral_factor: float = DEFAULT_NEUTRAL_FACTOR,
+              outline_curves: list | None = None,
               log: LogFn = _noop_log) -> FoldPlan:
     """Work out what moves where.
 
@@ -764,7 +765,12 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
         put the cylinder axis in the wrong place and swing the tail through an
         arc of the wrong radius.
     outline:
-        the flat board outline as a polygon. Only used when there is no anchor.
+        the flat board outline as a polygon - for sizing, classifying points and
+        for choosing the held piece when there is no anchor.
+    outline_curves:
+        the same outline as the intermediate writes it, arcs and all. When it is
+        given the board is CUT with it, so a rounded edge stays round; without
+        it the flattened polygon is cut instead, which chords every arc.
     """
     plan = FoldPlan(slice_angle=slice_angle)
     if not bends:
@@ -904,7 +910,8 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
         marks.append(message)
         log(message)
 
-    pieces = _cut_into_pieces(outline, kept, cut_log) if outline else None
+    pieces = (_cut_into_pieces(outline, kept, cut_log, outline_curves)
+              if outline else None)
     if pieces is None:
         plan.notes.append(
             "  warning: the outline could not be cut into pieces, so there is "
@@ -1094,7 +1101,8 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
             if len(good) < len(trial):
                 return True
             seen: list[str] = []
-            return (_cut_into_pieces(outline, good, seen.append) is None
+            return (_cut_into_pieces(outline, good, seen.append,
+                                     outline_curves) is None
                     or any("pinch" in m for m in seen))
 
         low, high = 0.0, neutral_factor
@@ -1327,7 +1335,8 @@ def plan_from_json(data: dict, board_top_z: float, board_bottom_z: float,
 
     return plan_fold(bends, outline, board_top_z, board_bottom_z,
                      stack_at=stack_at, slice_angle=slice_angle,
-                     anchor=anchor, neutral_factor=neutral_factor, log=log)
+                     anchor=anchor, neutral_factor=neutral_factor,
+                     outline_curves=(contours[0] if contours else None), log=log)
 
 
 def _slice_trsf(carried: gp_Trsf, nx: float, ny: float, lo: float,
@@ -1598,21 +1607,40 @@ def _faces_of(shape) -> list:
     return out
 
 
-def _face_poly(face) -> list[tuple[float, float]]:
+def _face_poly(face, per_curve: int = 12) -> list[tuple[float, float]]:
     """A face's outer wire as an ordered 2-D polygon.
 
-    Every wire here is polygonal - the outline arrives already flattened by
-    `contour_points`, and the strips are rectangles - so the vertices are the
-    polygon, with nothing to sample.
+    The wire is no longer polygonal: the board outline is cut with its ARCS
+    intact, so a rounded arm end arrives as one circular edge between two
+    vertices. Taking the vertices alone would cut that corner off entirely, and
+    the polygon is what answers "is this point on this piece" and "which side of
+    the strip is it on". So a curved edge is sampled.
+
+    Coarsely, and deliberately: this polygon never becomes geometry. The pieces
+    are cut with the exact face; these points only classify. Twelve per curve is
+    a few microns on the radii a board carries and costs nothing.
     """
     from OCP.BRep import BRep_Tool
+    from OCP.BRepAdaptor import BRepAdaptor_Curve
     from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
+    from OCP.GeomAbs import GeomAbs_CurveType
+    from OCP.TopAbs import TopAbs_Orientation
 
     pts = []
     exp = BRepTools_WireExplorer(BRepTools.OuterWire_s(face))
     while exp.More():
         p = BRep_Tool.Pnt_s(exp.CurrentVertex())
         pts.append((p.X(), p.Y()))
+        edge = exp.Current()
+        adaptor = BRepAdaptor_Curve(edge)
+        if adaptor.GetType() != GeomAbs_CurveType.GeomAbs_Line:
+            first, last = adaptor.FirstParameter(), adaptor.LastParameter()
+            if edge.Orientation() == TopAbs_Orientation.TopAbs_REVERSED:
+                first, last = last, first
+            # The end point is the next edge's start vertex, so stop short of it
+            for i in range(1, per_curve):
+                q = adaptor.Value(first + (last - first) * i / per_curve)
+                pts.append((q.X(), q.Y()))
         exp.Next()
     return pts
 
@@ -1714,12 +1742,25 @@ def _closest_point(a, b) -> tuple[float, float] | None:
 
 
 def _cut_into_pieces(outline: list[tuple[float, float]], chain: list,
-                     log: LogFn = _noop_log):
+                     log: LogFn = _noop_log, curves: list | None = None):
     """Cut the flat outline by every bend strip.
 
     -> (panels, strips), each a list of (polygon, face); strips[i] belongs to
     chain[i]. None if the outline cannot be made into a face at all, which
     leaves the caller to fall back on the old half-plane reading.
+
+    *curves* is the outline as the intermediate writes it, arcs and all. It is
+    what the board is CUT with, and *outline* - the same outline flattened - is
+    only used to size the bands and to classify points afterwards.
+
+    That distinction is the whole of this argument. `contour_points` samples an
+    arc into eight chords, which was chosen when its answers were only areas and
+    containment tests. Since the pieces are cut from it the same eight chords
+    became the edge of the board: 67 um of flat on a 14 mm corner, and plainly
+    visible on a rounded arm end once the wrap carried them onto the cylinder.
+    Cutting with the real curve costs nothing - `_map_strip` already turns a
+    circular edge into an exact ellipse in the cylinder's parameter space - and
+    the flattened copy goes on doing the job it was accurate enough for.
 
     A band is infinite across its own direction, so `outline AND band` can come
     back in several pieces - BEND_5's band on the demo board also clips the LCD
@@ -1727,7 +1768,20 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list,
     the others are ordinary board that happens to lie between the same two
     parallel lines, and they stay part of their own panel.
     """
-    face = _polygon_face(outline)
+    face = None
+    if curves:
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+
+        from .core import StepBuilderError, build_contour
+        try:
+            maker = BRepBuilderAPI_MakeFace(build_contour(curves, 0.0), True)
+            face = maker.Face() if maker.IsDone() else None
+        except (StepBuilderError, RuntimeError) as exc:
+            log(f"note: the outline's own curves could not be used to cut the "
+                f"board ({exc}); falling back on the flattened one")
+            face = None
+    if face is None:
+        face = _polygon_face(outline)
     if face is None:
         return None
 

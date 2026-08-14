@@ -545,6 +545,68 @@ check("the fold actually happened - it is not still flat",
 check("and it joins up", _seam_gap(plan_far_origin) < 1e-6,
       _seam_gap(plan_far_origin))
 
+print("\n[7c2] a rounded edge stays round through the cut")
+
+# The pieces are cut FROM the outline, so whatever the outline is made of ends
+# up as the edge of the board and is then carried onto the cylinder by the wrap.
+# contour_points chords an arc into eight, which was accurate enough while its
+# answers were only areas and containment tests; once the cut used it, those
+# eight chords became 67 um of flat on a 14 mm corner - plainly visible on a
+# rounded arm end. Cutting with the real curve costs nothing: _map_strip already
+# turns a circular edge into an exact ellipse in the cylinder's parameter space.
+from stepbuilder.bend import _cut_into_pieces
+from OCP.BRepAdaptor import BRepAdaptor_Curve
+from OCP.GeomAbs import GeomAbs_CurveType
+from OCP.TopAbs import TopAbs_ShapeEnum as _TAS
+from OCP.TopExp import TopExp_Explorer as _TEE
+from OCP.TopoDS import TopoDS as _TDS
+
+# a 40 x 20 bar with both ends rounded on r = 10, one bend across the middle
+round_end = [
+    {"type": "segment", "start": [10.0, 0.0], "end": [30.0, 0.0]},
+    {"type": "arc", "center": [30.0, 10.0], "radius": 10.0,
+     "alpha": 270.0, "beta": 90.0, "ccw": True},
+    {"type": "segment", "start": [30.0, 20.0], "end": [10.0, 20.0]},
+    {"type": "arc", "center": [10.0, 10.0], "radius": 10.0,
+     "alpha": 90.0, "beta": 270.0, "ccw": True},
+]
+bar = contour_points(round_end)
+across = Bend(name="X", start=(20.0, 0.0), end=(20.0, 20.0), angle=90.0, radius=R)
+bar_chain = [(across, (1.0, 0.0), (20.0, 10.0), 2.0, 0.0, -T)]
+
+
+def circles(face):
+    n = 0
+    walk = _TEE(face, _TAS.TopAbs_EDGE)
+    while walk.More():
+        if (BRepAdaptor_Curve(_TDS.Edge_s(walk.Current())).GetType()
+                == GeomAbs_CurveType.GeomAbs_Circle):
+            n += 1
+        walk.Next()
+    return n
+
+
+chorded = _cut_into_pieces(bar, bar_chain, lambda m: None, None)
+exact = _cut_into_pieces(bar, bar_chain, lambda m: None, round_end)
+check("both readings cut the bar into the same pieces",
+      len(chorded[0]) == len(exact[0]), (len(chorded[0]), len(exact[0])))
+check("the chorded cut leaves no arc anywhere",
+      sum(circles(f) for _, f in chorded[0]) == 0)
+check("the exact cut keeps the rounded ends as circles",
+      sum(circles(f) for _, f in exact[0]) >= 2,
+      sum(circles(f) for _, f in exact[0]))
+ea = abs(polygon_area(exact[0][0][0][0]))
+ca = abs(polygon_area(chorded[0][0][0][0]))
+check("and it is still the same board, to within the chord error",
+      abs(ea - ca) < 0.02 * ca, (ea, ca))
+
+# An outline whose curves will not close must fall back, not lose the board.
+told = []
+check("a contour that cannot be built falls back to the flat one",
+      _cut_into_pieces(bar, bar_chain, told.append,
+                       [{"type": "segment", "start": [0.0, 0.0],
+                         "end": [1.0, 0.0]}]) is not None)
+
 print("\n[7d] the fold joins up - every seam, every shape")
 
 # The invariant that actually showed on Cadence's demo board, and the one
