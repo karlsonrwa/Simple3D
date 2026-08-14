@@ -11,6 +11,37 @@ to use the tool.
 
 ---
 
+- **2026-08-14** — **The printed legend stops at zones that are not printed on**
+  (`format_version: 8`). A cross section assigns its mask and coating layers per
+  stackup, so a rigid-flex board says *"no silkscreen on the stiffener zones"*
+  exactly by leaving the silkscreen layer out of those stackups. The exporter
+  dropped that layer — correctly, it is not part of the body — and with it the
+  statement, so the legend was printed over every zone alike. Each stackup now
+  carries a `silkscreen` object saying which of its sides is printed, and the
+  builder leaves out the glyphs that fall on a zone that is not. On Cadence's
+  demo board that is 14 polygons on the top (over `CONN_FLEXI_STIFFENER` and
+  `FLEXI_STIFFENER`) and 16 on the bottom (over `LCD_FLEXI_STIFFENER`), each
+  named in the log with its zone. **An intermediate written before this says
+  nothing about it and is not clipped at all**, so nothing you already have
+  changes behaviour — but a board has to be exported again for the legend to be
+  trimmed. Also fixed in this pass: `STIFFNER` — Allegro's own spelling, without
+  the second *e* — and `EXPOXY` now colour as stiffener and adhesive instead of
+  falling into undifferentiated grey.
+  / **Шелкография больше не печатается по зонам, где её нет**
+  (`format_version: 8`). Разрез назначает маски и покрытия **на каждый стек
+  отдельно**, поэтому rigid-flex-плата говорит «на зонах стиффенера шелка нет»
+  именно тем, что не включает слой шелка в эти стеки. Экспорт этот слой
+  выбрасывал — правильно, он не часть тела — а вместе с ним и само утверждение,
+  после чего легенда печаталась по всем зонам одинаково. Теперь каждый стек
+  несёт объект `silkscreen` с указанием, какая его сторона печатается, а сборщик
+  выбрасывает знаки, попавшие на непечатаемую зону. На демо-плате Cadence это 14
+  полигонов сверху (над `CONN_FLEXI_STIFFENER` и `FLEXI_STIFFENER`) и 16 снизу
+  (над `LCD_FLEXI_STIFFENER`), каждый — с именем зоны в логе. **Интермедиат,
+  записанный раньше, об этом ничего не говорит и не обрезается**, так что ничего
+  из уже имеющегося не изменится, — но чтобы легенду обрезало, плату надо
+  экспортировать заново. Заодно: `STIFFNER` (как это пишет сам Allegro, без
+  второй «e») и `EXPOXY` теперь красятся стиффенером и клеем, а не ровным серым.
+
 - **2026-08-14** — **Arcs, seams and where the cutters go: three faults that
   each cost a flex arm.** Found by putting a build of Cadence's demo board next
   to Allegro's own 3D of it. **An arc's two angles bound it; the `ccw` flag says

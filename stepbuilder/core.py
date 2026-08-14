@@ -1614,6 +1614,80 @@ def _report_embedded_only(data: dict, result: BuildResult, log: LogFn) -> None:
         "run again.")
 
 
+def _silk_point(polygon: dict) -> tuple[float, float] | None:
+    """One point inside a legend polygon - enough to say which zone it is on."""
+    verts = polygon.get("vertices")
+    if verts:
+        pts = [(float(v[0]), float(v[1])) for v in verts if len(v) >= 2]
+    else:
+        from .bend import contour_points
+        pts = contour_points(polygon.get("outline") or [])
+    if not pts:
+        return None
+    return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+
+
+def clip_silk_to_zones(polygons: list, stackups: dict | None, zones: list | None,
+                       side: str, log: LogFn = _noop_log) -> list:
+    """The legend polygons that lie on a zone whose stackup is printed.
+
+    A cross section assigns its mask and coating layers PER STACKUP, so a
+    rigid-flex board says "no legend on the stiffener zones" exactly by leaving
+    the silkscreen layer out of those stackups. That statement used to be lost
+    at export - the layer is not body material, so it was dropped and nothing
+    remembered it - and the legend was then printed over every zone alike.
+
+    `stackup.silkscreen` carries it now, as `{"top": bool, "bottom": bool}`.
+    An intermediate written before that key exists says nothing about it, and
+    then nothing is clipped: the legend goes everywhere, exactly as it did.
+
+    *side* is "top" or "bottom".
+    """
+    if not polygons or not stackups or not zones:
+        return polygons
+    if not any(isinstance(st.get("silkscreen"), dict) for st in stackups.values()):
+        return polygons                    # older intermediate: it cannot say
+
+    from .bend import contour_points, point_in_polygon
+
+    printed, bare = [], []
+    for zone in zones:
+        flag = (stackups.get(str(zone["stackup"])) or {}).get("silkscreen")
+        if not isinstance(flag, dict):
+            continue
+        contour = contour_points(zone.get("contour") or [])
+        if not contour:
+            continue
+        (printed if flag.get(side) else bare).append((str(zone["name"]), contour))
+
+    if not bare:
+        return polygons                    # every zone is printed: nothing to do
+
+    kept, dropped, where = [], 0, {}
+    for polygon in polygons:
+        point = _silk_point(polygon)
+        if point is None:
+            kept.append(polygon)
+            continue
+        # On a printed zone wins: a glyph that straddles a boundary belongs to
+        # the side of it that has a legend.
+        if any(point_in_polygon(point, c) for _, c in printed):
+            kept.append(polygon)
+            continue
+        home = next((n for n, c in bare if point_in_polygon(point, c)), None)
+        if home is None:
+            kept.append(polygon)           # on no zone at all - leave it be
+            continue
+        dropped += 1
+        where[home] = where.get(home, 0) + 1
+
+    if dropped:
+        log(f"{side}: {dropped} legend polygon(s) left out - "
+            + ", ".join(f"{n} carries no silkscreen in its stackup ({k})"
+                        for n, k in sorted(where.items())))
+    return kept
+
+
 def _validate(data: dict) -> None:
     if "name" not in data:
         raise StepBuilderError("JSON is missing the 'name' field.")
@@ -2293,12 +2367,17 @@ def generate(
         # The ink sits ON the outer face of each side and grows away from the
         # board, so it never intersects the solid it is printed on.
         excluded = set(silk_layers_off or ())
-        for wanted, side, polygons, z, sign in (
-            (silk_top, "silkscreen_top", silk_data.get("top") or [], board_top_z, 1.0),
+        for wanted, side, polygons, z, sign, face in (
+            (silk_top, "silkscreen_top", silk_data.get("top") or [],
+             board_top_z, 1.0, "top"),
             (silk_bottom, "silkscreen_bot", silk_data.get("bottom") or [],
-             board_bottom_z, -1.0),
+             board_bottom_z, -1.0, "bottom"),
         ):
             if not wanted or not polygons:
+                continue
+            # A zone whose stackup has no silkscreen layer is not printed on.
+            polygons = clip_silk_to_zones(polygons, stackups, zones, face, log)
+            if not polygons:
                 continue
             if excluded:
                 total = len(polygons)

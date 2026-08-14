@@ -1707,20 +1707,50 @@ procedure( s3dContains( t_hay t_needle )
 
 procedure( s3dStackupJson( t_name g_stackup )
     let( ( all layers span thk ( total 0.0 ) ( above 0.0 ) ( cum 0.0 ) ( i 0 )
-           ( nSkip 0 ) zTop zBot shapes body out ( first t ) )
+           ( nSkip 0 ) zTop zBot shapes body out ( first t )
+           silkTop silkBot allSpan )
         all = nil
         errset( all = axlXSectionGet( g_stackup 'all ) )
 
         ; Drop what is not part of the body BEFORE anything is measured: the
         ; z walk below closes the remaining layers up against the core, so a
         ; dropped sheet leaves no gap where it used to be.
+        ;
+        ; But REMEMBER which side carried a silkscreen before dropping it. A
+        ; cross section assigns its mask and coating layers per stackup, so a
+        ; rigid-flex board says "no silkscreen on the stiffener zones" exactly
+        ; by leaving the layer out of those stackups - and dropping the layer
+        ; here threw that statement away, after which the legend was printed
+        ; over every zone alike. It is not body material and must not be built
+        ; as such; it is a fact about the zone, so it travels as one.
+        ;
+        ; Which side by POSITION, not by name: a layer outside the outermost
+        ; conductor on the top side is a top-side layer whatever it is called,
+        ; and SILKSCREEN_TOP / SILK_TOP / "Silk Screen Top" all reduce to the
+        ; same answer without a list of spellings.
         layers = nil
+        silkTop = nil
+        silkBot = nil
+        allSpan = s3dConductorSpan( all )
+        i = 0
         foreach( layer all
             if( s3dLayerInBody( layer ) then
                 layers = cons( layer layers )
             else
                 when( s3dLayerThk( layer ) > 0.0  nSkip = nSkip + 1 )
+                when( s3dContains(
+                        strcat( if( layer->name then upperCase( layer->name ) else "" ) " "
+                                if( stringp( layer->layerFunction )
+                                    then upperCase( layer->layerFunction ) else "" ) )
+                        "SILK" )
+                    if( allSpan && i > cadr( allSpan ) then
+                        silkBot = t
+                    else
+                        silkTop = t
+                    )
+                )
             )
+            i = i + 1
         )
         layers = reverse( layers )
 
@@ -1740,9 +1770,16 @@ procedure( s3dStackupJson( t_name g_stackup )
                     t_name nSkip )
         )
 
+        ; "silkscreen": which SIDES of this stackup carry a printed legend. A
+        ; reader that does not know the key behaves exactly as before - the
+        ; legend goes everywhere - so an older Simple 3D still builds this file.
         out = strcat( s3dJsonQuote( t_name ) ": {\n"
-                      "\t\"thickness\": " sprintf( nil "%f" total )
-                      ",\n\t\"layers\": [\n" )
+                      "\t\"thickness\": " sprintf( nil "%f" total ) ",\n"
+                      "\t\"silkscreen\": { \"top\": "
+                      if( silkTop then "true" else "false" )
+                      ", \"bottom\": "
+                      if( silkBot then "true" else "false" ) " },\n"
+                      "\t\"layers\": [\n" )
 
         foreach( layer layers
             thk = s3dLayerThk( layer )
@@ -3580,7 +3617,9 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; switched on and off when the model is built instead of at export
         ; time; 4 adds the optional "embedded_models" list; 5 adds "zones" plus
         ; a per-component "zone", for multi-stackup and rigid-flex boards; 6
-        ; gives every stackup layer its own extent and shapes; 7 adds "bends".
+        ; gives every stackup layer its own extent and shapes; 7 adds "bends";
+        ; 8 gives every stackup a "silkscreen" object saying which of its sides
+        ; is printed on, which is how a zone says it carries no legend.
         ; All of them are optional to a reader - an older file simply has no
         ; layers to choose from, nothing to say about embedded models, an empty
         ; zone list, which means "ordinary single-stackup board", and no bends,
@@ -3590,7 +3629,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; _reserved tuple, or the reader walks it as if it were a component.
         name = strcat(
             "\"format\": \"simple3d\",\n"
-            "\"format_version\": 7,\n"
+            "\"format_version\": 8,\n"
             "\"name\": \"" variantName "\",\n"
             ; Optional, and only ever true: the whole board, variants ignored.
             ; A reader that does not know the key sees an ordinary intermediate,

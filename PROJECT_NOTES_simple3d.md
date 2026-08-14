@@ -2925,6 +2925,63 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-14 (round 65) — the legend printed on zones that are not printed on
+
+The user fixed the coverlay in the board itself rather than in the config —
+"так правильнее" — re-exported, and found the next thing: the legend appears
+over `CONN_FLEXI_STIFFENER`, `FLEXI_STIFFENER` and `LCD_FLEXI_STIFFENER`, and
+the cross section says those stackups have no silkscreen.
+
+### Where the statement was lost
+
+A cross section assigns mask and coating layers **per stackup** — the rigid-flex
+guide even walks through it: *"For the Primary stackup, deselect the Coverlay
+and adhesive masks"*. So a board says "no legend on the stiffener zones" by
+leaving the silkscreen layer out of those stackups.
+
+`s3dLayerInBody` drops SILK/PASTE layers before the stackup is measured, and
+rightly — requirement #1 from round 2, silkscreen is printed ON the board, not
+part of it. But dropping the layer threw away the only record that it had ever
+been there, and the reader then had nothing to go on: the legend was placed at
+one z for the whole board and clipped only to the outline.
+
+Confirmed in the data: of the four stackups, only PRIMARY carries
+`SOLDERMASK_TOP/BOTTOM` at all; the three flex ones carry no masks. None carries
+a silkscreen layer, because the exporter had already removed them.
+
+### The fix, in both halves
+
+**`format_version: 8`** — each stackup gains
+`"silkscreen": {"top": bool, "bottom": bool}`, filled in while the SILK/PASTE
+layers are being dropped. Side by **position**, not by name: a layer outside the
+outermost conductor on the top side is a top-side layer whatever it is called,
+so `SILKSCREEN_TOP`, `SILK_TOP` and "Silk Screen Top" all answer the same
+without a list of spellings.
+
+**`clip_silk_to_zones`** drops a legend polygon whose centre lands on a zone
+whose stackup is not printed on that side. Three deliberate choices:
+
+- A polygon on a **printed** zone wins outright, so a glyph straddling a
+  boundary stays with the side that has a legend.
+- A polygon on **no zone at all** is kept. It is not the legend's job to be a
+  second outline clip.
+- An intermediate with **no `silkscreen` key anywhere** is not clipped at all.
+  It cannot say, so nothing is assumed, and every file already on disk behaves
+  exactly as before.
+
+Measured on the re-exported demo board (standing in the flag, since the user's
+file predates it): top 1379 → 1365, dropped 10 over `CONN_FLEXI_STIFFENER` and
+4 over `FLEXI_STIFFENER`; bottom 908 → 892, all 16 over
+`LCD_FLEXI_STIFFENER` — exactly the three zones named.
+
+### Still open, and worth doing next
+
+The legend is placed at ONE z for the whole board — `board_top_z` /
+`board_bottom_z` — while each zone has its own faces. On this board the flex
+sits 0.49 mm below the rigid top, so a legend on a flex zone floats above its
+own surface. The same grouping this round introduced is what a per-zone height
+would be built on.
+
 ## Update 2026-08-14 (round 64) — the stack datum, a pinched piece, and what a coverlay shape means
 
 Three things the user found by putting our build beside Allegro's own 3D, in the
