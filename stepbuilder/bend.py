@@ -287,13 +287,18 @@ def contour_points(contour, arc_steps: int = 8) -> list[tuple[float, float]]:
             if kind == "circle":
                 a0, a1 = 0.0, 360.0
             else:
+                # alpha..beta bound the arc; `ccw` says which END the contour
+                # enters it by, not which way the sweep goes. See the note in
+                # core.build_contour: reading `ccw` as the direction turns a 90
+                # degree corner into the 270 degree arc the long way round, and
+                # leaves the contour with joints up to 19.8 mm apart. Here the
+                # direction does matter - the polygon is walked in order - so
+                # the arc is sampled backwards when it is entered from beta.
                 a0, a1 = float(prim["alpha"]), float(prim["beta"])
-                if prim.get("ccw", True):
-                    while a1 < a0:
-                        a1 += 360.0
-                else:
-                    while a1 > a0:
-                        a1 -= 360.0
+                while a1 < a0:
+                    a1 += 360.0
+                if not prim.get("ccw", True):
+                    a0, a1 = a1, a0
             for i in range(arc_steps + 1):
                 a = math.radians(a0 + (a1 - a0) * i / arc_steps)
                 points.append((cx + r * math.cos(a), cy + r * math.sin(a)))
@@ -902,20 +907,29 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
                    key=lambda i: abs(polygon_area(panels[i][0])))
 
     def side_of(part: int, s: int) -> float:
-        """Which way piece *part* lies from strip s: -1 before it, +1 beyond."""
+        """Which way piece *part* lies from strip s: -1 before it, +1 beyond.
+
+        Asked AT THE SEAM, not of the piece as a whole. A strip's band is
+        infinite across its own direction, so a big piece can have material on
+        both sides of it and still touch it along one edge only: the main board
+        of Cadence's demo reaches past BEND_1's band on both sides, and judging
+        it by its extent - or by its nearest vertex - put the strip's near edge
+        against the FAR panel. The seam then came apart by 23.8 mm and the arm
+        floated off the board.
+
+        The two pieces touch, so the closest point between them is ON the shared
+        edge, and that edge is one of the strip's two long sides.
+        """
         (nx, ny), (px, py), half = kept[s][1], kept[s][2], kept[s][3]
         base = nx * px + ny * py
+        seam = _closest_point(parts[part], parts[npanel + s])
+        if seam is not None:
+            v = nx * seam[0] + ny * seam[1]
+            return -1.0 if abs(v - (base - half)) <= abs(v - (base + half)) else 1.0
+        # Not touching at all - should not happen, since the walk only reaches a
+        # strip from a piece beside it. Fall back on the extent.
         values = [nx * vx + ny * vy for vx, vy in polys[part]]
-        if max(values) <= base + half + EPS:
-            return -1.0
-        if min(values) >= base - half - EPS:
-            return 1.0
-        # A piece that wraps around the end of a strip lies on both sides. The
-        # side that counts is the one it touches the strip on, so judge by the
-        # nearest vertex.
-        nearest = min(polys[part],
-                      key=lambda v: abs(nx * v[0] + ny * v[1] - base))
-        return -1.0 if nx * nearest[0] + ny * nearest[1] < base else 1.0
+        return -1.0 if max(values) <= base + half + EPS else 1.0
 
     # -- walk out from the held piece ---------------------------------------- #
     # Every strip is reached from the side that is already placed, so a bend
@@ -1029,12 +1043,62 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
             f"This should not happen - please report the board. Exporting flat "
             f"(Fold flex bends off) avoids it.")
 
+    # The other invariant, and the one that showed: a fold is CONTINUOUS. Both
+    # edges of every strip have to land exactly where the piece on that side
+    # puts them. Getting a strip's two sides the wrong way round tears the arm
+    # off the board - 23.8 mm of daylight on Cadence's demo board - and the
+    # model still builds and still measures the right volume, so nothing else
+    # here would have caught it.
+    gap = _seam_gap(plan)
+    if gap > 1.0e-6:
+        plan.notes.append(
+            f"  warning: the fold does not join up - a seam comes apart by "
+            f"{gap:.3f} mm, so a piece of the board will float away from the "
+            f"rest. This should not happen; please report the board.")
+
     plan.notes.insert(0, (
         f"  held: the piece containing the anchor at "
         f"{anchor[0]:.3f}, {anchor[1]:.3f}" if anchor is not None
         else "  held: the largest piece the bend lines leave (no anchor set)"))
     plan.notes.insert(0, f"Folding {len(plan.bends)} bend(s):")
     return plan
+
+
+def _seam_gap(plan: FoldPlan) -> float:
+    """The worst distance by which the fold fails to join up, in mm.
+
+    Every strip meets a piece along each of its two long edges. Placed by the
+    strip and placed by that piece, a point on the shared edge must land in the
+    same spot - that is what makes a fold a fold rather than an explosion.
+    Two points per strip, so it costs nothing.
+    """
+    worst = 0.0
+    panels = [r for r in plan.regions if r.kind == "panel" and r.poly]
+    for strip in plan.strips:
+        if not strip.poly:
+            continue
+        nx, ny = strip.normal
+        cx = sum(p[0] for p in strip.poly) / len(strip.poly)
+        cy = sum(p[1] for p in strip.poly) / len(strip.poly)
+        base = nx * cx + ny * cy
+        ends = ((strip.lo, strip.carried),
+                (strip.hi, _slice_trsf(strip.carried, nx, ny, strip.lo,
+                                       strip.hi, strip.axis_z, strip.turn)))
+        for value, trsf in ends:
+            ex = cx + nx * (value - base)
+            ey = cy + ny * (value - base)
+            mine = gp_Pnt(ex, ey, 0.0).Transformed(trsf)
+            near = None
+            for region in panels:
+                if not (point_in_polygon((ex, ey), region.poly)
+                        or point_on_polygon((ex, ey), region.poly, 0.05)):
+                    continue
+                theirs = gp_Pnt(ex, ey, 0.0).Transformed(region.trsf)
+                d = mine.Distance(theirs)
+                near = d if near is None else min(near, d)
+            if near is not None:
+                worst = max(worst, near)
+    return worst
 
 
 def _double_claimed(plan: FoldPlan, outline: list[tuple[float, float]],
@@ -1419,14 +1483,22 @@ def _polygon_face(poly: list[tuple[float, float]]):
     return face.Face() if face.IsDone() else None
 
 
-def _band_face(nx: float, ny: float, lo: float, hi: float, reach: float):
-    """The strip `lo <= n.p <= hi` as a rectangle long enough to cross the board."""
+def _band_face(nx: float, ny: float, lo: float, hi: float,
+               tlow: float, thigh: float):
+    """The strip `lo <= n.p <= hi`, reaching from *tlow* to *thigh* across it.
+
+    The across-extent is passed in rather than guessed from a length, because a
+    length has to be measured from somewhere and the only defensible somewhere
+    is the board itself. Reaching a board's diagonal either side of the ORIGIN -
+    which is what this did - leaves the band nowhere near a board drawn at
+    x = 1000, and the cut then finds nothing to cut. Same mistake as _slab's.
+    """
     tx, ty = -ny, nx
     return _polygon_face([
-        (nx * lo - tx * reach, ny * lo - ty * reach),
-        (nx * hi - tx * reach, ny * hi - ty * reach),
-        (nx * hi + tx * reach, ny * hi + ty * reach),
-        (nx * lo + tx * reach, ny * lo + ty * reach),
+        (nx * lo + tx * tlow, ny * lo + ty * tlow),
+        (nx * hi + tx * tlow, ny * hi + ty * tlow),
+        (nx * hi + tx * thigh, ny * hi + ty * thigh),
+        (nx * lo + tx * thigh, ny * lo + ty * thigh),
     ])
 
 
@@ -1468,6 +1540,17 @@ def _touching(a, b, tol: float = 1.0e-6) -> bool:
     return bool(dist.IsDone()) and dist.Value() <= tol
 
 
+def _closest_point(a, b) -> tuple[float, float] | None:
+    """A point of *a* nearest to *b*, in 2-D. On the seam when they touch."""
+    from OCP.BRepExtrema import BRepExtrema_DistShapeShape
+
+    dist = BRepExtrema_DistShapeShape(a, b)
+    if not dist.IsDone() or dist.NbSolution() < 1:
+        return None
+    p = dist.PointOnShape1(1)
+    return (p.X(), p.Y())
+
+
 def _cut_into_pieces(outline: list[tuple[float, float]], chain: list):
     """Cut the flat outline by every bend strip.
 
@@ -1485,14 +1568,14 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list):
     if face is None:
         return None
 
-    xs = [p[0] for p in outline]
-    ys = [p[1] for p in outline]
-    reach = math.hypot(max(xs) - min(xs), max(ys) - min(ys)) + 10.0
-
     strips = []
     for bend, (nx, ny), (px, py), half, _, _ in chain:
         base = nx * px + ny * py
-        band = _band_face(nx, ny, base - half, base + half, reach)
+        # How far the OUTLINE reaches across this bend, which is how long the
+        # band has to be - measured from the board, not from the origin.
+        across = [(-ny) * vx + nx * vy for vx, vy in outline]
+        band = _band_face(nx, ny, base - half, base + half,
+                          min(across) - 10.0, max(across) + 10.0)
         if band is None:
             return None
         common = BRepAlgoAPI_Common(face, band)
@@ -1536,17 +1619,32 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list):
 
 
 def _slab(nx: float, ny: float, lo: float, hi: float, box) -> TopoDS_Shape:
-    """A box covering everything between the planes `n.p = lo` and `n.p = hi`."""
-    xmin, ymin, zmin, xmax, ymax, zmax = box
-    span = math.hypot(xmax - xmin, ymax - ymin) + abs(zmax - zmin) + 10.0
+    """A box covering everything in *box* between `n.p = lo` and `n.p = hi`.
+
+    Sized and placed from the SHAPE's own extent, in both directions. It used to
+    run half the board's diagonal either side of the point `n * lo` - the foot
+    of the near plane, measured from the ORIGIN - which silently assumes the
+    board sits near the origin. Cadence's demo board does not: BEND_1's band has
+    its foot at (16.9, -17.2) while the arm it cuts is at (140, 90), 163 mm away
+    along the bend line against a 102 mm half-span, so the slab missed the board
+    entirely and that bend was quietly built out of nothing. Every board drawn
+    away from the origin loses bends this way, the more so the further out and
+    the more diagonal the bend.
+    """
+    zmin, zmax = box[2], box[5]
+    tx, ty = -ny, nx                       # along the bend line
+    tlow, thigh = _extent(box, tx, ty)
+    tlow -= 1.0
+    thigh += 1.0
+
     low, high = _extent(box, nx, ny)
     lo = max(lo, low - 1.0) if lo != -math.inf else low - 1.0
     hi = min(hi, high + 1.0) if hi != math.inf else high + 1.0
 
     # frame with X across the bend, Y along it, Z up
-    origin = gp_Pnt(nx * lo + ny * span, ny * lo - nx * span, zmin - 1.0)
+    origin = gp_Pnt(nx * lo + tx * tlow, ny * lo + ty * tlow, zmin - 1.0)
     frame = gp_Ax2(origin, gp_Dir(0, 0, 1), gp_Dir(nx, ny, 0))
-    return BRepPrimAPI_MakeBox(frame, hi - lo, 2 * span,
+    return BRepPrimAPI_MakeBox(frame, hi - lo, thigh - tlow,
                                (zmax - zmin) + 2.0).Shape()
 
 

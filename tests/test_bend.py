@@ -444,6 +444,7 @@ check("nor a corner in one arm",
       _double_claimed(plan_ell, ell_arm) == 0.0,
       _double_claimed(plan_ell, ell_arm))
 
+
 # The shape that used to break it. Two of Cadence's own bends: XA leaves the
 # middle on a diagonal towards the bottom right, XB straight up 180 mm away.
 # "Beyond XA" has a large +y component and sweeps across the whole of XB's arm.
@@ -514,6 +515,65 @@ check("and the loop stands a diameter and a stack above the board",
 check("the ring keeps its material",
       abs(volume(ring_solid) - 10 * 40 * T) / (10 * 40 * T) < 0.01,
       (volume(ring_solid), 10 * 40 * T))
+
+print("\n[7c1] a board drawn far from the origin still gets its bends")
+
+# The cutter that takes a strip out of a shape was sized from the board but
+# PLACED from the origin: half the board's diagonal either side of the point
+# `n * lo`, which is the foot of the bend's near plane measured from (0, 0).
+# A board sitting away from the origin then misses its own cutter. On Cadence's
+# demo board BEND_1's foot is at (16.9, -17.2) and the arm it cuts is at
+# (140, 90) - 163 mm along the bend line against a 102 mm half-span - so that
+# bend was built out of nothing at all and the arm came out flat, with no
+# warning: an empty cut looks exactly like a shape that is not in that region.
+from stepbuilder.bend import _seam_gap
+
+far_bend = Bend(name="F", start=(1035.6, 985.6), end=(1049.7, 999.5),
+                angle=90.0, radius=R)
+far_outline = [(1000, 950), (1060, 950), (1060, 1010), (1000, 1010)]
+plan_far_origin = plan_fold([far_bend], far_outline, 0.0, -T, anchor=(1005.0, 955.0))
+check("the bend is planned", len(plan_far_origin.bends) == 1,
+      [b.name for b in plan_far_origin.bends])
+far_board = BRepPrimAPI_MakeBox(gp_Pnt(1000, 950, -T), 60.0, 60.0, T).Shape()
+far_folded = plan_far_origin.apply(far_board)
+check("and the folded board keeps its material",
+      abs(volume(far_folded) - 60 * 60 * T) / (60 * 60 * T) < 0.01,
+      (volume(far_folded), 60 * 60 * T))
+check("the fold actually happened - it is not still flat",
+      bbox(far_folded)[5] - bbox(far_folded)[2] > T * 2,
+      (bbox(far_folded)[2], bbox(far_folded)[5]))
+check("and it joins up", _seam_gap(plan_far_origin) < 1e-6,
+      _seam_gap(plan_far_origin))
+
+print("\n[7d] the fold joins up - every seam, every shape")
+
+# The invariant that actually showed on Cadence's demo board, and the one
+# nothing else here would have caught. Both edges of every strip have to land
+# where the piece on that side puts them. Which side a piece is on was judged
+# from its overall EXTENT, and the main board is wide enough to lie on both
+# sides of a strip's infinite band, so BEND_1 was folded back to front: the
+# strip's near edge was sewn to the far panel. The arm came away from the board
+# by 23.8 mm and floated off on its own. Volume was still right, no region was
+# claimed twice, and every other check still passed - a fold can be continuous
+# or not, and only this asks.
+from stepbuilder.bend import _seam_gap
+
+for name, p in (("one bend", plan), ("a Z fold", plan2), ("two arms", plan_arms),
+                ("a corner in one arm", plan_ell),
+                ("arms at right angles", plan_cross),
+                ("a ring", ring_zero)):
+    check(f"the fold joins up: {name}", _seam_gap(p) < 1e-6, _seam_gap(p))
+
+# And the shape that broke it: a big held piece reaching past a narrow arm's
+# bend on both sides, so its extent says nothing about which side it is on.
+wide_hold = [(0, 0), (120, 0), (120, 60), (70, 60), (70, 100), (55, 100),
+             (55, 60), (0, 60)]
+narrow = Bend(name="N", start=(55.0, 80.0), end=(70.0, 80.0), angle=180.0,
+              radius=4.0)
+plan_narrow = plan_fold([narrow], wide_hold, 0.0, -T, anchor=(5.0, 5.0))
+check("a wide board with a narrow arm folds where it should",
+      plan_narrow.region_at(5.0, 5.0) == "held", plan_narrow.region_at(5.0, 5.0))
+check("and joins up", _seam_gap(plan_narrow) < 1e-6, _seam_gap(plan_narrow))
 
 print("\n[8] where a component ends up")
 
@@ -587,6 +647,72 @@ check("a JSON contour becomes a polygon of the same area",
 circle = contour_points([{"type": "circle", "x": 0, "y": 0, "radius": 5}], arc_steps=64)
 check("a circle is sampled, not dropped",
       abs(polygon_area(circle) - math.pi * 25) < 0.5, polygon_area(circle))
+
+print("\n[10a] what alpha, beta and ccw mean on an arc - settled by measurement")
+
+# alpha..beta BOUND the arc; `ccw` says which END the contour enters it by, not
+# which way the sweep goes. Read as a direction - which is what both halves used
+# to do - a 90 degree corner becomes the 270 degree arc the long way round.
+#
+# Measured on Cadence's demo board: under this reading every contour in the file
+# joins head to tail to 0.000 mm, the board outline included; under the old one
+# the outline's joints were 5.657 mm apart, FLEXI's 19.799 and CONN_FLEXI's
+# 12.728, and each affected arc came out at 270 degrees where the design draws
+# 90. The zones then covered 94% of the board instead of all of it, and the flex
+# arms had no material under three of the six bends.
+CORNER = {"type": "arc", "center": [16.0, 16.0], "radius": 4.0,
+          "alpha": 0.0, "beta": 90.0}
+square_ccw = [                                    # anticlockwise, entered at alpha
+    {"type": "segment", "start": [0.0, 0.0], "end": [20.0, 0.0]},
+    {"type": "segment", "start": [20.0, 0.0], "end": [20.0, 16.0]},
+    dict(CORNER, ccw=True),
+    {"type": "segment", "start": [16.0, 20.0], "end": [0.0, 20.0]},
+    {"type": "segment", "start": [0.0, 20.0], "end": [0.0, 0.0]},
+]
+square_cw = [                                     # the same shape, the other way
+    {"type": "segment", "start": [0.0, 0.0], "end": [0.0, 20.0]},
+    {"type": "segment", "start": [0.0, 20.0], "end": [16.0, 20.0]},
+    dict(CORNER, ccw=False),                      # entered at BETA
+    {"type": "segment", "start": [20.0, 16.0], "end": [20.0, 0.0]},
+    {"type": "segment", "start": [20.0, 0.0], "end": [0.0, 0.0]},
+]
+rounded = 400.0 - (16.0 - math.pi * 16.0 / 4.0)   # square less the clipped corner
+
+
+def joints(contour):
+    """Worst gap between one primitive's end and the next one's start."""
+    worst, prev, first = 0.0, None, None
+    for p in contour:
+        pts = contour_points([p], arc_steps=64)
+        if not pts:
+            continue
+        if first is None:
+            first = pts[0]
+        if prev is not None:
+            worst = max(worst, math.dist(prev, pts[0]))
+        prev = pts[-1]
+    return max(worst, math.dist(prev, first)) if prev else 0.0
+
+
+for name, contour in (("entered at alpha", square_ccw), ("entered at beta", square_cw)):
+    poly = contour_points(contour, arc_steps=64)
+    check(f"{name}: the contour joins up", joints(contour) < 1e-9, joints(contour))
+    check(f"{name}: and encloses the right area",
+          abs(abs(polygon_area(poly)) - rounded) < 0.05,
+          (abs(polygon_area(poly)), rounded))
+
+# ...and the OCC side has to agree with the polygon side, or the board body and
+# every containment test are two different boards.
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+from OCP.BRepGProp import BRepGProp as _BRepGProp
+from OCP.GProp import GProp_GProps as _GProp
+
+for name, contour in (("entered at alpha", square_ccw), ("entered at beta", square_cw)):
+    face = BRepBuilderAPI_MakeFace(core.build_contour(contour, 0.0), True)
+    props = _GProp()
+    _BRepGProp.SurfaceProperties_s(face.Face(), props)
+    check(f"{name}: the wire OCC builds encloses the same area",
+          abs(props.Mass() - rounded) < 0.05, (props.Mass(), rounded))
 
 # --------------------------------------------------------------------------- #
 print("\n[11] end to end, through generate()")

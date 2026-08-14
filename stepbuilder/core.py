@@ -80,12 +80,24 @@ def build_contour(contour: Iterable[dict], z_offset: float = 0.0) -> TopoDS_Wire
         if kind == "arc":
             center = gp_Pnt(segment["center"][0], segment["center"][1], z_offset)
             circle = gp_Circ(gp_Ax2(center, gp_Dir(0, 0, 1)), segment["radius"])
-            arc = GC_MakeArcOfCircle(
-                circle,
-                math.radians(segment["alpha"]),
-                math.radians(segment["beta"]),
-                segment["ccw"],
-            ).Value()
+            # alpha..beta bound the arc; `ccw` says which END the contour enters
+            # it by, NOT which way the sweep goes. Passing ccw as the sense - as
+            # this did - turns a 90 degree corner into the 270 degree arc the
+            # long way round. Settled by measurement on Cadence's demo board:
+            # under this reading every contour in the file joins head to tail to
+            # 0.000 mm, including the board outline; under the old one three of
+            # them had joints 5.657, 12.728 and 19.799 mm apart and every
+            # affected arc came out at 270 degrees where the design draws 90.
+            #
+            # Direction does not matter here: the stitcher below reorders and
+            # reverses edges as it likes, so the arc is always built the short
+            # way from alpha to beta. contour_points, which walks the contour in
+            # order, does have to honour `ccw` - see there.
+            alpha = math.radians(segment["alpha"])
+            beta = math.radians(segment["beta"])
+            while beta < alpha:
+                beta += 2.0 * math.pi
+            arc = GC_MakeArcOfCircle(circle, alpha, beta, True).Value()
             edges.append(BRepBuilderAPI_MakeEdge(arc).Edge())
 
         elif kind == "circle":
