@@ -54,7 +54,7 @@ from OCP.BRep import BRep_Builder
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Common, BRepAlgoAPI_Fuse
 from OCP.BRepBndLib import BRepBndLib
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
-from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakePrism
 from OCP.Bnd import Bnd_Box
 from OCP.TopAbs import TopAbs_ShapeEnum
 from OCP.TopExp import TopExp_Explorer
@@ -344,6 +344,34 @@ def clip_halfplane(points: list[tuple[float, float]],
     return out
 
 
+def point_on_polygon(point: tuple[float, float],
+                     polygon: list[tuple[float, float]],
+                     tol: float = 1.0e-6) -> bool:
+    """Is the point within *tol* of the polygon's boundary?
+
+    Ray casting answers a strict inside/outside, and the questions asked of a
+    fold region are usually about a CORNER of the board or the seam between two
+    pieces - points that sit exactly on a boundary and belong to both. Half
+    planes had EPS for this; polygons need the same allowance, spelled out.
+    """
+    x, y = point
+    n = len(polygon)
+    for i in range(n):
+        x0, y0 = polygon[i]
+        x1, y1 = polygon[(i + 1) % n]
+        dx, dy = x1 - x0, y1 - y0
+        length = dx * dx + dy * dy
+        if length <= 0.0:
+            if math.hypot(x - x0, y - y0) <= tol:
+                return True
+            continue
+        t = ((x - x0) * dx + (y - y0) * dy) / length
+        t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+        if math.hypot(x - (x0 + t * dx), y - (y0 + t * dy)) <= tol:
+            return True
+    return False
+
+
 def point_in_polygon(point: tuple[float, float],
                      polygon: list[tuple[float, float]]) -> bool:
     """Ray casting. Used to find which zone a bend line sits in."""
@@ -382,6 +410,18 @@ class _Region:
     # "panel" - a flat piece carried by one rigid transform; "slice" - one facet
     # of a bend, used only when the exact construction below does not apply.
     kind: str = "panel"
+    # The piece of the flat board this region is, as a polygon and as a face.
+    # This is what says which ARM the region belongs to; `bounds` only ever
+    # subdivides it now - the slices of one strip. See _cut_into_pieces.
+    poly: list[tuple[float, float]] | None = None
+    face: object = None
+
+    def holds(self, x: float, y: float) -> bool:
+        if self.poly is not None and not (point_in_polygon((x, y), self.poly)
+                                          or point_on_polygon((x, y), self.poly)):
+            return False
+        return all(lo - EPS <= nx * x + ny * y <= hi + EPS
+                   for nx, ny, lo, hi in self.bounds)
 
 
 @dataclass
@@ -402,6 +442,15 @@ class _Strip:
     turn: float                       # signed, radians: the finished angle
     carried: gp_Trsf                  # what the bends before this one do to it
     facets: list[_Region] = field(default_factory=list)
+    poly: list[tuple[float, float]] | None = None
+    face: object = None
+
+    def holds(self, x: float, y: float) -> bool:
+        if self.poly is not None and not (point_in_polygon((x, y), self.poly)
+                                          or point_on_polygon((x, y), self.poly)):
+            return False
+        return all(lo - EPS <= nx * x + ny * y <= hi + EPS
+                   for nx, ny, lo, hi in self.bounds)
 
     def axis(self) -> gp_Ax1:
         """The cylinder the board wraps onto, in the flat frame."""
@@ -440,15 +489,13 @@ class FoldPlan:
         gets the transform of the slice it stands on rather than being dropped.
         """
         for region in self.regions:
-            if all(lo - EPS <= nx * x + ny * y <= hi + EPS
-                   for nx, ny, lo, hi in region.bounds):
+            if region.holds(x, y):
                 return region.trsf
         return gp_Trsf()
 
     def region_at(self, x: float, y: float) -> str:
         for region in self.regions:
-            if all(lo - EPS <= nx * x + ny * y <= hi + EPS
-                   for nx, ny, lo, hi in region.bounds):
+            if region.holds(x, y):
                 return region.label
         return "?"
 
@@ -469,8 +516,7 @@ class FoldPlan:
         for region in self.regions:
             back = region.trsf.Inverted()
             flat = point.Transformed(back)
-            if all(lo - EPS <= nx * flat.X() + ny * flat.Y() <= hi + EPS
-                   for nx, ny, lo, hi in region.bounds):
+            if region.holds(flat.X(), flat.Y()):
                 return back
         return None
 
@@ -503,7 +549,7 @@ class FoldPlan:
         for region in self.regions:
             if region.kind != "panel":
                 continue
-            piece = _cut_to_region(shape, region.bounds, box)
+            piece = _cut_to_region(shape, region.bounds, box, region.face)
             if piece is None:
                 continue
             if region.moved:
@@ -511,7 +557,7 @@ class FoldPlan:
             pieces.append(piece)
 
         for strip in self.strips:
-            flat = _cut_to_region(shape, strip.bounds, box)
+            flat = _cut_to_region(shape, strip.bounds, box, strip.face)
             if flat is None:
                 continue
             bent = _revolve_strip(flat, strip)
@@ -524,7 +570,7 @@ class FoldPlan:
                     self._note_build(strip.bend.name, "faceted", log,
                                      why[0] if why else "")
                 for region in strip.facets:
-                    piece = _cut_to_region(shape, region.bounds, box)
+                    piece = _cut_to_region(shape, region.bounds, box, region.face)
                     if piece is None:
                         continue
                     pieces.append(
@@ -695,15 +741,6 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
                     f"folding {developed:.3f} mm of material either way")
         chain.append((bend, (nx, ny), (px, py), developed / 2.0, top, bottom))
 
-    # How far a bend line reaches ACROSS a given direction. Every comparison
-    # between two bends below needs it, because a bend line is a segment on one
-    # arm of the board, not a cut across the whole of it - see the two uses.
-    def _span(item, tx: float, ty: float) -> tuple[float, float]:
-        line = item[0]
-        a = tx * line.start[0] + ty * line.start[1]
-        b = tx * line.end[0] + ty * line.end[1]
-        return (a, b) if a <= b else (b, a)
-
     def _strips_overlap(a, b) -> bool:
         """Do the two bend strips claim any of the same material?
 
@@ -766,187 +803,183 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     if not kept:
         return plan
 
-    # -- who carries whom ---------------------------------------------------- #
-    # A bend is a CHILD of every bend whose moving side wholly contains it, and
-    # its parent is the innermost of those - the one with the most ancestors of
-    # its own. Bends on different arms contain nothing and are all children of
-    # the held panel. A flat list would only have described the single-tail
-    # case; the real board is two tails off a middle.
-    #
-    # "Wholly contains" has to admit the case where the two strips MEET: a flex
-    # rolled into a ring is two 180 degree bends whose bend areas share a line,
-    # and read strictly neither would contain the other, both would be roots,
-    # and the panel behind the first would swallow the second - which is how
-    # the tail of a ring came back facing the wrong way.
-    #
-    # **Being beyond a bend is not enough - the material has to pass THROUGH
-    # it.** The half-plane test alone treats a bend line as if it crossed the
-    # whole board, so two arms leaving the held panel in roughly perpendicular
-    # directions each read as lying beyond the other: on Cadence's own demo
-    # board BEND_5 (93, -49) and BEND_1 (143, 93) are 135 mm apart along one
-    # normal and 66 mm along the other, both far past either strip, and both
-    # "contained" the other. That made the relation symmetric, `parent` a
-    # cycle - 5 -> 4 -> 1 -> 5 - and the build died with a KeyError on the
-    # first bend whose parent had not been reached yet.
-    #
-    # So the bend lines must also overlap ACROSS the outer bend: a bend carries
-    # what runs through its own width, and an arm that starts somewhere else
-    # never touches it. Two bends on one arm always overlap this way, whatever
-    # angle the arm turns through between them, because the second is cut out of
-    # material that came through the first.
-    def carries(outer, inner) -> bool:
-        _, (onx, ony), (opx, opy), ohalf, _, _ = outer
-        _, _, (ipx, ipy), ihalf, _, _ = inner
-        if onx * (ipx - opx) + ony * (ipy - opy) - ihalf <= ohalf - EPS:
-            return False                      # not beyond it at all
-        lo, hi = _span(outer, -ony, onx)      # along the outer bend line
-        ilo, ihi = _span(inner, -ony, onx)
-        return ihi > lo - EPS and ilo < hi + EPS
+    # -- cut the flat board into pieces -------------------------------------- #
+    # The model, and the reason it is not a set of half-planes: see
+    # _cut_into_pieces. A panel is a CONNECTED piece of the outline with the
+    # bend strips taken out of it, and which piece a point is on is the only
+    # question that has a right answer on a board whose arms leave in several
+    # directions.
+    pieces = _cut_into_pieces(outline, kept) if outline else None
+    if pieces is None:
+        plan.notes.append(
+            "  warning: the outline could not be cut into pieces, so there is "
+            "nothing to say which arm carries which. The board is left flat.")
+        return FoldPlan(slice_angle=slice_angle)
+    panels, strip_pieces = pieces
 
-    reads = [[j for j in range(len(kept)) if j != i and carries(kept[j], kept[i])]
-             for i in range(len(kept))]
-    # Antisymmetric by construction. If each of a pair reads as carrying the
-    # other, the reading has said nothing about that pair, and the honest
-    # answer is that neither carries it - they are on different arms. Belt and
-    # braces beside the width test above, because `carries` compares positions
-    # along two different normals and nothing makes that a partial order.
-    above = [[j for j in reads[i] if i not in reads[j]] for i in range(len(kept))]
-    parent = [max(cands, key=lambda j: len(above[j])) if cands else None
-              for cands in above]
-
-    # -- parents before children, by construction ---------------------------- #
-    # Not by sorting on the number of ancestors: that assumes a parent always
-    # has fewer than its child, which holds only if containment is transitive,
-    # and it is not. Take whatever is ready instead, and if nothing is, say so
-    # and cut those bends loose rather than crash or loop for ever.
-    order: list[int] = []
-    placed: set[int | None] = {None}
-    left = list(range(len(kept)))
-    while left:
-        ready = [i for i in left if parent[i] in placed]
-        if not ready:
-            for i in left:
-                plan.notes.append(
-                    f"  note: {kept[i][0].name} could not be placed under any "
-                    f"one bend - the bends that reach it also reach each other. "
-                    f"Folded off the held panel instead.")
-                parent[i] = None
-            ready = list(left)
-        ready.sort(key=lambda k: len(above[k]))
-        order.extend(ready)
-        placed.update(ready)
-        left = [i for i in left if i not in placed]
-
-    children = [[j for j in range(len(kept)) if parent[j] == i]
-                for i in range(len(kept))]
-    roots = [i for i in range(len(kept)) if parent[i] is None]
-
-    plan.bends = [item[0] for item in kept]
     plan.chain = [(b, n, p, h) for b, n, p, h, _, _ in kept]
 
-    def band(i) -> tuple[float, float]:
-        """Where bend i's strip starts and ends, as n . p."""
-        _, (nx, ny), (px, py), half, _, _ = kept[i]
+    # Everything the board is now made of, as one list of pieces, and which of
+    # them touch. Panels first, then strips - a strip's neighbour can be ANOTHER
+    # STRIP, which is what a flex rolled into a ring is: two 180 degree bend
+    # areas that meet along a line, with no flat panel between them.
+    npanel = len(panels)
+    parts = [face for _, face in panels] + [face for _, face in strip_pieces]
+    polys = [poly for poly, _ in panels] + [poly for poly, _ in strip_pieces]
+    neighbours = [[] for _ in parts]
+    for a in range(len(parts)):
+        for b in range(a + 1, len(parts)):
+            if a < npanel and b < npanel:
+                continue              # two panels never touch: they would be one
+            if _touching(parts[a], parts[b]):
+                neighbours[a].append(b)
+                neighbours[b].append(a)
+
+    # -- which piece is held ------------------------------------------------- #
+    # The anchor names a POINT, and the piece it lands on is held. It does not
+    # have to be inside the board - the origin often sits on a corner or just
+    # off it - so a point outside every piece takes the nearest one.
+    def piece_at(point) -> int:
+        for i, (poly, _) in enumerate(panels):
+            if point_in_polygon(point, poly):
+                return i
+        return min(range(len(panels)),
+                   key=lambda i: min(math.hypot(vx - point[0], vy - point[1])
+                                     for vx, vy in panels[i][0]))
+
+    if anchor is not None:
+        held = piece_at(anchor)
+    else:
+        held = max(range(len(panels)),
+                   key=lambda i: abs(polygon_area(panels[i][0])))
+
+    def side_of(part: int, s: int) -> float:
+        """Which way piece *part* lies from strip s: -1 before it, +1 beyond."""
+        (nx, ny), (px, py), half = kept[s][1], kept[s][2], kept[s][3]
         base = nx * px + ny * py
-        return base - half, base + half
+        values = [nx * vx + ny * vy for vx, vy in polys[part]]
+        if max(values) <= base + half + EPS:
+            return -1.0
+        if min(values) >= base - half - EPS:
+            return 1.0
+        # A piece that wraps around the end of a strip lies on both sides. The
+        # side that counts is the one it touches the strip on, so judge by the
+        # nearest vertex.
+        nearest = min(polys[part],
+                      key=lambda v: abs(nx * v[0] + ny * v[1] - base))
+        return -1.0 if nx * nearest[0] + ny * nearest[1] < base else 1.0
 
-    def ancestry(i) -> list[tuple[float, float, float, float]]:
-        """"Beyond every bend that carries this one" - the enclosing regions."""
-        out = []
-        k = parent[i]
-        while k is not None:
-            (nx, ny) = kept[k][1]
-            out.append((nx, ny, band(k)[1], math.inf))
-            k = parent[k]
-        return out
+    # -- walk out from the held piece ---------------------------------------- #
+    # Every strip is reached from the side that is already placed, so a bend
+    # folds away from whatever holds it - which is what the anchor means, asked
+    # per bend instead of once globally. There is no ordering to get right and
+    # no cycle to fall into: a piece is placed when it is reached, and the walk
+    # ends when nothing new is. Crossing a strip applies its bend; a panel on
+    # the far side of one simply inherits the angle the strip finished at.
+    carried: dict[int, gp_Trsf] = {held: gp_Trsf()}
+    labels = {held: "held"}
+    queue = [held]
+    while queue:
+        here = queue.pop(0)
+        for other in neighbours[here]:
+            if other in carried:
+                continue
+            if other < npanel:
+                # a flat piece beyond a strip already crossed
+                carried[other] = carried[here]
+                labels[other] = labels.get(here, "held")
+                queue.append(other)
+                continue
 
-    # KNOWN LIMIT, measured on Cadence's demo board (2026-08-14). A region here
-    # is an intersection of HALF-PLANES, and a half-plane reaches across the
-    # whole board: "beyond BEND_5" also covers the LCD arm at the far end, which
-    # belongs to BEND_3. On a board whose arms leave the held panel in several
-    # DIRECTIONS, panels therefore overlap - 5027 of 20053 sample points inside
-    # that outline are claimed by two or three regions at once, and the folded
-    # board weighs 114.7% of the flat one, the same material built twice in two
-    # places. Bounding every panel by every other bend as well was tried and is
-    # worse: two arms that each lie beyond the other then belong to NEITHER
-    # region, and 42.7% of the board is dropped instead of duplicated.
-    #
-    # Neither is a tuning question. Half-planes cannot say which ARM a point is
-    # on; that is a connectivity question, and answering it means cutting the
-    # outline by the strips and taking the connected pieces. Boards with two
-    # arms in opposite directions - which is what has been tested until now -
-    # are unaffected, because there the half-planes do not cross.
+            s = other - npanel
+            bend, (nx, ny), (px, py), half, top, bottom = kept[s]
+            base = nx * px + ny * py
+            if side_of(here, s) > 0:           # the held side is the far one:
+                nx, ny = -nx, -ny              # turn the bend around
+                base = -base
+            lo, hi = base - half, base + half
+            base_trsf = carried[here]
 
-    # -- the held panel ------------------------------------------------------ #
-    # Everything on the near side of every bend that nothing else carries.
-    plan.regions.append(_Region(
-        label="held",
-        bounds=[(kept[r][1][0], kept[r][1][1], -math.inf, band(r)[0]) for r in roots],
-        trsf=gp_Trsf(), moved=False))
+            steps = max(1, int(math.ceil(bend.angle / max(0.5, slice_angle))))
+            step = 2 * half / steps
+            sign = 1.0 if bend.inner_side == "top" else -1.0
+            axis_z = (top + bend.radius) if sign > 0 else (bottom - bend.radius)
+            theta = math.radians(bend.angle)
+            # Overlap so consecutive slices interpenetrate instead of touching
+            # along a line: the wedge a rotated slice opens on the outside of
+            # the bend is about half the thickness times the slice angle.
+            overlap = max(0.02, abs(top - bottom) * theta / steps)
 
-    # -- one strip and one panel per bend, deepest last ---------------------- #
-    carried: dict[int | None, gp_Trsf] = {None: gp_Trsf()}
-    for i in order:
-        bend, (nx, ny), (px, py), half, top, bottom = kept[i]
-        lo, hi = band(i)
-        base_trsf = carried[parent[i]]
-        enclosing = ancestry(i)
+            facets = []
+            for j in range(steps):
+                hinge = lo + j * step
+                # The angle is interpolated across the strip rather than
+                # derived from the neutral radius, so that the last slice
+                # always meets the finished angle exactly whatever set the
+                # strip width.
+                phi = theta * (hinge - lo) / (2 * half) if half > EPS else 0.0
+                facets.append(_Region(
+                    label=f"{bend.name} slice {j + 1}/{steps}",
+                    bounds=[(nx, ny, hinge - overlap, hinge + step + overlap)],
+                    poly=strip_pieces[s][0], face=strip_pieces[s][1],
+                    trsf=_slice_trsf(base_trsf, nx, ny, lo, hinge, axis_z,
+                                     sign * phi),
+                    kind="slice"))
 
-        steps = max(1, int(math.ceil(bend.angle / max(0.5, slice_angle))))
-        step = 2 * half / steps
-        sign = 1.0 if bend.inner_side == "top" else -1.0
-        axis_z = (top + bend.radius) if sign > 0 else (bottom - bend.radius)
-        theta = math.radians(bend.angle)
-        # Overlap so consecutive slices interpenetrate instead of touching along
-        # a line: the wedge a rotated slice opens on the outside of the bend is
-        # about half the thickness times the slice angle.
-        overlap = max(0.02, abs(top - bottom) * theta / steps)
+            # The strip is cut as ONE piece and bent exactly where it can be;
+            # the facets are the fallback, and they stay in `regions` as well
+            # because that list answers "where does a point at (x, y) end up".
+            plan.strips.append(_Strip(
+                bend=bend, bounds=[(nx, ny, lo, hi)], normal=(nx, ny),
+                poly=strip_pieces[s][0], face=strip_pieces[s][1],
+                lo=lo, hi=hi, axis_z=axis_z, turn=sign * theta,
+                carried=base_trsf, facets=facets))
+            plan.regions.extend(facets)
 
-        facets = []
-        for j in range(steps):
-            hinge = lo + j * step
-            # The angle is interpolated across the strip rather than derived
-            # from the neutral radius, so that the last slice always meets the
-            # finished angle exactly whatever set the strip width.
-            phi = theta * (hinge - lo) / (2 * half) if half > EPS else 0.0
-            facets.append(_Region(
-                label=f"{bend.name} slice {j + 1}/{steps}",
-                bounds=[(nx, ny, hinge - overlap, hinge + step + overlap)] + enclosing,
-                trsf=_slice_trsf(base_trsf, nx, ny, lo, hinge, axis_z, sign * phi),
-                kind="slice"))
+            # everything past the bend rides on the finished angle
+            carried[other] = _slice_trsf(base_trsf, nx, ny, lo, hi, axis_z,
+                                         sign * theta)
+            labels[other] = f"panel after {bend.name}"
+            queue.append(other)
 
-        # The strip is cut as ONE piece and bent exactly where it can be; the
-        # facets are the fallback, and they stay in `regions` as well because
-        # that list is what answers "where does a point at (x, y) end up".
-        plan.strips.append(_Strip(
-            bend=bend, bounds=[(nx, ny, lo, hi)] + enclosing, normal=(nx, ny),
-            lo=lo, hi=hi, axis_z=axis_z, turn=sign * theta, carried=base_trsf,
-            facets=facets))
-        plan.regions.extend(facets)
+    # In the order they were folded, which is outwards from the held piece.
+    plan.bends = [strip.bend for strip in plan.strips]
 
-        # everything past the bend rides on the finished angle
-        carried[i] = _slice_trsf(base_trsf, nx, ny, lo, hi, axis_z, sign * theta)
+    # A piece nothing reached is one the bend lines cut off from the rest of the
+    # board - an island. Nothing says what carries it, so it stays where it is
+    # and the log says so rather than leaving it to be noticed in the model.
+    for i in range(len(panels)):
+        if i not in carried:
+            carried[i] = gp_Trsf()
+            labels[i] = f"island {i}"
+            plan.notes.append(
+                f"  note: a piece of the board around "
+                f"{panels[i][0][0][0]:.1f}, {panels[i][0][0][1]:.1f} is not "
+                f"joined to the rest through any bend area; left where it is")
+    for s, (bend, _, _, _, _, _) in enumerate(kept):
+        if npanel + s not in carried:
+            plan.notes.append(
+                f"  note: {bend.name} is not reachable from the held piece, so "
+                f"nothing says which way it folds; left flat")
+
+    for i, (poly, face) in enumerate(panels):
         plan.regions.append(_Region(
-            label=f"panel after {bend.name}",
-            bounds=[(nx, ny, hi, math.inf)] + enclosing
-                   + [(kept[c][1][0], kept[c][1][1], -math.inf, band(c)[0])
-                      for c in children[i]],
-            trsf=carried[i], moved=True))
+            label=labels[i], bounds=[], poly=poly, face=face,
+            trsf=carried[i], moved=(i != held)))
 
-    # -- does this board's shape fit the model at all? ----------------------- #
-    # See the KNOWN LIMIT above. Silence would be the worst outcome here: the
-    # build finishes, the STEP looks plausible, and an arm has quietly been
-    # built twice in two places. Say so instead, with the number.
+    # The invariant, checked rather than assumed: the pieces come out of one
+    # boolean cut, so every point of the board should belong to exactly one of
+    # them. It held on every board tried, and it is what the half-plane model
+    # could not do - a quarter of Cadence's demo board used to be claimed twice
+    # and built twice. Cheap next to the fold itself, and silence here would
+    # mean a plausible wrong model handed back with nothing said.
     doubled = _double_claimed(plan, outline)
     if doubled > 0.02:
         plan.notes.append(
             f"  warning: {doubled * 100:.0f}% of this board is claimed by more "
-            f"than one fold region, so that material is built more than once "
-            f"and the result will not be right. It happens when the arms leave "
-            f"the held panel in several DIRECTIONS: a fold region is bounded by "
-            f"straight lines across the whole board, which cannot tell one arm "
-            f"from another. Check the folded model, and export flat "
-            f"(Fold flex bends off) if it is wrong.")
+            f"than one piece, so that material will be built more than once. "
+            f"This should not happen - please report the board. Exporting flat "
+            f"(Fold flex bends off) avoids it.")
 
     plan.notes.insert(0, (
         f"  held: the piece containing the anchor at "
@@ -969,17 +1002,10 @@ def _double_claimed(plan: FoldPlan, outline: list[tuple[float, float]],
     if not outline or not plan.regions:
         return 0.0
 
-    claimants = [r.bounds for r in plan.regions if r.kind == "panel"]
-    claimants += [s.bounds for s in plan.strips]
+    claimants = [r for r in plan.regions if r.kind == "panel"]
+    claimants += list(plan.strips)
     if len(claimants) < 2:
         return 0.0
-
-    def inside(bounds, x, y) -> bool:
-        for nx, ny, lo, hi in bounds:
-            v = nx * x + ny * y
-            if v < lo - EPS or v > hi + EPS:
-                return False
-        return True
 
     xs = [p[0] for p in outline]
     ys = [p[1] for p in outline]
@@ -991,8 +1017,8 @@ def _double_claimed(plan: FoldPlan, outline: list[tuple[float, float]],
             if point_in_polygon((x, y), outline):
                 on_board += 1
                 seen = 0
-                for bounds in claimants:
-                    if inside(bounds, x, y):
+                for claimant in claimants:
+                    if claimant.holds(x, y):
                         seen += 1
                         if seen > 1:
                             doubled += 1
@@ -1235,13 +1261,18 @@ def _is_empty(shape: TopoDS_Shape) -> bool:
 
 def _cut_to_region(shape: TopoDS_Shape,
                    bounds: list[tuple[float, float, float, float]],
-                   box) -> TopoDS_Shape | None:
-    """The part of *shape* inside every one of *bounds*, or None if nothing is.
+                   box, face=None) -> TopoDS_Shape | None:
+    """The part of *shape* inside *face* and every one of *bounds*, or None.
 
     Each bound that the shape already satisfies is skipped rather than turned
     into a boolean - on a board with one bend that leaves the far panel and the
     held panel each costing a single cut, and the silkscreen on either of them
     costing none at all.
+
+    *face* is the piece of the flat board the region is, and it is what tells
+    one arm from another. It is applied LAST: the half-plane bounds are cheap
+    and often reject the shape outright, and there is no sense extruding a
+    piece to intersect with nothing.
     """
     piece = shape
     for nx, ny, lo, hi in bounds:
@@ -1257,7 +1288,177 @@ def _cut_to_region(shape: TopoDS_Shape,
         piece = common.Shape()
         if _is_empty(piece):
             return None
+
+    if face is not None:
+        pbox = _bbox(face)
+        if pbox is not None:
+            # Cheap rejection first: a glyph, or a whole layer part, that is
+            # nowhere near this piece costs a bounding box and no boolean.
+            xmin, ymin, _, xmax, ymax, _ = pbox
+            sxmin, symin, _, sxmax, symax, _ = box
+            if (sxmax < xmin - EPS or sxmin > xmax + EPS
+                    or symax < ymin - EPS or symin > ymax + EPS):
+                return None
+        zmin, zmax = box[2], box[5]
+        prism = BRepPrimAPI_MakePrism(
+            face, gp_Vec(0, 0, (zmax - zmin) + 2.0)).Shape()
+        lift = gp_Trsf()
+        lift.SetTranslation(gp_Vec(0, 0, zmin - 1.0))
+        prism = BRepBuilderAPI_Transform(prism, lift, True).Shape()
+        common = BRepAlgoAPI_Common(piece, prism)
+        if not common.IsDone():
+            return None
+        piece = common.Shape()
+        if _is_empty(piece):
+            return None
+
     return None if _is_empty(piece) else piece
+
+
+# --------------------------------------------------------------------------- #
+# cutting the flat board into pieces
+# --------------------------------------------------------------------------- #
+#
+# A bend line is a segment across ONE arm, and which arm a point is on is a
+# question about connectivity, not about which side of a line it falls. The
+# half-plane model that came before this could not ask it: on Cadence's demo
+# board "beyond BEND_5" also covers the LCD arm at the far end and the main
+# board itself, so the held panel was being folded by a bend it has nothing to
+# do with, and a quarter of the board was claimed by two regions at once.
+#
+# So the flat outline is cut by the bend strips, and the pieces that fall out
+# ARE the panels. Everything else - which piece is held, what carries what,
+# where a point ends up - follows from how those pieces touch.
+
+
+def _polygon_face(poly: list[tuple[float, float]]):
+    """A planar face at z = 0 from a closed 2-D polygon."""
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakePolygon
+
+    maker = BRepBuilderAPI_MakePolygon()
+    for x, y in poly:
+        maker.Add(gp_Pnt(x, y, 0.0))
+    maker.Close()
+    if not maker.IsDone():
+        return None
+    face = BRepBuilderAPI_MakeFace(maker.Wire(), True)
+    return face.Face() if face.IsDone() else None
+
+
+def _band_face(nx: float, ny: float, lo: float, hi: float, reach: float):
+    """The strip `lo <= n.p <= hi` as a rectangle long enough to cross the board."""
+    tx, ty = -ny, nx
+    return _polygon_face([
+        (nx * lo - tx * reach, ny * lo - ty * reach),
+        (nx * hi - tx * reach, ny * hi - ty * reach),
+        (nx * hi + tx * reach, ny * hi + ty * reach),
+        (nx * lo + tx * reach, ny * lo + ty * reach),
+    ])
+
+
+def _faces_of(shape) -> list:
+    out = []
+    if shape is None or shape.IsNull():
+        return out
+    exp = TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_FACE)
+    while exp.More():
+        out.append(TopoDS.Face_s(exp.Current()))
+        exp.Next()
+    return out
+
+
+def _face_poly(face) -> list[tuple[float, float]]:
+    """A face's outer wire as an ordered 2-D polygon.
+
+    Every wire here is polygonal - the outline arrives already flattened by
+    `contour_points`, and the strips are rectangles - so the vertices are the
+    polygon, with nothing to sample.
+    """
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
+
+    pts = []
+    exp = BRepTools_WireExplorer(BRepTools.OuterWire_s(face))
+    while exp.More():
+        p = BRep_Tool.Pnt_s(exp.CurrentVertex())
+        pts.append((p.X(), p.Y()))
+        exp.Next()
+    return pts
+
+
+def _touching(a, b, tol: float = 1.0e-6) -> bool:
+    """Do two faces share a boundary?"""
+    from OCP.BRepExtrema import BRepExtrema_DistShapeShape
+
+    dist = BRepExtrema_DistShapeShape(a, b)
+    return bool(dist.IsDone()) and dist.Value() <= tol
+
+
+def _cut_into_pieces(outline: list[tuple[float, float]], chain: list):
+    """Cut the flat outline by every bend strip.
+
+    -> (panels, strips), each a list of (polygon, face); strips[i] belongs to
+    chain[i]. None if the outline cannot be made into a face at all, which
+    leaves the caller to fall back on the old half-plane reading.
+
+    A band is infinite across its own direction, so `outline AND band` can come
+    back in several pieces - BEND_5's band on the demo board also clips the LCD
+    arm 180 mm away. Only the piece the bend LINE is in is that bend's strip;
+    the others are ordinary board that happens to lie between the same two
+    parallel lines, and they stay part of their own panel.
+    """
+    face = _polygon_face(outline)
+    if face is None:
+        return None
+
+    xs = [p[0] for p in outline]
+    ys = [p[1] for p in outline]
+    reach = math.hypot(max(xs) - min(xs), max(ys) - min(ys)) + 10.0
+
+    strips = []
+    for bend, (nx, ny), (px, py), half, _, _ in chain:
+        base = nx * px + ny * py
+        band = _band_face(nx, ny, base - half, base + half, reach)
+        if band is None:
+            return None
+        common = BRepAlgoAPI_Common(face, band)
+        if not common.IsDone():
+            return None
+        mid = bend.midpoint
+        best, best_d = None, None
+        for part in _faces_of(common.Shape()):
+            poly = _face_poly(part)
+            if len(poly) < 3:
+                continue
+            if point_in_polygon(mid, poly):
+                best, best_d = (poly, part), -1.0
+                break
+            d = min(math.hypot(vx - mid[0], vy - mid[1]) for vx, vy in poly)
+            if best_d is None or d < best_d:
+                best, best_d = (poly, part), d
+        if best is None:
+            return None
+        strips.append(best)
+
+    builder = BRep_Builder()
+    tools = TopoDS_Compound()
+    builder.MakeCompound(tools)
+    for _, part in strips:
+        builder.Add(tools, part)
+
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+
+    cut = BRepAlgoAPI_Cut(face, tools)
+    if not cut.IsDone():
+        return None
+    panels = []
+    for part in _faces_of(cut.Shape()):
+        poly = _face_poly(part)
+        if len(poly) >= 3:
+            panels.append((poly, part))
+    if not panels:
+        return None
+    return panels, strips
 
 
 def _slab(nx: float, ny: float, lo: float, hi: float, box) -> TopoDS_Shape:

@@ -282,7 +282,7 @@ check("only the first of two overlapping bends is folded",
 check("and it says why", any("cannot be read" in n for n in plan3.notes),
       plan3.notes)
 
-print("\n[7a] a corner in one arm: two PERPENDICULAR bends, both real")
+print("\n[7a] two PERPENDICULAR bends, both real")
 
 # Cadence's own demo board, reduced. The FLEXI arm leaves the main board, turns
 # a corner and turns again: BEND_2 and BEND_1 are at right angles to each other,
@@ -301,17 +301,34 @@ check("both bends of the corner are folded", len(plan_corner.bends) == 2,
       [b.name for b in plan_corner.bends])
 check("neither is reported as unreadable",
       not any("cannot be read" in n for n in plan_corner.notes), plan_corner.notes)
-# The strips are built parents first, and that order IS the carry relation.
-# (plan.bends is sorted by distance from the anchor along each bend's own
-# normal, which for two perpendicular bends says nothing about which is further
-# along the arm - it lists B1 first here.)
-check("the nearer one carries the further one - one strip rides on the other",
-      [s.bend.name for s in plan_corner.strips] == ["B2", "B1"],
-      [s.bend.name for s in plan_corner.strips])
-# B1 is beyond B2, so whatever B2 does must move B1's panel as well: the point
-# past B1 cannot still be lying flat at z = 0.
-past = gp_Pnt(155.0, 105.0, 0.0).Transformed(plan_corner.transform_at(155.0, 105.0))
-check("and the far panel has moved with it", abs(past.Z()) > 1.0, past.Z())
+
+print("\n[7a1] and a corner in ONE arm: the second rides on the first")
+
+# An L-shaped arm, the shape a flex takes when it turns a corner: the only way
+# from the held end to the far end is through A and then through B, and the two
+# bend lines are at right angles. Nothing but the connectivity says so - the two
+# strips are nowhere near each other, and neither lies "beyond" the other in any
+# useful sense.
+ell_arm = [(0, 0), (60, 0), (60, 80), (40, 80), (40, 20), (0, 20)]
+ell_a = Bend(name="A", start=(30.0, 0.0), end=(30.0, 20.0), angle=90.0, radius=R)
+ell_b = Bend(name="B", start=(40.0, 50.0), end=(60.0, 50.0), angle=90.0, radius=R)
+plan_ell = plan_fold([ell_a, ell_b], ell_arm, 0.0, -T, anchor=(5.0, 10.0))
+check("both fold", len(plan_ell.bends) == 2, [b.name for b in plan_ell.bends])
+check("in the order the arm reaches them",
+      [s.bend.name for s in plan_ell.strips] == ["A", "B"],
+      [s.bend.name for s in plan_ell.strips])
+check("the held end is the one the anchor is on",
+      plan_ell.region_at(5.0, 10.0) == "held", plan_ell.region_at(5.0, 10.0))
+check("the piece between them rides on A alone",
+      plan_ell.region_at(50.0, 30.0) == "panel after A",
+      plan_ell.region_at(50.0, 30.0))
+check("and the far end rides on both",
+      plan_ell.region_at(50.0, 75.0) == "panel after B",
+      plan_ell.region_at(50.0, 75.0))
+# A turns the far arm 90 deg up; B then turns its own far end 90 deg again, in
+# the frame A left. The end cannot still be flat.
+tip = gp_Pnt(50.0, 75.0, 0.0).Transformed(plan_ell.transform_at(50.0, 75.0))
+check("so the tip has left the plane twice over", abs(tip.Z()) > 1.0, tip.Z())
 
 print("\n[7b0] two arms whose normals are perpendicular, far apart")
 
@@ -406,16 +423,15 @@ check("and keeps its material", abs(volume(arms_solid) - 10 * 32 * T) / (10 * 32
       volume(arms_solid))
 
 # --------------------------------------------------------------------------- #
-print("\n[7b2] a board whose arms leave in several directions says so")
+print("\n[7b2] no piece of the board is ever claimed twice")
 
-# The KNOWN LIMIT. A fold region is an intersection of half-planes, and a
-# half-plane crosses the whole board: on a design with arms going several ways,
-# "beyond this bend" also covers an arm at the far end that belongs to another
-# bend, and that material gets built twice. Measured on Cadence's demo board:
-# 25% of it claimed twice, and the folded body weighs 114.7% of the flat one.
-# It cannot be tuned away - bounding every panel by every other bend was tried
-# and drops 42.7% of the board instead - so what the fold owes the user is to
-# say so plainly rather than hand back a plausible wrong model.
+# The invariant the half-plane model could not hold. A region used to be an
+# intersection of half-planes, and a half-plane crosses the WHOLE board: on
+# Cadence's demo board "beyond BEND_5" also covered the LCD arm 180 mm away and
+# the main board itself, so 25% of the board was claimed by two or three regions
+# at once, the held panel was folded by a bend it has nothing to do with, and the
+# folded body weighed 114.7% of the flat one. Regions are pieces of the outline
+# now, so every point belongs to exactly one, whatever shape the board is.
 from stepbuilder.bend import _double_claimed
 
 check("a plain single bend claims nothing twice",
@@ -424,25 +440,29 @@ check("nor does a Z fold, where the bends are parallel",
       _double_claimed(plan2, outline) == 0.0, _double_claimed(plan2, outline))
 check("nor two arms in opposite directions",
       _double_claimed(plan_arms, tall) == 0.0, _double_claimed(plan_arms, tall))
+check("nor a corner in one arm",
+      _double_claimed(plan_ell, ell_arm) == 0.0,
+      _double_claimed(plan_ell, ell_arm))
 
-# Two of Cadence's own bends, with the board they need to sit on. BEND_5 leaves
-# the middle on a diagonal towards the bottom right; BEND_3 leaves it straight
-# up, 180 mm away. "Beyond BEND_5" has a large +y component, so it sweeps across
-# the whole of BEND_3's arm, and both panels claim it.
+# The shape that used to break it. Two of Cadence's own bends: XA leaves the
+# middle on a diagonal towards the bottom right, XB straight up 180 mm away.
+# "Beyond XA" has a large +y component and sweeps across the whole of XB's arm.
 cross_a = Bend(name="XA", start=(88.15, -43.7), end=(98.4, -53.85),
                angle=45.0, radius=20.0)
 cross_b = Bend(name="XB", start=(35.95, 132.428), end=(25.95, 132.428),
                angle=180.0, radius=10.0)
-ell = [(-40, -60), (160, -60), (160, 190), (-40, 190)]
-plan_cross = plan_fold([cross_a, cross_b], ell, 0.0, -T, anchor=(0.0, 0.0))
-share = _double_claimed(plan_cross, ell)
-check("two arms at right angles do claim the same material", share > 0.02, share)
-check("and the plan says so in as many words",
-      any("more than one fold region" in n for n in plan_cross.notes),
-      plan_cross.notes)
-check("as a warning, not a silent difference",
-      any(n.strip().startswith("warning:") and "fold region" in n
-          for n in plan_cross.notes), plan_cross.notes)
+wide_board = [(-40, -60), (160, -60), (160, 190), (-40, 190)]
+plan_cross = plan_fold([cross_a, cross_b], wide_board, 0.0, -T, anchor=(0.0, 0.0))
+check("two arms at right angles claim nothing in common",
+      _double_claimed(plan_cross, wide_board) == 0.0,
+      _double_claimed(plan_cross, wide_board))
+check("and the middle, where the anchor is, is still held",
+      plan_cross.region_at(0.0, 0.0) == "held", plan_cross.region_at(0.0, 0.0))
+check("neither arm is folded by the other's bend",
+      plan_cross.region_at(20.0, 170.0) != plan_cross.region_at(120.0, -55.0),
+      (plan_cross.region_at(20.0, 170.0), plan_cross.region_at(120.0, -55.0)))
+check("and nothing is reported as unreadable",
+      not any("cannot be read" in n for n in plan_cross.notes), plan_cross.notes)
 
 # --------------------------------------------------------------------------- #
 print("\n[7c] two 180 deg bends that MEET - the ring, and the K factor")
