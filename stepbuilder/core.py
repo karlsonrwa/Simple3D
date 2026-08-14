@@ -457,8 +457,24 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
             # an empty part being carried into the assembly, which is what the
             # bare IsNull() test used to allow.
             if solid.IsNull() or not has_solid(solid):
-                log(f"{layer.get('name')} has no material in zone "
-                    f"{zone['name']}; not built there")
+                # A negative layer whose openings swallow the whole zone is the
+                # one case here that is usually a SETTING rather than a design,
+                # so it gets told apart and named. Allegro's own 3D Canvas guide
+                # says a coverlay is read as negative and that "coverlays
+                # specified as positive shapes are not rendered in 3D canvas" -
+                # so a design that draws them as material is a real thing, and
+                # this is what it looks like from in here.
+                if layer.get("negative") and layer.get("shapes"):
+                    log(f"warning: {layer.get('name')} is marked as an OPENING "
+                        f"in this intermediate and its shapes cover the whole "
+                        f"of zone {zone['name']}, so none of it is left there. "
+                        f"If this design draws that layer as MATERIAL instead, "
+                        f"take its name out of settings.negativeLayers and "
+                        f"export the board again - the polarity is decided at "
+                        f"export time and written into the file.")
+                else:
+                    log(f"{layer.get('name')} has no material in zone "
+                        f"{zone['name']}; not built there")
                 continue
             if cutouts:
                 solid = _cut_out(solid, cutouts, top + 0.01,

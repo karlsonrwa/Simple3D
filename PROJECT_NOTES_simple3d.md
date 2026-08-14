@@ -2925,6 +2925,90 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-14 (round 64) — the stack datum, a pinched piece, and what a coverlay shape means
+
+Three things the user found by putting our build beside Allegro's own 3D, in the
+order they were fixed.
+
+### The stack datum: every stackup was measured from its own first conductor
+
+The exporter puts z = 0 at each stackup's **first conductor**. That is a common
+datum only while every stackup's first conductor is the same physical layer. On
+Cadence's demo it is not — the flex is an INNER pair:
+
+| layer | PRIMARY | FLEXI1 |
+|---|---|---|
+| INNER1 | −0.5208 | **0.0000** |
+| INNER2 | −0.8058 | **−0.2850** |
+
+The same copper, 0.5208 mm apart, and the same offset for both, so a pure shift.
+The flex tails left the rigid board near its top face instead of out of its
+middle, taking every bend axis, zone height and component on a tail with them.
+
+`align_stackups` makes the stackup with the most conductors the reference and
+slides the others until the conductors they share line up. Nothing shared →
+report it and keep the exporter's answer. It runs **after** `drop_soldermask`,
+because `restack` re-derives z from the first conductor and would undo it.
+Boards whose stackups already agree measure 0 and are untouched — which is the
+entire existing corpus, and why 22/22 stayed green.
+
+Flex zones now sit at −0.490 … −1.140 inside the rigid 0 … −1.630. Board
+thickness 1.630 where it read 1.661.
+
+### A piece the boolean pinched, and the sliver that ate a layer
+
+The wedge between BEND_6 and BEND_4 was missing. Its piece came out of the cut
+**pinched**: a zero-width slit 19 mm long, because the outline's edge and the
+strip's edge are collinear there. Area right, `_double_claimed` 0, `_seam_gap` 0
+— only `BRepCheck_Analyzer` called it invalid. A prism on such a face is
+unusable: 2 of 57 layer parts intersected it where 8 should have.
+
+`ShapeFix` splits it. Two traps came with that:
+
+- **Keep every fragment's polygon**, not just the largest. `region_at` uses it,
+  and the anchor landing on the smaller half is a coin toss — test [7b0] found
+  it immediately.
+- **Drop the slivers the repair leaves.** A 0.085 mm² chip beside the 15.42 mm²
+  wedge took the whole **173.763 mm³** dielectric of that arm to zero: prismed,
+  a sliver is a degenerate solid, and the fuse of the folded pieces then
+  produced nothing at all. Under a hundredth of the piece goes, with the area
+  in the log.
+
+| | volume | vs the 22679.233 mm³ the board is made of |
+|---|---|---|
+| wedge lost | 22673.364 | −5.869 |
+| repaired, sliver kept | 22505.518 | **−173.715** |
+| repaired, sliver dropped | 22679.467 | **+0.234** |
+
+`apply()` no longer returns a null shape in silence: a fuse that yields nothing
+keeps the pieces as a compound and says so. That silence is *how* a whole layer
+disappeared — the part simply measured zero.
+
+### What a shape on a coverlay layer means — settled, by Cadence
+
+Searched the whole shipped doc tree (`D:\Cadence\SPB_25.1\doc\`). **One**
+sentence in the entire set addresses it, in the 3D Canvas guide:
+
+> "The coverlay layers are interpreted as negative shapes by 3D canvas.
+> **Coverlays specified as positive shapes are not rendered in 3D canvas.**"
+> — *Changing Color of Coverlay Layers*, Allegro X 3D Canvas User Guide 25.1
+
+So the default is right — coverlay shapes are openings, which is what
+`settings.negativeLayers` already says — and Cadence itself confirms the other
+kind of board exists, and that its own 3D **omits the layer** there. The demo
+board is that kind: its coverlay shapes total 5255.9 mm² against 2364 mm² of
+flex zone, and read as openings they delete the coverlay from the arms and keep
+it nowhere useful.
+
+**No data test can tell the two apart.** The tempting rule — "if subtracting the
+shapes leaves nothing, they must be material" — is exactly the round-27 case on
+the user's own board, where `COVERLAY_TOP` had a shape matching the FLEX1 zone
+outline and it was a genuine opening, a flex tail with its contacts exposed.
+Same signature, opposite meaning. So the list stays the decision, and what the
+build owes the user is to say when it matters: a negative layer whose openings
+leave nothing of it in a zone is now a **warning that names the layer and the
+setting**, not a line of routine chatter.
+
 ## Update 2026-08-14 (round 63) — the picture beside Allegro's, and three faults
 
 The user built the demo board and put our result next to Allegro's own 3D. The
