@@ -499,6 +499,10 @@ class FoldPlan:
     chain: list[tuple[Bend, tuple[float, float], tuple[float, float], float]] = \
         field(default_factory=list)
     slice_angle: float = DEFAULT_SLICE_ANGLE
+    # The two faces of the FLAT board. flat_frame uses them to reject a region
+    # whose inverse throws the point out of the stack - see there.
+    flat_top: float | None = None
+    flat_bottom: float | None = None
     # how each bend was actually built, the first time it was built that way
     built: dict = field(default_factory=dict)
     # and how many pieces went each way, which is what says a bend is uneven
@@ -536,14 +540,34 @@ class FoldPlan:
         its walls are not.
 
         The region is found by trying each one's inverse and keeping the one
-        whose flat bounds the result lands in, which is exact: the regions
-        partition the flat board, and every folded point came from exactly one
-        of them (bar the slice overlaps, where either answer is right to within
-        one slice angle).
+        whose flat footprint the result lands in. Two things make that answer
+        the right one rather than merely a possible one:
+
+        - **the un-folded point has to land back IN the board**, in z. A wrong
+          region's inverse is a rotation about a different axis, and it throws
+          the point clean out of the stack: the LCD panel's top face on
+          Cadence's demo board came back at z = 31.08 through a slice of
+          BEND_3, on a board that is 1.63 mm thick. Without this test that
+          slice answered first, the panel's flat face was judged in a frame
+          where it stands vertical, and the whole 2398 mm2 of it was painted
+          with the BOARD EDGE colour;
+        - **panels are tried before slices.** A slice is a facet of a bend and
+          is only ever real geometry when a bend could not be built exactly;
+          it stays in `regions` to answer "where does this point end up", and
+          it must not outrank the panel a face actually belongs to.
         """
-        for region in self.regions:
+        margin = 1.0
+        if self.flat_top is not None and self.flat_bottom is not None:
+            low = min(self.flat_top, self.flat_bottom) - margin
+            high = max(self.flat_top, self.flat_bottom) + margin
+        else:
+            low = high = None
+
+        for region in sorted(self.regions, key=lambda r: r.kind != "panel"):
             back = region.trsf.Inverted()
             flat = point.Transformed(back)
+            if low is not None and not (low <= flat.Z() <= high):
+                continue
             if region.holds(flat.X(), flat.Y()):
                 return back
         return None
@@ -772,7 +796,8 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
         given the board is CUT with it, so a rounded edge stays round; without
         it the flattened polygon is cut instead, which chords every arc.
     """
-    plan = FoldPlan(slice_angle=slice_angle)
+    plan = FoldPlan(slice_angle=slice_angle,
+                    flat_top=board_top_z, flat_bottom=board_bottom_z)
     if not bends:
         return plan
 

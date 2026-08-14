@@ -607,6 +607,51 @@ check("a contour that cannot be built falls back to the flat one",
                        [{"type": "segment", "start": [0.0, 0.0],
                          "end": [1.0, 0.0]}]) is not None)
 
+print("\n[7c3] a folded panel is not mistaken for the board's edge")
+
+# _rim_faces asks "is this wall vertical" in the frame the face was BUILT in,
+# because after a fold half the flat faces stand vertical. flat_frame finds that
+# frame by trying each region's inverse - and a wrong region's inverse is a
+# rotation about a different axis, which throws the point clean out of the
+# stack. On Cadence's demo board the LCD panel's top face came back at z = 31.08
+# through a slice of BEND_3, on a board 1.63 mm thick; judged in that frame it
+# stood vertical, and all 2398 mm2 of it was painted with the board EDGE colour.
+# So the un-folded point has to land back IN the board, and panels are tried
+# before slices.
+tall_two = [(0, 0), (10, 0), (10, 60), (0, 60)]
+over = Bend(name="O", start=(0.0, 20.0), end=(10.0, 20.0), angle=180.0,
+            radius=1.0, inner_side="top")
+plan_over = plan_fold([over], tall_two, 0.0, -T, anchor=(5.0, 5.0))
+check("the plan knows where the flat board's faces are",
+      plan_over.flat_top == 0.0 and plan_over.flat_bottom == -T,
+      (plan_over.flat_top, plan_over.flat_bottom))
+
+folded_over = plan_over.apply(
+    BRepPrimAPI_MakeBox(gp_Pnt(0, 0, -T), 10.0, 60.0, T).Shape())
+rim = core._rim_faces(folded_over, plan_over)
+
+
+def face_area(f):
+    props = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(f, props)
+    return props.Mass()
+
+
+flat_face = 10.0 * 60.0                     # the whole board, one side
+biggest = max((face_area(f) for f in rim), default=0.0)
+check("no rim face is anywhere near the size of a panel",
+      biggest < 0.25 * flat_face, (biggest, flat_face))
+check("but the board still has a rim at all", rim, len(rim))
+
+# and the frame it hands back must be the panel's own, not a slice's
+past = gp_Pnt(5.0, 40.0, 0.0).Transformed(plan_over.transform_at(5.0, 40.0))
+back = plan_over.flat_frame(past)
+check("a point past the bend unfolds back into the board", back is not None)
+if back is not None:
+    home = past.Transformed(back)
+    check("and lands back inside the stack, not out in space",
+          -T - 1.0 <= home.Z() <= 1.0, home.Z())
+
 print("\n[7d] the fold joins up - every seam, every shape")
 
 # The invariant that actually showed on Cadence's demo board, and the one
