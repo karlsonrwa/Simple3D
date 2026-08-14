@@ -44,6 +44,71 @@ S2=[("STIFFENER_TOP2","MASK",2.0),("ADHESIVE_TOP2","MASK",0.025),("COVERLAY_TOP"
     ("DIEL","DIELECTRIC",0.125),("BOTTOM","CONDUCTOR",0.045),("SOLDERMASK_BOTTOM","MASK",0.025),
     ("ADHESIVE_BOTTOM","MASK",0.05),("COVERLAY_BOTTOM","MASK",0.025)]
 
+print("\n[0] stackups are lined up on the conductors they share")
+
+# Each stackup arrives measured from its OWN first conductor, at z = 0. That is
+# a common datum only while every stackup's first conductor is the same physical
+# layer. On Cadence's demo board the flex is an INNER pair: FLEXI1 calls INNER1
+# z = 0 while PRIMARY has it at -0.5208, the same copper 0.52 mm apart, so the
+# flex tail left the rigid board near its top face instead of out of its middle.
+RIGID = [("SOLDERMASK_TOP", "MASK", 0.02), ("TOP", "CONDUCTOR", 0.035),
+         ("D1", "DIELECTRIC", 0.2), ("INNER1", "CONDUCTOR", 0.035),
+         ("D2", "DIELECTRIC", 0.25), ("INNER2", "CONDUCTOR", 0.035),
+         ("D3", "DIELECTRIC", 0.2), ("BOTTOM", "CONDUCTOR", 0.035),
+         ("SOLDERMASK_BOTTOM", "MASK", 0.02)]
+CORE = [("COVERLAY_INNER1", "MASK", 0.025), ("INNER1", "CONDUCTOR", 0.035),
+        ("D2", "DIELECTRIC", 0.25), ("INNER2", "CONDUCTOR", 0.035),
+        ("COVERLAY_INNER2", "MASK", 0.025)]
+
+pair = {"PRIMARY": {"thickness": 0.83, "layers": layers(RIGID)},
+        "FLEXI1": {"thickness": 0.37, "layers": layers(CORE)}}
+say = []
+lined = core.align_stackups(pair, say.append)
+
+
+def ztop(st, name):
+    return [l for l in lined[st]["layers"] if l["name"] == name][0]["z_top"]
+
+
+check("before: the two disagree about INNER1",
+      abs(pair["PRIMARY"]["layers"][3]["z_top"]
+          - pair["FLEXI1"]["layers"][1]["z_top"]) > 0.2)
+check("after: INNER1 is one height", abs(ztop("PRIMARY", "INNER1")
+                                         - ztop("FLEXI1", "INNER1")) < 1e-12,
+      (ztop("PRIMARY", "INNER1"), ztop("FLEXI1", "INNER1")))
+check("and so is INNER2", abs(ztop("PRIMARY", "INNER2")
+                              - ztop("FLEXI1", "INNER2")) < 1e-12,
+      (ztop("PRIMARY", "INNER2"), ztop("FLEXI1", "INNER2")))
+check("the rigid stack is the reference and does not move",
+      ztop("PRIMARY", "TOP") == 0.0, ztop("PRIMARY", "TOP"))
+check("so the flex now sits INSIDE the rigid board, not on top of it",
+      ztop("FLEXI1", "COVERLAY_INNER1") < 0.0, ztop("FLEXI1", "COVERLAY_INNER1"))
+check("and it says what it moved and by how much",
+      any("lined up" in m and "FLEXI1" in m for m in say), say)
+
+# A board whose stackups already agree must not be touched - that is every
+# single-stackup board and every rigid-flex one whose flex carries the outer
+# copper, which is what the tests below and the whole regression corpus are.
+same = {"A": {"thickness": 0.3, "layers": layers(FLEX)},
+        "B": {"thickness": 0.3, "layers": layers(FLEX)}}
+quiet = []
+kept = core.align_stackups(same, quiet.append)
+check("stackups that already agree are left alone",
+      all(a["z_top"] == b["z_top"] for a, b in
+          zip(same["A"]["layers"], kept["A"]["layers"])) and not quiet, quiet)
+check("one stackup on its own is left alone",
+      core.align_stackups({"A": same["A"]}, quiet.append)["A"] is same["A"])
+
+# Nothing shared to line up by: say so rather than guess.
+odd = {"P": {"thickness": 0.3, "layers": layers(RIGID)},
+       "Q": {"thickness": 0.2, "layers": layers(
+           [("X1", "CONDUCTOR", 0.035), ("DX", "DIELECTRIC", 0.1),
+            ("X2", "CONDUCTOR", 0.035)])}}
+told = []
+core.align_stackups(odd, told.append)
+check("a stackup with no shared conductor is reported, not moved",
+      any("shares no named conductor" in m for m in told), told)
+
 base=json.loads((ROOT/"demo/ap-214/demo.json").read_text())
 def build(name, s2_shape=None):
     st={"FLEX":{"thickness":0.365,"layers":layers(FLEX)},

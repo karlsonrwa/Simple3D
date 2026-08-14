@@ -227,6 +227,85 @@ def drop_soldermask(stackups: dict, log: LogFn = _noop_log) -> dict:
     return out
 
 
+def _is_conductor(layer: dict) -> bool:
+    return str(layer.get("type") or "").upper() in ("CONDUCTOR", "PLANE")
+
+
+def align_stackups(stackups: dict, log: LogFn = _noop_log) -> dict:
+    """Put every stackup on ONE z datum, by the conductor layers they share.
+
+    Each stackup arrives measured from its own **first conductor**, which the
+    exporter puts at z = 0. That is only a common datum when every stackup's
+    first conductor is the same physical layer. On a board where the flex is an
+    INNER pair it is not: Cadence's demo board declares INNER1 at z = 0 in the
+    FLEXI1 stackup and at -0.5208 in PRIMARY, the same copper 0.52 mm apart, so
+    the flex tail left the rigid board near its top face instead of out of its
+    middle - and every bend axis, every zone height and every component on a
+    tail went with it.
+
+    A rigid-flex board is one laminate: a layer that appears in two stackups is
+    the same sheet running through both. So the stackup with the most conductors
+    - the rigid stack - is the reference, and every other is slid until the
+    conductors it shares with the reference line up. A stackup that shares no
+    named conductor with it is left where it is and said so; there is nothing to
+    align it by, and guessing would be worse than the exporter's own answer.
+
+    Boards where the datum already agrees measure an offset of 0 and are
+    untouched, which is every single-stackup board and every rigid-flex board
+    whose flex carries the outer copper.
+    """
+    usable = {name: (stackup.get("layers") or [])
+              for name, stackup in stackups.items()}
+    usable = {n: lays for n, lays in usable.items() if lays}
+    if len(usable) < 2:
+        return stackups
+
+    def conductors(layers) -> dict:
+        return {str(lay.get("name")): float(lay["z_top"])
+                for lay in layers if _is_conductor(lay) and lay.get("name")}
+
+    reference = max(usable, key=lambda n: (len(conductors(usable[n])),
+                                           len(usable[n]), n))
+    ref = conductors(usable[reference])
+
+    out, moved = {}, []
+    for name, stackup in stackups.items():
+        layers = stackup.get("layers") or []
+        mine = conductors(layers)
+        shared = sorted(set(ref) & set(mine))
+        if name == reference or not layers:
+            out[name] = stackup
+            continue
+        if not shared:
+            out[name] = stackup
+            log(f"warning: stackup {name!r} shares no named conductor with "
+                f"{reference!r}, so there is nothing to line the two up by; "
+                f"left at the height the exporter gave it")
+            continue
+
+        offsets = [ref[n] - mine[n] for n in shared]
+        offset = max(set(round(o, 9) for o in offsets),
+                     key=lambda o: sum(1 for x in offsets if round(x, 9) == o))
+        spread = max(offsets) - min(offsets)
+        if spread > 1.0e-6:
+            log(f"warning: stackup {name!r} does not line up with "
+                f"{reference!r} by a single shift - its shared conductors "
+                f"disagree by {spread:.4f} mm. Using {offset:.4f} mm, which "
+                f"most of them agree on.")
+        if abs(offset) > 1.0e-9:
+            moved.append(f"{name} by {offset:+.4f} mm on {', '.join(shared)}")
+        out[name] = {**stackup,
+                     "layers": [{**lay,
+                                 "z_top": float(lay["z_top"]) + offset,
+                                 "z_bottom": float(lay["z_bottom"]) + offset}
+                                for lay in layers]}
+
+    if moved:
+        log(f"Stackups lined up on {reference!r} by their shared conductors: "
+            + "; ".join(moved))
+    return out
+
+
 def stackup_levels(stackups: dict, zones: list[dict],
                    z_datum: str) -> tuple[dict, float, float, float]:
     """Zone faces, board extent and the datum shift, from the per-layer data.
@@ -1948,6 +2027,12 @@ def generate(
 
     if stackups and ignore_soldermask:
         stackups = drop_soldermask(stackups, log)
+
+    # AFTER drop_soldermask, never before: `restack` re-derives every z from the
+    # stackup's own first conductor, which is exactly the datum being corrected
+    # here, so aligning first would simply be undone.
+    if stackups:
+        stackups = align_stackups(stackups, log)
 
     if zones:
         if stackups:
