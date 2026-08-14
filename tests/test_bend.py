@@ -282,6 +282,91 @@ check("only the first of two overlapping bends is folded",
 check("and it says why", any("cannot be read" in n for n in plan3.notes),
       plan3.notes)
 
+print("\n[7a] a corner in one arm: two PERPENDICULAR bends, both real")
+
+# Cadence's own demo board, reduced. The FLEXI arm leaves the main board, turns
+# a corner and turns again: BEND_2 and BEND_1 are at right angles to each other,
+# 33.9 mm between their centres, sharing no material at all. Judged by a single
+# projection along one normal - which is what the clash test used to do - they
+# read as 9.19 mm apart with strips 8.3 and 9.9 mm wide, and one of the two real
+# bends was thrown away as unreadable. A strip is a rectangle, not a band.
+corner_a = Bend(name="B2", start=(132.25, 56.9), end=(119.5, 69.4),
+                angle=180.0, radius=5.0)
+corner_b = Bend(name="B1", start=(135.6, 85.622), end=(149.7, 99.5),
+                angle=180.0, radius=6.0, inner_side="bottom")
+arm_outline = [(90, 40), (160, 40), (160, 110), (90, 110)]
+plan_corner = plan_fold([corner_a, corner_b], arm_outline, 0.0, -T,
+                        anchor=(0.0, 0.0))
+check("both bends of the corner are folded", len(plan_corner.bends) == 2,
+      [b.name for b in plan_corner.bends])
+check("neither is reported as unreadable",
+      not any("cannot be read" in n for n in plan_corner.notes), plan_corner.notes)
+# The strips are built parents first, and that order IS the carry relation.
+# (plan.bends is sorted by distance from the anchor along each bend's own
+# normal, which for two perpendicular bends says nothing about which is further
+# along the arm - it lists B1 first here.)
+check("the nearer one carries the further one - one strip rides on the other",
+      [s.bend.name for s in plan_corner.strips] == ["B2", "B1"],
+      [s.bend.name for s in plan_corner.strips])
+# B1 is beyond B2, so whatever B2 does must move B1's panel as well: the point
+# past B1 cannot still be lying flat at z = 0.
+past = gp_Pnt(155.0, 105.0, 0.0).Transformed(plan_corner.transform_at(155.0, 105.0))
+check("and the far panel has moved with it", abs(past.Z()) > 1.0, past.Z())
+
+print("\n[7b0] two arms whose normals are perpendicular, far apart")
+
+# The crash. Two bends on DIFFERENT arms, ~135 mm apart one way and 66 mm the
+# other: each lies far beyond the other's strip, so each read as containing the
+# other, `parent` became a cycle and the build died with a KeyError before it
+# reached any geometry. Neither carries anything here - both hang off the held
+# panel.
+far_a = Bend(name="FA", start=(88.15, -43.7), end=(98.4, -53.85),
+             angle=45.0, radius=20.0)
+far_b = Bend(name="FB", start=(135.6, 85.622), end=(149.7, 99.5),
+             angle=180.0, radius=6.0, inner_side="bottom")
+wide = [(-30, -60), (160, -60), (160, 110), (-30, 110)]
+plan_far = plan_fold([far_a, far_b], wide, 0.0, -T, anchor=(0.0, 0.0))
+check("both are folded rather than one being dropped", len(plan_far.bends) == 2,
+      [b.name for b in plan_far.bends])
+check("neither ends up carrying the other - they are separate arms",
+      plan_far.region_at(0.0, 0.0) == "held", plan_far.region_at(0.0, 0.0))
+check("and nothing was left unplaced", len(plan_far.strips) == 2,
+      len(plan_far.strips))
+
+print("\n[7b1] whatever the bends are, the plan is finite and complete")
+
+# The property the KeyError broke: every bend that survives the clash test gets
+# exactly one strip, and plan_fold returns. Random layouts, because the failing
+# board was found by a user rather than by anything here - a bend set that makes
+# the carries relation cyclic must degrade to a note, not to an exception or a
+# loop that never ends.
+import random
+
+rng = random.Random(20260814)
+worst = None
+for trial in range(300):
+    made = []
+    for k in range(rng.randint(2, 5)):
+        x, y = rng.uniform(-80, 160), rng.uniform(-60, 140)
+        theta = rng.uniform(0, math.pi)
+        half = rng.uniform(4, 12)
+        made.append(Bend(name=f"R{k}",
+                         start=(x - half * math.cos(theta), y - half * math.sin(theta)),
+                         end=(x + half * math.cos(theta), y + half * math.sin(theta)),
+                         angle=rng.choice([45.0, 90.0, 180.0]),
+                         radius=rng.choice([2.0, 5.0, 10.0]),
+                         inner_side=rng.choice(["top", "bottom"])))
+    try:
+        p = plan_fold(made, wide, 0.0, -T, anchor=(0.0, 0.0))
+    except Exception as exc:                       # noqa: BLE001 - that is the test
+        worst = f"trial {trial}: {type(exc).__name__}: {exc}"
+        break
+    if len(p.strips) != len(p.bends):
+        worst = f"trial {trial}: {len(p.bends)} bends but {len(p.strips)} strips"
+        break
+
+check("300 random bend layouts all plan without raising", worst is None, worst)
+
 print("\n[7b] two arms off one held panel - the shape the real board has")
 
 # BEND_2 near one end folding down, BEND_1 near the other folding up, with the
@@ -319,6 +404,45 @@ check("the folded board reaches both ways",
       az1 > 5.0 and az0 < -5.0, (az0, az1))
 check("and keeps its material", abs(volume(arms_solid) - 10 * 32 * T) / (10 * 32 * T) < 0.01,
       volume(arms_solid))
+
+# --------------------------------------------------------------------------- #
+print("\n[7b2] a board whose arms leave in several directions says so")
+
+# The KNOWN LIMIT. A fold region is an intersection of half-planes, and a
+# half-plane crosses the whole board: on a design with arms going several ways,
+# "beyond this bend" also covers an arm at the far end that belongs to another
+# bend, and that material gets built twice. Measured on Cadence's demo board:
+# 25% of it claimed twice, and the folded body weighs 114.7% of the flat one.
+# It cannot be tuned away - bounding every panel by every other bend was tried
+# and drops 42.7% of the board instead - so what the fold owes the user is to
+# say so plainly rather than hand back a plausible wrong model.
+from stepbuilder.bend import _double_claimed
+
+check("a plain single bend claims nothing twice",
+      _double_claimed(plan, outline) == 0.0, _double_claimed(plan, outline))
+check("nor does a Z fold, where the bends are parallel",
+      _double_claimed(plan2, outline) == 0.0, _double_claimed(plan2, outline))
+check("nor two arms in opposite directions",
+      _double_claimed(plan_arms, tall) == 0.0, _double_claimed(plan_arms, tall))
+
+# Two of Cadence's own bends, with the board they need to sit on. BEND_5 leaves
+# the middle on a diagonal towards the bottom right; BEND_3 leaves it straight
+# up, 180 mm away. "Beyond BEND_5" has a large +y component, so it sweeps across
+# the whole of BEND_3's arm, and both panels claim it.
+cross_a = Bend(name="XA", start=(88.15, -43.7), end=(98.4, -53.85),
+               angle=45.0, radius=20.0)
+cross_b = Bend(name="XB", start=(35.95, 132.428), end=(25.95, 132.428),
+               angle=180.0, radius=10.0)
+ell = [(-40, -60), (160, -60), (160, 190), (-40, 190)]
+plan_cross = plan_fold([cross_a, cross_b], ell, 0.0, -T, anchor=(0.0, 0.0))
+share = _double_claimed(plan_cross, ell)
+check("two arms at right angles do claim the same material", share > 0.02, share)
+check("and the plan says so in as many words",
+      any("more than one fold region" in n for n in plan_cross.notes),
+      plan_cross.notes)
+check("as a warning, not a silent difference",
+      any(n.strip().startswith("warning:") and "fold region" in n
+          for n in plan_cross.notes), plan_cross.notes)
 
 # --------------------------------------------------------------------------- #
 print("\n[7c] two 180 deg bends that MEET - the ring, and the K factor")

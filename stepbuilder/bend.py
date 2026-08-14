@@ -695,6 +695,49 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
                     f"folding {developed:.3f} mm of material either way")
         chain.append((bend, (nx, ny), (px, py), developed / 2.0, top, bottom))
 
+    # How far a bend line reaches ACROSS a given direction. Every comparison
+    # between two bends below needs it, because a bend line is a segment on one
+    # arm of the board, not a cut across the whole of it - see the two uses.
+    def _span(item, tx: float, ty: float) -> tuple[float, float]:
+        line = item[0]
+        a = tx * line.start[0] + ty * line.start[1]
+        b = tx * line.end[0] + ty * line.end[1]
+        return (a, b) if a <= b else (b, a)
+
+    def _strips_overlap(a, b) -> bool:
+        """Do the two bend strips claim any of the same material?
+
+        A strip is a RECTANGLE: as wide as the developed length across the bend
+        line, as long as the bend line itself. Comparing them by a single
+        projection along one normal - which is what this used to do - answers a
+        question about two infinite bands instead, and two bends that share no
+        material at all can then look like they overlap. On Cadence's demo
+        board BEND_1 and BEND_2 are PERPENDICULAR, at the corner of the FLEXI
+        arm, 33.9 mm between centres and disjoint by any measure; projected on
+        BEND_1's normal alone they read as 9.19 mm apart with strips 8.3 and
+        9.9 mm wide, so one of the two real bends was dropped as unreadable.
+
+        Separating-axis test over the four edge directions. Rectangles that
+        merely TOUCH count as separated, which is the ring case the 1-D test
+        was careful about: a flex rolled closed is two 180 degree bends whose
+        areas share a line, and there is nothing ambiguous about that.
+        """
+        (anx, any_), (apx, apy), ahalf = a[1], a[2], a[3]
+        (bnx, bny), (bpx, bpy), bhalf = b[1], b[2], b[3]
+        atx, aty = -any_, anx
+        btx, bty = -bny, bnx
+        alen, blen = a[0].length / 2.0, b[0].length / 2.0
+        dx, dy = bpx - apx, bpy - apy
+
+        for ax, ay in ((anx, any_), (atx, aty), (bnx, bny), (btx, bty)):
+            reach = (ahalf * abs(ax * anx + ay * any_)
+                     + alen * abs(ax * atx + ay * aty)
+                     + bhalf * abs(ax * bnx + ay * bny)
+                     + blen * abs(ax * btx + ay * bty))
+            if abs(ax * dx + ay * dy) > reach - EPS:
+                return False
+        return True
+
     # -- bends that cross each other cannot be read ------------------------- #
     # Two bends are related in exactly one of three ways, and the third is
     # fatal: one lies wholly beyond the other (a chain), they lie on opposite
@@ -704,16 +747,16 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # moves with what.
     kept = []
     for item in chain:
-        bend, (nx, ny), (px, py), half, top, bottom = item
+        px, py = item[2]
         clash = None
         for prev in kept:
-            pbend, (pnx, pny), (ppx, ppy), phalf, _, _ = prev
-            w = pnx * (px - ppx) + pny * (py - ppy)
-            # Strips that MEET are fine - a flex rolled into a closed ring is
-            # two 180 degree bends whose areas share a line, and there is
-            # nothing ambiguous about it. Only material claimed by both is.
-            if w + half > -phalf + EPS and w - half < phalf - EPS:
-                clash = (prev, abs(w))
+            (pnx, pny), (ppx, ppy) = prev[1], prev[2]
+            # Only material claimed by BOTH is unreadable - see _strips_overlap
+            # for why this is a question about two rectangles and not about two
+            # bands. The distance goes to the note, which reports how far apart
+            # the two lines are along the earlier bend's normal.
+            if _strips_overlap(prev, item):
+                clash = (prev, abs(pnx * (px - ppx) + pny * (py - ppy)))
                 break
         if clash:
             plan.notes.extend(_overlap_note(item, *clash, neutral_factor))
@@ -735,15 +778,65 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # and read strictly neither would contain the other, both would be roots,
     # and the panel behind the first would swallow the second - which is how
     # the tail of a ring came back facing the wrong way.
-    def contains(outer, inner) -> bool:
+    #
+    # **Being beyond a bend is not enough - the material has to pass THROUGH
+    # it.** The half-plane test alone treats a bend line as if it crossed the
+    # whole board, so two arms leaving the held panel in roughly perpendicular
+    # directions each read as lying beyond the other: on Cadence's own demo
+    # board BEND_5 (93, -49) and BEND_1 (143, 93) are 135 mm apart along one
+    # normal and 66 mm along the other, both far past either strip, and both
+    # "contained" the other. That made the relation symmetric, `parent` a
+    # cycle - 5 -> 4 -> 1 -> 5 - and the build died with a KeyError on the
+    # first bend whose parent had not been reached yet.
+    #
+    # So the bend lines must also overlap ACROSS the outer bend: a bend carries
+    # what runs through its own width, and an arm that starts somewhere else
+    # never touches it. Two bends on one arm always overlap this way, whatever
+    # angle the arm turns through between them, because the second is cut out of
+    # material that came through the first.
+    def carries(outer, inner) -> bool:
         _, (onx, ony), (opx, opy), ohalf, _, _ = outer
         _, _, (ipx, ipy), ihalf, _, _ = inner
-        return onx * (ipx - opx) + ony * (ipy - opy) - ihalf > ohalf - EPS
+        if onx * (ipx - opx) + ony * (ipy - opy) - ihalf <= ohalf - EPS:
+            return False                      # not beyond it at all
+        lo, hi = _span(outer, -ony, onx)      # along the outer bend line
+        ilo, ihi = _span(inner, -ony, onx)
+        return ihi > lo - EPS and ilo < hi + EPS
 
-    above = [[j for j in range(len(kept)) if j != i and contains(kept[j], kept[i])]
+    reads = [[j for j in range(len(kept)) if j != i and carries(kept[j], kept[i])]
              for i in range(len(kept))]
+    # Antisymmetric by construction. If each of a pair reads as carrying the
+    # other, the reading has said nothing about that pair, and the honest
+    # answer is that neither carries it - they are on different arms. Belt and
+    # braces beside the width test above, because `carries` compares positions
+    # along two different normals and nothing makes that a partial order.
+    above = [[j for j in reads[i] if i not in reads[j]] for i in range(len(kept))]
     parent = [max(cands, key=lambda j: len(above[j])) if cands else None
               for cands in above]
+
+    # -- parents before children, by construction ---------------------------- #
+    # Not by sorting on the number of ancestors: that assumes a parent always
+    # has fewer than its child, which holds only if containment is transitive,
+    # and it is not. Take whatever is ready instead, and if nothing is, say so
+    # and cut those bends loose rather than crash or loop for ever.
+    order: list[int] = []
+    placed: set[int | None] = {None}
+    left = list(range(len(kept)))
+    while left:
+        ready = [i for i in left if parent[i] in placed]
+        if not ready:
+            for i in left:
+                plan.notes.append(
+                    f"  note: {kept[i][0].name} could not be placed under any "
+                    f"one bend - the bends that reach it also reach each other. "
+                    f"Folded off the held panel instead.")
+                parent[i] = None
+            ready = list(left)
+        ready.sort(key=lambda k: len(above[k]))
+        order.extend(ready)
+        placed.update(ready)
+        left = [i for i in left if i not in placed]
+
     children = [[j for j in range(len(kept)) if parent[j] == i]
                 for i in range(len(kept))]
     roots = [i for i in range(len(kept)) if parent[i] is None]
@@ -767,6 +860,23 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
             k = parent[k]
         return out
 
+    # KNOWN LIMIT, measured on Cadence's demo board (2026-08-14). A region here
+    # is an intersection of HALF-PLANES, and a half-plane reaches across the
+    # whole board: "beyond BEND_5" also covers the LCD arm at the far end, which
+    # belongs to BEND_3. On a board whose arms leave the held panel in several
+    # DIRECTIONS, panels therefore overlap - 5027 of 20053 sample points inside
+    # that outline are claimed by two or three regions at once, and the folded
+    # board weighs 114.7% of the flat one, the same material built twice in two
+    # places. Bounding every panel by every other bend as well was tried and is
+    # worse: two arms that each lie beyond the other then belong to NEITHER
+    # region, and 42.7% of the board is dropped instead of duplicated.
+    #
+    # Neither is a tuning question. Half-planes cannot say which ARM a point is
+    # on; that is a connectivity question, and answering it means cutting the
+    # outline by the strips and taking the connected pieces. Boards with two
+    # arms in opposite directions - which is what has been tested until now -
+    # are unaffected, because there the half-planes do not cross.
+
     # -- the held panel ------------------------------------------------------ #
     # Everything on the near side of every bend that nothing else carries.
     plan.regions.append(_Region(
@@ -776,7 +886,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
 
     # -- one strip and one panel per bend, deepest last ---------------------- #
     carried: dict[int | None, gp_Trsf] = {None: gp_Trsf()}
-    for i in sorted(range(len(kept)), key=lambda k: len(above[k])):
+    for i in order:
         bend, (nx, ny), (px, py), half, top, bottom = kept[i]
         lo, hi = band(i)
         base_trsf = carried[parent[i]]
@@ -823,12 +933,73 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
                       for c in children[i]],
             trsf=carried[i], moved=True))
 
+    # -- does this board's shape fit the model at all? ----------------------- #
+    # See the KNOWN LIMIT above. Silence would be the worst outcome here: the
+    # build finishes, the STEP looks plausible, and an arm has quietly been
+    # built twice in two places. Say so instead, with the number.
+    doubled = _double_claimed(plan, outline)
+    if doubled > 0.02:
+        plan.notes.append(
+            f"  warning: {doubled * 100:.0f}% of this board is claimed by more "
+            f"than one fold region, so that material is built more than once "
+            f"and the result will not be right. It happens when the arms leave "
+            f"the held panel in several DIRECTIONS: a fold region is bounded by "
+            f"straight lines across the whole board, which cannot tell one arm "
+            f"from another. Check the folded model, and export flat "
+            f"(Fold flex bends off) if it is wrong.")
+
     plan.notes.insert(0, (
         f"  held: the piece containing the anchor at "
         f"{anchor[0]:.3f}, {anchor[1]:.3f}" if anchor is not None
         else "  held: the largest piece the bend lines leave (no anchor set)"))
     plan.notes.insert(0, f"Folding {len(plan.bends)} bend(s):")
     return plan
+
+
+def _double_claimed(plan: FoldPlan, outline: list[tuple[float, float]],
+                    step: float = 2.0) -> float:
+    """Fraction of the board area that more than one fold region claims.
+
+    Sampled on a grid rather than computed exactly: the answer is wanted as a
+    warning threshold, and the regions are half-plane intersections whose exact
+    pairwise areas would cost far more than the fold itself. 2 mm is fine
+    enough to catch a whole arm being claimed twice, which is what this is for,
+    and cheap - a few thousand points against a dozen regions.
+    """
+    if not outline or not plan.regions:
+        return 0.0
+
+    claimants = [r.bounds for r in plan.regions if r.kind == "panel"]
+    claimants += [s.bounds for s in plan.strips]
+    if len(claimants) < 2:
+        return 0.0
+
+    def inside(bounds, x, y) -> bool:
+        for nx, ny, lo, hi in bounds:
+            v = nx * x + ny * y
+            if v < lo - EPS or v > hi + EPS:
+                return False
+        return True
+
+    xs = [p[0] for p in outline]
+    ys = [p[1] for p in outline]
+    on_board = doubled = 0
+    y = min(ys)
+    while y <= max(ys):
+        x = min(xs)
+        while x <= max(xs):
+            if point_in_polygon((x, y), outline):
+                on_board += 1
+                seen = 0
+                for bounds in claimants:
+                    if inside(bounds, x, y):
+                        seen += 1
+                        if seen > 1:
+                            doubled += 1
+                            break
+            x += step
+        y += step
+    return doubled / on_board if on_board else 0.0
 
 
 def _overlap_note(item, prev, apart: float, neutral_factor: float) -> list[str]:

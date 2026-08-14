@@ -358,18 +358,26 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
             if region is None:
                 continue
             solid = BRepPrimAPI_MakePrism(region, gp_Vec(0, 0, -height)).Shape()
-            if solid.IsNull():
+            # An EMPTY shape is not a null one. _layer_region hands back the
+            # result of a boolean, and a layer whose drawn shapes lie entirely
+            # outside this zone - a stiffener that is only on the flex arms,
+            # say - intersects it in nothing at all. That is ordinary, and it
+            # is why this is a skip and not an error; what must not happen is
+            # an empty part being carried into the assembly, which is what the
+            # bare IsNull() test used to allow.
+            if solid.IsNull() or not has_solid(solid):
+                log(f"{layer.get('name')} has no material in zone "
+                    f"{zone['name']}; not built there")
                 continue
             if cutouts:
                 solid = _cut_out(solid, cutouts, top + 0.01,
                                  gp_Vec(0, 0, -(height + 0.02)))
-                # A layer entirely consumed by the cutouts is not an error -
-                # a small drawn stiffener can sit inside a milled opening -
-                # but an empty shape must not become a part.
+                # Likewise not an error - a small drawn shape can sit entirely
+                # inside a milled opening.
                 if solid.IsNull() or not has_solid(solid):
                     log(f"warning: layer {layer.get('name')} of zone "
-                        f"{zone['name']} is left with nothing after its "
-                        f"cutouts; skipped")
+                        f"{zone['name']} is left with nothing by its cutouts; "
+                        f"skipped")
                     continue
             parts.append((str(zone["name"]), layer, solid))
 
