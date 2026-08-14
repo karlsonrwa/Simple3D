@@ -2925,6 +2925,89 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-08-14 (round 63) — the picture beside Allegro's, and three faults
+
+The user built the demo board and put our result next to Allegro's own 3D. The
+arms were wrong: two floated clear of the board, one was never bent. Three
+separate faults, and none of them would have been found by any check we had.
+
+### 1. What `alpha`, `beta` and `ccw` mean on an arc — settled by measurement
+
+They **bound** the arc; `ccw` says which **end the contour enters it by**, not
+which way the sweep runs. Both halves read it as a direction, which turns a 90°
+corner into the 270° arc the long way round.
+
+The proof is joint continuity — a contour has to close:
+
+| contour | worst joint, old reading | new reading |
+|---|---|---|
+| board outline | 5.657 mm | **0.000** |
+| FLEXI | 19.799 mm | **0.000** |
+| CONN_FLEXI | 12.728 mm | **0.000** |
+| the other five | 0.000 | 0.000 |
+
+and every affected arc came out at 270° where the design draws 90°.
+
+**The board body was safe all along**: `ConnectEdgesToWires` reorders and
+reverses edges as it likes, and `GC_MakeArcOfCircle`'s sense flag only reverses
+the parametrisation, so OCC got the right span anyway. `contour_points` did not,
+so every question about a zone's SHAPE was answered from a self-intersecting
+polygon — FLEXI read as 2676 mm² against its true 1240. With the fix the zones
+tile the board exactly: 19484 mm² of zones against a 19481 mm² outline.
+
+### 2. Which side of a strip a piece is on has to be asked at the seam
+
+`side_of` judged by the piece's extent, with a nearest-vertex tie-break. The
+main board is wide enough to have material on **both** sides of a strip's
+infinite band, so BEND_1's near edge was sewn to the FAR panel: the strip bent
+about its far edge and slid the wrong way, and the arm came away from the board
+by 23.8 mm. The two pieces touch, so the closest point between them lies on the
+shared edge, and that edge is one of the strip's two sides — exact and local.
+
+Note what hid it: for a **180°** bend the far panel still lands correctly
+(rotating 180° about the far edge after sliding forward equals rotating 180°
+about the near edge after sliding back), so only the curved ribbon flew off.
+
+### 3. The cutters were placed from the origin, not from the board
+
+`_slab` ran half the board's diagonal either side of `n * lo` — the foot of the
+bend's near plane **measured from (0, 0)**. `_band_face` did the same. On this
+board BEND_1's foot is at (16.9, −17.2) while the arm it cuts is at (140, 90):
+163 mm along the bend line against a 102 mm half-span, so the cutter missed the
+board completely and the bend was built out of nothing. **Silently** — an empty
+cut is indistinguishable from a shape that is not in that region.
+
+Any board drawn away from the origin loses bends this way, the further out and
+the more diagonal the worse. Both cutters now take their across-extent from the
+shape they are cutting.
+
+### Measured, same board, same settings
+
+| | volume | vs flat |
+|---|---|---|
+| flat | 22679.233 mm³ | |
+| folded, before | 22535.752 mm³ | 99.37% — BEND_1 missing |
+| folded, all three fixed | 22673.364 mm³ | **99.97%**, six bends on true cylinders |
+
+### `_seam_gap`, and why it exists
+
+A fold is CONTINUOUS: both edges of every strip have to land where the piece on
+that side puts them. Two points per strip, checked on every build, warned about
+if it fails. **It is the only check that would have caught fault 2** — the volume
+was right, no region was claimed twice, every suite passed, and the model was
+still broken. Round 62 added the "nothing claimed twice" invariant for the same
+reason; this is the other half of it.
+
+### What to remember
+
+**Put the two pictures side by side.** Three faults, one screenshot. Volume,
+area and continuity all agreed with each other and all agreed the model was
+fine; only the shape said otherwise.
+
+**"Sized from the shape, placed from the origin" is a whole class.** Both
+cutters had it. Anything that builds a helper solid from a bounding box should
+be read with that question in mind.
+
 ## Update 2026-08-14 (round 62) — the fold, rebuilt on pieces instead of half-planes
 
 The user put `cadence_demo.json` in `failed/` — Cadence's own rigid-flex demo

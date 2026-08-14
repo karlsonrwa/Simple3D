@@ -11,6 +11,42 @@ to use the tool.
 
 ---
 
+- **2026-08-14** — **Arcs, seams and where the cutters go: three faults that
+  each cost a flex arm.** Found by putting a build of Cadence's demo board next
+  to Allegro's own 3D of it. **An arc's two angles bound it; the `ccw` flag says
+  which end the contour enters it by, not which way the sweep goes** — read as a
+  direction, a 90° corner becomes the 270° arc the long way round. Under the
+  corrected reading every contour in that file joins up to 0.000 mm, the board
+  outline included; before it, three of them had joints 5.7, 12.7 and 19.8 mm
+  apart. The board body itself was safe (OpenCASCADE stitches edges in whatever
+  order it likes) but every *shape* question built on the wrong answer — the
+  FLEXI zone measured 2676 mm² where it is 1240. **Which side of a bend a piece
+  sits on is now asked at the seam**, not from the piece's overall size: the main
+  board is wide enough to lie on both sides of a bend line extended across the
+  whole board, and one arm was being sewn on back to front and floated 23.8 mm
+  clear of the board. **And the cutters that take a bend out of the board were
+  placed relative to the origin instead of the board** — a design drawn away from
+  (0, 0) missed its own cutter and simply lost that bend, with nothing said. All
+  six bends of that board now build on true cylinders, and the folded body is
+  99.97% of the flat one. A fold that does not join up is now reported.
+  / **Дуги, швы и куда ставится резак: три ошибки, каждая стоила гибкого
+  плеча.** Найдено сравнением нашей сборки демо-платы Cadence с её же 3D в
+  Allegro. **Два угла дуги задают её границы, а флаг `ccw` говорит, с какого
+  конца в неё входит контур, а не куда идёт обход** — прочитанный как
+  направление, угол 90° превращается в дугу 270° в обход. При исправленном
+  чтении все контуры файла сходятся до 0.000 мм, включая контур платы; до этого
+  у трёх из них стыки расходились на 5.7, 12.7 и 19.8 мм. Само тело платы не
+  страдало (OpenCASCADE сшивает рёбра в любом порядке), но все вопросы о
+  *форме* отвечались неверно — зона FLEXI считалась 2676 мм² вместо 1240.
+  **С какой стороны сгиба лежит кусок, теперь спрашивается на шве**, а не по
+  габаритам куска: основная плата достаточно широка, чтобы лежать по обе стороны
+  от линии сгиба, продлённой через всю плату, и одно плечо пришивалось задом
+  наперёд и улетало от платы на 23.8 мм. **А резаки, вырезающие сгиб, ставились
+  относительно нуля координат, а не платы** — проект, нарисованный в стороне от
+  (0, 0), промахивался мимо собственного резака и просто терял этот сгиб, молча.
+  Все шесть сгибов той платы теперь строятся на истинных цилиндрах, а объём
+  сложенной платы — 99.97 % от плоской. Про несошедшийся шов теперь сообщается.
+
 - **2026-08-14** — **A rigid-flex board with arms going several ways now folds
   correctly, and quickly.** Cadence's own demo board — three flex arms leaving
   the middle in three directions, six bends — crashed the export outright. Two
