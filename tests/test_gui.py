@@ -434,5 +434,41 @@ check("a cancelled build is not reported as a crash",
       app.status.get() == "Cancelled" and app._worker is None, app.status.get())
 
 app.destroy()
+
+print("\n[N] log severity: a note is advice, and gets its own colour")
+
+# The k-ceiling line is not a warning - nothing is wrong, a setting would just
+# serve the board better - so it must be findable in a long log without reading
+# it as trouble. Blue, its own tag, matched on the same prefix rule as the rest.
+from stepbuilder.gui import ERROR_PREFIXES, WARNING_PREFIXES, NOTE_PREFIXES
+
+
+def severity_of(message):
+    low = message.lstrip().lower()
+    if low.startswith(ERROR_PREFIXES):
+        return "error"
+    if low.startswith(WARNING_PREFIXES):
+        return "warning"
+    if low.startswith(NOTE_PREFIXES):
+        return "note"
+    return None
+
+
+for text, want in (
+    ("  note: this board's bend areas are laid out at k = 0", "note"),
+    ("  note: BEND_1's bend area is 3.000 mm across", "note"),
+    ("warning: 2 cutout(s) repeat another one exactly", "warning"),
+    ("error (board.json): pcb.edges is empty", "error"),
+    ("Traceback (most recent call last):", "error"),
+    ("Building board geometry", None),
+):
+    got = severity_of(text)
+    check(f"{text[:44]!r} -> {want}", got == want, got)
+
+gui_src = (_ROOT / "stepbuilder/gui.py").read_text(encoding="utf-8")
+check("the note tag is configured with a colour of its own",
+      'tag_configure("note"' in gui_src)
+check("and it is not the warning colour",
+      gui_src.count('foreground="#d9791e"') == 1)
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

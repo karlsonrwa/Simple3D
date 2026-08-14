@@ -483,7 +483,9 @@ and on a board with room to spare the difference does not show. It shows the
 moment two bend areas touch: a flex rolled into a closed ring, two 180° bends
 whose areas sit a ten-thousandth of a millimetre apart, closes to half a micron
 at `k = 0` while at `k = 0.5` each bend wants 0.3 mm more material than exists.
-**Set `foldNeutral` to `0` for such a board.**
+**Set `foldNeutral` to `0` for such a board.** When the strips do reach each
+other the log says so **in blue**, with the largest `foldNeutral` this particular
+board takes cleanly — so the choice is a number rather than a guess.
 
 Which of the two you want depends on whether you are reproducing the designer's
 layout or modelling the material. When two bends do claim the same material, the
@@ -1048,7 +1050,9 @@ Allegro построена при `k = 0`. На плате с запасом р�
 замкнутое кольцо, — два сгиба по 180°, чьи области стоят в одной десятитысячной
 миллиметра друг от друга, — при `k = 0` смыкается с точностью до полумикрона, а
 при `k = 0.5` каждому сгибу не хватает 0.3 мм материала. **Для такой платы
-поставьте `foldNeutral` в `0`.**
+поставьте `foldNeutral` в `0`.** Когда полосы всё же сходятся, лог говорит об
+этом **синим** и называет наибольшее `foldNeutral`, которое эта плата держит
+чисто, — то есть выбор становится числом, а не догадкой.
 
 Что вам нужно из двух — зависит от того, воспроизводите вы разводку
 конструктора или моделируете материал. Когда два сгиба действительно претендуют

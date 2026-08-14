@@ -787,35 +787,40 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
                            + (ref[1] - bn[0].midpoint[1]) * bn[1][1]))
 
     # -- geometry of each bend ---------------------------------------------- #
-    chain = []
-    for bend, (nx, ny) in ordered:
-        px, py = bend.midpoint
-        top, bottom = (stack_at(px, py) if stack_at else (board_top_z, board_bottom_z))
-        thickness = abs(top - bottom)
-        neutral = bend.radius + neutral_factor * thickness
-        theta = math.radians(bend.angle)
+    # Built for a GIVEN neutral factor rather than only for the chosen one, so
+    # the same arithmetic can answer "how far could k go on this board" without
+    # a second, subtly different copy of it. See _neutral_ceiling below.
+    # How much flat material an arc consumes: its length along the NEUTRAL axis,
+    # because that is the length a bend preserves.
+    #
+    # **Allegro's own bend area is drawn at the INNER radius**, which is a
+    # different number and not a bend allowance. Measured on the real board: the
+    # BEND_AREA shape is 1.2337 mm across for 28.26 deg and R = 2.5, and 28.26
+    # deg x 2.5 = 1.2331 - the inner arc to four decimals, with no thickness term
+    # in it at all. It is the region to keep clear of vias and packages, not the
+    # material budget. So the drawn area is used as a CHECK: if it is not the
+    # inner arc either, the design is saying something neither the parameters nor
+    # this reading explain, and that is worth a line in the log.
+    def chain_at(factor: float, notes: list | None = None) -> list:
+        out = []
+        for bend, (nx, ny) in ordered:
+            px, py = bend.midpoint
+            top, bottom = (stack_at(px, py) if stack_at
+                           else (board_top_z, board_bottom_z))
+            thickness = abs(top - bottom)
+            theta = math.radians(bend.angle)
+            developed = (bend.radius + factor * thickness) * theta
+            drawn = bend.radius * theta
+            if notes is not None and bend.width and bend.width > EPS and drawn > EPS:
+                if abs(bend.width - drawn) > max(0.05, 0.1 * drawn):
+                    notes.append(
+                        f"  note: {bend.name}'s bend area is {bend.width:.3f} mm "
+                        f"across, where its radius and angle draw {drawn:.3f} mm; "
+                        f"folding {developed:.3f} mm of material either way")
+            out.append((bend, (nx, ny), (px, py), developed / 2.0, top, bottom))
+        return out
 
-        # How much flat material the arc consumes: its length along the NEUTRAL
-        # axis, because that is the length a bend preserves.
-        #
-        # **Allegro's own bend area is drawn at the INNER radius**, which is a
-        # different number and not a bend allowance. Measured on the real board:
-        # the BEND_AREA shape is 1.2337 mm across for 28.26 deg and R = 2.5, and
-        # 28.26 deg x 2.5 = 1.2331 - the inner arc to four decimals, with no
-        # thickness term in it at all. It is the region to keep clear of vias
-        # and packages, not the material budget. So the drawn area is used as a
-        # CHECK: if it is not the inner arc either, the design is saying
-        # something neither the parameters nor this reading explain, and that is
-        # worth a line in the log.
-        developed = neutral * theta
-        drawn = bend.radius * theta
-        if bend.width and bend.width > EPS and drawn > EPS:
-            if abs(bend.width - drawn) > max(0.05, 0.1 * drawn):
-                plan.notes.append(
-                    f"  note: {bend.name}'s bend area is {bend.width:.3f} mm "
-                    f"across, where its radius and angle draw {drawn:.3f} mm; "
-                    f"folding {developed:.3f} mm of material either way")
-        chain.append((bend, (nx, ny), (px, py), developed / 2.0, top, bottom))
+    chain = chain_at(neutral_factor, plan.notes)
 
     def _strips_overlap(a, b) -> bool:
         """Do the two bend strips claim any of the same material?
@@ -858,23 +863,29 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # tail bent up at one end and another bent down at the other), or their
     # strips overlap as seen from the held side, which says nothing about what
     # moves with what.
-    kept = []
-    for item in chain:
-        px, py = item[2]
-        clash = None
-        for prev in kept:
-            (pnx, pny), (ppx, ppy) = prev[1], prev[2]
-            # Only material claimed by BOTH is unreadable - see _strips_overlap
-            # for why this is a question about two rectangles and not about two
-            # bands. The distance goes to the note, which reports how far apart
-            # the two lines are along the earlier bend's normal.
-            if _strips_overlap(prev, item):
-                clash = (prev, abs(pnx * (px - ppx) + pny * (py - ppy)))
-                break
-        if clash:
-            plan.notes.extend(_overlap_note(item, *clash, neutral_factor))
-            continue
-        kept.append(item)
+    def readable(items, notes: list | None = None) -> list:
+        out = []
+        for item in items:
+            px, py = item[2]
+            clash = None
+            for prev in out:
+                (pnx, pny), (ppx, ppy) = prev[1], prev[2]
+                # Only material claimed by BOTH is unreadable - see
+                # _strips_overlap for why this is a question about two
+                # rectangles and not about two bands. The distance goes to the
+                # note, which reports how far apart the two lines are along the
+                # earlier bend's normal.
+                if _strips_overlap(prev, item):
+                    clash = (prev, abs(pnx * (px - ppx) + pny * (py - ppy)))
+                    break
+            if clash:
+                if notes is not None:
+                    notes.extend(_overlap_note(item, *clash, neutral_factor))
+                continue
+            out.append(item)
+        return out
+
+    kept = readable(chain, plan.notes)
 
     if not kept:
         return plan
@@ -885,7 +896,15 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # bend strips taken out of it, and which piece a point is on is the only
     # question that has a right answer on a board whose arms leave in several
     # directions.
-    pieces = _cut_into_pieces(outline, kept, log) if outline else None
+    # Tee the decomposition's log: the caller sees it as it happens, and the
+    # ceiling search below needs to know whether anything had to be repaired.
+    marks: list[str] = []
+
+    def cut_log(message: str) -> None:
+        marks.append(message)
+        log(message)
+
+    pieces = _cut_into_pieces(outline, kept, cut_log) if outline else None
     if pieces is None:
         plan.notes.append(
             "  warning: the outline could not be cut into pieces, so there is "
@@ -1057,6 +1076,43 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
         plan.regions.append(_Region(
             label=labels[i], bounds=[], poly=rs[0], polys=rs, face=face,
             trsf=carried[i], moved=(i != held)))
+
+    # -- how much neutral factor this board can actually take ----------------- #
+    # Allegro lays its bend areas out at k = 0 - the drawn area IS the inner arc
+    # - so at any k above that every strip is wider than what the designer
+    # allowed, by angle x k x thickness. On a board with room this never shows.
+    # On a tight one the strips reach each other, and the answer is a NUMBER the
+    # user can act on rather than a repair they have to notice: the largest k
+    # this particular board takes cleanly.
+    #
+    # Only computed when there IS trouble, because it costs a dozen trial cuts.
+    refused = len(chain) - len(kept)
+    if (refused or any("pinch" in m for m in marks)) and neutral_factor > 0.0:
+        def trouble_at(factor: float) -> bool:
+            trial = chain_at(factor)
+            good = readable(trial)
+            if len(good) < len(trial):
+                return True
+            seen: list[str] = []
+            return (_cut_into_pieces(outline, good, seen.append) is None
+                    or any("pinch" in m for m in seen))
+
+        low, high = 0.0, neutral_factor
+        for _ in range(10):
+            middle = (low + high) / 2.0
+            if trouble_at(middle):
+                high = middle
+            else:
+                low = middle
+        plan.notes.append(
+            f"  note: this board's bend areas are laid out at k = 0, as Allegro "
+            f"draws them, and the tightest pair on it takes foldNeutral up to "
+            f"{low:.2f}. At the current {neutral_factor:.2f} the strips reach "
+            f"each other"
+            + (f" and {refused} bend(s) had to be left flat" if refused
+               else " and the piece between them had to be repaired")
+            + f". foldNeutral 0 reproduces the drawing exactly; "
+            f"{low:.2f} is as physical as this layout allows.")
 
     # The invariant, checked rather than assumed: the pieces come out of one
     # boolean cut, so every point of the board should belong to exactly one of

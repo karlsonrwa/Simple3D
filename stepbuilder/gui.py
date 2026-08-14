@@ -95,6 +95,9 @@ RIM_CUSTOM = "Custom..."
 # Match lowercase: _append_log lowercases before testing.
 ERROR_PREFIXES = ("error", "traceback")
 WARNING_PREFIXES = ("warning", "ignored", "ignoring")
+# Advice rather than trouble: nothing is wrong, but a setting would serve this
+# board better and the reader has to be able to find the line again.
+NOTE_PREFIXES = ("note",)
 
 
 # BuildSettings lives in worker.py, because it crosses the process boundary and
@@ -468,7 +471,8 @@ class StepBuilderApp(tk.Tk):
         self._log_scroll = ttk.Scrollbar(log_frame, command=self.log_view.yview)
         self._log_scroll.grid(row=0, column=1, sticky="ns")
         self.log_view.configure(yscrollcommand=self._log_scroll.set)
-        # severity colors: warnings orange, errors dark red
+        # severity colors: notes blue, warnings orange, errors dark red
+        self.log_view.tag_configure("note", foreground="#1f6fb2")
         self.log_view.tag_configure("warning", foreground="#d9791e")
         self.log_view.tag_configure("error", foreground="#8b0000")
         self.log_view.tag_configure("success", foreground="#1a7f2e")
@@ -1296,6 +1300,8 @@ class StepBuilderApp(tk.Tk):
                 severity = "error"
             elif low.startswith(WARNING_PREFIXES):
                 severity = "warning"
+            elif low.startswith(NOTE_PREFIXES):
+                severity = "note"
         self.log_view.configure(state="normal")
         text = message.rstrip() + "\n"
         if severity:
