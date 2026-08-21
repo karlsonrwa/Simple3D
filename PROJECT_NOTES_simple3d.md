@@ -92,6 +92,11 @@ from, and `S3D_ScriptDir` is now `""` in source.
 
 ### Not verified outside Allegro
 
+- **The drill offset** (round 69). `s3dDrillXY` is transliterated and tested,
+  and the geometry was confirmed by rebuilding from a hand-edited intermediate,
+  but nothing has re-exported `bone-a2` from Allegro yet. What to look for: the
+  four PLS-4 holes come out at `y = 0` rather than `y = 0.375`, as clean
+  half-circles in the bottom edge.
 - Per-segment path conversion producing round joins on a live board. The SKILL
   side warns if a path yields fewer polygons than it has segments.
 - Runtime and the 400-polygon clip batch size on a dense board.
@@ -2937,6 +2942,78 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-08-21 (round 69) — the hole is not always at the pad
+
+The user put `bone-a2.json` and its STEP in `input/` with two screenshots: the
+board in Allegro's own 3D and the same board in Inventor. Same outline, same
+five round holes, and the four PLS-4 holes along the bottom edge visibly
+different — half-circles cut into the edge in Allegro, keyholes sitting just
+above it in ours. Their own diagnosis, and it is right: **the padstack has a
+drill offset and we were ignoring it.**
+
+### What the data says
+
+| | |
+|---|---|
+| the four PLS-4 circles in the intermediate | `x = 2.19, 4.73, 7.27, 9.81`, all `y = 0.375`, `r = 0.5` |
+| the board's bottom edge | `y = 0` (outline bbox `x 0…12`, `y 0…21`) |
+| X5, the `HDRV4W64P254_4X1_1016X254H854` header | placed at **`y = 0.0`** |
+| Padstack Editor → Drill Offset | *Offset from padstack origin to hole*: **x = 0.3750**, y = 0 |
+
+So the pads sit 0.375 mm inboard and the drill line is the board edge itself.
+Both files agreed on 0.375 — the intermediate and the STEP built from it are
+perfectly consistent — which is exactly why it read as a rendering difference
+rather than a geometry one.
+
+### The mechanism
+
+`symbolReturnPinHoles` branches on `padstack->usage == "Slot"`:
+
+- the **slot** branch calls `makeSlot`, which had, inline, `drillOffset =
+  padstack->drillOffset` … `rotateXY( (x y) (x+dx y+dy) pin->rotation )`;
+- the **round-hole** branch did `hole = makeCircle( pin->xy … )`.
+
+Two branches of one `if`, and only one of them knew the drill can sit off the
+pad. `s3dDrillXY( pin padstack )` is that arithmetic, once; `makeSlot` now calls
+it instead of carrying its own copy, so the two cannot drift apart again. The
+offset is in the **padstack's** frame, so it is rotated by `pin->rotation`
+before being added — for these pins that is 270°, which turns `(+0.375, 0)` into
+`(0, −0.375)` and lands every drill exactly on `y = 0`.
+
+### The 0.375 mm, as a picture
+
+A circle of `r = 0.5` cut by the edge at `y = 0`:
+
+| centre | mouth in the edge | how far it reaches inboard |
+|---|---|---|
+| at the **pad**, `y = 0.375` | 0.661 mm | 0.875 mm — a keyhole |
+| at the **drill**, `y = 0` | 1.000 mm | 0.500 mm — a half-circle |
+
+Rebuilt from a hand-edited intermediate to confirm the whole chain: the four
+`r = 0.5` cylinders move from `y = 0.375` to `y = 0.0` and the bottom edge
+becomes what Allegro draws.
+
+### What this does and does not touch
+
+Only padstacks that actually carry an offset. Everything else returns
+`pin->xy` unchanged — deliberately the same object rather than a rotation by
+zero, so an exact coordinate does not pick up sin/cos noise. Component
+placement, pads and silkscreen are unaffected: they are about the pad, and the
+pad has not moved.
+
+### The lesson
+
+**Agreement between two of your own files is not evidence.** The JSON said
+0.375, the STEP said 0.375, and the check that would have caught it was against
+neither — it was against the third thing, Allegro's own 3D. When output and
+intermediate agree and the picture still disagrees, the intermediate is
+measuring the wrong feature, not reporting the right one badly.
+
+And: **when one branch of an `if` knows something the other does not, the
+knowledge is living in a place instead of in a function.** The slot branch had
+been right about this since the upstream code; the round-hole branch beside it
+never was.
 
 ## Update 2026-08-21 (round 68) — the pre-flight check passed itself
 

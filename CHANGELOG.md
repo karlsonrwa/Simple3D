@@ -11,6 +11,31 @@ to use the tool.
 
 ---
 
+- **2026-08-21** — **A drilled hole is cut where the drill is, not where the pad
+  is.** A padstack can carry an offset from its origin to the hole — Allegro's
+  Padstack Editor, *Drill Offset* tab, *Offset from padstack origin to hole* —
+  and an edge connector is what it is for: the pads sit on the board while the
+  holes straddle the edge as half-holes. Slots had honoured that offset all
+  along; ordinary round holes did not, so they were cut at the pad centre. On
+  `bone-a2` the four PLS-4 holes have an offset of 0.375 mm towards the board
+  edge: Allegro's own 3D showed clean half-circles in the edge, and our STEP put
+  the same circles 0.375 mm inboard, where each becomes a keyhole with a 0.66 mm
+  mouth instead of a 1.00 mm one. Both hole kinds now go through one procedure,
+  so they cannot disagree again. Boards whose padstacks have no drill offset —
+  most boards — are unchanged.
+  / **Отверстие сверлится там, где сверло, а не там, где площадка.** У падстека
+  может быть задано смещение от начала координат до отверстия — Allegro,
+  Padstack Editor, вкладка *Drill Offset*, *Offset from padstack origin to
+  hole*, — и краевой разъём ровно для этого: площадки лежат на плате, а
+  отверстия садятся на её край полуотверстиями. Пазы это смещение учитывали
+  всегда, обычные круглые отверстия — нет, и сверлились по центру площадки. На
+  `bone-a2` у четырёх отверстий PLS-4 смещение 0.375 мм к краю платы: штатная
+  трёхмерка Allegro показывала аккуратные полукруги в кромке, а наш STEP ставил
+  те же окружности на 0.375 мм внутрь, где каждая превращается в замочную
+  скважину с устьем 0.66 мм вместо 1.00 мм. Теперь оба вида отверстий проходят
+  через одну процедуру и разойтись больше не могут. Платы, у которых смещения
+  сверловки нет — а это большинство, — не меняются.
+
 - **2026-08-21** — **Export does not fail silently when a second Python appears
   on PATH.** Installing node.js brings a Python of its own along, into the
   machine PATH — which comes before your per-user one — so `python` and
