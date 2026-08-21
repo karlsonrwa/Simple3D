@@ -73,6 +73,25 @@ That is the OpenCASCADE kernel with Python bindings, and it is the entire
 `requirements.txt` — but it is not small: with VTK, which it declares as a hard
 dependency, the three come to about **470 MB on disk**.
 
+**If there is more than one Python on the machine**, know which one that `pip`
+belonged to. `python` and `pythonw` are *names*, and PATH decides what they mean
+today: an installer that brings its own Python — the node.js setup does, via
+Chocolatey, and it installs into the machine PATH, which comes *before* your
+per-user one — can put a fresh interpreter in front of yours. The packages are
+then missing because it is a **different interpreter**, not because anything was
+uninstalled. Pin the one you meant, by full path, in the `allegro` section of
+`simple3d_config.local.json` (yours, gitignored, never touched by an update):
+
+```json
+"allegro": {
+    "python":  "C:/Python312/python.exe",
+    "pythonw": "C:/Python312/pythonw.exe"
+}
+```
+
+The pre-flight check prints the interpreter that actually answered — path and
+version — so the console says which one you got.
+
 **3. The files.** Clone or unpack the repository; its root already is the layout
 the tool expects — the two `.il` files, `simple3d_config.json` and the
 `stepbuilder\` package in **one folder**, anywhere you like:
@@ -638,6 +657,25 @@ pip install cadquery-ocp
 Это ядро OpenCASCADE с привязками к Python, и это весь `requirements.txt` — но
 он немаленький: вместе с VTK, который объявлен жёсткой зависимостью, все трое
 занимают на диске **около 470 МБ**.
+
+**Если на машине больше одного Python**, помните, к какому из них относился этот
+`pip`. `python` и `pythonw` — это *имена*, и что они значат сегодня, решает PATH:
+установщик, приносящий с собой свой Python (так делает установка node.js — через
+Chocolatey, причём в системный PATH, который идёт *раньше* пользовательского),
+может поставить свежий интерпретатор впереди вашего. Пакетов после этого нет
+потому, что интерпретатор **другой**, а не потому, что что-то удалили. Закрепите
+нужный по полному пути — в секции `allegro` файла `simple3d_config.local.json`
+(он ваш, в git не попадает, обновление его не трогает):
+
+```json
+"allegro": {
+    "python":  "C:/Python312/python.exe",
+    "pythonw": "C:/Python312/pythonw.exe"
+}
+```
+
+Предполётная проверка печатает тот интерпретатор, который реально ответил, —
+путь и версию, — так что в консоли видно, какой именно достался.
 
 **3. Файлы.** Склонируйте или распакуйте репозиторий; его корень уже устроен
 так, как надо — оба `.il`, `simple3d_config.json` и пакет `stepbuilder\` в

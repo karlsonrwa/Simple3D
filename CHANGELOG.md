@@ -11,6 +11,39 @@ to use the tool.
 
 ---
 
+- **2026-08-21** — **Export does not fail silently when a second Python appears
+  on PATH.** Installing node.js brings a Python of its own along, into the
+  machine PATH — which comes before your per-user one — so `python` and
+  `pythonw` began meaning a fresh 3.14 with no `cadquery-ocp` in it. Nothing had
+  been uninstalled; a different interpreter was answering to the same name. The
+  pre-flight check that exists to catch exactly this **passed anyway**: it looked
+  for the text `S3D_OK` in the interpreter's output, and Python 3.13 and newer
+  echo the source line of a `-c` command in the traceback — so the check's own
+  success marker appeared in its own failure output. The GUI was then started
+  under `pythonw`, which has no console, and died where nothing could report it.
+  The marker is now built so a traceback cannot spell it, the check prints
+  **which interpreter answered** (path and version) so a shadowed Python is
+  visible at a glance, a failed check also raises a dialog rather than only a
+  console line, and the advice names the setting that pins an interpreter —
+  `allegro.python` / `allegro.pythonw` in `simple3d_config.local.json` — instead
+  of a line in `simple3d.il` that has not existed since 2026-08-05.
+  / **Экспорт больше не проваливается молча, когда в PATH появляется второй
+  Python.** Установка node.js приносит с собой свой Python — в системный PATH,
+  который идёт раньше пользовательского, — и `python` с `pythonw` стали означать
+  свежий 3.14, где нет `cadquery-ocp`. Ничего не удалялось: на то же имя стал
+  отзываться другой интерпретатор. Предполётная проверка, которая существует
+  ровно для этого случая, **всё равно прошла**: она искала в выводе строку
+  `S3D_OK`, а Python 3.13 и новее печатают в трассировке исходную строку команды
+  `-c` — и собственный признак успеха оказался в собственном тексте ошибки. GUI
+  после этого запускался под `pythonw`, у которого нет консоли, и умирал там, где
+  сообщить об этом некому. Теперь признак устроен так, что трассировка не может
+  его написать; проверка печатает, **какой интерпретатор ответил** (путь и
+  версию), так что подменённый Python виден сразу; при отказе поднимается ещё и
+  диалог, а не только строка в консоли; а совет называет настройку, которой
+  интерпретатор закрепляется, — `allegro.python` / `allegro.pythonw` в
+  `simple3d_config.local.json`, — вместо строки в `simple3d.il`, которой нет с
+  2026-08-05.
+
 - **2026-08-15** — **A folded panel is no longer painted with the board edge
   colour.** On a board with *Board edge color* set to something of its own, a
   panel that a bend turns over could come back entirely in that colour — on

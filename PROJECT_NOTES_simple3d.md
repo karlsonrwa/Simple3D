@@ -106,7 +106,20 @@ from, and `S3D_ScriptDir` is now `""` in source.
   that a real board no longer reaches. Both bends of flex-b2 wrap; all five of
   flex3-a0 do since round 41.
 
-### Six traps that cost a round each — do not rediscover them
+### Seven traps that cost a round each — do not rediscover them
+
+- **A checker's own text is part of the input it reads back** (round 68).
+  `s3dPreflight` ran `python -c "... ; print('S3D_OK')"` and scanned the captured
+  output for `S3D_OK`. Python 3.13+ echoes the source line of a `-c` command in
+  a traceback, so the *failure* output contains the success sentinel, the check
+  passed itself, and the GUI was launched under `pythonw` — no console — to die
+  invisibly. Written `print('S3D' '_OK')` now: same output, sentinel unspellable
+  by the source. Same class as round 61's `IsDone` with zero solids and round
+  14a. Also: **`python` is a name, not a program.** Installing anything that
+  ships a Python (node.js, via Chocolatey, into the *machine* PATH) can put a
+  different interpreter in front of the one the packages are in — so the check
+  now prints `sys.executable` and the version, and an interpreter is pinned by
+  full path in `allegro.python` / `allegro.pythonw` in the local config.
 
 - **A command line handed to `cmd /c` must not begin with a quote** (round 43,
   and it is what round 5 misdiagnosed). cmd strips the first and the last quote
@@ -2924,6 +2937,98 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-08-21 (round 68) — the pre-flight check passed itself
+
+The user installed node.js. Simple 3D then did **nothing**: press Export, a
+console window flashes, no 3D window, and no message anywhere saying the
+packages were missing. Two separate faults, and the second one is the
+interesting one.
+
+### 1. Which Python
+
+The node.js setup's *Tools for Native Modules* step runs Chocolatey, which
+installed **`C:\Python314`** (Python 3.14.7) on 2026-08-20 20:57 — into the
+**machine** PATH, which Windows composes **before** the per-user one. So
+`python` and `pythonw`, which is what `S3D_Python` / `S3D_PythonW` default to,
+stopped meaning the interpreter this tool's packages are in:
+
+| on PATH | version | OCP | tkinter |
+|---|---|---|---|
+| `C:\Python314` (new, machine PATH) | 3.14.7 | **no** | yes |
+| `…\Programs\Python\Python312` | 3.12.0 | **yes** (cadquery-ocp 7.9.3.1.1) | yes |
+| `…\Programs\Python\Python311` | 3.11.4 | no | yes |
+
+Nothing was uninstalled. A different interpreter answered to the same name.
+Fixed on their machine by pinning `allegro.python` / `allegro.pythonw` to the
+3.12 **full paths** in `simple3d_config.local.json` — the gitignored local file,
+never a tracked one.
+
+### 2. Why it was silent — the check forged its own sentinel
+
+`s3dPreflight` exists precisely to stop this: run the interpreter once,
+synchronously, capture stdout+stderr, and report an `ImportError` in the Allegro
+console instead of letting `pythonw` (which has no console) die where nobody can
+see it. It ran. It **passed**. Then the GUI was launched and died silently on the
+very error the check had just been handed.
+
+Success was signalled by the check printing `S3D_OK`, and the scan looked for
+that string anywhere in the captured log. **From Python 3.13 the interpreter
+keeps the text of a `-c` command and echoes the offending source line in the
+traceback**:
+
+```
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import stepbuilder.core, tkinter; print('S3D_OK')
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'OCP'
+```
+
+The success sentinel is *in the failure output*, because the sentinel is part of
+the source line that failed. Verified both ways on this machine: 3.12 prints the
+traceback with no source echo, 3.14 echoes it and the log contains `S3D_OK`.
+
+**A sentinel must not be forgeable by the output it is scanning.** The fix is one
+character of whitespace: `print('S3D' '_OK')`. Two adjacent literals concatenate
+at compile time, so the process still prints `S3D_OK` while the source text
+cannot contain it. `tests/test_launch_cmd.py` case [3] now asserts the sentinel
+is **absent** from a failing log — which is vacuous on 3.12 and earlier, so case
+[5] also asserts the split form in `simple3d.il` itself, version-independently.
+
+This is the same class as round 14a and round 61's `IsDone`-with-no-solids: a
+check that reports success on the evidence it was built to reject.
+
+### 3. What else changed, all in the same direction
+
+- **The check prints which interpreter answered** — `sys.executable` and the
+  version, `-u` and before the imports so it is in the log on the failing run
+  too. `python` is a name; PATH decides what it means today, and from inside
+  Allegro there was no way to see which one you got. That one line is the whole
+  of this diagnosis.
+- **The advice was stale.** It said "the paths at the top of `simple3d.il`",
+  which round 59 removed. It now names `allegro.python` / `allegro.pythonw` in
+  `simple3d_config.local.json`, shows the shape, and prints the values in force.
+- **`pip install cadquery-ocp` became `<that python.exe> -m pip install …`** —
+  bare `pip` is the same ambiguity that caused this.
+- **A blocking `axlUIConfirm`** on a failed pre-flight. The console line was
+  correct and complete and can be closed, scrolled past, or simply not looked
+  at; the failure it describes looks from the outside exactly like nothing
+  happening. `errset`-wrapped, and Allegro's own `noconfirm` disables it.
+- **The fail-open path says so out loud.** If the check itself errors the export
+  still launches — right, a broken check must not block a working setup — but it
+  now warns on the status line and says in the console that `pythonw` has no
+  console to fail in, so the silent no-op cannot return through that door.
+- README and QUICKSTART, both halves: a second Python can shadow yours, and how
+  to pin the one you meant.
+
+### The lesson worth carrying
+
+**A checker's own text is part of the input it will read back.** Sentinels,
+markers and delimiters have to be built so the failure path cannot emit them —
+and a language runtime is allowed to start quoting your source at you in a minor
+release. The check had been right for a year and was falsified by a Python
+upgrade, not by a change to it.
 
 ## Update 2026-08-15 (round 67) — a folded panel painted with the board edge colour
 

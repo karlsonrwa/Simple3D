@@ -111,7 +111,10 @@ builds it.
   your own `pcbenv\env`, or from the folder `simple3d.il` was loaded from; the
   console says which.
 - Python 3.10 or newer and `cadquery-ocp` (OpenCASCADE) are required; the script
-  checks the interpreter before opening the window.
+  checks the interpreter before opening the window, and the console names the
+  interpreter that answered. If installing something else (node.js does this)
+  puts a second Python ahead of yours on PATH, pin the one you meant by full
+  path in the `allegro` section of `simple3d_config.local.json`.
 - A window that vanished mid-build means OpenCASCADE died, not Simple 3D: the
   window survives that and shows the exit code with advice. What usually gets a
   board through: **Body stitching → Not stitched** (which fuses nothing) or a
@@ -235,7 +238,10 @@ builds it.
   `set SIMPLE3D_DIR = …` в вашем `pcbenv\env` либо из папки, откуда загружен
   `simple3d.il`; консоль говорит, что сработало.
 - Нужен Python 3.10 или новее и пакет `cadquery-ocp` (OpenCASCADE); перед
-  запуском GUI скрипт проверяет интерпретатор.
+  запуском GUI скрипт проверяет интерпретатор и печатает в консоль тот, который
+  ответил. Если установка чего-то ещё (так делает node.js) поставила второй
+  Python впереди вашего в PATH — закрепите нужный по полному пути в секции
+  `allegro` файла `simple3d_config.local.json`.
 - Окно исчезло во время сборки — значит упал OpenCASCADE, а не Simple 3D: окно
   переживает это и показывает код выхода вместе с советом. Что обычно помогает:
   **Body stitching → Not stitched** (там ничего не сплавляется) или более
