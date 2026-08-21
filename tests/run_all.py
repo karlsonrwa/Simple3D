@@ -40,6 +40,7 @@ JOBS = [
     ("embedded models cross-check",             TESTS / "test_embedded.py", True),
     ("STEP folder search path",                 TESTS / "test_index.py", True),
     ("JSON quoting",                            TESTS / "test_quote.py", False),
+    ("drill offset: the hole is not the pad",   TESTS / "test_drill_offset.py", False),
     ("launcher command shape",                  TESTS / "test_launch_cmd.py", False),
     ("where Variants.lst is looked for",        TESTS / "test_variant_path.py", False),
     ("settings: defaults + the local file",     TESTS / "test_config_merge.py", False),

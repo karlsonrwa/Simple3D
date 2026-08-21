@@ -1058,20 +1058,54 @@ procedure( rotateXY( origin xy angle )
     )
 )
 
+; Where the DRILL is, which is not always where the pad is.
+;
+; A padstack may carry an offset from its origin to the hole - Allegro's
+; Padstack Editor calls it "Offset from padstack origin to hole", on the Drill
+; Offset tab - and an edge connector is exactly what it is for: the pads sit on
+; the board while the holes straddle the edge as half-holes. The offset is
+; expressed in the PADSTACK's own frame, so it must be rotated by the pin's
+; rotation before it is added to the pin's location.
+;
+; This lived inside makeSlot and nowhere else, so the round-hole branch of
+; symbolReturnPinHoles cut at the PAD centre. On the user's bone-a2 the four
+; PLS-4 holes carry offset x = 0.375 with the padstack turned to face the board
+; edge: the drill belongs on y = 0 and we were putting it 0.375 mm higher, which
+; is why Allegro's own 3D showed half-circles on the edge where our STEP showed
+; keyholes. One procedure now, called from both branches, so they cannot drift
+; apart again.
+;
+; nil-safe on both counts: a padstack with no offset and a pin with no rotation
+; are the ordinary case, and both mean "the drill is where the pad is".
+procedure( s3dDrillXY( pin padstack )
+    let( ( xy offset rotation dx dy )
+        xy       = pin->xy
+        offset   = padstack->drillOffset
+        rotation = pin->rotation
+        dx = 0.0
+        dy = 0.0
+        when( offset
+            when( numberp( xCoord( offset ) )  dx = xCoord( offset ) )
+            when( numberp( yCoord( offset ) )  dy = yCoord( offset ) )
+        )
+        unless( numberp( rotation )  rotation = 0.0 )
+        if( (dx == 0.0) && (dy == 0.0) then
+            ; Nothing to apply. Returned as-is rather than rotated by zero, so
+            ; the overwhelmingly common padstack is not put through a sin/cos
+            ; that can only add noise to a coordinate that was exact.
+            xy
+        else
+            rotateXY( xy list( xCoord( xy ) + dx  yCoord( xy ) + dy ) rotation )
+        )
+    )
+)
+
 procedure( makeSlot( pin padstack )
-    let( ( xy x y rotation drillOffset xDrillOffset yDrillOffset drillSizeWidth drillSizeHeight slot radius xCenter yCenter xyCenter alpha beta ccw segment )
-        ; get coordinates
-        xy = pin->xy
-        x = xCoord( xy )
-        y = yCoord( xy )
+    let( ( xy x y rotation drillSizeWidth drillSizeHeight slot radius xCenter yCenter xyCenter alpha beta ccw segment )
+        ; get coordinates - the DRILL's, not the pad's
         rotation = pin->rotation
 
-        drillOffset = padstack->drillOffset
-        xDrillOffset = xCoord( drillOffset) + x
-        yDrillOffset = yCoord( drillOffset) + y
-
-        ; calculate origin (drilloffset)
-        xy = rotateXY( list( x y ) list( xDrillOffset yDrillOffset ) rotation )
+        xy = s3dDrillXY( pin padstack )
         x = xCoord( xy )
         y = yCoord( xy )
 
@@ -2333,8 +2367,9 @@ procedure( symbolReturnPinHoles()
                     ; retrieve padstack information
                     padstack = axlLoadPadstack( pin->name )
 
-                    ; get position
-                    xy = pin->xy
+                    ; get position - the DRILL's. It is the pad's only when the
+                    ; padstack carries no drill offset; see s3dDrillXY.
+                    xy = s3dDrillXY( pin padstack )
 
                     if( padstack->usage == "Slot" then
                         element = makeSlot( pin padstack )
