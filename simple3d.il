@@ -604,6 +604,12 @@ procedure( s3dExportCommand()
         errset( pyOk = s3dPreflight( cadDir ) )
         when( pyOk == 'failed
             printf( "Simple 3D: the Python check itself errored - skipping it and launching anyway.\n" )
+            printf( "  If no window appears, that is why nothing explained it: the GUI runs\n" )
+            printf( "  under pythonw, which has no console to fail in.\n" )
+            ; Fail-open is right - a broken check must not block a working
+            ; setup - but it must not be quiet about it either, or the silent
+            ; no-op it was written to prevent comes back through this door.
+            s3dWarn( "Simple 3D: the Python check errored - launching unchecked. See the console." )
             pyOk = t
         )
         unless( pyOk
@@ -665,6 +671,31 @@ procedure( s3dExportCommand()
 ; Success is signalled by a sentinel the check prints, not by an empty log: some
 ; installs emit deprecation warnings on stderr even when the import succeeds.
 ;
+; THE SENTINEL IS SPLIT IN THE SOURCE - print('S3D' '_OK') - AND THAT IS NOT A
+; TYPO. From Python 3.13 the interpreter keeps the text of a -c command and
+; echoes the offending SOURCE LINE in a traceback. So a check written as
+; print('S3D_OK') puts its own success sentinel into its own failure output:
+;
+;     Traceback (most recent call last):
+;       File "<string>", line 1, in <module>
+;         import stepbuilder.core, tkinter; print('S3D_OK')
+;         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+;     ModuleNotFoundError: No module named 'OCP'
+;
+; and the scan below reads that echo as success. That is exactly what happened
+; on 2026-08-21: a Python 3.14 arrived ahead of the user's on PATH with no OCP
+; in it, the check passed itself, the GUI was launched with pythonw - which has
+; no console - and it died on the same ImportError with nothing shown anywhere.
+; The whole point of this procedure, defeated by its own sentinel. Two adjacent
+; string literals concatenate at compile time, so the process still prints
+; S3D_OK while the source text cannot contain it. A sentinel must not be
+; forgeable by the output it is looking for.
+;
+; The check also prints S3D_PY with sys.executable and the version, first and
+; unbuffered (-u), so a failure names the interpreter that actually ran rather
+; than the word "python" we asked for. Which Python answered is the thing that
+; is hard to see from Allegro and was the whole of this diagnosis.
+;
 ; Returns t to proceed, nil to abort. A fault in the check itself still cannot
 ; block a working setup: s3dExportCommand wraps this call in errset and launches
 ; anyway if it errors. There is no separate fail-open branch here any more - the
@@ -674,18 +705,21 @@ procedure( s3dPreflight( t_workDir )
     ; prog locals must be bare symbols - the (var value) init form is let-only
     ; syntax and prog rejects it with "local vars must be symbol". Hence the
     ; explicit assignments below.
-    prog( ( exe logFile port line ok pySpoke out )
+    prog( ( exe logFile port line ok pySpoke out whichPy )
         ok      = nil
         pySpoke = nil
         out     = ""
+        whichPy = ""
         exe = if( (S3D_Python != "") then S3D_Python else S3D_PythonW )
         logFile = strcat( t_workDir "/_simple3d_preflight.txt" )
 
         ; Importing stepbuilder.core pulls in OCP, the heavy dependency that is
-        ; usually the missing one; tkinter is what the GUI itself needs.
+        ; usually the missing one; tkinter is what the GUI itself needs. The
+        ; sentinels are split literals on purpose - see the note above.
         errset( system( strcat(
             "cmd /c start /B /WAIT \"\" /D \"" S3D_ScriptDir "\" \"" exe
-            "\" -c \"import stepbuilder.core, tkinter; print('S3D_OK')\" > \""
+            "\" -u -c \"import sys; print('S3D' '_PY', sys.executable, sys.version.split()[0]); "
+            "import stepbuilder.core, tkinter; print('S3D' '_OK')\" > \""
             logFile "\" 2>&1" ) ) )
 
         port = infile( logFile )
@@ -693,6 +727,11 @@ procedure( s3dPreflight( t_workDir )
             while( gets( line port )
                 out = strcat( out line )
                 when( rexMatchp( "S3D_OK" line )  ok = t )
+                ; Which interpreter answered. Printed before the imports, so it
+                ; is there on the failing run too - and that is the run where it
+                ; matters, because "python" is a name and PATH decides what it
+                ; means today.
+                when( rexMatchp( "S3D_PY " line )  whichPy = line )
                 ; Who spoke decides what may be printed. Python's own failures
                 ; are ASCII and safe to echo; Windows' "cannot find the file" is
                 ; localised AND written in the OEM codepage (866 on a Russian
@@ -722,6 +761,14 @@ procedure( s3dPreflight( t_workDir )
             ( pySpoke
                 printf( "Python (%s) failed this check:\n" exe )
                 printf( "    import stepbuilder.core, tkinter\n\n" )
+                ; Name the interpreter that actually answered. "python" is a
+                ; name, not a program: installing anything that ships a Python
+                ; (node.js does) can put a different one ahead of yours on PATH,
+                ; and then the packages are missing because it is a different
+                ; interpreter, not because they were uninstalled.
+                when( whichPy != ""
+                    printf( "The interpreter that ran was:\n    %s\n" whichPy )
+                )
                 printf( "It reported:\n%s\n" out )
             )
             ( t
@@ -731,14 +778,34 @@ procedure( s3dPreflight( t_workDir )
             )
         )
         printf( "\nCheck, in this order:\n" )
-        printf( "  1. Python is installed and the paths at the top of simple3d.il\n" )
-        printf( "     are right:  S3D_Python = \"%s\"   S3D_PythonW = \"%s\"\n"
+        printf( "  1. Is that the Python you meant? A bare name is resolved by\n" )
+        printf( "     PATH, so a newly installed Python can shadow the one your\n" )
+        printf( "     packages are in. Pin it by FULL PATH in the \"allegro\"\n" )
+        printf( "     section of simple3d_config.local.json, beside\n" )
+        printf( "     simple3d_config.json - that file is yours and is never\n" )
+        printf( "     overwritten by an update:\n" )
+        printf( "         \"allegro\": { \"python\": \"C:/Python312/python.exe\",\n" )
+        printf( "                      \"pythonw\": \"C:/Python312/pythonw.exe\" }\n" )
+        printf( "     In use now:  python = \"%s\"   pythonw = \"%s\"\n"
                 S3D_Python S3D_PythonW )
-        printf( "  2. The dependency is installed:   pip install cadquery-ocp\n" )
+        printf( "  2. The dependency is installed FOR THAT INTERPRETER:\n" )
+        printf( "         <that python.exe> -m pip install cadquery-ocp\n" )
         printf( "  3. The stepbuilder folder sits in S3D_ScriptDir = \"%s\"\n" S3D_ScriptDir )
         printf( "=====================================================================\n\n" )
         axlUIWPrint( nil
             "Simple 3D: JSON written OK - but Python could not start. See the console." )
+        ; And say it where it cannot be missed. The console line above is the
+        ; whole diagnosis, but the console can be closed, scrolled away or
+        ; simply not looked at, and the failure it is reporting looks from the
+        ; outside exactly like nothing happening - no window, no error, no
+        ; clue. A blocking confirmer is what axlUIConfirm is for; errset because
+        ; a courtesy dialog must never be able to fail the report itself, and
+        ; Allegro's own "noconfirm" variable turns it into an immediate return
+        ; for anyone running unattended.
+        errset( axlUIConfirm( strcat(
+            "Simple 3D: the JSON was exported, but the 3D window could not start.\n\n"
+            "Python ran, but could not import what it needs (cadquery-ocp / tkinter).\n"
+            "The full message, and how to fix it, are in the Allegro console." ) 'error ) )
         return( nil )
     )
 )

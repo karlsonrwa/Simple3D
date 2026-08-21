@@ -80,9 +80,19 @@ def launch_cmd():
 
 
 def preflight_cmd():
-    """s3dPreflight: synchronous (/B /WAIT), output captured to a file."""
-    return (f'cmd /c start /B /WAIT "" /D "{SCRIPT_DIR}" "{PY}" '
-            f'-c "import probepkg, tkinter; print(\'S3D_OK\')" > "{LOGF}" 2>&1')
+    """s3dPreflight: synchronous (/B /WAIT), output captured to a file.
+
+    The sentinels are SPLIT literals - print('S3D' '_OK') - and that is the
+    point of case [3] below. From Python 3.13 a traceback echoes the source
+    line of a -c command, so a sentinel written whole appears in the check's
+    own FAILURE output and the check passes itself. Two adjacent literals
+    concatenate at compile time: the process still prints S3D_OK, the source
+    text cannot contain it.
+    """
+    return (f'cmd /c start /B /WAIT "" /D "{SCRIPT_DIR}" "{PY}" -u '
+            f'-c "import sys; print(\'S3D\' \'_PY\', sys.executable, '
+            f'sys.version.split()[0]); '
+            f'import probepkg, tkinter; print(\'S3D\' \'_OK\')" > "{LOGF}" 2>&1')
 
 
 def run_launch(cmd, wait=8.0):
@@ -124,14 +134,31 @@ for label, cmd in [("one cmd layer", preflight_cmd()),
                    ("two cmd layers", "cmd /c " + preflight_cmd())]:
     log = run_preflight(cmd)
     check(f"{label}: sentinel in the log", "S3D_OK" in log, f"log was {log!r}")
+    check(f"{label}: the interpreter names itself",
+          "S3D_PY " in log, f"log was {log!r}")
 
 print("\n[3] preflight reports a Python failure in Python's own words")
 broken = preflight_cmd().replace("import probepkg,", "import no_such_module,")
+# A replace that matches nothing is silent, and this one carries the whole case.
+check("the failing variant was actually built", "no_such_module" in broken,
+      "the import text in preflight_cmd() changed")
 log = run_preflight(broken)
 check("stderr is captured too", "Traceback" in log or "ModuleNotFoundError" in log,
       f"log was {log!r}")
 check("the branch that prints the log text is reachable",
       "Error" in log or "Traceback" in log, f"log was {log!r}")
+# THE ONE THAT MATTERS. Python 3.13+ echoes the source line of a -c command in
+# the traceback, so a sentinel written as print('S3D_OK') puts itself into the
+# failure output and s3dPreflight reads its own echo as success - then launches
+# a GUI under pythonw, which has no console, and it dies silently. Fixed by
+# splitting the literal; this is what keeps it split. Vacuous on 3.12 and
+# earlier, which is why case [5] checks the source text as well.
+check("the sentinel does NOT appear in the failing log",
+      "S3D_OK" not in log,
+      f"the check would pass itself on this Python ({sys.version.split()[0]}); "
+      f"log was {log!r}")
+check("the failing run still names the interpreter",
+      "S3D_PY " in log, f"log was {log!r}")
 
 print("\n[4] the negative control: a line that BEGINS with a quote loses its quoting")
 # This is the form the .bat existed to avoid. Kept as a test so the reason for
@@ -154,6 +181,19 @@ check('s3dLaunch uses  start "" /D', 'start \\"\\" /D' in il)
 check('s3dPreflight uses  start /B /WAIT "" /D', 'start /B /WAIT \\"\\" /D' in il)
 check("no batch file is written any more",
       "_simple3d_launch.bat" not in il and "_simple3d_preflight.bat" not in il)
+# Version-independent half of case [3]: whatever Python runs this suite, the
+# sentinel must not be spelled out in the source handed to -c, or a traceback
+# on 3.13+ hands it straight back and the check passes itself.
+# Matched with the escaped quote that closes the -c argument, so the comment
+# above s3dPreflight - which quotes the wrong form on purpose, to explain it -
+# is not mistaken for the command itself.
+check("the success sentinel is a SPLIT literal in the -c command",
+      "print('S3D' '_OK')" in il and "print('S3D_OK')\\\"" not in il,
+      "s3dPreflight's sentinel can be forged by its own traceback echo")
+check("the check reports which interpreter answered",
+      "sys.executable" in il and "S3D_PY " in il)
+check("a failed preflight also says so in a blocking dialog",
+      "axlUIConfirm" in il, "the console can be closed or not looked at")
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)
