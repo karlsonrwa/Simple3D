@@ -11,6 +11,48 @@ to use the tool.
 
 ---
 
+- **2026-09-02** — **The test net can fail now.** The one test that compares
+  the port against the original C++ exporter had printed MATCH or DRIFT and
+  exited 0 either way since the day it was written; it now fails on a volume
+  drift or on a change in the STEP entity count (5038, with the history of
+  when and why it moved). Every test script shares one `tests/_support.py`
+  instead of carrying its own copy of the paths and the `check()` helper, and
+  `tools/golden.py` builds the repository's own boards and compares the result
+  after every refactoring step. This is the first step of
+  `REFACTORING_PLANS.md`; nothing the tool writes has changed.
+  / **Сеть тестов теперь умеет падать.** Единственный тест, сравнивающий порт с
+  исходным экспортёром на C++, со дня написания печатал MATCH или DRIFT и
+  всегда выходил с кодом 0; теперь он падает при уходе объёма или при смене
+  числа сущностей STEP (5038, с историей того, когда и почему оно менялось).
+  Все тестовые скрипты используют общий `tests/_support.py` вместо своих копий
+  путей и `check()`, а `tools/golden.py` собирает платы из самого репозитория и
+  сравнивает результат после каждого шага рефакторинга. Это первый шаг
+  `REFACTORING_PLANS.md`; то, что инструмент пишет, не изменилось.
+
+- **2026-09-02** — **A structural review, written down.** Two new documents for
+  whoever works *on* the tool rather than with it: `ARCHITECTURE.md` — what each
+  file holds, how the two halves talk through the intermediate, the pipeline
+  stage by stage, and which pieces are monoliths and which could be reused
+  elsewhere — and `REFACTORING_PLANS.md`, the order in which to take the five
+  monoliths apart without changing a single STEP file, each step pinned by the
+  tests that already exist. Nothing in the tool's behaviour changed. Two small
+  things did: the README no longer claims that nothing temporary is written
+  beside the board — the Python pre-flight writes `_simple3d_preflight.txt` into
+  the output folder and deletes it again; and `input/` joined `failed/` in
+  `.gitignore`, so a board put there to be looked at cannot reach the public
+  repository by accident.
+  / **Структурное ревью, записанное.** Два новых документа для тех, кто работает
+  *над* инструментом, а не с ним: `ARCHITECTURE.md` — что лежит в каждом файле,
+  как две половины общаются через промежуточный JSON, конвейер по стадиям и
+  какие куски являются монолитом, а какие можно переиспользовать, — и
+  `REFACTORING_PLANS.md`: в каком порядке разбирать пять монолитов, не меняя ни
+  одного STEP-файла, где каждый шаг закреплён уже существующими тестами.
+  Поведение инструмента не изменилось. Две мелочи изменились: README больше не
+  утверждает, что рядом с платой ничего временного не пишется — предполётная
+  проверка Python пишет `_simple3d_preflight.txt` в выходную папку и тут же
+  удаляет; а `input/` добавлен в `.gitignore` вслед за `failed/`, чтобы
+  положенная туда плата не могла случайно попасть в публичный репозиторий.
+
 - **2026-08-21** — **A drilled hole is cut where the drill is, not where the pad
   is.** A padstack can carry an offset from its origin to the hole — Allegro's
   Padstack Editor, *Drill Offset* tab, *Offset from padstack origin to hole* —

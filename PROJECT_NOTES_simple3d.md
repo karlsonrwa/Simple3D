@@ -5,7 +5,7 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-08-11
+## READ THIS FIRST — state as of 2026-09-02
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -20,6 +20,9 @@ one settled.
 | The user's install | `d:/Projects/OrCAD/Scripts/Simple3D/` — files are copied there by hand |
 | Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
 | `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
+| The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
+| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Step 0 done in round 71 (same day); nothing past it started |
+| The golden corpus | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 cases; `--check` after every refactoring step. `tests/_support.py` is the one preamble every suite imports (round 71) |
 
 Three tools grew out of this project and now have repositories of their own.
 Nothing here depends on them, and no copy of their code belongs in this tree:
@@ -2942,6 +2945,152 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-02 (round 71) — Step 0: the net before the first move
+
+Same day as round 70, the first work off `REFACTORING_PLANS.md`. Nothing that a
+STEP file contains changed; what changed is whether the suite can tell.
+
+### What was done
+
+- **0.1 The regression test can fail.** `tests/test_regression_geometry.py`
+  now `check()`s the volume (to 1e-4) and the entity count and exits 1 on
+  either. The 5054-vs-5038 question was settled by *building* the same board
+  at seven commits (`git archive <commit> stepbuilder demo | tar -x` into a
+  scratch folder — no checkout, the working tree untouched): 5077 at the first
+  Python rewrite (`1c5d46b`), 5054 from `3ad1617` through `a402fff` — the
+  number round 21 wrote down — and 5038 since `687ea3f`, round 63's "read an
+  arc by its two ends". Volume 12073.309477 at all seven. So the count is a
+  property of the writer, it moved when the arc construction moved, and nobody
+  noticed because nothing looked. 5038 is pinned, with that history in the
+  docstring.
+- **0.2 One preamble.** `tests/_support.py` holds the paths, `fails`,
+  `check()`, `rect()`, `read_step()`, `volume()` (the iterative integrator),
+  `bbox()`, `count_solids()`, `entity_count()`. Twenty scripts import it. The
+  edit was a script with every replacement asserted (152 of them); the suites'
+  own assertions were not touched. Two integrators became one: on the
+  regression board they differ by 1.3e-8 mm³, so the plain suites lost
+  nothing. A deliberate `check("x", False)` was run through the import to see
+  that it reaches the exit code — the failure being fixed is exactly a `fails`
+  list that is not the one `sys.exit` reads, and a suite that rebinds
+  `fails = []` would recreate it (`_support` is where that line must not be).
+- **0.3 A golden corpus.** `tools/golden.py` builds `demo` in the three
+  stitchings and the fold suite's rigid-flex board (now a fixture,
+  `tests/fixtures/rigidflex.json`) in the three stitchings and flat — 7 cases,
+  18 s — and records volume, box, solids, entities, placed/skipped and the
+  warning count in `build/golden.json`; `--check` rebuilds and compares
+  (volume and box to 1e-6, the rest exact). Each case runs in a child process
+  so an OCCT access violation costs one case, not the corpus. `--with-local`
+  would add `failed/` and `input/`; **not run** — those are the user's designs
+  and the plan says ask first (it also needs `--step-dir` at their library).
+- **0.4** `_layer_region` imports only `BRepAlgoAPI_Common` locally; the
+  module-level `BRepAlgoAPI_Cut` is no longer shadowed inside the function.
+- **0.5** `colors.as_fraction` deleted (never called); the `for … : pass` in
+  `audit_docs.py` deleted; `.claude/launch.json` deleted — it pointed at
+  step2html's preview server, a leftover from before that tool moved out.
+
+`python tests/run_all.py`: **23/23 in 188 s**. `tools/golden.py --check`: no
+difference against its own record. Nothing committed — the user commits on
+request; 0.1–0.5 are separable by file if they want one commit each.
+
+### What to remember
+
+- **Settle a number by measuring, not by reading.** The memo carried 5054 for
+  three rounds after it had become 5038; each mention was copied from the one
+  before. Seven builds at seven commits took two minutes.
+- **A line-ending pass does not know whose file it is.** Converting the files
+  this round wrote to CRLF (the working copy's convention under
+  `core.autocrlf=true`) also converted `.claude/settings.local.json`, the
+  user's own, because the list came from `git status`; put back. Filter by
+  what you edited, not by what is untracked.
+- **The golden corpus is local.** `build/golden.json` is gitignored, so it is
+  a yardstick for this machine and this refactoring, not a fixture. Rebuild it
+  (without `--check`) only when a step *deliberately* changes what a file
+  contains — and say so in the memo, as with the entity count.
+
+## Update 2026-09-02 (round 70) — full review, the structure written down, split plans
+
+Asked for: read everything, review all the code, say which pieces are monoliths
+and which could be reused, draw the structural and functional pictures, and plan
+the split. Read in full, not scanned: both `.il` files, the six Python modules,
+all 22 test scripts, the three tools, the hand test, the eleven probes, the
+config, this memo end to end, README, QUICKSTART and CHANGELOG (English halves).
+**No code was changed** — this round documents and plans.
+
+### What came out
+
+- **`ARCHITECTURE.md`** — the three pieces and the one boundary, a dependency
+  graph, the pipeline as one flowchart from the menu item to the STEP, the
+  intermediate's shape as the reader sees it, every SKILL global with when it is
+  reset, and the monolith / reusable / glue classification, file by file and
+  function cluster by function cluster.
+- **`REFACTORING_PLANS.md`** — five monoliths (`core.generate` 646 lines,
+  `bend.plan_fold` 428, `bend._map_strip` 381, `gui.StepBuilderApp` ~1500, the
+  exporter as one 3925-line file), a plan for each, a Step 0 that has to come
+  first, a format_version 9 plan for the intermediate's flat namespace, and the
+  order to do it all in. Every step names the tests that must be green before
+  and after it and what "done" means.
+
+### Baseline, measured
+
+`python tests/run_all.py` under 3.12: **23/23 green in 277 s** — the fold suite
+alone is 176 s now, which is why the "~55 s" figure this memo used to carry is
+out of date. The C++ geometry regression reproduces 12073.309477 mm³ exactly.
+Its write statistics say **5038 entities** where round 21 recorded 5054; the
+test never asserted the entity count, so nothing has said which is right or
+when it moved. Left as a question for Step 0.1 of the plans, not answered here.
+
+### Findings (the list lives in ARCHITECTURE.md §6; the ones worth a sentence)
+
+1. **`tests/test_regression_geometry.py` cannot fail.** It prints `MATCH` or
+   `DRIFT` and exits 0 either way; `run_all` reads exit codes. The one test that
+   compares against the C++ original has been decorative since it was written.
+   Same class as round 68's sentinel and round 61's `IsDone`: a check that
+   reports success on evidence it never examined.
+2. **Strings reach the JSON unescaped** in five places of the writer — the
+   refdes and `step_name` in `symbolReturn3DElements`, the zone name, the silk
+   layer name, the warning text and the variant name — while `s3dJsonQuote`
+   exists and is used everywhere else. A backslash in a STEP mapping entry (a
+   path, say) breaks the whole intermediate. Latent; plan D4.
+3. **The upstream procedures leak locals as globals.** `gdsysGetVariantInfo`
+   assigns a dozen names it never declares, `makeSlot` seven, `makePcb` rebinds
+   its *caller's* `pcbColor` under SKILL's dynamic scoping, and
+   `create3dIntermediateFormat`'s `name`, `pcb`, `outFile`, `outPort`, `lines`
+   land in `makeVariant3dIntermediates`' own `let` by accident. Nothing reads
+   them afterwards, which is the only reason it works. The four mechanical
+   checks do not look for this; plan D1 adds the fifth.
+4. **Two rules for requirement #1.** `calculateBoardThickness` gates on the
+   `SOLDERMASK` name (round 2), `s3dLayerInBody` on position + SILK/PASTE
+   (round 34). A plain board whose mask is named `SM_TOP` is one thickness in
+   *Solid* and another in *Solid colored layers*. Plans D5/E2.
+5. **`input/` was untracked and not ignored** — 57 MB of the user's boards one
+   `git add -A` from the public remote, while `failed/` beside it carries a
+   comment saying exactly why such files must be ignored. Fixed in this round.
+6. The `core`↔`bend` import cycle (hidden by local imports), three copies of the
+   `generate()` argument list, the GUI's config keys named twice, four full
+   parses of the intermediate per Generate, the visibility-snapshot idiom copied
+   five times across the exporter and the probes, and `core.py:395` carrying the
+   very `UnboundLocalError` trap `_rim_faces` documents. All in the plans.
+
+### Also changed
+
+- README: "Nothing temporary is written next to your board" softened — the
+  pre-flight log is written and deleted (round 43 says so; the README overstated
+  it). Both halves. The two new documents are listed under *What is where*.
+- CHANGELOG entry, both languages. `.gitignore`: `input/`.
+- Memory: the round, the test-that-cannot-fail lesson, and the SKILL scoping
+  fact, each as its own note.
+
+### What to remember
+
+**A review's first deliverable is the baseline.** The suite was green, and one
+of its 23 jobs was incapable of being anything else. Before trusting a green
+run as the safety net for a refactoring, read the exit path of every test.
+
+**Read what the tests transliterate.** Nine SKILL procedures exist twice — once
+in SKILL, once as a Python copy inside a test — and those copies are the only
+executable specification the SKILL side has. They are scattered across seven
+files; plan F2 gathers them.
 
 ## Update 2026-08-21 (round 69) — the hole is not always at the pad
 
