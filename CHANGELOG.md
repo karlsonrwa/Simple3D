@@ -11,6 +11,28 @@ to use the tool.
 
 ---
 
+- **2026-09-02** — **The launcher's command line is checked, not skimmed.**
+  `python -m stepbuilder --gui ...` (what the Allegro button runs) used to
+  have a parser of its own that dropped any flag it did not know without a
+  word; now one parser serves the window and the headless build, so a
+  misspelt flag is an error with a message, and `--help` shows the
+  window-only flags (`--config`, `--json-dir`, `--json-file`,
+  `--output-dir`) alongside the rest. Inside the window three pieces
+  became modules of their own - where the window opens, the silkscreen
+  layer list, and the child process that builds - each closed by the
+  same tests it had before plus a 21st suite for the launcher line.
+  Nothing the tool writes has changed.
+  / **Командная строка запуска проверяется, а не просматривается.**
+  У `python -m stepbuilder --gui ...` (то, что запускает кнопка в Allegro)
+  был свой разборщик, молча отбрасывавший незнакомый флаг; теперь окно и
+  консольная сборка разбирают командную строку одним разборщиком, так что
+  опечатка во флаге — ошибка с сообщением, а `--help` показывает флаги
+  только для окна (`--config`, `--json-dir`, `--json-file`,
+  `--output-dir`) рядом с остальными. Внутри окна три куска стали
+  отдельными модулями — где открывается окно, список слоёв шелкографии и
+  дочерний процесс сборки; каждый закрыт теми же тестами, что и раньше,
+  плюс 21-й набор для строки запуска. Содержимое файлов не изменилось.
+
 - **2026-09-02** — **`--no-full-board`, and a mode that is not a mode is an
   error.** The headless `--batch` can now leave the whole-board file out, the
   way the window's *Build the full-board file too* checkbox always could -

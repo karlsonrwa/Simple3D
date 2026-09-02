@@ -28,7 +28,7 @@ Allegro PCB Editor (SKILL, one global namespace, loads once per session)
         │   the intermediate JSON  ("format": "simple3d", format_version 8)
         ▼
 Python 3.10+ / cadquery-ocp  (package stepbuilder, runs OUTSIDE Allegro)
-  __main__.py   entry: window / --gui prefill / headless CLI
+  __main__.py   entry: window / --gui prefilled window / headless CLI, one parser
   gui.py        the Tk window; reads+writes simple3d_config[.local].json
   worker.py     BuildSettings + run_jobs, in a child process
   core.py       the intermediate -> a STEP assembly (board, legend, components)
@@ -80,15 +80,15 @@ the keys that differ from the default.
 | `stepbuilder/bend/apply.py` | 179 | 2 | `apply_plan` — cut region by region, bend each strip (revolve, else wrap, else facets), fuse — and `_fuse_all` |
 | `stepbuilder/contour.py` | 290 | 8 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here; `_face_from_wires` (wires → a planar face with holes, used by the board and the legend alike) since A4. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
-| `stepbuilder/gui.py` | 1178 | 58 | one `tk.Tk` subclass: widget layout, the hand-over between widgets and `settings.GuiSettings`, freeze/thaw, log colouring, the Tk-side reactions to a build (`_on_progress/_on_done/_on_error/_on_crash`); placement through `winplace`, the layer list through `widgets.layers_panel`, the child process through `worker_bridge` |
+| `stepbuilder/gui.py` | 1184 | 59 | one `tk.Tk` subclass: widget layout, the hand-over between widgets and `settings.GuiSettings`, freeze/thaw, log colouring, the Tk-side reactions to a build (`_on_progress/_on_done/_on_error/_on_crash`), `set_theme`; placement through `winplace`, the layer list through `widgets.layers_panel`, the child process through `worker_bridge` |
 | `stepbuilder/widgets/layers_panel.py` | 178 | 9 | `LayersPanel(ttk.LabelFrame)`: the scrolled Top/Bottom checkbox list - `refresh(found, layers_off)`, `current_layers_off`, `set_all` (live sides only), `update_sides`, wheel grab/release. Round 74, plan C4 |
 | `stepbuilder/winplace.py` | 138 | 6 | window placement for any `tk.Tk`: the virtual desk, `geometry_is_reachable`, `parse_geometry`, centre / restore / the normal-geometry filter; no tkinter import. Round 74, plan C3 |
 | `stepbuilder/settings.py` | 404 | 18 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`; then the `gui` section as ONE table, `GUI_KEYS` (name, field, default, load, save), `GuiSettings`, `load_gui_settings` (both migrations live in the `load` of the key that superseded them) and `save_gui_settings` (only what differs from the shipped default). Round 72, plans C1–C2 |
-| `stepbuilder/__main__.py` | 362 | 4 | two argparse parsers (prefilled GUI, headless CLI), the crash log under `pythonw`; the build's options go through `BuildOptions.from_args` since A8 |
+| `stepbuilder/__main__.py` | 390 | 5 | one argparse parser (`build_parser`) for the headless CLI and the `--gui` window, `_open_window` with the crash log under `pythonw`; the build's options go through `BuildOptions.from_args` since A8. Round 74, plan C6 |
 | `stepbuilder/worker.py` | 176 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, `intermediate.batch_jobs` for the full-board file, per-job isolation, progress slicing; the build's options go through `BuildOptions.from_settings` since A8 |
 | `stepbuilder/worker_bridge.py` | 143 | 9 | `WorkerBridge`: the window's half of the child process - `start`, `drain_once` (queue to five callbacks), `check_alive` (a death is a crash unless `cancelled`), `cancel`, `close`; `crash_advice(code)` is the text. No tkinter. Round 74, plan C5 |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
-| `tests/` (24 files) | ~4700 | — | 20 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
+| `tests/` (26 files) | ~4900 | — | 21 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
 | `tools/` | ~1100 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
@@ -194,7 +194,7 @@ Two things the picture makes visible:
 | the intermediate(s) | `<rev>/cad/` beside `<rev>/pcb/`, or beside the `.brd` | `create3dIntermediateFormat` | `core.generate`, `worker`, `gui` (layer list, full-board marker) |
 | pre-flight log | `<cad>/_simple3d_preflight.txt`, deleted after reading | `s3dPreflight` | `s3dPreflight` |
 | the STEP | `<cad>/<board>_simple_DD_MM_YYYY.step` (trailing `_` per collision) | `core.generate` | the user's CAD |
-| GUI crash log | `<install>/simple3d_crash.log` | `__main__._gui_prefill` under `pythonw` | the user |
+| GUI crash log | `<install>/simple3d_crash.log` | `__main__._open_window` under `pythonw` | the user |
 | `ALWAYS_STEP_EXPORT` | the design's property dictionary (a change to the `.brd`) | `s3dEnsureAlwaysProp` on `open` and before every export | the exporter |
 | per-session SKILL globals | `S3D_*` in the Allegro session | load time + each export | each export — see 4.1 |
 
@@ -236,7 +236,7 @@ flowchart TD
     J --> K["axlMeterDestroy — the SKILL command ends"]
 
     subgraph PY["stepbuilder — the window and the build"]
-        K --> L[__main__._gui_prefill → StepBuilderApp<br/>load config pair, prefill json-dir/output/brd-name]
+        K --> L[__main__._open_window → StepBuilderApp<br/>load config pair, prefill json-dir/output/brd-name]
         L --> M[layer panel from the JSON: resolve_jobs, then<br/>Intermediate.silkscreen_layers per job - one parse each]
         M --> N([Generate])
         N --> O[_snapshot → frozen BuildSettings]
@@ -269,7 +269,7 @@ flowchart TD
 | `python -m stepbuilder` | no arguments | the window, standalone |
 | `python -m stepbuilder --gui …` | the launcher's form; `parse_known_args` | the window, prefilled |
 | `python -m stepbuilder STEP_DIR JSON OUT [flags]` | headless; `--batch` for a folder | `core.generate` per file, exit 1 on any failure |
-| `python tests/run_all.py [--quick]` | | the 4 checks + 20 suites as subprocesses |
+| `python tests/run_all.py [--quick]` | | the 4 checks + 21 suites as subprocesses |
 | `python tools/skill_checks.py` / `check_arity.py` / `audit_docs.py` | | the mechanical checks, also run by `run_all` |
 | `load("…/tools/probes/probe_*.il")` | in Allegro, by hand | read-only diagnostics; `probe_variants.il` calls into the exporter |
 | `load("…/tools/s3d_userprop_test.il")` | in Allegro, by hand | the one file that writes to a design |
@@ -393,7 +393,7 @@ it is.
 | `gui` placement (`_virtual_screen`, `_geometry_is_reachable`, `_center_on_primary`, `_restore_geometry`, `_remember_geometry`) | ~95 | reusable | multi-monitor placement for any Tk window |
 | `worker_bridge.py` (was the `gui` worker bridge: `_run_in_worker`, `_drain_queue`, `_drain_once`, `_check_worker_alive`, `on_cancel`) | ~150 | reusable | "build in a child process, survive an access violation, cancel" — already copied by hand into step2html; since round 74 (C5) a class with no tkinter in it, so the copy can become an import |
 | `worker.py` | 204 | glue, reusable pattern | the batch rule lives here and only here (the CLI has no equivalent) |
-| `__main__.py` | ~360 | glue | two parsers for overlapping flags; the `generate(...)` argument list used to appear here, in `worker._run` and in `gui._snapshot` — since round 73 (A8) it is `build.BuildOptions`, built once per caller |
+| `__main__.py` | ~370 | glue | was two parsers for overlapping flags — since round 74 (C6) one `build_parser()` with a `--gui` mode, an unknown launcher flag an error; the `generate(...)` argument list used to appear here, in `worker._run` and in `gui._snapshot` — since round 73 (A8) it is `build.BuildOptions`, built once per caller |
 | `colors.py` | 160 | reusable | as is |
 
 ### 5.3 Tests and tools
