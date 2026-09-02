@@ -47,14 +47,9 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
 from typing import Callable
 
-from OCP.BRep import BRep_Builder
-from OCP.BRepAlgoAPI import BRepAlgoAPI_Common, BRepAlgoAPI_Fuse
-from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
-from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator, TopoDS_Shape
-from OCP.TopTools import TopTools_ListOfShape
+from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
 from OCP.gp import gp_Pnt, gp_Trsf
 
 # The flat-polygon helpers moved to contour.py (round 72, plan A1); the tests
@@ -63,9 +58,9 @@ from ..contour import (  # noqa: F401 - re-exported
     build_contour, clip_halfplane, contour_points, point_in_polygon,
     point_on_polygon, polygon_area,
 )
-# The package, so far (round 72, plans B1-B5a): what a bend is, the pieces of
-# the board, the cutters, both strip constructions, the numbers. What is left
-# here - FoldPlan, apply, plan_fold - waits for plans B3b and B6; the
+# The package (round 72, plans B1-B5a and B3): what a bend is, the pieces of
+# the board, the cutters, both strip constructions, the plan and its apply,
+# the numbers. What is left here - plan_fold and its helpers - is plan B6; the
 # names are re-exported here so `from stepbuilder.bend import X` holds.
 from .constants import (  # noqa: F401 - re-exported
     DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, EPS, MIN_ANGLE,
@@ -87,271 +82,12 @@ from .strip_revolve import (  # noqa: F401 - re-exported
     PRISM_SPAN_TOLERANCE, PRISM_TOLERANCE, _prism_of, _revolve_strip, _spans_alike,
 )
 from .strip_wrap import MAP_VOLUME_TOLERANCE, _map_strip  # noqa: F401
+from .apply import _fuse_all, apply_plan  # noqa: F401
+from .plan import FoldPlan  # noqa: F401
 
 # --------------------------------------------------------------------------- #
 # the plan
 # --------------------------------------------------------------------------- #
-
-@dataclass
-class FoldPlan:
-    """Everything needed to fold one board, and nothing about how it was built."""
-
-    regions: list[_Region] = field(default_factory=list)
-    strips: list[_Strip] = field(default_factory=list)
-    bends: list[Bend] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
-    # (bend name, unit normal away from the anchor, point on the line, half width)
-    chain: list[tuple[Bend, tuple[float, float], tuple[float, float], float]] = \
-        field(default_factory=list)
-    slice_angle: float = DEFAULT_SLICE_ANGLE
-    # The two faces of the FLAT board. flat_frame uses them to reject a region
-    # whose inverse throws the point out of the stack - see there.
-    flat_top: float | None = None
-    flat_bottom: float | None = None
-    # how each bend was actually built, the first time it was built that way
-    built: dict = field(default_factory=dict)
-    # and how many pieces went each way, which is what says a bend is uneven
-    tally: dict = field(default_factory=dict)
-
-    def __bool__(self) -> bool:
-        return bool(self.bends) and any(r.moved for r in self.regions)
-
-    # -- placing a point ---------------------------------------------------- #
-
-    def transform_at(self, x: float, y: float) -> gp_Trsf:
-        """The rigid transform for anything sitting at flat (x, y).
-
-        A component in a bend area is a design-rule violation ("Avoid placing
-        vias within a bend area", and packages likewise), but if one is there it
-        gets the transform of the slice it stands on rather than being dropped.
-        """
-        for region in self.regions:
-            if region.holds(x, y):
-                return region.trsf
-        return gp_Trsf()
-
-    def region_at(self, x: float, y: float) -> str:
-        for region in self.regions:
-            if region.holds(x, y):
-                return region.label
-        return "?"
-
-    def flat_frame(self, point: gp_Pnt) -> gp_Trsf | None:
-        """The transform that puts a FOLDED point back where it started.
-
-        Used to ask a question about a face of the folded board in the frame it
-        was built in - "is this wall vertical" being the one that matters, since
-        after a 90 degree fold half the board's flat faces are vertical and half
-        its walls are not.
-
-        The region is found by trying each one's inverse and keeping the one
-        whose flat footprint the result lands in. Two things make that answer
-        the right one rather than merely a possible one:
-
-        - **the un-folded point has to land back IN the board**, in z. A wrong
-          region's inverse is a rotation about a different axis, and it throws
-          the point clean out of the stack: the LCD panel's top face on
-          Cadence's demo board came back at z = 31.08 through a slice of
-          BEND_3, on a board that is 1.63 mm thick. Without this test that
-          slice answered first, the panel's flat face was judged in a frame
-          where it stands vertical, and the whole 2398 mm2 of it was painted
-          with the BOARD EDGE colour;
-        - **panels are tried before slices.** A slice is a facet of a bend and
-          is only ever real geometry when a bend could not be built exactly;
-          it stays in `regions` to answer "where does this point end up", and
-          it must not outrank the panel a face actually belongs to.
-        """
-        margin = 1.0
-        if self.flat_top is not None and self.flat_bottom is not None:
-            low = min(self.flat_top, self.flat_bottom) - margin
-            high = max(self.flat_top, self.flat_bottom) + margin
-        else:
-            low = high = None
-
-        for region in sorted(self.regions, key=lambda r: r.kind != "panel"):
-            back = region.trsf.Inverted()
-            flat = point.Transformed(back)
-            if low is not None and not (low <= flat.Z() <= high):
-                continue
-            if region.holds(flat.X(), flat.Y()):
-                return back
-        return None
-
-    def in_bend_area(self, x: float, y: float) -> str | None:
-        """The bend whose strip covers (x, y), if any."""
-        for bend, (nx, ny), (px, py), half in self.chain:
-            w = nx * (x - px) + ny * (y - py)
-            if -half <= w <= half:
-                return bend.name
-        return None
-
-    # -- folding geometry ---------------------------------------------------- #
-
-    def apply(self, shape: TopoDS_Shape, fuse: bool = True,
-              note: bool = True, log: LogFn = _noop_log) -> TopoDS_Shape:
-        """Fold one shape: cut it region by region, bend, put back together.
-
-        `fuse=False` returns a compound instead - right for the silkscreen,
-        where the pieces were never one solid to begin with and fusing thousands
-        of barely touching prisms was measured at 154% of the file size.
-        """
-        if shape is None or shape.IsNull() or not self:
-            return shape
-
-        box = _bbox(shape)
-        if box is None:
-            return shape
-
-        # A COMPOUND of many small independent solids - the printed legend,
-        # thousands of glyphs and strokes - is folded one piece at a time.
-        # Folded whole it is a boolean between a 45000-face compound and every
-        # region in turn, and none of the cheap rejections can fire because the
-        # compound's own bounding box covers the entire board. Piece by piece,
-        # a glyph is a millimetre across: it lands in one region, is rejected by
-        # every other on its bounding box, and needs no boolean at all unless it
-        # straddles a bend. Only for fuse=False, which is what the legend uses -
-        # a board body is one solid and has nothing to gain here.
-        if not fuse:
-            children = []
-            it = TopoDS_Iterator(shape)
-            while it.More():
-                children.append(it.Value())
-                it.Next()
-            if len(children) > 1:
-                out = []
-                for child in children:
-                    done = self.apply(child, fuse=False, note=False, log=log)
-                    if done is not None and not _is_empty(done):
-                        out.append(done)
-                if not out:
-                    log("warning: folding cut the shape away entirely; left flat")
-                    return shape
-                builder = BRep_Builder()
-                compound = TopoDS_Compound()
-                builder.MakeCompound(compound)
-                for piece in out:
-                    builder.Add(compound, piece)
-                return compound
-
-        pieces: list[TopoDS_Shape] = []
-        for region in self.regions:
-            if region.kind != "panel":
-                continue
-            piece = _cut_to_region(shape, region.bounds, box, region)
-            if piece is None:
-                continue
-            if region.moved:
-                piece = BRepBuilderAPI_Transform(piece, region.trsf, True).Shape()
-            pieces.append(piece)
-
-        for strip in self.strips:
-            flat = _cut_to_region(shape, strip.bounds, box, strip)
-            if flat is None:
-                continue
-            bent = _revolve_strip(flat, strip)
-            how, why = "exact", []
-            if bent is None:
-                bent = _map_strip(flat, strip, why)
-                how = "wrapped"
-            if bent is None:
-                if note:
-                    self._note_build(strip.bend.name, "faceted", log,
-                                     why[0] if why else "")
-                for region in strip.facets:
-                    piece = _cut_to_region(shape, region.bounds, box, region)
-                    if piece is None:
-                        continue
-                    pieces.append(
-                        BRepBuilderAPI_Transform(piece, region.trsf, True).Shape())
-            else:
-                if note:
-                    self._note_build(strip.bend.name, how, log)
-                pieces.append(bent)
-
-        if not pieces:
-            log("warning: folding cut the shape away entirely; left flat")
-            return shape
-        if len(pieces) == 1:
-            return pieces[0]
-        if not fuse:
-            builder = BRep_Builder()
-            compound = TopoDS_Compound()
-            builder.MakeCompound(compound)
-            for piece in pieces:
-                builder.Add(compound, piece)
-            return compound
-
-        fused = _fuse_all(pieces, log)
-        # A fuse that hands back nothing is how a whole layer disappears without
-        # a word: one degenerate sliver among the pieces, and 173 mm3 of a flex
-        # arm's dielectric came back as a null shape. The pieces themselves are
-        # sound - they were cut and bent one at a time - so keep them as a
-        # compound rather than lose the part, and say what happened.
-        if fused is None or _is_empty(fused):
-            log(f"warning: the {len(pieces)} folded piece(s) of this shape "
-                f"could not be fused into one solid; keeping them as separate "
-                f"bodies so the material is not lost")
-            builder = BRep_Builder()
-            compound = TopoDS_Compound()
-            builder.MakeCompound(compound)
-            for piece in pieces:
-                builder.Add(compound, piece)
-            return compound
-        return fused
-
-    def summary(self) -> list[str]:
-        """One line per bend that did not build the same way throughout.
-
-        A bend where some pieces are exact and some are faceted is the shape of
-        a bend area that does not fit the board it is drawn on - which is a
-        DESIGN question, not a modelling one, and the log has to say so plainly.
-        Measured on a real board: a bend across a round stiffener built nine of
-        its sixteen layer pieces and faceted the other seven, and Allegro's own
-        3D canvas tears the same board in the same place.
-        """
-        lines = []
-        for bend in self.bends:
-            ways = {how: count for (name, how), count in self.tally.items()
-                    if name == bend.name}
-            if len(ways) < 2:
-                continue
-            spread = ", ".join(f"{count} {how}" for how, count in sorted(ways.items()))
-            lines.append(
-                f"  {bend.name}: built in more than one way ({spread}). A bend "
-                f"that only partly builds usually means its bend area does not "
-                f"match the board there - worth checking in Allegro.")
-        return lines
-
-    def _note_build(self, name: str, how: str, log: LogFn,
-                    detail: str = "") -> None:
-        """Say how a bend came out - once per bend per way, not once per layer.
-
-        A board is folded layer by layer, so this runs tens of times per build;
-        both outcomes are worth one line each and no more. Mixed is legitimate:
-        a stiffener that stops short inside the bend area is faceted while every
-        other layer of the same bend is exact.
-        """
-        self.tally[(name, how)] = self.tally.get((name, how), 0) + 1
-        if (name, how) in self.built:
-            return
-        self.built[(name, how)] = True
-        if how == "exact":
-            log(f"  {name}: true cylindrical surfaces, revolved")
-        elif how == "wrapped":
-            log(f"  {name}: true cylindrical surfaces, outline wrapped onto them")
-        else:
-            log(f"  {name}: faceted at {self.slice_angle:g} deg per slice"
-                + (f" - {detail}" if detail else ""))
-
-    def describe(self) -> list[str]:
-        lines = list(self.notes)
-        for bend, _, _, half in self.chain:
-            lines.append(
-                f"  {bend.name}: {bend.angle:.2f} deg over {2 * half:.3f} mm, "
-                f"inner radius {bend.radius:.3f} mm on the {bend.inner_side}"
-                + (f", order {bend.order}" if bend.order is not None else ""))
-        return lines
-
 
 # --------------------------------------------------------------------------- #
 # building the plan
@@ -1039,44 +775,3 @@ def _anchor_point(bends: list[Bend], normals: list[tuple[float, float]],
     return (0.0, 0.0)
 
 
-def _fuse_all(pieces: list[TopoDS_Shape], log: LogFn) -> TopoDS_Shape:
-    """Fuse in one multi-argument boolean, then merge what is coplanar.
-
-    The same shape of call as the stackup fuse, and for the same reason: pairwise
-    fusing is quadratic and this list is one panel plus a dozen slices per bend.
-    The unify pass is what removes the seams left where the board was cut into
-    regions - inside a panel those faces are coplanar and have no business
-    surviving.
-    """
-    from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain
-
-    arguments = TopTools_ListOfShape()
-    arguments.Append(pieces[0])
-    tools = TopTools_ListOfShape()
-    for piece in pieces[1:]:
-        tools.Append(piece)
-
-    op = BRepAlgoAPI_Fuse()
-    op.SetArguments(arguments)
-    op.SetTools(tools)
-    op.SetRunParallel(True)
-    op.Build()
-    if not op.IsDone():
-        log("warning: could not fuse the folded pieces; leaving them separate")
-        builder = BRep_Builder()
-        compound = TopoDS_Compound()
-        builder.MakeCompound(compound)
-        for piece in pieces:
-            builder.Add(compound, piece)
-        return compound
-
-    fused = op.Shape()
-    try:
-        unify = ShapeUpgrade_UnifySameDomain(fused, True, True, False)
-        unify.Build()
-        merged = unify.Shape()
-        if not merged.IsNull():
-            fused = merged
-    except Exception as exc:                       # never fatal - see _stackup_board
-        log(f"warning: could not merge the folded board's coplanar faces ({exc})")
-    return fused
