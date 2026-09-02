@@ -584,6 +584,7 @@ stepbuilder/
   settings.py    the settings pair: shipped defaults + the local file, merged key by key
   stackup.py     the stackup arithmetic: z from thickness, masks out, stackups on one datum, zone faces
   board.py       the board body: outline, zones, layers, cutouts, the rim faces
+  legend.py      the silkscreen legend, and the arc convention settled by the board's own areas
   reporting.py   the log and progress callbacks every module reports through
   bend/          folding a flex board along its bend areas (a package since round 72)
   colors.py      the board themes and rim options
@@ -1181,6 +1182,7 @@ stepbuilder/
   settings.py    пара настроек: штатные значения + локальный файл, слитые по ключам
   stackup.py     арифметика стека: z из толщин, маски долой, стеки на одном уровне, грани зон
   board.py       тело платы: контур, зоны, слои, вырезы, грани торца
+  legend.py      шелкография, и соглашение о дугах, установленное по площадям самой платы
   reporting.py   колбэки лога и прогресса, через которые отчитываются все модули
   bend/          сгибание гибкой платы по областям сгиба (с раунда 72 — пакет)
   colors.py      темы платы и варианты цвета торца
