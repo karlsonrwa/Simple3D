@@ -21,7 +21,7 @@ one settled.
 | Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
 | `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
-| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Step 0 done in round 71 (same day); nothing past it started |
+| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 72 (2026-09-02): Step 0, A1–A2, C1–C2, B1–B6, B7; each row says what it left. Next: A3–A8, then B5's five extractions, C3–C6, then D |
 | The golden corpus | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 cases; `--check` after every refactoring step. `tests/_support.py` is the one preamble every suite imports (round 71) |
 
 Three tools grew out of this project and now have repositories of their own.
@@ -35,7 +35,9 @@ Nothing here depends on them, and no copy of their code belongs in this tree:
 
 Three pieces ship: `makeVariant3dIntermediates.il` (reads Allegro, writes JSON),
 `simple3d.il` (menu item + launcher), `stepbuilder/` (Python + OpenCASCADE,
-writes the STEP). Plus `simple3d_config.json`, the shipped defaults, and the
+writes the STEP — since round 72 `core.py` plus `contour.py`, `errors.py`,
+`intermediate.py`, `settings.py` and the `bend/` package; `ARCHITECTURE.md`
+has the file table). Plus `simple3d_config.json`, the shipped defaults, and the
 gitignored `simple3d_config.local.json` beside it, which is the only one the
 window writes; both halves read the pair merged. **No absolute path is left in
 any tracked file** (round 59): where the tool is installed comes from the
@@ -2945,6 +2947,83 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-02 (round 72) — the first moves: contour, the intermediate, settings, the bend package
+
+Same day as rounds 70 and 71. 19 commits since round 69, each one plan
+step, each closed by `tests/run_all.py` green and `tools/golden.py --check`
+with no difference. Nothing a STEP file contains changed; `git diff` of the
+golden corpus says so seven times over, and the fold suite's 300 random
+layouts say it for the plan.
+
+### What was done
+
+- **A1** `stepbuilder/contour.py` (the contour primitives → wire / polygon,
+  the round-63 arc reading in one place) and `stepbuilder/errors.py`
+  (`StepBuilderError`, since three modules raise it). The `core`↔`bend`
+  cycle is gone; `import stepbuilder.bend` leaves `core` unloaded.
+- **A2** `stepbuilder/intermediate.py`: `Intermediate` parses a file once and
+  answers every question about it; `resolve_jobs` hands parsed intermediates
+  to the worker and the CLI batch, and `generate` accepts one. Measured: one
+  `json.loads` for resolve + generate. `RESERVED` lives there; the exporter's
+  NOTE and `test_variant_path.py` [8] point at it.
+- **C1–C2** `stepbuilder/settings.py`: the pair (merge / read / local path)
+  and the `gui` section as ONE table, `GUI_KEYS` — name, field, default,
+  load, save — walked by `load_gui_settings` (both migrations are the `load`
+  of the key that superseded them) and `save_gui_settings` (only what
+  differs). The window keeps one `var.set` per field. A 24-scenario snapshot
+  of what the window loads from eight settings files and the bytes it writes
+  back is byte-identical before and after. `tests/test_settings.py` is the
+  20th suite and the first place those rules are checked without Tk.
+- **B1–B6** `stepbuilder/bend/` is a package: `constants`, `info`, `regions`
+  (one `_Piece` mixin where `_Region` and `_Strip` had two copies of
+  `holds`), `pieces`, `cut`, `strip_revolve`, `strip_wrap` (moved whole; the
+  five extractions are still to do), `plan` (`FoldPlan`, and `plan_fold` with
+  its seven closures lifted into module functions with explicit arguments)
+  and `apply` (`apply_plan`, `_fuse_all`). `__init__` defines nothing.
+- **B7** the magic numbers named in `bend/constants.py`, each with the reason
+  that used to sit beside it (`FLAT_FRAME_MARGIN`, `BAND_REACH`, `SEAM_TOL`,
+  `SEAM_WARN`, `DOUBLE_CLAIM_WARN`, `CLAIM_GRID`, `SLIVER_RATIO`,
+  `FACE_POLY_PER_CURVE`, `DRAWN_AREA_TOL_*`, `SLICE_OVERLAP_MIN`, `SAMPLE_*`,
+  `LENGTH_PROBE_STEPS`, `SEW_TOL`); the literals replaced by the names.
+- **`tools/python_names.py`**, the fourth mechanical check in `run_all`:
+  pyflakes over the package, the tests and the tools, kept to undefined
+  names and redefinitions. See below for why it had to exist.
+
+Order, where it differs from the plan's: `cut.py` before `strip_revolve.py`
+(the revolve needs `_plane_face`), `strip_wrap.py` before `apply.py` (apply
+needs both constructions), so that no module ever imported from `__init__`.
+
+`python tests/run_all.py`: **25/25 in 186 s**. Every commit is on `main`,
+nothing pushed.
+
+### What to remember
+
+- **Moved code loses its names.** Twice today a function moved verbatim left
+  a name behind: `_open_wire_detail` out of `core`'s re-export while an error
+  path in `core` still called it (reached only by an open silk contour, so no
+  test), and `MIN_ANGLE` inside `_map_strip`, which swallows its failures
+  into "faceted" — the fold suite reported it one full run later, as a wrong
+  build. `pyflakes` finds both in a second. It is a check now, and the last
+  three moves were dry-run on a scratch copy of the package and pyflaked
+  BEFORE a suite run was spent on them.
+- **A `git add` of a path already gone from the index aborts the chain.**
+  `git add -A stepbuilder/bend.py stepbuilder/bend/ && git commit` — the
+  first path had been staged as deleted earlier, `git add` said "pathspec did
+  not match" and the `&&` never reached the commit; the next step's edits
+  then landed on top of an uncommitted one. Recovered from the index, which
+  still held the earlier stage. Check `git log -1` after every commit
+  command, and never chain a `git add` of a deleted path.
+- **A full run beside other work takes twice as long**, and `run_all`'s
+  output is buffered until it exits — an empty result file after seven
+  minutes was not a hang, it was contention with the dry runs. Look at the
+  test-output folders' timestamps before deciding anything is stuck.
+- **`demo/ap-214/demo.json` has no format marker** (finding 15 in
+  ARCHITECTURE.md): the window and the worker refuse the repository's own
+  demo board; only `generate()` called directly builds it. Not changed — the
+  marker is Plan E's business.
+- **`settings.py` imports OCP** for three default numbers (G5 in the plans
+  names the fix). The merge and the reader above the table need neither.
 
 ## Update 2026-09-02 (round 71) — Step 0: the net before the first move
 

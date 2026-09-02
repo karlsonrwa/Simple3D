@@ -11,6 +11,27 @@ to use the tool.
 
 ---
 
+- **2026-09-02** — **The Python half is in pieces, deliberately.** The two
+  large files behind the window — `core.py` and `bend.py` — have started to
+  come apart along the lines `REFACTORING_PLANS.md` drew: the contour
+  primitives, the one exception, the intermediate read once per file, the
+  settings pair and the window's key table are modules of their own, and
+  `bend/` is a package of nine. Every step was a verbatim move closed by the
+  full suite and by the golden corpus, so nothing the tool writes has changed.
+  Two things did: the window now parses each intermediate once instead of
+  three or four times, and a fourth mechanical check (`tools/python_names.py`,
+  pyflakes) catches a moved function that left a name behind — it caught two.
+  / **Половина на Python разобрана на части, намеренно.** Два больших файла
+  за окном — `core.py` и `bend.py` — начали расходиться по линиям, которые
+  провёл `REFACTORING_PLANS.md`: примитивы контура, единственное исключение,
+  промежуточный файл, читаемый один раз, пара настроек и таблица ключей окна
+  стали отдельными модулями, а `bend/` — пакетом из девяти. Каждый шаг —
+  дословный перенос, закрытый полным набором тестов и золотым корпусом, так
+  что то, что инструмент пишет, не изменилось. Изменились две вещи: окно
+  разбирает каждый промежуточный файл один раз вместо трёх-четырёх, и
+  четвёртая механическая проверка (`tools/python_names.py`, pyflakes) ловит
+  перенесённую функцию, оставившую имя позади — она поймала две.
+
 - **2026-09-02** — **The test net can fail now.** The one test that compares
   the port against the original C++ exporter had printed MATCH or DRIFT and
   exited 0 either way since the day it was written; it now fails on a volume
