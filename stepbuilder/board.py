@@ -112,28 +112,30 @@ def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
     return common.Shape()
 
 
-def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
-                           shift: float,
-                           log: LogFn = _noop_log) -> list[tuple[str, dict, TopoDS_Shape]]:
-    """(zone name, layer dict, solid) for every layer of every zone, NOT fused.
+def layer_solids(stackups: dict, zones: list[dict], shift: float,
+                 log: LogFn = _noop_log,
+                 cutouts: list | None = None) -> list[tuple[str, dict, TopoDS_Shape]]:
+    """(zone name, layer dict, solid) for every layer of every zone that has
+    material there - THE walk over the stackups, shared by the fused board
+    and the inspect / layer-coloured builds (round 73, plan A4).
 
-    The LAYER ITSELF, not just its name: the layer-colored build needs its
-    type and function to decide what kind of layer it is.
+    Each layer is the material `_layer_region` finds in its zone, extruded
+    to its own thickness at its own height. A layer with no material in a
+    zone is skipped with a line in the log, not an error: a stiffener that
+    is only on the flex arms intersects the rigid zone in nothing at all.
 
-    The inspection build. Fusing is what the ordinary path does and what makes
-    the file a quarter of the size, but it also welds the stack into one
-    surface you cannot take apart by eye. Here each layer stays its own part,
-    keeps its own name and gets its own color, so a stackup can be checked
-    against the cross-section editor layer by layer.
-
-    Cutouts are applied to each layer separately, so holes stay visible.
+    *cutouts* - the board's cutout contours - are cut from each layer solid
+    separately when given, so holes stay visible in a build that keeps the
+    layers apart; the fused build cuts them once from the whole body instead
+    and passes nothing here.
     """
     parts: list[tuple[str, dict, TopoDS_Shape]] = []
-    cutouts = board_cutouts(pcb.get("edges") or [], log)
 
     for zone in zones:
         stackup = stackups.get(str(zone["stackup"]))
         if not stackup:
+            log(f"warning: zone {zone['name']} names an unknown stackup "
+                f"{zone['stackup']!r}, skipped")
             continue
         for layer in stackup.get("layers") or []:
             height = float(layer["z_top"]) - float(layer["z_bottom"])
@@ -183,6 +185,27 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
                     continue
             parts.append((str(zone["name"]), layer, solid))
 
+    return parts
+
+
+def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
+                           shift: float,
+                           log: LogFn = _noop_log) -> list[tuple[str, dict, TopoDS_Shape]]:
+    """(zone name, layer dict, solid) for every layer of every zone, NOT fused.
+
+    The LAYER ITSELF, not just its name: the layer-colored build needs its
+    type and function to decide what kind of layer it is.
+
+    The inspection build. Fusing is what the ordinary path does and what makes
+    the file a quarter of the size, but it also welds the stack into one
+    surface you cannot take apart by eye. Here each layer stays its own part,
+    keeps its own name and gets its own color, so a stackup can be checked
+    against the cross-section editor layer by layer.
+
+    Cutouts are applied to each layer separately, so holes stay visible.
+    """
+    cutouts = board_cutouts(pcb.get("edges") or [], log)
+    parts = layer_solids(stackups, zones, shift, log, cutouts)
     if not parts:
         raise StepBuilderError("No stackup layer produced a solid")
     return parts
@@ -365,26 +388,11 @@ def _stackup_board(stackups: dict, zones: list[dict], shift: float,
     opposite of the silkscreen legend, where fusing thousands of barely
     touching prisms came to 154%. One boolean over the whole list rather than
     pairwise, which is closer to linear.
-    """
-    solids = []
-    for zone in zones:
-        stackup = stackups.get(str(zone["stackup"]))
-        if not stackup:
-            log(f"warning: zone {zone['name']} names an unknown stackup "
-                f"{zone['stackup']!r}, skipped")
-            continue
-        for layer in stackup.get("layers") or []:
-            height = float(layer["z_top"]) - float(layer["z_bottom"])
-            if height <= 0:
-                continue
-            region = _layer_region(layer, zone["contour"],
-                                   float(layer["z_top"]) + shift, log)
-            if region is None:
-                continue
-            solid = BRepPrimAPI_MakePrism(region, gp_Vec(0, 0, -height)).Shape()
-            if not solid.IsNull():
-                solids.append(solid)
 
+    The cutouts are not applied here: make_board_geometry cuts them from the
+    fused body once, past both faces.
+    """
+    solids = [solid for _, _, solid in layer_solids(stackups, zones, shift, log)]
     if not solids:
         raise StepBuilderError("No stackup layer produced a solid")
     log(f"Building board from {len(solids)} layer solid(s)")

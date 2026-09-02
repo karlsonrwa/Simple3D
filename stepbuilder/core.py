@@ -48,7 +48,7 @@ from .contour import (  # noqa: F401 - re-exported
 # as core.make_board_geometry and friends.
 from .board import (  # noqa: F401 - re-exported
     _cut_out, _layer_region, _rim_faces, _shape_face, _stackup_board, _zone_solid,
-    board_cutouts, fuse_and_unify, fuse_keeping_faces, has_solid,
+    board_cutouts, fuse_and_unify, fuse_keeping_faces, has_solid, layer_solids,
     make_board_geometry, make_board_layer_parts,
 )
 from .errors import StepBuilderError  # noqa: F401 - re-exported
