@@ -43,6 +43,7 @@ JOBS = [
     ("JSON quoting",                            TESTS / "test_quote.py", False),
     ("drill offset: the hole is not the pad",   TESTS / "test_drill_offset.py", False),
     ("launcher command shape",                  TESTS / "test_launch_cmd.py", False),
+    ("launcher: one parser, the --gui mode",    TESTS / "test_launcher.py", False),
     ("where Variants.lst is looked for",        TESTS / "test_variant_path.py", False),
     ("settings: defaults + the local file",     TESTS / "test_config_merge.py", False),
     ("settings: the gui section, no window",    TESTS / "test_settings.py", False),

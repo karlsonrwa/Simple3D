@@ -1,10 +1,13 @@
 """Entry point.
 
     python -m stepbuilder                          -> opens the GUI
+    python -m stepbuilder --gui [flags]            -> the GUI, prefilled (the Allegro launcher)
     python -m stepbuilder STEP_DIR JSON OUT_DIR    -> headless, for shell() from Allegro
 
 The headless form accepts a single JSON or, with --batch, a directory of them
-(one per variant), building a STEP for each.
+(one per variant), building a STEP for each. One parser serves both forms
+(round 74, plan C6): a flag the launcher passes that the parser does not know
+is an error, not something silently dropped.
 """
 
 from __future__ import annotations
@@ -35,11 +38,12 @@ def _split_dirs(values) -> list[str]:
     return out
 
 
-def _gui_prefill(argv: list[str]) -> int:
+def _open_window(args: argparse.Namespace) -> int:
     """Open the GUI with paths and options prefilled from the Allegro launcher.
 
-    Recognised flags, all optional and all overriding what the config
-    remembered, for this run only:
+    *args* is what build_parser() read. The flags the window takes, all
+    optional and all overriding what the config remembered, for this run
+    only (the rest of the command line applies to a headless build):
 
       --config FILE        settings file to read instead of the default
       --step-dir DIR       repeatable; each may be a ';'-separated list
@@ -57,34 +61,16 @@ def _gui_prefill(argv: list[str]) -> int:
     The shipped launcher passes only --config, --json-dir, --output-dir,
     --brd-name and --dated-name; the rest exist for driving the window by hand.
     """
-    p = argparse.ArgumentParser(prog="stepbuilder --gui", add_help=False)
-    p.add_argument("--gui", action="store_true")
-    p.add_argument("--step-dir", action="append", default=[])
-    p.add_argument("--json-dir", default="")
-    p.add_argument("--json-file", default="")
-    p.add_argument("--output-dir", default="")
-    p.add_argument("--brd-name", default="")
-    p.add_argument("--dated-name", action="store_true")
-    p.add_argument("--color", default="")
-    p.add_argument("--silk-color", default="")
-    p.add_argument("--no-silkscreen", action="store_true")
-    p.add_argument("--flat-silkscreen", action="store_true")
-    p.add_argument("--no-silk-top", action="store_true")
-    p.add_argument("--no-silk-bottom", action="store_true")
-    p.add_argument("--config", default="")
-    args, _ = p.parse_known_args(argv)
-
     from .gui import StepBuilderApp
 
     try:
         app = StepBuilderApp(Path(args.config) if args.config else None)
-        if args.step_dir:
+        if args.extra_step_dirs:
             # Repeatable, and each value may itself be a ;-separated list, so a
             # launcher can pass a whole search path in one argument.
-            app.set_step_dirs(_split_dirs(args.step_dir))
+            app.set_step_dirs(_split_dirs(args.extra_step_dirs))
         if args.color:
-            app.theme.set(args.color)
-            app._update_swatch()
+            app.set_theme(args.color)
         if args.silk_color:
             app.silk_color.set(args.silk_color)
         # Launch flags override what the config remembered, for this run only.
@@ -96,8 +82,8 @@ def _gui_prefill(argv: list[str]) -> int:
             app.silk_flat.set(True)
         app.prefill_jobs(
             json_dir=args.json_dir or None,
-            json_file=args.json_file or None,
-            output_dir=args.output_dir or None,
+            json_file=args.gui_json_file or None,
+            output_dir=args.gui_output_dir or None,
             brd_name=args.brd_name or None,
             dated_name=args.dated_name,
         )
@@ -130,26 +116,23 @@ def _gui_prefill(argv: list[str]) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
-
-    if not argv:
-        from .gui import main as gui_main
-
-        gui_main()
-        return 0
-
-    # --gui: open the window with paths prefilled (used by the Allegro launcher).
-    if "--gui" in argv:
-        return _gui_prefill(argv)
-
+def build_parser() -> argparse.ArgumentParser:
+    """The one command line: headless by default, the window with --gui."""
     parser = argparse.ArgumentParser(
         prog="stepbuilder",
         description="Build a STEP assembly from an Allegro intermediate JSON file. "
         "Run without arguments to open the GUI.",
     )
     parser.add_argument(
-        "step_dir",
+        "--gui", action="store_true",
+        help="open the window instead of building; the positionals are then "
+             "not used. What prefills the window, for this run only: the "
+             "window-only flags below, then --step-dir, --brd-name, "
+             "--dated-name, --color, --silk-color and the silkscreen switches. "
+             "This is the form the Allegro launcher uses",
+    )
+    parser.add_argument(
+        "step_dir", nargs="?",
         help="directory containing the footprint STEP files; may be a ';'-separated "
              "list, and --step-dir adds more. Searched in order, first match wins",
     )
@@ -163,8 +146,10 @@ def main(argv: list[str] | None = None) -> int:
              "repeatable. The first folder holding a given model file wins, so "
              "a project-local folder listed first overrides the shared library",
     )
-    parser.add_argument("json_file", help="intermediate .json (or a directory, with --batch)")
-    parser.add_argument("output_dir", help="directory to write the .step assembly into")
+    parser.add_argument("json_file", nargs="?",
+                        help="intermediate .json (or a directory, with --batch)")
+    parser.add_argument("output_dir", nargs="?",
+                        help="directory to write the .step assembly into")
     parser.add_argument(
         "--batch",
         action="store_true",
@@ -228,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
              "polygon, so this needs no re-export",
     )
     parser.add_argument(
-        "--silk-color", default=DEFAULT_SILK,
+        "--silk-color", default=None,
         help=f"silkscreen color: {' or '.join(SILK_ORDER)} (default: {DEFAULT_SILK})",
     )
     # MFRPN DISABLED (property attachment unreliable); kept for future:
@@ -279,7 +264,42 @@ def main(argv: list[str] | None = None) -> int:
         help="treat colors as linear RGB, reproducing the original C++ behaviour",
     )
     parser.add_argument("--quiet", action="store_true", help="suppress progress output")
+    # dest is explicit on the two that share a name with a positional: a
+    # positional with nargs="?" writes its default LAST and would wipe the
+    # flag's value (test_launcher [1] caught it on the dry run).
+    window = parser.add_argument_group("window only (with --gui)")
+    window.add_argument("--config", default="", metavar="FILE",
+                        help="settings file to read instead of the default")
+    window.add_argument("--json-dir", default="", metavar="DIR",
+                        help="a folder of variant JSONs, all built on Generate")
+    window.add_argument("--json-file", default="", metavar="FILE", dest="gui_json_file",
+                        help="a single intermediate, prefilled")
+    window.add_argument("--output-dir", default="", metavar="DIR", dest="gui_output_dir",
+                        help="where the .step files go")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+
+    if not argv:
+        from .gui import main as gui_main
+
+        gui_main()
+        return 0
+
+    parser = build_parser()
     args = parser.parse_args(argv)
+    if args.gui:
+        # The window with paths prefilled (the Allegro launcher). The
+        # positionals are the headless form's; here they would be a mistake.
+        if args.step_dir or args.json_file or args.output_dir:
+            parser.error("--gui takes no positional arguments; use --step-dir, "
+                         "--json-dir or --json-file, and --output-dir")
+        return _open_window(args)
+    if not (args.step_dir and args.json_file and args.output_dir):
+        parser.error("step_dir, json_file and output_dir are required "
+                     "(or --gui to open the window)")
 
     def log(message: str) -> None:
         if not args.quiet:
@@ -287,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
 
     board_color = resolve_board_color(args.color) if args.color else None
     rim_color = resolve_board_color(args.rim_color) if args.rim_color else None
-    silk_color = resolve_silk_color(args.silk_color) if args.silk_color else None
+    silk_color = resolve_silk_color(args.silk_color or DEFAULT_SILK)
 
     fold_anchor = None
     if args.fold_anchor:

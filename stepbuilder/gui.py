@@ -622,6 +622,12 @@ class StepBuilderApp(tk.Tk):
         rgb = BOARD_THEMES.get(self.theme.get(), (128, 128, 128))
         self._swatch.configure(bg="#%02x%02x%02x" % rgb)
 
+    def set_theme(self, name: str) -> None:
+        """Pick a board colour theme by name, swatch included - what the
+        launcher's --color does (round 74, C6)."""
+        self.theme.set(name)
+        self._update_swatch()
+
     def _update_rim_swatch(self) -> None:
         # The rim color paints the side walls a different color from the faces,
         # which only means anything when the board IS one uniformly colored
