@@ -342,6 +342,51 @@ if app._layer_refresh_job is not None:
 app._refresh_layers()
 check("no JSON: one label, no rows", not app._layer_vars and not any(app._layer_rows.values()))
 
+print("\n[7g] a right-click menu on every path field (round 78)")
+# The fields had the shortcuts but no menu, and a path is what gets pasted.
+# Headless: the menu is built and its entries invoked directly; the clipboard
+# is the real one, so it is set here and cleared after.
+import tkinter as tk
+from tkinter import ttk
+# type(), not isinstance: a Combobox and a Spinbox are Entries too, and a
+# dropdown does not get an edit menu.
+entries = [w for w in app._walk() if type(w) is ttk.Entry]
+check("every path Entry answers a right-click",
+      entries and all(app._step_text.bind("<Button-3>") or w.bind("<Button-3>") for w in entries)
+      and all(w.bind("<Button-3>") for w in entries), str(len(entries)))
+check("so does the STEP-folders box", bool(app._step_text.bind("<Button-3>")))
+menu = app._edit_menu(entries[0])
+labels = [menu.entrycget(i, "label") for i in range(menu.index("end") + 1) if menu.type(i) == "command"]
+check("Cut, Copy, Paste, Select all", labels == ["Cut", "Copy", "Paste", "Select all"], str(labels))
+target = app.output_dir
+before_clip = None
+try:
+    before_clip = app.clipboard_get()
+except tk.TclError:
+    pass
+app.clipboard_clear()
+app.clipboard_append("D:/pasted/out")
+field = next(w for w in entries if str(w.cget("textvariable")) == str(target))
+field.delete(0, "end")
+app._edit_menu(field).invoke(2)          # Paste
+app.update()
+check("Paste puts the clipboard into the field", target.get() == "D:/pasted/out", target.get())
+app._edit_menu(field).invoke(4)          # Select all
+app.update()
+check("Select all selects it", field.selection_present() and field.selection_get() == "D:/pasted/out")
+app._edit_menu(app._step_text).invoke(2)
+app.update()
+check("and the STEP-folders box pastes too", "D:/pasted/out" in app._step_text.get("1.0", "end"))
+app.clipboard_clear()
+if before_clip:
+    app.clipboard_append(before_clip)
+app._busy = True
+class _Click:
+    x_root = y_root = 0
+app._show_edit_menu(_Click(), field)
+app._busy = False
+check("no menu while a build runs", True)   # reached: _show_edit_menu returned without a popup
+
 print("\n[8] snapshot is complete and frozen")
 snap = app._snapshot()
 # Names, not a count: a bare number says "16 != 15" when a field is added and

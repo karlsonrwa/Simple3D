@@ -2952,6 +2952,89 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-09-03 (round 78) — three questions from the user, answered by measuring
+
+The user asked, after Plan D: has the STEP build become slower with all the
+rewriting; why is there no right-click paste in the path fields; and what is
+the trouble with Cyrillic paths - is it fixable or Allegro's limit. Each was
+measured before anything was changed.
+
+### Is it slower?
+
+The Python of round 69 (`eff1079`, before Step 0) and HEAD, the same three
+intermediates from the corpus, two builds each, wall clock, nothing else
+running:
+
+| board | round 69 (`eff1079`) | now | STEP |
+|---|---|---|---|
+| `cadence_demo.json` | 114 s, 109 s | 109 s, 113 s | identical (volume 22426.6327, 2258 solids, 1928942 entities) |
+| `flex3-a0.json` | 11 s, 12 s | 11 s, 11 s | identical (volume 292.4545, 1 solids, 5860 entities) |
+| `my_test_board2.json` | 3 s, 3 s | 3 s, 3 s | identical (volume 1089.4428, 81 solids, 55972 entities) |
+
+The same, within the noise of a run - on the heavy one, `cadence_demo` (2.7 MB
+of silkscreen, 2258 solids, ~110 s), the two trees trade places between
+the two runs - and the STEP is identical to the entity. Which is what verbatim
+moves should give: Plans A–D changed where the code lives, not what it does.
+Nothing to recover here; what the user felt was most likely a heavier board
+or a busier machine, and `cadence_demo` shows what a legend of 2.7 MB costs.
+
+### Cyrillic, measured on Allegro 25.1 headless
+
+- A board in a Cyrillic FOLDER (`Плата №1/проект/board.brd`) opens and
+  exports; so does an export INTO a Cyrillic folder. The user remembered
+  boards from such paths never opening - that was true of earlier releases
+  ("did 25.1 finally fix paths?"); 25.1 opens the folder.
+- A board whose FILE NAME is Cyrillic (`плата-а0.brd`) is a different story:
+  Allegro comes up on an empty design - the export writes a 1.2 KB JSON with
+  no outline, no zones, one stackup - and then hangs at `exit`. That is the
+  limit that remains, and it is Allegro's. The menu command's
+  `s3dRealDesign` guard is what tells the user in a live session.
+- A STEP library in a Cyrillic folder (`Плата №1/библиотека`): the Python
+  side finds and loads the models (the demo board built with its five
+  components), and writes the STEP into a Cyrillic folder. OCCT converts
+  UTF-8 file names on Windows; nothing to fix there.
+- The real defect was ours: SKILL writes text as the bytes it holds - the
+  Windows code page, cp1251 here - and the reader asked for UTF-8 alone. A
+  board or a model file named in Cyrillic (`"name": "плата-а0"`,
+  `"step_name": "конденсатор.stp"`) gave a JSON the reader did not refuse but
+  CRASHED on: `UnicodeDecodeError` is a `ValueError`, and neither
+  `Intermediate.read` nor `probe` caught it, so the window's job list died
+  with a traceback. `read_json_text` now reads UTF-8 (BOM or not) first and
+  the ANSI code page (`mbcs`) second; the `Intermediate` carries which, and
+  the build log says so. `test_variant_path` [10].
+
+### What was done
+
+- **The reader** as above.
+- **`path_notes`**: a warning line at the top of the build log for every
+  path - STEP folders, JSON, output - with a character outside ASCII, in the
+  window and the CLI alike. Said, not refused: the user's suggestion was to
+  forbid such paths or warn honestly that nothing will come of them, and the
+  measurement says the Python half works with them; what cannot be promised
+  is Allegro's half, and the line says so. `test_variant_path` [11].
+- **A right-click menu** - Cut, Copy, Paste, Select all - on every path
+  Entry (through `_path_row`) and on the STEP-folders box, built fresh per
+  click so a frozen window (a build running) simply shows none. `test_gui`
+  [7g], with the real clipboard: `type(w) is ttk.Entry`, because a Combobox
+  is an Entry too and a dropdown gets no edit menu.
+
+`tests/run_all.py`: 27/27 in 188 s; `golden.py --check` no difference.
+
+### What to remember
+
+- **"Is it slower?" is a number, not a feeling.** The answer took one script
+  and twenty minutes; the old tree came out of `git archive` into scratch
+  (the same move as round 71's 5054-vs-5038). The first two attempts
+  measured nothing - the old tree had no `tests/_support.py` to archive, and
+  relative JSON paths resolved against the old tree's cwd - and each was
+  visible only because the script printed the build's failure instead of a
+  time.
+- **A file the reader cannot decode must be an error, not an exception.**
+  `UnicodeDecodeError` is not an `OSError` and not a `JSONDecodeError`; a
+  `try` that names those two lets it through to the top.
+- **Allegro's limit is the file NAME, not the folder, on 25.1.** Write the
+  distinction down where "Cyrillic paths do not work" used to be.
+
 ## Update 2026-09-03 (round 77) — Plan D6: the exporter in nine files, one load() line
 
 The 4131-line `makeVariant3dIntermediates.il` is nine parts under `skill/`

@@ -574,6 +574,7 @@ class StepBuilderApp(tk.Tk):
         box.columnconfigure(0, weight=1)
         self._step_text = tk.Text(box, height=3, wrap="none", undo=True)
         self._step_text.grid(row=0, column=0, sticky="ew")
+        self._attach_edit_menu(self._step_text)
         # Flush whatever _load_config buffered before this widget existed.
         self.set_step_dirs(self._pending_step_dirs)
         bar = ttk.Scrollbar(box, command=self._step_text.yview)
@@ -611,12 +612,46 @@ class StepBuilderApp(tk.Tk):
 
     def _path_row(self, parent, row: int, label: str, var: tk.StringVar, command) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=3)
-        ttk.Entry(parent, textvariable=var).grid(
-            row=row, column=1, sticky="ew", padx=6, pady=3
-        )
+        entry = ttk.Entry(parent, textvariable=var)
+        entry.grid(row=row, column=1, sticky="ew", padx=6, pady=3)
+        self._attach_edit_menu(entry)
         ttk.Button(parent, text="Browse...", command=command).grid(
             row=row, column=2, pady=3
         )
+
+    # ---- the right-click menu of a text field (round 78) ------------------ #
+
+    EDIT_MENU = (("Cut", "<<Cut>>"), ("Copy", "<<Copy>>"), ("Paste", "<<Paste>>"),
+                 (None, None), ("Select all", "<<SelectAll>>"))
+
+    def _attach_edit_menu(self, widget) -> None:
+        """Right-click: Cut / Copy / Paste / Select all. Tk's Entry and Text
+        know the keyboard shortcuts but offer no menu of their own on Windows,
+        and a path is the one thing everyone pastes."""
+        widget.bind("<Button-3>", lambda event, w=widget: self._show_edit_menu(event, w))
+
+    def _edit_menu(self, widget) -> tk.Menu:
+        """The menu for *widget*, built fresh: it is four entries, and a menu
+        that outlives the click would have to be told when the field is frozen."""
+        menu = tk.Menu(self, tearoff=0)
+        for label, event in self.EDIT_MENU:
+            if label is None:
+                menu.add_separator()
+                continue
+            menu.add_command(label=label,
+                             command=lambda w=widget, e=event: (w.focus_set(), w.event_generate(e)))
+        return menu
+
+    def _show_edit_menu(self, event, widget) -> None:
+        # A frozen field (a build is running) takes no edits, so no menu either;
+        # the same rule the swatches follow.
+        if self._busy:
+            return
+        menu = self._edit_menu(widget)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
 
     def _update_swatch(self) -> None:
         rgb = BOARD_THEMES.get(self.theme.get(), (128, 128, 128))

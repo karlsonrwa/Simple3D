@@ -18,6 +18,7 @@ from pathlib import Path
 
 from . import core
 from .build import BOARD_MODES, BuildOptions
+from .intermediate import path_notes
 from .colors import DEFAULT_SILK, SILK_ORDER, resolve_board_color, resolve_silk_color
 
 
@@ -328,6 +329,8 @@ def main(argv: list[str] | None = None) -> int:
 
     json_path = Path(args.json_file)
     output_dir = Path(args.output_dir)
+    for note in path_notes(step_dirs, json_path, output_dir):
+        log(note)
 
     if args.batch:
         jsons, ignored = core.resolve_jobs(json_path)    # parsed once, built below

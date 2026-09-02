@@ -492,5 +492,42 @@ check("the source copies the list instead of aliasing it",
 code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith(";"))
 check("the alias is gone", not re.search(r"cuts\s*=\s*cadr\(\s*edgeCuts\s*\)", code))
 
+print("\n[10] a name Allegro wrote in the Windows code page is read, not crashed on")
+# SKILL writes text as the bytes it holds - on a Russian Windows, cp1251 - and
+# the reader asked for UTF-8 alone. A board named in Cyrillic (Allegro 25.1
+# opens one from a Cyrillic FOLDER; the name itself still trips it at exit)
+# or a model file named in Cyrillic produced a JSON the reader crashed on:
+# UnicodeDecodeError is a ValueError, and neither read nor probe caught it,
+# so the window's job list died with a traceback (round 78).
+from stepbuilder.intermediate import ANSI_CODEPAGE, read_json_text
+CYR = OUT / "cyrillic"
+CYR.mkdir(parents=True, exist_ok=True)
+name = "плата-а0"
+ansi = ('{"format": "simple3d", "format_version": 8, "name": "' + name
+        + '", "pcb": {}, "R1": {"step_mapping": {"step_name": "конденсатор.stp"}}}').encode("cp1251")
+(CYR / "ansi.json").write_bytes(ansi)
+(CYR / "utf8.json").write_text(ansi.decode("cp1251"), encoding="utf-8")
+(CYR / "bom.json").write_bytes(b"\xef\xbb\xbf" + ansi.decode("cp1251").encode("utf-8"))
+read = Intermediate.read(CYR / "ansi.json")
+check("the ANSI file reads, and the name comes back as the Russian string",
+      read.data["name"] == name and read.data["R1"]["step_mapping"]["step_name"] == "конденсатор.stp", read.data["name"])
+check("and the intermediate says which code page it was", read.encoding == ANSI_CODEPAGE, read.encoding)
+check("a UTF-8 file reads as before, and says so",
+      Intermediate.read(CYR / "utf8.json").data["name"] == name and Intermediate.read(CYR / "utf8.json").encoding == "utf-8")
+check("a UTF-8 file with a BOM too", Intermediate.read(CYR / "bom.json").data["name"] == name)
+check("probe does not crash on it either", Intermediate.probe(CYR / "ansi.json") is not None
+      and Intermediate.probe(CYR / "ansi.json").data["name"] == name)
+check("the folder scan keeps the file", any(j.path.name == "ansi.json" for j in resolve_jobs(CYR)[0]))
+text, enc = read_json_text(CYR / "ansi.json")
+check("read_json_text names the fallback", enc == ANSI_CODEPAGE and name in text)
+
+print("\n[11] a path outside ASCII is said, not refused")
+from stepbuilder.intermediate import path_notes
+check("ASCII paths: nothing to say", path_notes(["D:/lib", "D:/lib2"], "D:/x.json", "D:/out") == [])
+notes = path_notes(["D:/lib", "D:/Плата №1/библиотека"], "D:/Плата №1/cad/board.json", "D:/out")
+check("one line per path with such characters, naming it",
+      len(notes) == 2 and "библиотека" in notes[0] and "STEP folder" in notes[0] and "JSON" in notes[1], str(notes))
+check("a warning, so the window colours it", all(n.startswith("warning:") for n in notes))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import core
+from .intermediate import path_notes
 from .build import BuildOptions
 
 
@@ -101,6 +102,15 @@ def _run(settings: BuildSettings, channel) -> None:
     # checkbox and the CLI's --no-full-board alike.
     jobs = core.batch_jobs(jobs, settings.build_full_board,
                            lambda m: channel.put(("log", m)))
+
+    # Said before the first build, so it is at the top of the log (round 78).
+    for note in path_notes(settings.step_dirs, field, settings.output_dir):
+        channel.put(("log", note))
+    for inter in jobs:
+        if inter.encoding != "utf-8":
+            channel.put(("log", f"note: {inter.path.name} is in the Windows code page "
+                                f"({inter.encoding}) - Allegro writes a name that is not ASCII "
+                                f"as is; read as such."))
 
     total_placed = 0
     outputs: list[str] = []

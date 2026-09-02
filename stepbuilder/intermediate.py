@@ -21,6 +21,8 @@ CLI must apply the same one.
 from __future__ import annotations
 
 import json
+import locale
+import sys
 from pathlib import Path
 from typing import Callable
 
@@ -38,14 +40,62 @@ RESERVED = ("name", "pcb", "format", "format_version", "silkscreen",
             "embedded_models", "zones", "stackups", "bends", "full_board")
 
 
+# What Allegro's SKILL writes when a name is not ASCII: the bytes it holds,
+# which on Windows is the ANSI code page (cp1251 on a Russian system). SKILL
+# has no way to convert them (there is no character-to-code call at all), so
+# the reader meets them here. "mbcs" is Python's name for that code page.
+ANSI_CODEPAGE = "mbcs" if sys.platform == "win32" else locale.getpreferredencoding(False)
+
+
+def read_json_text(path: Path) -> tuple[str, str]:
+    """The file as text, and the encoding it was: UTF-8 (with or without a
+    BOM) first, the Windows ANSI code page second - a board, a model file or a
+    layer named in Cyrillic reaches the JSON as ANSI bytes (round 78).
+
+    Raises UnicodeDecodeError when neither reads it, and OSError as read_bytes
+    does.
+    """
+    raw = path.read_bytes()
+    try:
+        return raw.decode("utf-8-sig"), "utf-8"
+    except UnicodeDecodeError:
+        return raw.decode(ANSI_CODEPAGE), ANSI_CODEPAGE
+
+
+def path_notes(step_dirs, json_path, output_dir) -> list[str]:
+    """One warning line per path with a character outside ASCII (Cyrillic,
+    say), for the head of a build's log - the window's and the CLI's alike.
+
+    Said rather than refused: the Python side reads a STEP library and writes
+    a STEP from such a folder (measured in round 78 on this machine), and the
+    reader now takes a JSON in the Windows code page. What cannot be promised
+    is Allegro's half - it will not open a board from a Cyrillic folder on the
+    releases before 25.1, and a board NAMED in Cyrillic still trips it - so
+    the first thing to check when a model comes out missing is named here.
+    """
+    notes = []
+    for label, path in ([("STEP folder", d) for d in step_dirs]
+                        + [("JSON", json_path), ("output folder", output_dir)]):
+        text = str(path)
+        if text and not text.isascii():
+            notes.append(f"warning: {label} {text} has characters outside ASCII. The build "
+                         f"reads and writes such a path; Allegro's own half may not (a board "
+                         f"named that way, a library it maps models from) - if a model comes "
+                         f"out missing, start here.")
+    return notes
+
+
 class Intermediate:
     """One parsed intermediate: its path and the JSON object as read."""
 
-    __slots__ = ("path", "data")
+    __slots__ = ("path", "data", "encoding")
 
-    def __init__(self, path: Path, data: dict) -> None:
+    def __init__(self, path: Path, data: dict, encoding: str = "utf-8") -> None:
         self.path = Path(path)
         self.data = data
+        # "utf-8", or the Windows ANSI code page the file turned out to be in
+        # (see read_json_text) - so a build can say which it read.
+        self.encoding = encoding
 
     @classmethod
     def read(cls, path: str | Path) -> "Intermediate":
@@ -54,12 +104,15 @@ class Intermediate:
         if not path.is_file():
             raise StepBuilderError(f"Input file does not exist: {path}")
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            text, encoding = read_json_text(path)
+            data = json.loads(text)
+        except UnicodeDecodeError as exc:
+            raise StepBuilderError(f"{path.name} is neither UTF-8 nor the Windows code page: {exc}") from exc
         except json.JSONDecodeError as exc:
             raise StepBuilderError(f"{path.name} is not valid JSON: {exc}") from exc
         if not isinstance(data, dict):
             raise StepBuilderError(f"{path.name} does not hold a JSON object")
-        return cls(path, data)
+        return cls(path, data, encoding)
 
     @classmethod
     def probe(cls, path: str | Path) -> "Intermediate | None":
@@ -69,12 +122,13 @@ class Intermediate:
         a JSON that is not an object are all "not one of ours", not errors.
         """
         try:
-            data = json.loads(Path(path).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            text, encoding = read_json_text(Path(path))
+            data = json.loads(text)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             return None
         if not isinstance(data, dict):
             return None
-        return cls(path, data)
+        return cls(path, data, encoding)
 
     @property
     def is_simple3d(self) -> bool:

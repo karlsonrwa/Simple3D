@@ -28,7 +28,10 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
 - **STEP files** — the model folders, **one per line**, searched top to bottom:
   the first one holding the file wins, so a project folder above the shared
   library overrides individual models. Subfolders are searched too. **Add...**
-  appends; reorder in the text itself.
+  appends; reorder in the text itself. Right-click any path field for Cut /
+  Copy / Paste / Select all. A folder with characters outside ASCII (Cyrillic)
+  is named at the top of the log: the build reads it, Allegro's own half may
+  not - if a model comes out missing, start there.
 - **JSON file** — the intermediate (filled in for you); a folder builds every
   variant in it.
 - **Output** — where the STEP goes.
@@ -155,6 +158,10 @@ builds it.
   сверху вниз: побеждает первая, где есть нужный файл, поэтому проектная папка
   выше общей библиотеки перекрывает отдельные модели. Вложенные подпапки ищутся
   сами. **Add...** дописывает папку в конец, порядок правится прямо в тексте.
+  Правая кнопка в любом поле пути — Cut / Copy / Paste / Select all. Папка с
+  символами вне ASCII (кириллица) называется в начале журнала: сборка её
+  читает, половина Allegro — не всегда; если модель пропала, начинайте с
+  этого.
 - **JSON file** — промежуточный JSON (подставляется автоматически); папка
   собирает все лежащие в ней варианты.
 - **Output** — куда положить STEP.

@@ -11,6 +11,35 @@ to use the tool.
 
 ---
 
+- **2026-09-03** — **Cyrillic in a name no longer crashes the build; a right-click
+  menu; a plain warning about non-ASCII paths.** Allegro writes text in the
+  Windows code page, so a board, a model file or a layer named in Cyrillic
+  produced an intermediate the reader crashed on; it reads such a file now
+  (UTF-8 first, the code page second) and says so in the log. Every path
+  field and the STEP-folders box have a right-click menu: Cut, Copy, Paste,
+  Select all. A path with characters outside ASCII is named at the top of
+  the build log: the build itself reads and writes such paths (measured),
+  but Allegro's own half may not - it opens a board from a Cyrillic folder
+  since 25.1, and a board whose *file name* is Cyrillic still comes up
+  empty. Measured as well, against the question whether the rebuild made
+  the STEP slower: it did not - the same three boards build in the same
+  time as at round 69, within the noise of a run, with identical STEP
+  output.
+  / **Кириллица в имени больше не роняет сборку; контекстное меню;
+  честное предупреждение о не-ASCII путях.** Allegro пишет текст в
+  кодировке Windows, и плата, файл модели или слой с кириллическим именем
+  давали промежуточный файл, на котором читатель падал; теперь он читает
+  такой файл (сначала UTF-8, потом кодовая страница) и говорит об этом в
+  журнале. У каждого поля пути и у списка папок STEP есть меню по правой
+  кнопке: Cut, Copy, Paste, Select all. Путь с символами вне ASCII
+  называется в начале журнала сборки: сама сборка такие пути читает и
+  пишет (измерено), а половина Allegro — не всегда: с 25.1 плата из
+  папки с кириллицей открывается, но плата, у которой кириллическое *имя
+  файла*, открывается пустой. Измерено и другое — не стала ли сборка STEP
+  медленнее после переделки: нет, те же три платы собираются за то же
+  время, что и в раунде 69, в пределах разброса прогона, при идентичном
+  STEP.
+
 - **2026-09-03** — **One `load()` line, and the exporter in nine files.**
   `simple3d.il` now loads the exporter itself, so `allegro.ilinit` needs one
   line - `load("…/simple3d.il")` - instead of two; the old pair keeps
