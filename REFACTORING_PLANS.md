@@ -14,9 +14,9 @@ plus the cross-cutting items (the intermediate's flat namespace, the test
 harness, the argument plumbing) that no single monolith owns. This is the order
 to do it in and what "done" means for each step. Written 2026-09-02 (round 70);
 **Step 0 was done the same day (round 71); A1–A2, C1–C2 and B1–B7 in round 72**
-— every row marked **done** says what it left behind. As of round 73: M1 and
-M2 are split (Plan A is complete), M3 is moved whole but not split, M4 is
-lighter but still one class, M5 is untouched.
+— every row marked **done** says what it left behind. As of round 73: M1, M2
+and M3 are split (Plans A and B are complete), M4 is lighter but still one
+class, M5 is untouched.
 
 ---
 
@@ -194,7 +194,7 @@ re-exports.
 | B2 | `pieces.py` | [7c2] (`_cut_into_pieces` with and without curves), [7b0], [7b2] | unchanged — **done, round 72**: `pieces.py` cut out verbatim (the eight functions and the note on why the outline is cut rather than split by half-planes); `__init__` re-exports them; 24/24, golden unchanged |
 | B3 | `cut.py` + `apply.py` | [3], [11], [12], [13], [14] | unchanged; `_slab` keeps "sized and placed from the shape" — **done, round 72**: `cut.py` first (the revolve needed `_plane_face`), then `plan.py` with `FoldPlan` and `apply.py` with `apply_plan` + `_fuse_all`; `FoldPlan.apply` is a one-line delegation, the body moved verbatim with `self` → `plan`; `_slab` keeps sized-and-placed-from-the-shape; 25/25, golden unchanged |
 | B4 | `strip_revolve.py` | [17], [11b] (the ear) | unchanged — **done, round 72**: `strip_revolve.py` cut out verbatim with `PRISM_TOLERANCE` and `PRISM_SPAN_TOLERANCE`; `MAP_VOLUME_TOLERANCE` stayed beside `_map_strip` for B5; done after B3's first half (`cut.py`) because the revolve needs `_plane_face`; 24/24, golden unchanged |
-| B5 | `strip_wrap.py`: first move `_map_strip` whole, then extract `CylinderFrame`, then `edge_to_2d`, then `wire_on`, then walls, then validation — one commit each | [17b], [17c], [17d], [17e] (the loose corner), [7c2] | each extraction leaves [17e] green; `wire_on` still builds edges on shared vertices. **First commit done, round 72** (the whole move, with `MAP_VOLUME_TOLERANCE`); the five extractions are still to do |
+| B5 | `strip_wrap.py`: first move `_map_strip` whole, then extract `CylinderFrame`, then `edge_to_2d`, then `wire_on`, then walls, then validation — one commit each | [17b], [17c], [17d], [17e] (the loose corner), [7c2] | each extraction leaves [17e] green; `wire_on` still builds edges on shared vertices. **First commit done, round 72** (the whole move, with `MAP_VOLUME_TOLERANCE`); the five extractions are still to do — **done, round 73**: `_map_strip` is `_Frame`, `_edge_curves` / `_sampled`, `_wire_on`, `_face_on` / `_walls`, `_sewn_solid` / `_expected_volume` and a ~130-line sequence (was 414) that keeps `give_up` and its first-reason rule; the helpers return `(result, None)` or `(None, why)` and `_map_strip` turns the why into `give_up`. Five commits, one per extraction, each closed by the full suite; all five were first applied to a full dry copy and the copied fold suite run against it — [17e] green at every stage. The only refusal still without a reason is the one that had none before: the axis running through the material |
 | B6 | `plan.py`: `plan_fold` → the closures become module functions taking explicit arguments: `chain_at(ordered, factor, stack_at, top, bottom, notes)`, `readable(chain, notes)`, `walk(...)`, `neutral_ceiling(...)`; `plan_fold` becomes the sequence | [5], [5b], [6], [7], [7a], [7a1], [7b], [7b1] (300 random layouts), [7c], [7c1], [7d] | `plan_fold` under 120 lines; the k-ceiling uses the same `chain_at`/`readable` (already the point of round 66) — **done, round 72**: first the whole move (`plan_fold`, `plan_from_json`, the invariants, the anchor helpers into `plan.py`; `__init__` defines nothing), then the closures lifted out with explicit arguments: `_chain_at(ordered, factor, stack_at, top, bottom, notes)`, `_strips_overlap`, `_readable(items, neutral_factor, notes)`, `_piece_at(panels, point)`, `_side_of(kept, parts, npanel, polys, part, s)`, `_walk(plan, kept, strip_pieces, parts, polys, npanel, neighbours, held, slice_angle) -> (carried, labels)`, `_neutral_ceiling(...)`; bodies lifted from the source by markers, only signatures and call sites changed; `plan_fold` is 192 lines with its 44-line docstring; the k-ceiling uses the same `_chain_at` / `_readable`; 25/25, golden unchanged |
 | B7 | name the magic numbers: `FLAT_FRAME_MARGIN = 1.0`, `BAND_REACH = 10.0`, `SEAM_TOL = 0.05`, `DOUBLE_CLAIM_WARN = 0.02`, `CLAIM_GRID = 2.0`, `SLIVER_RATIO = 0.01`, `FACE_POLY_PER_CURVE = 12`, `SAMPLE_*`, `SEW_TOL = 1e-6`, each with the one-line reason from the code comment | — | no bare literal in a geometric comparison — **done, round 72**: fourteen names in `constants.py`, each with the reason that used to sit beside the literal (`FLAT_FRAME_MARGIN`, `BAND_REACH`, `SEAM_TOL`, `SEAM_WARN`, `DOUBLE_CLAIM_WARN`, `CLAIM_GRID`, `SLIVER_RATIO`, `FACE_POLY_PER_CURVE`, `DRAWN_AREA_TOL_ABS/REL`, `SLICE_OVERLAP_MIN`, `LENGTH_PROBE_STEPS`, `SAMPLE_STEP/MIN/MAX`, `SEW_TOL`); left as literals on purpose: the `0.999` cosine tests and the `1.0e-6` wall tilt in `_prism_of`, and the Precision::Confusion `1.0e-7` in the wrap, which are OCC's own thresholds rather than this tool's; 25/25, golden unchanged |
 
@@ -367,7 +367,7 @@ D1–D5 (SKILL discipline, user verification after D2 and D4) → D6–D8 → E 
 Each arrow is a green run of `tests/run_all.py` plus `tools/golden.py --check`
 — and, since round 72, `tools/python_names.py` before the run.
 
-**Where this stands after round 73:** Step 0, all of Plan A (A1–A10), C1–C2,
-and B1–B7 (B5's first commit only) are done. Next in line: B5's five
-extractions (with [17e] as the net), C3–C6, then D (SKILL; the user in
-Allegro after D2 and D4), then E.
+**Where this stands after round 73:** Step 0, all of Plan A (A1–A10), all of
+Plan B (B1–B7, B5's five extractions included), C1–C2 are done. Next in line:
+C3–C6 (the window), then D (SKILL; the user in Allegro after D2 and D4), then
+E, then F4 and G.

@@ -21,7 +21,7 @@ one settled.
 | Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
 | `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
-| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 73 (2026-09-02): Step 0, all of Plan A, C1–C2, B1–B7 (B5's extractions excepted); each row says what it left. Next: B5's five extractions, C3–C6, then D |
+| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 73 (2026-09-02): Step 0, all of Plan A, all of Plan B, C1–C2; each row says what it left. Next: C3–C6 (the window), then D (SKILL) |
 | The golden corpus | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 cases; `--check` after every refactoring step. `tests/_support.py` is the one preamble every suite imports (round 71) |
 
 Three tools grew out of this project and now have repositories of their own.
@@ -2989,6 +2989,15 @@ contains changed.
   rule is `intermediate.batch_jobs`, called by the worker and by the CLI's new
   `--no-full-board`; `test_variant_path.py` [8] tests it by behaviour.
 
+- **B5, the five extractions** (later the same day): `_map_strip` is
+  `_Frame` (the cylinder and the map into its parameter space),
+  `_edge_curves` / `_sampled`, `_wire_on`, `_face_on` / `_walls`,
+  `_sewn_solid` / `_expected_volume`, and a 131-line sequence (was 414)
+  that keeps `give_up` and its first-reason rule. One commit each, each
+  closed by the full suite; all five were first applied to a full dry copy
+  and the copied fold suite run against it - [17e], the loose corner, green
+  at every stage. Plans A and B are complete.
+
 `core.py`: 724 lines, was 2587 in round 70. `python tests/run_all.py`:
 **25/25 in 186 s**.
 
@@ -3013,6 +3022,12 @@ contains changed.
   The fix I wrote for it failed its own assertion, which is how I learned the
   bug did not exist. A replacement that asserts its match is a check on the
   reading, not only on the writing.
+- **Do not edit a shell script bash is running.** The stage script for B5
+  was edited (a `set -o pipefail` added) while its first run was in
+  progress; bash reads the file as it goes, hit the shifted bytes and
+  reported a syntax error AFTER the useful work had finished. The log said
+  25/25; the exit code said 2. Read the log, and write scripts before
+  starting them.
 - **`generate`'s five stages take `(data, stack, fold, options, document, …)`**
   and return what the next needs; the `_Stack` dataclass is what the stackup
   stage settles. A9 changed no line inside the segments, so the round-26 to
