@@ -3,7 +3,8 @@
 # out and every suite fails the same way. Output goes to build/test-output/.
 from _support import ROOT, fails, check, exporter_source
 
-"""Every string the exporter writes into the intermediate is quoted.
+"""Every string the exporter writes into the intermediate is quoted, and the
+body is one join.
 
 Round 76, plan D4. Until then five places glued a value between two quote
 characters - the refdes key and step_name of a placement, the zone name, a
@@ -112,6 +113,70 @@ for site in ('s3dJsonQuote( sprintf( nil "%s" refDes ) )', 's3dJsonQuote( sprint
              's3dJsonQuote( zoneName )', 's3dJsonQuote( layer )', 's3dJsonQuote( message )',
              's3dJsonQuote( variantName )', 's3dJsonQuote( m )'):
     check(f"the writer quotes through {site}", site in IL)
+
+print("\n[5] the body: members joined once, every combination of what a board has")
+# create3dIntermediateFormat and makePcb transliterated (round 77, D8): the
+# top-level members are strings without commas, ONE join puts the commas in,
+# the re-indent prefixes every line with a tab, and the silkscreen - streamed
+# after the body - is what decides whether the last member gets a comma.
+
+
+def s3dAddIndent(text, levels=1):
+    pad = "\t" * levels
+    return "\n".join(pad + line for line in text.split("\n") if line != "")
+
+
+def makePcb(thicknesses, edges, cuts, color):
+    arrays = ["[\n" + s3dAddIndent(",\n".join(edges)) + "\n]"]
+    if cuts:
+        arrays += cuts
+    return ('"pcb": {\n\t"thickness": {\n'
+            '\t\t"soldermask_top": %f,\n\t\t"board": %f,\n\t\t"soldermask_bottom": %f\n\t},\n' % thicknesses
+            + s3dAddIndent('"color": {\n\t"r": %f,\n\t"g": %f,\n\t"b": %f\n}' % color)
+            + ',\n\t"edges": [\n' + s3dAddIndent(",\n".join(arrays), 2) + "\n\t]\n}")
+
+
+def create3dIntermediateFormat(variantName, full_board, edges, cuts, placements, silk):
+    members = ['"format": "simple3d"', '"format_version": 8', '"name": ' + s3dJsonQuote(variantName)]
+    if full_board:
+        members.append('"full_board": true')
+    members += ['"embedded_models": []', '"stackups": {\n}', '"zones": []', '"bends": []']
+    members.append(makePcb((0.025, 1.054, 0.025), edges, cuts, (0.0, 0.4, 0.0)))
+    members += placements
+    body = ",\n".join(members)
+    if silk:
+        body += ","
+    out = "{\n" + "".join("\t" + line + "\n" for line in body.split("\n") if line != "")
+    if silk:
+        out += '\t"silkscreen": {\n\t\t"thickness": 0.025,\n\t\t"top": [\n\t\t],\n\t\t"bottom": [\n\t\t]\n\t}\n'
+    return out + "}\n"
+
+
+SEG = '{ "type": "segment", "start": [0.0, 0.0], "end": [10.0, 0.0] }'
+CUT = "[\n\t" + SEG + "\n]"
+for comps in (False, True):
+    for cuts in (False, True):
+        for silk in (False, True):
+            for full in (False, True):
+                text = create3dIntermediateFormat("board", full, [SEG, SEG], [CUT] if cuts else None,
+                                                  [placement("R1", "r.step", None), placement("MECH1", "m.step", "FLEX")] if comps else [],
+                                                  silk)
+                label = f"components={comps} cutouts={cuts} silk={silk} full_board={full}"
+                try:
+                    got = json.loads(text)
+                except ValueError as exc:
+                    check(label, False, f"does not parse: {exc}")
+                    continue
+                keys = list(got)
+                check(label,
+                      keys[:3] == ["format", "format_version", "name"]
+                      and (("full_board" in got) == full)
+                      and got["pcb"]["thickness"]["board"] == 1.054
+                      and len(got["pcb"]["edges"]) == (2 if cuts else 1)
+                      and (("R1" in got and "MECH1" in got) == comps)
+                      and (("silkscreen" in got) == silk)
+                      and keys[-1] == ("silkscreen" if silk else ("MECH1" if comps else "pcb")),
+                      str(keys))
 
 print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")

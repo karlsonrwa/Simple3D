@@ -14,10 +14,11 @@ plus the cross-cutting items (the intermediate's flat namespace, the test
 harness, the argument plumbing) that no single monolith owns. This is the order
 to do it in and what "done" means for each step. Written 2026-09-02 (round 70);
 **Step 0 was done the same day (round 71); A1–A2, C1–C2 and B1–B7 in round 72**
-— every row marked **done** says what it left behind. As of round 74: M1–M4
-are split (Plans A, B and C are complete; the window is one class of its own
-concerns, with placement, the layer list and the child process as modules
-beside it), M5 is untouched.
+— every row marked **done** says what it left behind. As of round 77: all five
+monoliths are split (Plans A, B, C and D are complete; the window is one class
+of its own concerns with placement, the layer list and the child process as
+modules beside it; the SKILL exporter is nine parts under `skill/` behind a
+loader, with one export-state table and one join deciding the JSON's commas).
 
 ---
 
@@ -304,7 +305,7 @@ since the script loads whatever `makeVariant3dIntermediates.il` is.
 | D5 | thickness: `pcb.thickness` derived from the `Primary` stackup's kept layers when there is one (the sum `s3dStackupJson` already computes), `calculateBoardThickness` kept only for the rigid-flex `nil 'all` case it was never right for — or dropped with `pcb.thickness` computed by the reader from `stackups` (a format change: see Plan E) | `test_plain_modes.py` [5]; the round-34 numbers (1.104 on the user's board) | one rule for requirement #1 — **done, round 76** (the first option; E2 stays for the format change): `s3dBoardThickness()` measures the stackup the board IS — `PRIMARY` when the design names its stackups, the cross section itself when it does not — the way `s3dStackupJson` measures every stackup: `s3dLayerInBody` layers split at `s3dConductorSpan`, (above core below). A design whose named stackups hold no `PRIMARY` keeps `calculateBoardThickness`. Predicted from the corpus before touching SKILL: identical on the four plain/PRIMARY boards (1.104 on `my_test_board-a0` included), the two no-PRIMARY flex boards untouched, `flex3-a0` alone changes (0 / 0.095 / 0.025 → 0.575 / 0.095 / 0.075, its PRIMARY stackup's own 0.745) — and `--check` drifted on exactly that board. Its STEP built from the old and the new JSON is identical (volume, solids, entities, bbox): the zoned path never reads `pcb.thickness`. Corpus re-recorded; 27/27 |
 | D6 | the file split above, mechanically: cut and paste procedures in their existing order into the eight files; `simple3d.il` gains the loader; both checks pool all files | all four checks over the new file set (`FILES` in both tools becomes a glob); `test_config_merge.py` [3], `test_variant_path.py` source greps updated to the new files | Allegro loads it: `tools/skill_export.py --check` on the seven boards (three of them rigid-flex) says the JSON is unchanged; the menu item and the launch are the **user's** live check — **done, round 77**, nine parts not eight (`s3d_util` holds the shared subclass sweep; `s3dFolderOf`/`s3dSlashes`/`s3dHeadList` stay in `simple3d.il`, which needs them before any part is loaded). A chunker cut every top-level form with the comment block above it, in file order within each part, and refused to write until every non-blank line of the original was accounted for exactly once. `makeVariant3dIntermediates.il` is the loader (`S3D_ExporterDir`, else `get_filename(piport)`'s folder, else `SIMPLE3D_DIR`), `simple3d.il` loads it when `S3D_ExporterLoaded` is not set — before `s3dLoadSettings`, whose config reader is a part. `tests/_support.exporter_source()` is what the six source-reading suites read; `skill_checks`/`check_arity` glob the parts and a probe's `REQUIRES: makeVariant3dIntermediates.il` pools them. Checked headless: the corpus unchanged through the loader, the three probes' console identical (bar the order of Allegro's "redefined" notes), and the single-line form — `load("…/simple3d.il")` — exporting `flex3-a0` byte-identical to the record. 27/27 |
 | D7 | `create3dIntermediateFormat`: an export-state list `(mechSeq shapes bendLines silkWarnings)` passed down instead of four globals reset in two places | the round-42/61 resets pinned in `test_variant_path.py` [8] | no per-export global left except the config-filled two — **done, round 77**: a table, not a list (`makeTable( "s3dExportState" nil )` with `'mechSeq 'shapes 'bendLines 'silkWarnings`), made once per design in `makeVariant3dIntermediates` and handed down through nine signatures (`create3dIntermediateFormat`, `symbolReturn3DElements`, `s3dStackupsJson` → `s3dStackupJson` → `s3dLayerShapesJson` → `s3dCollectRigidFlexShapes`, `s3dBendsJson` → `s3dBendAreaAt`, `s3dMakeSilkscreen` → `s3dCollectSilkByLayer`); the per-file half (`mechSeq`, `shapes`) is reset by `create3dIntermediateFormat`, the per-design half by the maker. The four module-level globals and their comments are gone from the parts; `check_arity` is what proved every call site moved. Corpus unchanged on the seven boards; 27/27 |
-| D8 | the JSON body: build a list of `(key value-string)` pairs and join once, instead of `strcat` with hand-placed commas and the `parseString(body "\n")` re-indent | a transliterated writer test (the round-36 style) that parses the output for: no components, no cutouts, no silk, full board, all four combinations | one place decides commas |
+| D8 | the JSON body: build a list of `(key value-string)` pairs and join once, instead of `strcat` with hand-placed commas and the `parseString(body "\n")` re-indent | a transliterated writer test (the round-36 style) that parses the output for: no components, no cutouts, no silk, full board, all four combinations | one place decides commas — **done, round 77**: `members`, a list of `"key": value` strings with no comma (the three header keys, `full_board` when set, embedded models, stackups, zones, bends, the `pcb` object, one entry per placement), joined once with `",\n"`; the streamed silkscreen is the one reason the last member still gets a comma, and that line says so. The re-indent stays - it is what keeps the file out of one `fprintf`, which ran out of memory on a large board. `makePcb` is one string with its `edges` array built from a list of arrays (the outline, then each cut) instead of two branches that differed in one comma. `test_emit` [5] transliterates both and `json.loads` all sixteen combinations of components / cutouts / silk / full board, checking the key order and that the last key is the one expected; `test_variant_path` [8]'s marker regex follows the member list. Corpus byte-identical on the seven boards; 27/27. **Plan D is complete** |
 
 Risks: SKILL resolves names at call time, so a moved procedure that is loaded
 after its first caller *runs* is fine but a moved **global** (`S3D_AlwaysExportProp`
@@ -380,8 +381,9 @@ D1–D5 (SKILL discipline, user verification after D2 and D4) → D6–D8 → E 
 Each arrow is a green run of `tests/run_all.py` plus `tools/golden.py --check`
 — and, since round 72, `tools/python_names.py` before the run.
 
-**Where this stands after round 74:** Step 0, all of Plan A (A1–A10), all of
-Plan B (B1–B7, B5's five extractions included) and all of Plan C (C1–C6) are
-done. Next in line: D (SKILL; the export half closed headless by
-`tools/skill_export.py --check` after every step - round 75 - the menu half
-by the user), then E, then F4 and G.
+**Where this stands after round 77:** Step 0 and Plans A (A1–A10), B (B1–B7),
+C (C1–C6) and D (D1–D8) are done; every SKILL step was closed headless by
+`tools/skill_export.py --check` (round 75), and what remains for the user's
+live session is the menu item and the launch. Next in line: E (format_version
+9; E2 retires `calculateBoardThickness` and `pcb.thickness` with it), then F4
+and G.

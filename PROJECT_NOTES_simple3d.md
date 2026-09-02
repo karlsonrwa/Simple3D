@@ -3004,7 +3004,17 @@ into the README, and green with it.
   below the maker - the shape cache fills lazily inside the stackup and
   bend writers - and a SKILL list handed down is a copy of its head.
   `check_arity` is what proved every call site moved (it flags a call
-  whose count no longer fits the definition). Corpus unchanged; 27/27 in 203 s.
+  whose count no longer fits the definition). Corpus unchanged; 27/27.
+- **D8** (a third commit) `members`: the top-level JSON members as strings
+  with no comma, joined once - the header used to carry its commas by
+  hand, the placements were joined separately and glued on with another,
+  and the streamed silkscreen needed a third. The silkscreen still decides
+  whether the last member gets one, and that line says why. `makePcb` is
+  one string, its `edges` array from a list of arrays, instead of two
+  branches that differed in one comma. `test_emit` [5] transliterates the
+  writer and parses all sixteen combinations of components / cutouts /
+  silk / full board; `test_variant_path` [8]'s marker regex follows the
+  member list. Corpus byte-identical; **Plan D is complete**. 27/27 in 203 s.
 
 ### What to remember
 

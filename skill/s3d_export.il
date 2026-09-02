@@ -173,7 +173,7 @@ procedure( symbolReturn3DElements( g_symbol g_state )
 )
 
 procedure( makePcb( thicknesses edges cuts color )
-    let( ( colorJson )
+    let( ( colorJson arrays )
         ; colorJson, not pcbColor: that is the caller's parameter name, and an
         ; undeclared assignment to it here rebound the caller's variable
         ; (round 75, D2).
@@ -193,56 +193,27 @@ procedure( makePcb( thicknesses edges cuts color )
         ;     "edges": [ [ ...outline... ],  ]
         ; which is not JSON. See also the call site, which must not evaluate an
         ; unbound cuts in the first place.
-        if( cuts then
-            edges = strcat(
-                "\"pcb\": {\n"
-                "\t\"thickness\": {\n"
-                "\t\t\"soldermask_top\": " sprintf( nil "%f" car( thicknesses ) ) ",\n"
-                "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
-                "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
-                "\t},\n"
-                s3dAddIndent(
-                    colorJson
-                )
-                ",\n"
-                "\t\"edges\": [\n"
-                "\t\t[\n"
-                s3dAddIndent(
-                    buildString( car( edges ) ",\n" ),
-                    3
-                )
-                "\n\t\t],\n"
-                s3dAddIndent(
-                    buildString( car( cuts ) ",\n" ),
-                    2
-                )
-                "\n\t]\n}"
-            )
-
-        else
-            ; FIX (simple3d): the original emitted  "thickness": 1.67  as a bare
-            ; scalar here (reached on a board with no cutouts and no through
-            ; pins, when 'cuts stays unbound), which the reader rejects. Emit
-            ; the real thickness object, same as the other branch.
-            edges = strcat(
-                "\"pcb\": {\n"
-                "\t\"thickness\": {\n"
-                "\t\t\"soldermask_top\": " sprintf( nil "%f" car( thicknesses ) ) ",\n"
-                "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
-                "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
-                "\t},\n"
-                s3dAddIndent( 
-                    colorJson
-                )
-                ",\n"
-                "\t\"edges\": [\n"
-                "\t\t[\n"
-                s3dAddIndent(
-                    buildString( car( edges ) ",\n" ),
-                    3
-                )
-                "\n\t\t]\n\t]\n}"
-            )
+        ; "edges" is an array of arrays: the outline first, then each cutout
+        ; and hole. Built as a LIST and joined once (round 77, D8) - the two
+        ; branches this replaces differed only in whether a comma followed
+        ; the outline, and the no-cuts branch once emitted a bare scalar
+        ; thickness the reader rejected (FIX, simple3d 2026-07-22).
+        arrays = list( strcat( "[\n" s3dAddIndent( buildString( car( edges ) ",\n" ) ) "\n]" ) )
+        when( cuts
+            arrays = append( arrays car( cuts ) )
+        )
+        strcat(
+            "\"pcb\": {\n"
+            "\t\"thickness\": {\n"
+            "\t\t\"soldermask_top\": " sprintf( nil "%f" car( thicknesses ) ) ",\n"
+            "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
+            "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
+            "\t},\n"
+            s3dAddIndent( colorJson )
+            ",\n"
+            "\t\"edges\": [\n"
+            s3dAddIndent( buildString( arrays ",\n" ) 2 )
+            "\n\t]\n}"
         )
     )
 )
@@ -253,7 +224,7 @@ procedure( makePcb( thicknesses edges cuts color )
 ; call set if this one ever forgot to.
 procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName g_state @optional ( silk nil ) ( g_fullBoard nil ) )
     let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) baseCut body
-           placement name pcb outFile outPort lines )   ; the last six: declared here, not in the caller (round 75, D2)
+           placement members pcb outFile outPort lines )   ; declared here, not in the caller (round 75, D2)
         ; The export state, per FILE (round 77, D7; the caller made the table
         ; and owns its per-design half): the no-refdes mechanicals are numbered
         ; from 1 in each file (see symbolReturn3DElements), and the RIGID FLEX
@@ -314,9 +285,14 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
             )
         )
 
-        ; add name + a format marker so the Python side can tell a Simple 3D
-        ; intermediate from any other .json that happens to sit in the folder.
-        ; Files without "format": "simple3d" are ignored by the GUI.
+        ; The top-level members, each a `"key": value` string with NO comma:
+        ; the join below is the one place that puts commas between them
+        ; (round 77, D8; until then the header carried them by hand, the
+        ; placements were joined separately and glued on with another, and
+        ; the silkscreen needed a third). First a format marker, so the
+        ; Python side can tell a Simple 3D intermediate from any other .json
+        ; that happens to sit in the folder - files without "format":
+        ; "simple3d" are ignored by the GUI.
         ; NOTE: no embedded \t here - the line writer below prefixes every line
         ; with one tab, so embedding another would double-indent these keys
         ; (still valid JSON, but inconsistent with the rest of the file).
@@ -336,19 +312,23 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; NOTE: every top-level key added here must also be listed in the RESERVED
         ; tuple of stepbuilder/intermediate.py, or the reader walks it as if it
         ; were a component.
-        name = strcat(
-            "\"format\": \"simple3d\",\n"
-            "\"format_version\": 8,\n"
-            "\"name\": " s3dJsonQuote( variantName ) ",\n"
-            ; Optional, and only ever true: the whole board, variants ignored.
-            ; A reader that does not know the key sees an ordinary intermediate,
-            ; which is what every version before this one will do.
-            if( g_fullBoard then "\"full_board\": true,\n" else "" )
-            s3dEmbeddedModelsJson() ",\n"
-            s3dStackupsJson( g_state ) ",\n"
-            s3dZonesJson() ",\n"
-            s3dBendsJson( g_state )
+        members = list(
+            "\"format\": \"simple3d\""
+            "\"format_version\": 8"
+            strcat( "\"name\": " s3dJsonQuote( variantName ) )
         )
+        ; Optional, and only ever true: the whole board, variants ignored.
+        ; A reader that does not know the key sees an ordinary intermediate,
+        ; which is what every version before this one will do.
+        when( g_fullBoard
+            members = append( members list( "\"full_board\": true" ) )
+        )
+        members = append( members list(
+            s3dEmbeddedModelsJson()
+            s3dStackupsJson( g_state )
+            s3dZonesJson()
+            s3dBendsJson( g_state )
+        ) )
 
         ; make pcb (including all cutouts and holes)
         ;
@@ -364,16 +344,15 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
                        if( boundp( 'edges ) then edges else nil )
                        if( boundp( 'cuts ) then cuts else nil )
                        pcbColor )
+        members = append( members list( pcb ) )
 
-        ; write step model placement informations
+        ; the step model placements, one member each
         ; FIX (simple3d): guard the unbound case. If no component has a STEP
         ; mapping, stepModelPlacements is still the 'unbound marker and car()
         ; on it faults. That used to be an odd corner; with silkscreen a bare
         ; board is a legitimate thing to export, so it has to work.
-        if( boundp( 'stepModelPlacements ) then
-            stepModelPlacements = buildString( car( stepModelPlacements ) ",\n" )
-        else
-            stepModelPlacements = nil
+        when( boundp( 'stepModelPlacements )
+            members = append( members car( stepModelPlacements ) )
         )
 
         ; write to file
@@ -390,12 +369,11 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
             error( "Simple 3D: outfile() returned nil for: %s\n(check the folder exists and the path/permissions)\n" outFile )
         )
 
-        ; to prevent fprintf insufficient memory error
-        body = strcat( name ",\n" pcb )
-        when( stepModelPlacements
-            body = strcat( body ",\n" stepModelPlacements )
-        )
-        ; the silkscreen object follows, so the last line needs its comma
+        ; One join decides the commas. The body is re-indented line by line
+        ; below rather than written in one fprintf (which ran out of memory
+        ; on a large board); the silkscreen is streamed after it, so when
+        ; there is one the last member needs its comma too.
+        body = buildString( members ",\n" )
         when( silk
             body = strcat( body "," )
         )

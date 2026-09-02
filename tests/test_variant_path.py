@@ -345,7 +345,8 @@ check("it is named <design>.json, which no <design>_<variant> can collide with",
       re.search(r"when\(\s*S3D_ExportFullBoard[\s\S]{0,400}?"
                 r"variantName = lowerCase\(\s*dsnName\s*\)", src))
 check("and marked in the file rather than left to be guessed from its name",
-      re.search(r'if\(\s*g_fullBoard\s+then\s+"\\"full_board\\": true', src))
+      # the member list of round 77 (D8): `when( g_fullBoard` adds the marker
+      re.search(r'when\(\s*g_fullBoard[\s\S]{0,120}?"\\"full_board\\": true', src))
 check("the marker is a reserved key, or the reader walks it as a component",
       re.search(r'RESERVED = \([^)]*"full_board"',
                 (ROOT / "stepbuilder/intermediate.py").read_text(encoding="utf-8"), re.S))
