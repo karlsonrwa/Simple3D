@@ -182,6 +182,278 @@ class FoldPlan:
 # building the plan
 # --------------------------------------------------------------------------- #
 
+# -- geometry of each bend ---------------------------------------------- #
+# Built for a GIVEN neutral factor rather than only for the chosen one, so
+# the same arithmetic can answer "how far could k go on this board" without
+# a second, subtly different copy of it. See _neutral_ceiling below.
+# How much flat material an arc consumes: its length along the NEUTRAL axis,
+# because that is the length a bend preserves.
+#
+# **Allegro's own bend area is drawn at the INNER radius**, which is a
+# different number and not a bend allowance. Measured on the real board: the
+# BEND_AREA shape is 1.2337 mm across for 28.26 deg and R = 2.5, and 28.26
+# deg x 2.5 = 1.2331 - the inner arc to four decimals, with no thickness term
+# in it at all. It is the region to keep clear of vias and packages, not the
+# material budget. So the drawn area is used as a CHECK: if it is not the
+# inner arc either, the design is saying something neither the parameters nor
+# this reading explain, and that is worth a line in the log.
+def _chain_at(ordered: list, factor: float, stack_at, board_top_z: float,
+              board_bottom_z: float, notes: list | None = None) -> list:
+    """The chain at neutral factor *factor*: per bend, (bend, normal, point on
+    the line, half the developed width, local top z, local bottom z).
+
+    *ordered* is the bends with their normals, nearest the held piece first.
+    Asked with a *notes* list only for the factor the plan is built at, so
+    the drawn-area check is reported once and not for every trial factor.
+    """
+    out = []
+    for bend, (nx, ny) in ordered:
+        px, py = bend.midpoint
+        top, bottom = (stack_at(px, py) if stack_at
+                       else (board_top_z, board_bottom_z))
+        thickness = abs(top - bottom)
+        theta = math.radians(bend.angle)
+        developed = (bend.radius + factor * thickness) * theta
+        drawn = bend.radius * theta
+        if notes is not None and bend.width and bend.width > EPS and drawn > EPS:
+            if abs(bend.width - drawn) > max(0.05, 0.1 * drawn):
+                notes.append(
+                    f"  note: {bend.name}'s bend area is {bend.width:.3f} mm "
+                    f"across, where its radius and angle draw {drawn:.3f} mm; "
+                    f"folding {developed:.3f} mm of material either way")
+        out.append((bend, (nx, ny), (px, py), developed / 2.0, top, bottom))
+    return out
+
+def _strips_overlap(a, b) -> bool:
+    """Do the two bend strips claim any of the same material?
+
+    A strip is a RECTANGLE: as wide as the developed length across the bend
+    line, as long as the bend line itself. Comparing them by a single
+    projection along one normal - which is what this used to do - answers a
+    question about two infinite bands instead, and two bends that share no
+    material at all can then look like they overlap. On Cadence's demo
+    board BEND_1 and BEND_2 are PERPENDICULAR, at the corner of the FLEXI
+    arm, 33.9 mm between centres and disjoint by any measure; projected on
+    BEND_1's normal alone they read as 9.19 mm apart with strips 8.3 and
+    9.9 mm wide, so one of the two real bends was dropped as unreadable.
+
+    Separating-axis test over the four edge directions. Rectangles that
+    merely TOUCH count as separated, which is the ring case the 1-D test
+    was careful about: a flex rolled closed is two 180 degree bends whose
+    areas share a line, and there is nothing ambiguous about that.
+    """
+    (anx, any_), (apx, apy), ahalf = a[1], a[2], a[3]
+    (bnx, bny), (bpx, bpy), bhalf = b[1], b[2], b[3]
+    atx, aty = -any_, anx
+    btx, bty = -bny, bnx
+    alen, blen = a[0].length / 2.0, b[0].length / 2.0
+    dx, dy = bpx - apx, bpy - apy
+
+    for ax, ay in ((anx, any_), (atx, aty), (bnx, bny), (btx, bty)):
+        reach = (ahalf * abs(ax * anx + ay * any_)
+                 + alen * abs(ax * atx + ay * aty)
+                 + bhalf * abs(ax * bnx + ay * bny)
+                 + blen * abs(ax * btx + ay * bty))
+        if abs(ax * dx + ay * dy) > reach - EPS:
+            return False
+    return True
+
+# -- bends that cross each other cannot be read ------------------------- #
+# Two bends are related in exactly one of three ways, and the third is
+# fatal: one lies wholly beyond the other (a chain), they lie on opposite
+# sides of the held panel (two arms - the real board has exactly this, a
+# tail bent up at one end and another bent down at the other), or their
+# strips overlap as seen from the held side, which says nothing about what
+# moves with what.
+def _readable(items: list, neutral_factor: float, notes: list | None = None) -> list:
+    """The chain items whose strips claim no material another one claims."""
+    out = []
+    for item in items:
+        px, py = item[2]
+        clash = None
+        for prev in out:
+            (pnx, pny), (ppx, ppy) = prev[1], prev[2]
+            # Only material claimed by BOTH is unreadable - see
+            # _strips_overlap for why this is a question about two
+            # rectangles and not about two bands. The distance goes to the
+            # note, which reports how far apart the two lines are along the
+            # earlier bend's normal.
+            if _strips_overlap(prev, item):
+                clash = (prev, abs(pnx * (px - ppx) + pny * (py - ppy)))
+                break
+        if clash:
+            if notes is not None:
+                notes.extend(_overlap_note(item, *clash, neutral_factor))
+            continue
+        out.append(item)
+    return out
+
+def _piece_at(panels: list, point) -> int:
+    """The panel *point* lands on - or the nearest one, for a point outside every piece."""
+    for i, (rs, _) in enumerate(panels):
+        if any(point_in_polygon(point, r) for r in rs):
+            return i
+    return min(range(len(panels)),
+               key=lambda i: min(math.hypot(vx - point[0], vy - point[1])
+                                 for r in panels[i][0] for vx, vy in r))
+
+def _side_of(kept: list, parts: list, npanel: int, polys: list,
+             part: int, s: int) -> float:
+    """Which way piece *part* lies from strip s: -1 before it, +1 beyond.
+
+    Asked AT THE SEAM, not of the piece as a whole. A strip's band is
+    infinite across its own direction, so a big piece can have material on
+    both sides of it and still touch it along one edge only: the main board
+    of Cadence's demo reaches past BEND_1's band on both sides, and judging
+    it by its extent - or by its nearest vertex - put the strip's near edge
+    against the FAR panel. The seam then came apart by 23.8 mm and the arm
+    floated off the board.
+
+    The two pieces touch, so the closest point between them is ON the shared
+    edge, and that edge is one of the strip's two long sides.
+    """
+    (nx, ny), (px, py), half = kept[s][1], kept[s][2], kept[s][3]
+    base = nx * px + ny * py
+    seam = _closest_point(parts[part], parts[npanel + s])
+    if seam is not None:
+        v = nx * seam[0] + ny * seam[1]
+        return -1.0 if abs(v - (base - half)) <= abs(v - (base + half)) else 1.0
+    # Not touching at all - should not happen, since the walk only reaches a
+    # strip from a piece beside it. Fall back on the extent.
+    values = [nx * vx + ny * vy for vx, vy in polys[part]]
+    return -1.0 if max(values) <= base + half + EPS else 1.0
+
+def _walk(plan: FoldPlan, kept: list, strip_pieces: list, parts: list, polys: list,
+          npanel: int, neighbours: list, held: int,
+          slice_angle: float) -> tuple[dict, dict]:
+    """Walk out from the held piece, placing every piece it reaches.
+
+    Every strip is reached from the side that is already placed, so a bend
+    folds away from whatever holds it - which is what the anchor means, asked
+    per bend instead of once globally. There is no ordering to get right and
+    no cycle to fall into: a piece is placed when it is reached, and the walk
+    ends when nothing new is. Crossing a strip applies its bend - the strip
+    and its facets go into the plan here - and a panel on the far side of one
+    simply inherits the angle the strip finished at.
+
+    Returns (carried, labels): the transform and the label of every piece
+    reached, indexed like *parts* (panels first, then strips).
+    """
+    carried: dict[int, gp_Trsf] = {held: gp_Trsf()}
+    labels = {held: "held"}
+    queue = [held]
+    while queue:
+        here = queue.pop(0)
+        for other in neighbours[here]:
+            if other in carried:
+                continue
+            if other < npanel:
+                # a flat piece beyond a strip already crossed
+                carried[other] = carried[here]
+                labels[other] = labels.get(here, "held")
+                queue.append(other)
+                continue
+
+            s = other - npanel
+            bend, (nx, ny), (px, py), half, top, bottom = kept[s]
+            base = nx * px + ny * py
+            if _side_of(kept, parts, npanel, polys, here, s) > 0:  # held side is the far one:
+                nx, ny = -nx, -ny              # turn the bend around
+                base = -base
+            lo, hi = base - half, base + half
+            base_trsf = carried[here]
+
+            steps = max(1, int(math.ceil(bend.angle / max(0.5, slice_angle))))
+            step = 2 * half / steps
+            sign = 1.0 if bend.inner_side == "top" else -1.0
+            axis_z = (top + bend.radius) if sign > 0 else (bottom - bend.radius)
+            theta = math.radians(bend.angle)
+            # Overlap so consecutive slices interpenetrate instead of touching
+            # along a line: the wedge a rotated slice opens on the outside of
+            # the bend is about half the thickness times the slice angle.
+            overlap = max(0.02, abs(top - bottom) * theta / steps)
+
+            facets = []
+            for j in range(steps):
+                hinge = lo + j * step
+                # The angle is interpolated across the strip rather than
+                # derived from the neutral radius, so that the last slice
+                # always meets the finished angle exactly whatever set the
+                # strip width.
+                phi = theta * (hinge - lo) / (2 * half) if half > EPS else 0.0
+                facets.append(_Region(
+                    label=f"{bend.name} slice {j + 1}/{steps}",
+                    bounds=[(nx, ny, hinge - overlap, hinge + step + overlap)],
+                    poly=strip_pieces[s][0][0], polys=strip_pieces[s][0],
+                    face=strip_pieces[s][1],
+                    trsf=_slice_trsf(base_trsf, nx, ny, lo, hinge, axis_z,
+                                     sign * phi),
+                    kind="slice"))
+
+            # The strip is cut as ONE piece and bent exactly where it can be;
+            # the facets are the fallback, and they stay in `regions` as well
+            # because that list answers "where does a point at (x, y) end up".
+            plan.strips.append(_Strip(
+                bend=bend, bounds=[(nx, ny, lo, hi)], normal=(nx, ny),
+                poly=strip_pieces[s][0][0], polys=strip_pieces[s][0],
+                face=strip_pieces[s][1],
+                lo=lo, hi=hi, axis_z=axis_z, turn=sign * theta,
+                carried=base_trsf, facets=facets))
+            plan.regions.extend(facets)
+
+            # everything past the bend rides on the finished angle
+            carried[other] = _slice_trsf(base_trsf, nx, ny, lo, hi, axis_z,
+                                         sign * theta)
+            labels[other] = f"panel after {bend.name}"
+            queue.append(other)
+    return carried, labels
+
+def _neutral_ceiling(plan: FoldPlan, ordered: list, chain: list, kept: list,
+                     marks: list, neutral_factor: float, outline: list,
+                     outline_curves, stack_at, board_top_z: float,
+                     board_bottom_z: float) -> None:
+    """How much neutral factor this board can actually take - a note, when
+    the strips reached each other at the factor the plan was built with.
+    """
+    # -- how much neutral factor this board can actually take ----------------- #
+    # Allegro lays its bend areas out at k = 0 - the drawn area IS the inner arc
+    # - so at any k above that every strip is wider than what the designer
+    # allowed, by angle x k x thickness. On a board with room this never shows.
+    # On a tight one the strips reach each other, and the answer is a NUMBER the
+    # user can act on rather than a repair they have to notice: the largest k
+    # this particular board takes cleanly.
+    #
+    # Only computed when there IS trouble, because it costs a dozen trial cuts.
+    refused = len(chain) - len(kept)
+    if (refused or any("pinch" in m for m in marks)) and neutral_factor > 0.0:
+        def trouble_at(factor: float) -> bool:
+            trial = _chain_at(ordered, factor, stack_at, board_top_z, board_bottom_z)
+            good = _readable(trial, neutral_factor)
+            if len(good) < len(trial):
+                return True
+            seen: list[str] = []
+            return (_cut_into_pieces(outline, good, seen.append,
+                                     outline_curves) is None
+                    or any("pinch" in m for m in seen))
+
+        low, high = 0.0, neutral_factor
+        for _ in range(10):
+            middle = (low + high) / 2.0
+            if trouble_at(middle):
+                high = middle
+            else:
+                low = middle
+        plan.notes.append(
+            f"  note: this board's bend areas are laid out at k = 0, as Allegro "
+            f"draws them, and the tightest pair on it takes foldNeutral up to "
+            f"{low:.2f}. At the current {neutral_factor:.2f} the strips reach "
+            f"each other"
+            + (f" and {refused} bend(s) had to be left flat" if refused
+               else " and the piece between them had to be repaired")
+            + f". foldNeutral 0 reproduces the drawing exactly; "
+            f"{low:.2f} is as physical as this layout allows.")
+
+
 def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
               board_top_z: float, board_bottom_z: float,
               stack_at: Callable[[float, float], tuple[float, float]] | None = None,
@@ -247,106 +519,10 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
         key=lambda bn: abs((ref[0] - bn[0].midpoint[0]) * bn[1][0]
                            + (ref[1] - bn[0].midpoint[1]) * bn[1][1]))
 
-    # -- geometry of each bend ---------------------------------------------- #
-    # Built for a GIVEN neutral factor rather than only for the chosen one, so
-    # the same arithmetic can answer "how far could k go on this board" without
-    # a second, subtly different copy of it. See _neutral_ceiling below.
-    # How much flat material an arc consumes: its length along the NEUTRAL axis,
-    # because that is the length a bend preserves.
-    #
-    # **Allegro's own bend area is drawn at the INNER radius**, which is a
-    # different number and not a bend allowance. Measured on the real board: the
-    # BEND_AREA shape is 1.2337 mm across for 28.26 deg and R = 2.5, and 28.26
-    # deg x 2.5 = 1.2331 - the inner arc to four decimals, with no thickness term
-    # in it at all. It is the region to keep clear of vias and packages, not the
-    # material budget. So the drawn area is used as a CHECK: if it is not the
-    # inner arc either, the design is saying something neither the parameters nor
-    # this reading explain, and that is worth a line in the log.
-    def chain_at(factor: float, notes: list | None = None) -> list:
-        out = []
-        for bend, (nx, ny) in ordered:
-            px, py = bend.midpoint
-            top, bottom = (stack_at(px, py) if stack_at
-                           else (board_top_z, board_bottom_z))
-            thickness = abs(top - bottom)
-            theta = math.radians(bend.angle)
-            developed = (bend.radius + factor * thickness) * theta
-            drawn = bend.radius * theta
-            if notes is not None and bend.width and bend.width > EPS and drawn > EPS:
-                if abs(bend.width - drawn) > max(0.05, 0.1 * drawn):
-                    notes.append(
-                        f"  note: {bend.name}'s bend area is {bend.width:.3f} mm "
-                        f"across, where its radius and angle draw {drawn:.3f} mm; "
-                        f"folding {developed:.3f} mm of material either way")
-            out.append((bend, (nx, ny), (px, py), developed / 2.0, top, bottom))
-        return out
+    chain = _chain_at(ordered, neutral_factor, stack_at, board_top_z,
+                      board_bottom_z, plan.notes)
 
-    chain = chain_at(neutral_factor, plan.notes)
-
-    def _strips_overlap(a, b) -> bool:
-        """Do the two bend strips claim any of the same material?
-
-        A strip is a RECTANGLE: as wide as the developed length across the bend
-        line, as long as the bend line itself. Comparing them by a single
-        projection along one normal - which is what this used to do - answers a
-        question about two infinite bands instead, and two bends that share no
-        material at all can then look like they overlap. On Cadence's demo
-        board BEND_1 and BEND_2 are PERPENDICULAR, at the corner of the FLEXI
-        arm, 33.9 mm between centres and disjoint by any measure; projected on
-        BEND_1's normal alone they read as 9.19 mm apart with strips 8.3 and
-        9.9 mm wide, so one of the two real bends was dropped as unreadable.
-
-        Separating-axis test over the four edge directions. Rectangles that
-        merely TOUCH count as separated, which is the ring case the 1-D test
-        was careful about: a flex rolled closed is two 180 degree bends whose
-        areas share a line, and there is nothing ambiguous about that.
-        """
-        (anx, any_), (apx, apy), ahalf = a[1], a[2], a[3]
-        (bnx, bny), (bpx, bpy), bhalf = b[1], b[2], b[3]
-        atx, aty = -any_, anx
-        btx, bty = -bny, bnx
-        alen, blen = a[0].length / 2.0, b[0].length / 2.0
-        dx, dy = bpx - apx, bpy - apy
-
-        for ax, ay in ((anx, any_), (atx, aty), (bnx, bny), (btx, bty)):
-            reach = (ahalf * abs(ax * anx + ay * any_)
-                     + alen * abs(ax * atx + ay * aty)
-                     + bhalf * abs(ax * bnx + ay * bny)
-                     + blen * abs(ax * btx + ay * bty))
-            if abs(ax * dx + ay * dy) > reach - EPS:
-                return False
-        return True
-
-    # -- bends that cross each other cannot be read ------------------------- #
-    # Two bends are related in exactly one of three ways, and the third is
-    # fatal: one lies wholly beyond the other (a chain), they lie on opposite
-    # sides of the held panel (two arms - the real board has exactly this, a
-    # tail bent up at one end and another bent down at the other), or their
-    # strips overlap as seen from the held side, which says nothing about what
-    # moves with what.
-    def readable(items, notes: list | None = None) -> list:
-        out = []
-        for item in items:
-            px, py = item[2]
-            clash = None
-            for prev in out:
-                (pnx, pny), (ppx, ppy) = prev[1], prev[2]
-                # Only material claimed by BOTH is unreadable - see
-                # _strips_overlap for why this is a question about two
-                # rectangles and not about two bands. The distance goes to the
-                # note, which reports how far apart the two lines are along the
-                # earlier bend's normal.
-                if _strips_overlap(prev, item):
-                    clash = (prev, abs(pnx * (px - ppx) + pny * (py - ppy)))
-                    break
-            if clash:
-                if notes is not None:
-                    notes.extend(_overlap_note(item, *clash, neutral_factor))
-                continue
-            out.append(item)
-        return out
-
-    kept = readable(chain, plan.notes)
+    kept = _readable(chain, neutral_factor, plan.notes)
 
     if not kept:
         return plan
@@ -400,120 +576,15 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # The anchor names a POINT, and the piece it lands on is held. It does not
     # have to be inside the board - the origin often sits on a corner or just
     # off it - so a point outside every piece takes the nearest one.
-    def piece_at(point) -> int:
-        for i, (rs, _) in enumerate(panels):
-            if any(point_in_polygon(point, r) for r in rs):
-                return i
-        return min(range(len(panels)),
-                   key=lambda i: min(math.hypot(vx - point[0], vy - point[1])
-                                     for r in panels[i][0] for vx, vy in r))
-
     if anchor is not None:
-        held = piece_at(anchor)
+        held = _piece_at(panels, anchor)
     else:
         held = max(range(len(panels)),
                    key=lambda i: sum(abs(polygon_area(r)) for r in panels[i][0]))
 
-    def side_of(part: int, s: int) -> float:
-        """Which way piece *part* lies from strip s: -1 before it, +1 beyond.
-
-        Asked AT THE SEAM, not of the piece as a whole. A strip's band is
-        infinite across its own direction, so a big piece can have material on
-        both sides of it and still touch it along one edge only: the main board
-        of Cadence's demo reaches past BEND_1's band on both sides, and judging
-        it by its extent - or by its nearest vertex - put the strip's near edge
-        against the FAR panel. The seam then came apart by 23.8 mm and the arm
-        floated off the board.
-
-        The two pieces touch, so the closest point between them is ON the shared
-        edge, and that edge is one of the strip's two long sides.
-        """
-        (nx, ny), (px, py), half = kept[s][1], kept[s][2], kept[s][3]
-        base = nx * px + ny * py
-        seam = _closest_point(parts[part], parts[npanel + s])
-        if seam is not None:
-            v = nx * seam[0] + ny * seam[1]
-            return -1.0 if abs(v - (base - half)) <= abs(v - (base + half)) else 1.0
-        # Not touching at all - should not happen, since the walk only reaches a
-        # strip from a piece beside it. Fall back on the extent.
-        values = [nx * vx + ny * vy for vx, vy in polys[part]]
-        return -1.0 if max(values) <= base + half + EPS else 1.0
-
     # -- walk out from the held piece ---------------------------------------- #
-    # Every strip is reached from the side that is already placed, so a bend
-    # folds away from whatever holds it - which is what the anchor means, asked
-    # per bend instead of once globally. There is no ordering to get right and
-    # no cycle to fall into: a piece is placed when it is reached, and the walk
-    # ends when nothing new is. Crossing a strip applies its bend; a panel on
-    # the far side of one simply inherits the angle the strip finished at.
-    carried: dict[int, gp_Trsf] = {held: gp_Trsf()}
-    labels = {held: "held"}
-    queue = [held]
-    while queue:
-        here = queue.pop(0)
-        for other in neighbours[here]:
-            if other in carried:
-                continue
-            if other < npanel:
-                # a flat piece beyond a strip already crossed
-                carried[other] = carried[here]
-                labels[other] = labels.get(here, "held")
-                queue.append(other)
-                continue
-
-            s = other - npanel
-            bend, (nx, ny), (px, py), half, top, bottom = kept[s]
-            base = nx * px + ny * py
-            if side_of(here, s) > 0:           # the held side is the far one:
-                nx, ny = -nx, -ny              # turn the bend around
-                base = -base
-            lo, hi = base - half, base + half
-            base_trsf = carried[here]
-
-            steps = max(1, int(math.ceil(bend.angle / max(0.5, slice_angle))))
-            step = 2 * half / steps
-            sign = 1.0 if bend.inner_side == "top" else -1.0
-            axis_z = (top + bend.radius) if sign > 0 else (bottom - bend.radius)
-            theta = math.radians(bend.angle)
-            # Overlap so consecutive slices interpenetrate instead of touching
-            # along a line: the wedge a rotated slice opens on the outside of
-            # the bend is about half the thickness times the slice angle.
-            overlap = max(0.02, abs(top - bottom) * theta / steps)
-
-            facets = []
-            for j in range(steps):
-                hinge = lo + j * step
-                # The angle is interpolated across the strip rather than
-                # derived from the neutral radius, so that the last slice
-                # always meets the finished angle exactly whatever set the
-                # strip width.
-                phi = theta * (hinge - lo) / (2 * half) if half > EPS else 0.0
-                facets.append(_Region(
-                    label=f"{bend.name} slice {j + 1}/{steps}",
-                    bounds=[(nx, ny, hinge - overlap, hinge + step + overlap)],
-                    poly=strip_pieces[s][0][0], polys=strip_pieces[s][0],
-                    face=strip_pieces[s][1],
-                    trsf=_slice_trsf(base_trsf, nx, ny, lo, hinge, axis_z,
-                                     sign * phi),
-                    kind="slice"))
-
-            # The strip is cut as ONE piece and bent exactly where it can be;
-            # the facets are the fallback, and they stay in `regions` as well
-            # because that list answers "where does a point at (x, y) end up".
-            plan.strips.append(_Strip(
-                bend=bend, bounds=[(nx, ny, lo, hi)], normal=(nx, ny),
-                poly=strip_pieces[s][0][0], polys=strip_pieces[s][0],
-                face=strip_pieces[s][1],
-                lo=lo, hi=hi, axis_z=axis_z, turn=sign * theta,
-                carried=base_trsf, facets=facets))
-            plan.regions.extend(facets)
-
-            # everything past the bend rides on the finished angle
-            carried[other] = _slice_trsf(base_trsf, nx, ny, lo, hi, axis_z,
-                                         sign * theta)
-            labels[other] = f"panel after {bend.name}"
-            queue.append(other)
-
+    carried, labels = _walk(plan, kept, strip_pieces, parts, polys, npanel,
+                            neighbours, held, slice_angle)
     # In the order they were folded, which is outwards from the held piece.
     plan.bends = [strip.bend for strip in plan.strips]
 
@@ -539,43 +610,8 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
             label=labels[i], bounds=[], poly=rs[0], polys=rs, face=face,
             trsf=carried[i], moved=(i != held)))
 
-    # -- how much neutral factor this board can actually take ----------------- #
-    # Allegro lays its bend areas out at k = 0 - the drawn area IS the inner arc
-    # - so at any k above that every strip is wider than what the designer
-    # allowed, by angle x k x thickness. On a board with room this never shows.
-    # On a tight one the strips reach each other, and the answer is a NUMBER the
-    # user can act on rather than a repair they have to notice: the largest k
-    # this particular board takes cleanly.
-    #
-    # Only computed when there IS trouble, because it costs a dozen trial cuts.
-    refused = len(chain) - len(kept)
-    if (refused or any("pinch" in m for m in marks)) and neutral_factor > 0.0:
-        def trouble_at(factor: float) -> bool:
-            trial = chain_at(factor)
-            good = readable(trial)
-            if len(good) < len(trial):
-                return True
-            seen: list[str] = []
-            return (_cut_into_pieces(outline, good, seen.append,
-                                     outline_curves) is None
-                    or any("pinch" in m for m in seen))
-
-        low, high = 0.0, neutral_factor
-        for _ in range(10):
-            middle = (low + high) / 2.0
-            if trouble_at(middle):
-                high = middle
-            else:
-                low = middle
-        plan.notes.append(
-            f"  note: this board's bend areas are laid out at k = 0, as Allegro "
-            f"draws them, and the tightest pair on it takes foldNeutral up to "
-            f"{low:.2f}. At the current {neutral_factor:.2f} the strips reach "
-            f"each other"
-            + (f" and {refused} bend(s) had to be left flat" if refused
-               else " and the piece between them had to be repaired")
-            + f". foldNeutral 0 reproduces the drawing exactly; "
-            f"{low:.2f} is as physical as this layout allows.")
+    _neutral_ceiling(plan, ordered, chain, kept, marks, neutral_factor, outline,
+                     outline_curves, stack_at, board_top_z, board_bottom_z)
 
     # The invariant, checked rather than assumed: the pieces come out of one
     # boolean cut, so every point of the board should belong to exactly one of
