@@ -302,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output_dir)
 
     if args.batch:
-        jsons, ignored = core.resolve_json_jobs(json_path)
+        jsons, ignored = core.resolve_jobs(json_path)    # parsed once, built below
         for j in ignored:
             log(f"ignoring non-Simple-3D json: {j.name}")
         if not jsons:
@@ -312,7 +312,10 @@ def main(argv: list[str] | None = None) -> int:
         jsons = [json_path]
 
     failures = 0
-    for jf in jsons:
+    for job in jsons:
+        # A batch hands generate the parsed Intermediate; a single file is
+        # handed as a path, so a missing file is generate's error as before.
+        jf = job.path if isinstance(job, core.Intermediate) else job
         try:
             # One rule, in core, for the GUI and here alike - see output_stem.
             output_name = core.output_stem(
@@ -320,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
                 several=len(jsons) > 1, dated=args.dated_name)
             result = core.generate(
                 step_dirs,
-                jf,
+                job,
                 output_dir,
                 output_name=output_name,
                 z_datum=args.z_datum,

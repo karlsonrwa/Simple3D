@@ -59,7 +59,8 @@ the keys that differ from the default.
 |---|---:|---:|---|
 | `makeVariant3dIntermediates.il` | 3925 | 90 | console messages, path helpers, property helpers, the `Variants.lst` parser (upstream), geometry-to-JSON primitives, board thickness, stackups/zones/bends readers, a JSON reader + merge + config loader, silkscreen collection/clipping/streaming, the intermediate writer, the top-level export |
 | `simple3d.il` | 897 | 17 | settings from config, install-folder resolution, `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, the Python pre-flight, the GUI launcher, menu insertion |
-| `stepbuilder/core.py` | 2487 | 62 | stackup arithmetic (restack / drop soldermask / align / levels), per-layer regions and parts, board booleans, silkscreen faces + arc-convention search, component transform, `StepFileIndex`, intermediate probes (`is_simple3d_json`, `is_full_board`, `silkscreen_layers`), output naming, rim faces, and `generate()` |
+| `stepbuilder/core.py` | 2347 | 55 | stackup arithmetic (restack / drop soldermask / align / levels), per-layer regions and parts, board booleans, silkscreen faces + arc-convention search, component transform, `StepFileIndex`, rim faces, and `generate()` |
+| `stepbuilder/intermediate.py` | 252 | 17 | `Intermediate` (one parse: `is_simple3d`, `is_full_board`, `components`, `metadata`, `validate`, `silkscreen_layers`), `RESERVED`, `resolve_jobs` (+ the path-shaped `resolve_json_jobs`), the old probe names as thin wrappers, `output_stem` / `dated_output_name`. Round 72, plan A2 |
 | `stepbuilder/bend.py` | 2412 | 71 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `_Region`/`_Strip`/`FoldPlan`, `plan_fold`, cutting the outline into pieces, the three strip constructions (revolve / wrap / facets), fuse |
 | `stepbuilder/contour.py` | 267 | 7 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
@@ -71,8 +72,8 @@ the keys that differ from the default.
 | `tools/` | ~850 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
-Counts for `core.py`, `bend.py`, `contour.py` and `errors.py` are as of round
-72 (after plan A1); the other rows are as of round 70. The defs column counts
+Counts for `core.py`, `bend.py`, `contour.py`, `errors.py` and `intermediate.py`
+are as of round 72 (after plans A1 and A2); the other rows are as of round 70. The defs column counts
 every `def` and `class` line, nested ones included.
 
 ### 2.2 Dependencies
@@ -95,10 +96,12 @@ graph TD
         GUI --> WORKER[worker.py]
         GUI --> COLORS[colors.py]
         GUI -.->|"DEFAULT_* constants"| BEND[bend.py]
-        GUI -.->|"resolve_json_jobs,<br/>silkscreen_layers, output_stem"| CORE
+        GUI -.->|"resolve_jobs, output_stem<br/>(re-exported from intermediate)"| CORE
         WORKER -->|"multiprocessing.Process"| CORE
         CORE --> COLORS
         CORE -->|"plan_from_json (lazy)"| BEND
+        CORE --> INTER[intermediate.py]
+        INTER --> ERRORS
         CORE --> CONTOUR[contour.py]
         BEND --> CONTOUR
         CONTOUR --> ERRORS[errors.py]
@@ -194,14 +197,14 @@ flowchart TD
 
     subgraph PY["stepbuilder — the window and the build"]
         K --> L[__main__._gui_prefill → StepBuilderApp<br/>load config pair, prefill json-dir/output/brd-name]
-        L --> M[layer panel from the JSON: core.silkscreen_layers per job]
+        L --> M[layer panel from the JSON: resolve_jobs, then<br/>Intermediate.silkscreen_layers per job - one parse each]
         M --> N([Generate])
         N --> O[_snapshot → frozen BuildSettings]
         O --> P[multiprocessing.Process: worker.run_jobs]
-        P --> P1["resolve_json_jobs — drop the full-board file<br/>unless build_full_board or it is the only file"]
+        P --> P1["resolve_jobs (parsed once) — drop the full-board file<br/>unless build_full_board or it is the only file"]
         P1 --> Q[core.generate per job]
         Q --> Q1[StepFileIndex over the model folders<br/>ordered, recursive, case-folded fallback]
-        Q1 --> Q2[read + _validate the intermediate]
+        Q1 --> Q2[Intermediate.read unless one was handed in; validate]
         Q2 --> Q3["stackups: drop_soldermask if asked → align_stackups → stackup_levels<br/>or zone_levels for a v5 file — implicit zone on a plain board"]
         Q3 --> Q4["bend.plan_from_json → FoldPlan<br/>cut the outline into pieces, walk from the anchor, k ceiling, invariants"]
         Q4 --> Q5{board mode}
@@ -256,8 +259,8 @@ flowchart TD
 `prim` is `{"type": "segment"|"arc"|"circle", …}`; a silk `poly` is
 `{layer, area, vertices:[[x,y,r]…], holes:[…]}`. Two facts about this shape
 matter structurally: **components share the top level with the metadata**, so
-`core._reserved` must name every metadata key or the reader walks it as a
-component (the SKILL writer carries a comment saying exactly that); and every
+`intermediate.RESERVED` must name every metadata key or the reader walks it as
+a component (the SKILL writer carries a NOTE pointing at that tuple); and every
 version only ever *added* an optional key, which is why a v2 file still builds.
 
 ---
@@ -336,7 +339,7 @@ it is.
 | `core` contour + stackup arithmetic (`build_contour`, `restack`, `drop_soldermask`, `align_stackups`, `stackup_levels`, `zone_levels`, `_layer_region`, `make_board_layer_parts`, `_stackup_board`, `fuse_keeping_faces`, `fuse_and_unify`, `has_solid`, `board_cutouts`) | ~750 | reusable, with one duplication | pure functions over dicts and shapes; `make_board_layer_parts` and `_stackup_board` walk zones × layers twice |
 | `core` silkscreen (`_arc_*`, `_wire_from_vertices`, `_face_from_wires`, `_silk_face`, `_pick_convention`, `build_silkscreen`, `_merge_coplanar`, `clip_silk_to_zones`) | ~520 | reusable | Allegro polygon vertex list → faces, with the convention search; independent of the board |
 | `core.component_transform`, `StepFileIndex`, `_report_embedded_only` | ~250 | reusable | placement maths; an ordered, case-tolerant model index usable by any STEP-assembling tool |
-| `core` intermediate probes (`is_simple3d_json`, `is_full_board`, `silkscreen_layers`, `resolve_json_jobs`, `output_stem`, `dated_output_name`) | ~130 | glue | each re-parses the whole file; cheap to fold into one loader |
+| `intermediate.py` (`Intermediate`, `resolve_jobs`, the probe wrappers, `output_stem`, `dated_output_name`) | 252 | glue, reusable | one parse per file since round 72; the wrappers stay for a caller that holds a path |
 | `core._rim_faces` | 65 | reusable | needs only a shape and an optional frame-back function |
 | `bend.plan_fold` | 428 | **monolith (M2)** | six nested closures: developed lengths, the clash filter, piece connectivity, the walk, the k-ceiling bisection, two invariants and the notes, in one body |
 | `bend._map_strip` | 381 | **monolith (M3)** | parameter-space mapping, curve conversion, the topological wire builder, wall construction, sewing and validation as five closures in one function |
@@ -378,14 +381,15 @@ each is a step in the plans.
 | 4 | `calculateBoardThickness:1267` vs `s3dLayerInBody:1711` | two rules for requirement #1: `pcb.thickness` gates on the `SOLDERMASK` name, the stackups on position + SILK/PASTE; a plain board with a mask named `SM_TOP` is one thickness in *Solid* and another in *Solid colored layers* |
 | 5 | `core.py:395` | `_layer_region` re-imports `BRepAlgoAPI_Cut` locally though it is a module-level name — the `UnboundLocalError` trap `_rim_faces` documents, one added line away. **Fixed in round 71** |
 | 6 | `worker.py:105` vs `__main__.py:304` | the "Build the full-board file too" rule exists only in the GUI batch; `--batch` always builds it |
-| 7 | `core.py:1724-1784`, `gui.py:820` | `is_simple3d_json`, `is_full_board`, `silkscreen_layers` and `generate` each parse the whole file; on the 2.7 MB demo intermediate that is four parses per build and one per debounced keystroke |
-| 8 | `core.py:2433` | the flat top-level namespace: every new metadata key must be added to `_reserved` |
+| 7 | `core.py:1724-1784`, `gui.py:820` | `is_simple3d_json`, `is_full_board`, `silkscreen_layers` and `generate` each parse the whole file; on the 2.7 MB demo intermediate that is four parses per build and one per debounced keystroke. **Fixed in round 72 (A2):** `resolve_jobs` parses once and hands the `Intermediate` to `generate`; the window parses once per file per refresh |
+| 8 | `core.py:2433` | the flat top-level namespace: every new metadata key must be added to `_reserved` — since round 72 `intermediate.RESERVED`, one place, the exporter's NOTE pointing at it; the namespace itself is Plan E |
 | 9 | `README.md:58-59`, `CHANGELOG.md` (2026-07-27) | "Nothing temporary is written next to your board" — `s3dPreflight` writes and deletes `_simple3d_preflight.txt` in the cad/design folder |
 | 10 | `.gitignore` | `input/` (57 MB of the user's real boards) was untracked but **not ignored**, one `git add -A` from the public remote; `failed/` is ignored with a comment saying why. Fixed in this round. |
 | 11 | `colors.as_fraction` | defined, documented in the module docstring, never called. **Deleted in round 71** |
 | 12 | `simple3d.il:591` | the export passes a hard-coded `list(0.0 0.4 0.0)` colour into every intermediate; the window overrides it from the theme |
 | 13 | `.claude/launch.json` | points at the step2html repository's preview server. **Deleted in round 71** |
 | 14 | `tools/audit_docs.py:56-57` | a `for … : pass` loop. **Deleted in round 71** |
+| 15 | `demo/ap-214/demo.json` | carries no `"format": "simple3d"` marker (it predates the marker), so `resolve_jobs` ignores it: the window and the worker refuse the repository's own demo board; only `generate()` called directly — the tests and `tools/golden.py` — builds it. Found in round 72 while checking one-parse-per-file; not changed (the marker is Plan E's business, and adding it moves nothing in the geometry) |
 
 Duplication worth naming (each is a step in a plan): the `generate()` argument
 list ×3; the config key list ×2 in `gui.py`; the merge rule in two languages;

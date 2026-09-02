@@ -3660,8 +3660,9 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; zone list, which means "ordinary single-stackup board", and no bends,
         ; which means a board that is exported flat.
         ;
-        ; NOTE: every top-level key added here must also be listed in core.py's
-        ; _reserved tuple, or the reader walks it as if it were a component.
+        ; NOTE: every top-level key added here must also be listed in the RESERVED
+        ; tuple of stepbuilder/intermediate.py, or the reader walks it as if it
+        ; were a component.
         name = strcat(
             "\"format\": \"simple3d\",\n"
             "\"format_version\": 8,\n"

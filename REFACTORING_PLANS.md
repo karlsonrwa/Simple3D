@@ -134,7 +134,7 @@ stepbuilder/
 | # | move | tests that must exist before | done when |
 |---|---|---|---|
 | A1 | `contour.py`: move `build_contour` and the five polygon helpers out of `core`/`bend`; both import from it | `test_bend.py` [10], [10a]; `test_dupcuts.py` | the `core`↔`bend` cycle is gone (`python -c "import stepbuilder.bend"` before `core` works) — **done, round 72**: moved verbatim, `errors.py` added for the exception, both modules re-export; `import stepbuilder.bend` leaves `core` unloaded (asserted); 23/23, golden unchanged |
-| A2 | `intermediate.py`: `Intermediate` class wrapping one `json.loads`; `is_simple3d_json`/`is_full_board`/`silkscreen_layers` become thin wrappers; `worker` and `gui` call the class | `test_variant_path.py` [8]; `test_gui.py` layer list; `test_embedded.py` [6] (`_reserved`) | one parse per file per Generate; the `_reserved` tuple lives in one place with the SKILL comment pointing at it |
+| A2 | `intermediate.py`: `Intermediate` class wrapping one `json.loads`; `is_simple3d_json`/`is_full_board`/`silkscreen_layers` become thin wrappers; `worker` and `gui` call the class | `test_variant_path.py` [8]; `test_gui.py` layer list; `test_embedded.py` [6] (`_reserved`) | one parse per file per Generate; the `_reserved` tuple lives in one place with the SKILL comment pointing at it — **done, round 72**: `resolve_jobs` returns parsed `Intermediate`s and `generate` accepts one (a path still works and parses for itself); `RESERVED` in `intermediate.py`, the exporter's NOTE and `test_variant_path.py` [8] point at it; measured one `json.loads` for resolve + generate; 23/23, golden unchanged |
 | A3 | `stackup.py`: move the six pure functions | `test_nomask.py`, `test_layers.py` [0], `test_zones.py` [2] | `core.stackup_levels is stackup.stackup_levels` |
 | A4 | `board.py`: move the board builders; write `layer_solids(pcb, stackups, zones, shift, cutouts_per_layer: bool)` and have `make_board_layer_parts` and `_stackup_board` both use it | `test_layers.py`, `test_modes.py`, `test_plain_modes.py`, `test_neg.py`, `test_dupcuts.py` [5] | one zones×layers walk; golden corpus unchanged |
 | A5 | `legend.py`: move the silkscreen half | `test_silk.py` | unchanged areas in the log lines |
@@ -306,7 +306,7 @@ format problems; they need one coordinated change in both halves.
 |---|---|---|---|
 | E1 | writer emits `"components": { "<refdes>": {…}, … }` and stops writing components at the top level; `format_version: 9` | reader: if `"components"` is present use it, else walk the top level minus `_reserved` (v1–v8 files) | `test_embedded.py` [6] both shapes; a v8 fixture kept in `tests/fixtures/` |
 | E2 | `pcb.thickness` becomes optional in v9; the reader computes it from `stackups["Primary"]` (kept layers) when absent; `calculateBoardThickness` retired | v8 files carry it; the reader prefers the stackup when both exist and they disagree by > 1 µm, and says so | `test_plain_modes.py`, `test_nomask.py` [5] |
-| E3 | `_reserved` deleted once E1 has shipped a release | — | — |
+| E3 | `intermediate.RESERVED` (was `core._reserved` until round 72) deleted once E1 has shipped a release | — | — |
 
 Order: after Plan A2 (the `Intermediate` class is where the compatibility lives)
 and Plan D4/D8 (the writer is data-driven by then).

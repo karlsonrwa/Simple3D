@@ -347,9 +347,10 @@ check("it is named <design>.json, which no <design>_<variant> can collide with",
 check("and marked in the file rather than left to be guessed from its name",
       re.search(r'if\(\s*g_fullBoard\s+then\s+"\\"full_board\\": true', src))
 check("the marker is a reserved key, or the reader walks it as a component",
-      '"full_board"' in (ROOT / "stepbuilder/core.py").read_text(encoding="utf-8")
-      and re.search(r'_reserved = \([^)]*"full_board"',
-                    (ROOT / "stepbuilder/core.py").read_text(encoding="utf-8"), re.S))
+      re.search(r'RESERVED = \([^)]*"full_board"',
+                (ROOT / "stepbuilder/intermediate.py").read_text(encoding="utf-8"), re.S))
+check("and the exporter's NOTE points at that tuple, not at a name that moved",
+      re.search(r"RESERVED[\s\S]{0,40}stepbuilder/intermediate\.py", src))
 
 # The Python half decides only whether a BATCH includes it. A file the user
 # pointed at directly is never dropped: a checkbox that silently refuses the one
@@ -382,6 +383,29 @@ check("and the marker does not disturb the format check",
       is_simple3d_json(FB / "board.json"))
 check("a missing file is False, not an exception",
       not is_full_board(FB / "no_such_file.json"))
+
+# The class behind those wrappers (round 72, plan A2): one parse, every answer.
+from stepbuilder.core import resolve_json_jobs
+from stepbuilder.intermediate import RESERVED, Intermediate, resolve_jobs
+inter = Intermediate.probe(FB / "board.json")
+check("probe parses once and answers both questions",
+      inter is not None and inter.is_simple3d and inter.is_full_board)
+check("a foreign json probes as not ours, not as an error",
+      Intermediate.probe(FB / "notours.json").is_simple3d is False)
+check("a missing file probes as None", Intermediate.probe(FB / "no_such_file.json") is None)
+raw = {"name": "n", "pcb": {}, "format": "simple3d", "R1": {}, "silkscreen": {},
+       "full_board": True, "J1": {}}
+check("components are what is left after the reserved keys",
+      Intermediate(FB / "x.json", raw).components == {"R1": {}, "J1": {}})
+check("and metadata is exactly the reserved keys present",
+      set(Intermediate(FB / "x.json", raw).metadata) == set(raw) - {"R1", "J1"}
+      and set(Intermediate(FB / "x.json", raw).metadata) <= set(RESERVED))
+jobs, ignored = resolve_jobs(FB)
+check("resolve_jobs hands back parsed intermediates, in resolve_json_jobs' order",
+      [j.path for j in jobs] == resolve_json_jobs(FB)[0]
+      and ignored == [FB / "notours.json"], (jobs, ignored))
+check("a job that read as the whole board says so without a second parse",
+      [j.path.name for j in jobs if j.is_full_board] == ["board.json"])
 
 print("\n[9] the cutout list is copied per export, not shared")
 # makePcbContour runs ONCE and its result is handed to every export of the run.

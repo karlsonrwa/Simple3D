@@ -47,6 +47,14 @@ from .contour import (  # noqa: F401 - re-exported
     WIRE_TOLERANCE, build_contour, contour_points, point_in_polygon,
 )
 from .errors import StepBuilderError  # noqa: F401 - re-exported
+# The intermediate is read once per file (round 72, plan A2); the probes
+# and the naming rule moved with it. Re-exported: the window, the worker and
+# the CLI call them as core.<name>.
+from .intermediate import (  # noqa: F401 - re-exported
+    FORMAT_MARKER, RESERVED, Intermediate, dated_output_name, is_full_board,
+    is_simple3d_json, output_stem, resolve_jobs, resolve_json_jobs,
+    silkscreen_layers,
+)
 
 # --------------------------------------------------------------------------- #
 # reporting
@@ -1588,19 +1596,6 @@ def clip_silk_to_zones(polygons: list, stackups: dict | None, zones: list | None
     return kept
 
 
-def _validate(data: dict) -> None:
-    if "name" not in data:
-        raise StepBuilderError("JSON is missing the 'name' field.")
-    if "pcb" not in data:
-        raise StepBuilderError("JSON is missing the 'pcb' object.")
-    pcb = data["pcb"]
-    for key in ("thickness", "edges", "color"):
-        if key not in pcb:
-            raise StepBuilderError(f"JSON is missing 'pcb.{key}'.")
-    if "board" not in pcb["thickness"]:
-        raise StepBuilderError("JSON is missing 'pcb.thickness.board'.")
-
-
 def total_board_thickness(thickness: dict) -> float:
     """board + both soldermasks, the full physical stack.
 
@@ -1614,141 +1609,6 @@ def total_board_thickness(thickness: dict) -> float:
         + float(thickness.get("soldermask_top", 0.0))
         + float(thickness.get("soldermask_bottom", 0.0))
     )
-
-
-# Marker written into every Simple 3D intermediate JSON. Any .json without it
-# is some other file that happens to share the folder and must be ignored.
-FORMAT_MARKER = "simple3d"
-
-
-def is_simple3d_json(path: str | Path) -> bool:
-    """True if *path* is a readable Simple 3D intermediate (has the marker).
-
-    Used to filter a folder that may also hold unrelated .json files (netlist
-    variant tables, tool configs, etc). Reads only enough to check the marker.
-    """
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    return isinstance(data, dict) and data.get("format") == FORMAT_MARKER
-
-
-def is_full_board(path: str | Path) -> bool:
-    """True if this intermediate is the WHOLE board, with variants ignored.
-
-    Written beside the per-variant files when `settings.exportFullBoard` is on,
-    because the variant list says what is INSTALLED and a drawing sometimes has
-    to show the bare board regardless. Told apart by a marker in the file rather
-    than by its name: `<design>.json` against `<design>_<variant>.json` is a
-    guess, and a variant is free to be called anything.
-
-    False for anything unreadable or older - the key is optional, and an
-    intermediate written before it simply does not have it.
-    """
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    return isinstance(data, dict) and bool(data.get("full_board"))
-
-
-def silkscreen_layers(path: str | Path) -> dict[str, dict[str, int]]:
-    """{"top": {layer: polygon count}, "bottom": {...}} for one intermediate.
-
-    What the GUI builds its checkbox list from. Taken from the file rather than
-    from the config on purpose: the config says which layers were COLLECTED,
-    this says which ones actually produced geometry on this board, so the list
-    can never offer a layer that would do nothing.
-
-    Empty for a format_version 2 file, whose polygons carry no layer - those
-    build whole, as they always did.
-    """
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    silk = data.get("silkscreen")
-    if not isinstance(silk, dict):
-        return {}
-
-    out: dict[str, dict[str, int]] = {}
-    for side in ("top", "bottom"):
-        counts: dict[str, int] = {}
-        for polygon in silk.get(side) or []:
-            layer = polygon.get("layer")
-            if layer:
-                counts[layer] = counts.get(layer, 0) + 1
-        if counts:
-            out[side] = counts
-    return out
-
-
-def dated_output_name(base: str, output_dir: str | Path) -> str:
-    """<base>_simple_DD_MM_YYYY, with a trailing _ per existing collision.
-
-    Shared by the GUI and the CLI so the naming rule cannot drift between them.
-    """
-    from datetime import date
-
-    output_dir = Path(output_dir)
-    stem = f"{base}_simple_{date.today().strftime('%d_%m_%Y')}"
-    candidate = stem
-    while (output_dir / f"{candidate}.step").exists():
-        candidate += "_"
-    return candidate
-
-
-def output_stem(json_file: str | Path, output_dir: str | Path, *,
-                brd_name: str | None = None, several: bool = False,
-                dated: bool = False) -> str | None:
-    """What to call one job's .step, or None to use the JSON's own `name`.
-
-    The whole naming rule in one place, because keeping it in two is what let
-    the GUI and the CLI disagree: **brd_name used to be read on the dated path
-    only**, so `--brd-name X` without `--dated-name` was silently ignored and
-    the file came out named after the JSON. The launcher always passes both, so
-    nothing in the shipped flow ever showed it.
-
-    brd_name is the board's name in its ORIGINAL case - the exporter lower-cases
-    the JSON filename, and this is what puts the capitals back.
-
-    several: more than one variant is being built in this run. Then each JSON's
-    own stem (design_variant) has to name its output, or one brd_name would be
-    handed to every variant and they would collide.
-    """
-    stem = Path(json_file).stem
-    base = stem if several else (brd_name or stem)
-    if dated:
-        return dated_output_name(base, output_dir)
-    if brd_name and not several:
-        return brd_name
-    return None
-
-
-def resolve_json_jobs(path: str | Path) -> tuple[list[Path], list[Path]]:
-    """Resolve what to build from a user-visible path, at generate time.
-
-    *path* may be a single JSON file or a folder of variant JSONs. Returns
-    (jobs, ignored): jobs are Simple 3D intermediates to build, ignored are
-    .json files present but lacking the format marker.
-
-    Resolving at generate time - instead of caching a job list when the paths
-    are first filled in - means the field the user sees is always the truth:
-    picking a different file or editing the path cannot leave a stale queue
-    behind.
-    """
-    p = Path(path)
-    if p.is_dir():
-        all_jsons = sorted(p.glob("*.json"))
-        jobs = [j for j in all_jsons if is_simple3d_json(j)]
-        ignored = [j for j in all_jsons if j not in jobs]
-        return jobs, ignored
-    if p.is_file():
-        if is_simple3d_json(p):
-            return [p], []
-        return [], [p]
-    return [], []
 
 
 def _set_color(color_tool, label, rgb01, srgb: bool) -> None:
@@ -1841,7 +1701,7 @@ def _sanitize(name: str) -> str:
 
 def generate(
     step_dir: str | Path | Iterable[str | Path],
-    json_file: str | Path,
+    json_file: str | Path | Intermediate,
     output_dir: str | Path,
     *,
     output_name: str | None = None,
@@ -1945,13 +1805,17 @@ def generate(
         Degrees of arc per slice for a bend that has to be faceted (default
         7.5). Only reached when neither exact construction applies.
     """
-    json_file = Path(json_file)
+    # A path is read here; an Intermediate the caller already read (the
+    # worker and the CLI batch resolve the jobs first) is used as it is, so a
+    # build parses each file once.
+    inter = json_file if isinstance(json_file, Intermediate) else None
+    json_file = inter.path if inter is not None else Path(json_file)
     output_dir = Path(output_dir)
 
     if z_datum not in ("top", "bottom"):
         raise StepBuilderError(f"z_datum must be 'top' or 'bottom', got {z_datum!r}")
 
-    if not json_file.is_file():
+    if inter is None and not json_file.is_file():
         raise StepBuilderError(f"Input file does not exist: {json_file}")
 
     # Coarse phases, so the bar moves while the slow part is happening rather
@@ -1968,12 +1832,10 @@ def generate(
     index = StepFileIndex(step_dir, log=log)
 
     log(f"Reading {json_file.name}")
-    try:
-        data = json.loads(json_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise StepBuilderError(f"{json_file.name} is not valid JSON: {exc}") from exc
-
-    _validate(data)
+    if inter is None:
+        inter = Intermediate.read(json_file)
+    inter.validate()
+    data = inter.data
 
     pcb_name = data["name"]
     json_stem = output_name or pcb_name
@@ -2328,11 +2190,9 @@ def generate(
         return groups[side]
 
     # ---- components ------------------------------------------------------ #
-    # Anything not reserved is a refdes. "silkscreen" MUST be listed here or it
-    # would be walked as if it were a component.
-    _reserved = ("name", "pcb", "format", "format_version", "silkscreen",
-                 "embedded_models", "zones", "stackups", "bends", "full_board")
-    components = {k: v for k, v in data.items() if k not in _reserved}
+    # Anything not reserved is a refdes; the reserved keys are the one list
+    # in intermediate.RESERVED, which the exporter's NOTE points at.
+    components = inter.components
     result = BuildResult(
         output=output_dir / f"{json_stem}.step",
         silkscreen_solids=silk_built,

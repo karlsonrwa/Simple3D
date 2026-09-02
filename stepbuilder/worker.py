@@ -76,7 +76,7 @@ def run_jobs(settings: BuildSettings, channel) -> None:
 
 def _run(settings: BuildSettings, channel) -> None:
     field = Path(settings.json_file)
-    jobs, ignored = core.resolve_json_jobs(field)
+    jobs, ignored = core.resolve_jobs(field)     # parsed once, built below
 
     for j in ignored:
         channel.put(("log", f"Ignoring non-Simple-3D json: {j.name}"))
@@ -103,13 +103,13 @@ def _run(settings: BuildSettings, channel) -> None:
     # checkbox that silently refuses the one file you selected is worse than one
     # that does nothing.
     if len(jobs) > 1 and not settings.build_full_board:
-        full = [j for j in jobs if core.is_full_board(j)]
+        full = [j for j in jobs if j.is_full_board]
         if full:
             jobs = [j for j in jobs if j not in full]
             channel.put(("log", "Not building the full-board file(s): "
-                                + ", ".join(j.name for j in full)))
-    elif len(jobs) == 1 and not settings.build_full_board and core.is_full_board(jobs[0]):
-        channel.put(("log", f"{jobs[0].name} is the whole board and the only file "
+                                + ", ".join(j.path.name for j in full)))
+    elif len(jobs) == 1 and not settings.build_full_board and jobs[0].is_full_board:
+        channel.put(("log", f"{jobs[0].path.name} is the whole board and the only file "
                             f"queued, so it is built despite the checkbox"))
 
     total_placed = 0
@@ -117,7 +117,8 @@ def _run(settings: BuildSettings, channel) -> None:
     warnings: list[str] = []
     failures: list[str] = []
 
-    for number, jf in enumerate(jobs, start=1):
+    for number, inter in enumerate(jobs, start=1):
+        jf = inter.path
         prefix = f"{jf.stem}: " if len(jobs) > 1 else ""
 
         def progress(value: int, total: int, label: str = "",
@@ -138,7 +139,7 @@ def _run(settings: BuildSettings, channel) -> None:
                 several=len(jobs) > 1, dated=settings.dated_name)
             result = core.generate(
                 list(settings.step_dirs),
-                jf,
+                inter,
                 settings.output_dir,
                 output_name=output_name,
                 z_datum=settings.z_datum,

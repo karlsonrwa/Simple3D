@@ -826,11 +826,11 @@ class StepBuilderApp(tk.Tk):
         field = self.json_file.get().strip()
         found: dict[str, dict[str, int]] = {}
         if field:
-            jobs, _ = core.resolve_json_jobs(Path(field))
+            jobs, _ = core.resolve_jobs(Path(field))
             # Several variants build in one press, so the list is their union:
             # a layer present in any of them is a layer you can switch off.
             for job in jobs:
-                for side, counts in core.silkscreen_layers(job).items():
+                for side, counts in job.silkscreen_layers().items():
                     into = found.setdefault(side, {})
                     for layer, n in counts.items():
                         into[layer] = into.get(layer, 0) + n
