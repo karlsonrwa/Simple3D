@@ -47,8 +47,9 @@ RIM_SAME = "Same as board"
 RIM_CREAM = "Cream (dielectric)"
 RIM_CUSTOM = "Custom..."
 
-# How the board body is built; the window pairs these with its labels.
-BOARD_MODE_KEYS = ("solid", "layers", "inspect")
+# How the board body is built; the window pairs these with its labels. The
+# list itself is build.BOARD_MODES, which generate validates against.
+from .build import BOARD_MODES as BOARD_MODE_KEYS  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #

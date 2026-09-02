@@ -97,21 +97,10 @@ def _run(settings: BuildSettings, channel) -> None:
             detail = f"Path does not exist: {field}"
         raise core.StepBuilderError(f"No JSON file to build.\n{detail}")
 
-    # The whole-board file, when the export wrote one, is just another job here.
-    # Dropping it is a choice about a BATCH: with a folder queued you usually
-    # want the variants and only sometimes the full board as well. A single file
-    # the user pointed at directly is never dropped - they chose it, and a
-    # checkbox that silently refuses the one file you selected is worse than one
-    # that does nothing.
-    if len(jobs) > 1 and not settings.build_full_board:
-        full = [j for j in jobs if j.is_full_board]
-        if full:
-            jobs = [j for j in jobs if j not in full]
-            channel.put(("log", "Not building the full-board file(s): "
-                                + ", ".join(j.path.name for j in full)))
-    elif len(jobs) == 1 and not settings.build_full_board and jobs[0].is_full_board:
-        channel.put(("log", f"{jobs[0].path.name} is the whole board and the only file "
-                            f"queued, so it is built despite the checkbox"))
+    # The whole-board file: one rule, in intermediate.batch_jobs, for this
+    # checkbox and the CLI's --no-full-board alike.
+    jobs = core.batch_jobs(jobs, settings.build_full_board,
+                           lambda m: channel.put(("log", m)))
 
     total_placed = 0
     outputs: list[str] = []

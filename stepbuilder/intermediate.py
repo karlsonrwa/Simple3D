@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Callable
 
 from .errors import StepBuilderError
 
@@ -200,6 +201,30 @@ def resolve_jobs(path: str | Path) -> tuple[list[Intermediate], list[Path]]:
             return [inter], []
         return [], [p]
     return [], []
+
+
+def batch_jobs(jobs: list[Intermediate], build_full_board: bool,
+               log: Callable[[str], None]) -> list[Intermediate]:
+    """The jobs of a batch, with the whole-board file left out when not wanted.
+
+    The whole-board file, when the export wrote one, is just another job.
+    Dropping it is a choice about a BATCH: with a folder queued you usually
+    want the variants and only sometimes the full board as well. A single
+    file the user pointed at directly is never dropped - they chose it, and
+    a switch that silently refuses the one file you selected is worse than
+    one that does nothing. One rule for the window's checkbox and the CLI's
+    --no-full-board alike (round 73, plan A10; it lived in the worker only).
+    """
+    if len(jobs) > 1 and not build_full_board:
+        full = [j for j in jobs if j.is_full_board]
+        if full:
+            jobs = [j for j in jobs if j not in full]
+            log("Not building the full-board file(s): "
+                + ", ".join(j.path.name for j in full))
+    elif len(jobs) == 1 and not build_full_board and jobs[0].is_full_board:
+        log(f"{jobs[0].path.name} is the whole board and the only file "
+            f"queued, so it is built despite the switch")
+    return jobs
 
 
 def resolve_json_jobs(path: str | Path) -> tuple[list[Path], list[Path]]:

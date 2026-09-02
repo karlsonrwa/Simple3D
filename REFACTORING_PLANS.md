@@ -15,8 +15,8 @@ harness, the argument plumbing) that no single monolith owns. This is the order
 to do it in and what "done" means for each step. Written 2026-09-02 (round 70);
 **Step 0 was done the same day (round 71); A1–A2, C1–C2 and B1–B7 in round 72**
 — every row marked **done** says what it left behind. As of round 73: M1 and
-M2 are split, M3 is moved whole but not split, M4 is lighter but still one
-class, M5 is untouched.
+M2 are split (Plan A is complete), M3 is moved whole but not split, M4 is
+lighter but still one class, M5 is untouched.
 
 ---
 
@@ -144,7 +144,7 @@ stepbuilder/
 | A7 | `stepdoc.py`: the XCAF document and the writer | `test_modes.py` `inspect()` reads colours back; regression | entity counts unchanged in the golden file — **done, round 73**: `StepDocument(name)` owns app, doc, both tools and the named root; `write(path, minimize_size)` is the write block of `generate` (UpdateAssemblies, the writer, `write.surfacecurve.mode` set after construction, the two failure checks); `_set_color` moved with it and `generate`'s call sites are untouched. On a dry copy with `sys.path` pinned: demo and the rigid-flex fixture match the golden record on volume, solids and entity count, and the minimized demo still halves the count. 25/25, golden unchanged |
 | A8 | `build.py`: `BuildOptions` dataclass; `worker._run` and `__main__.main` construct it once; `generate(**kw)` accepts the old keywords by building it | `test_gui.py` [8] (snapshot fields) extended to `BuildOptions.from_settings` | the argument list exists in one place — **done, round 73**: `generate(step_dir, json_file, output_dir, *, options=None, log, progress, **keywords)` — `options=` or the old keywords (which build one; an unknown keyword is still a `TypeError`, both together too); the meaning of every option moved from `generate`'s docstring to `build.py`; `test_gui.py` [8b] ties `BuildOptions`' fields to `BuildSettings`' and checks `from_settings`. On a dry copy: keywords, `options=` and the headless CLI all reproduce the golden demo's 5038 entities. 25/25, golden unchanged |
 | A9 | `generate` body → `_prepare_stackups`, `_plan_fold`, `_build_board`, `_build_legend`, `_place_components`, `_write`; each takes the context and returns what the next needs | everything above | `generate` under 100 lines; every stage callable alone in a test — **done, round 73**: five stages (the write is `StepDocument.write`, three lines in `generate`), a `_Stack` dataclass for what the stackup stage settles, `_folded(fold, log, shape, …)` for the closure the board and legend stages shared; `generate` is 90 lines with its docstring. `test_modes.py` [6] asserts the progress values never go backwards and end at 100 (they were asserted nowhere), and calls `_prepare_stackups` and `_plan_fold` alone. On a full dry copy (package + tests + demo, so the copy's own `_support` roots the paths): all seven golden cases match and `test_modes` passes against the copy. 25/25, golden unchanged |
-| A10 | `board_mode` validated (raise on an unknown string) and the CLI `--batch` gains `--no-full-board` to match the GUI rule (a small behaviour *addition*, documented) | new case in `test_variant_path.py` [8] | GUI and CLI agree |
+| A10 | `board_mode` validated (raise on an unknown string) and the CLI `--batch` gains `--no-full-board` to match the GUI rule (a small behaviour *addition*, documented) | new case in `test_variant_path.py` [8] | GUI and CLI agree — **done, round 73**: `build.BOARD_MODES` is the one list (`settings.BOARD_MODE_KEYS` and the CLI's choices point at it) and `generate` raises `StepBuilderError` on anything else, where it used to fall through to the plain solid; the whole-board rule moved from the worker into `intermediate.batch_jobs`, which the worker and the CLI's `--no-full-board` both call; `test_variant_path.py` [8] tests the rule by behaviour (three cases) instead of grepping the worker's source. The README's flag list has the new flag (the docs audit checks). Dry copy: an unknown mode is refused, `--batch` builds two files, `--batch --no-full-board` one. 25/25, golden unchanged |
 
 Risks: the folded layer-coloured path depends on face identity through the
 fuse (fold before fuse); keep A4 and A9 from reordering those calls. `phase()`
@@ -367,6 +367,7 @@ D1–D5 (SKILL discipline, user verification after D2 and D4) → D6–D8 → E 
 Each arrow is a green run of `tests/run_all.py` plus `tools/golden.py --check`
 — and, since round 72, `tools/python_names.py` before the run.
 
-**Where this stands after round 72:** Step 0, A1, A2, C1, C2, B1, B2, B3, B4,
-B5's first commit, B6, B7 are done, in that order. Next in line: A3–A8, then
-B5's five extractions (with [17e] as the net), A9–A10, C3–C6, then D.
+**Where this stands after round 73:** Step 0, all of Plan A (A1–A10), C1–C2,
+and B1–B7 (B5's first commit only) are done. Next in line: B5's five
+extractions (with [17e] as the net), C3–C6, then D (SKILL; the user in
+Allegro after D2 and D4), then E.

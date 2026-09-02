@@ -354,12 +354,22 @@ check("and the exporter's NOTE points at that tuple, not at a name that moved",
 
 # The Python half decides only whether a BATCH includes it. A file the user
 # pointed at directly is never dropped: a checkbox that silently refuses the one
-# file you selected is worse than one that appears to do nothing.
-worker = (ROOT / "stepbuilder/worker.py").read_text(encoding="utf-8")
+# file you selected is worse than one that appears to do nothing. One rule,
+# intermediate.batch_jobs, for the window and the CLI (round 73, plan A10).
+from stepbuilder.intermediate import Intermediate, batch_jobs
+full = Intermediate("board.json", {"format": "simple3d", "full_board": True})
+var = Intermediate("board_lsm.json", {"format": "simple3d"})
+said = []
 check("a queued folder can leave the full-board file out",
-      re.search(r"if len\(jobs\) > 1 and not settings\.build_full_board", worker))
+      batch_jobs([full, var], False, said.append) == [var] and "Not building" in said[-1], said)
+said.clear()
+check("and keeps it when asked to", batch_jobs([full, var], True, said.append) == [full, var] and not said)
 check("but a single file chosen by hand is built anyway, and says so",
-      re.search(r"elif len\(jobs\) == 1 and not settings\.build_full_board", worker))
+      batch_jobs([full], False, said.append) == [full] and "despite" in said[-1], said)
+worker = (ROOT / "stepbuilder/worker.py").read_text(encoding="utf-8")
+cli = (ROOT / "stepbuilder/__main__.py").read_text(encoding="utf-8")
+check("the window's worker and the CLI both go through that one rule",
+      "batch_jobs(" in worker and "batch_jobs(" in cli and "--no-full-board" in cli)
 
 # And the reader itself, on real files rather than on the source of it.
 import json as _json

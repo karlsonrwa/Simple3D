@@ -88,6 +88,11 @@ from typing import TYPE_CHECKING
 
 from .legend import DEFAULT_FLAT_HEIGHT
 
+# How the board body is built - the three values `board_mode` can take. The
+# settings file stores them, the window pairs them with its labels, the CLI
+# offers them as choices, and generate refuses anything else (round 73, A10).
+BOARD_MODES = ("solid", "layers", "inspect")
+
 if TYPE_CHECKING:
     from .worker import BuildSettings
 

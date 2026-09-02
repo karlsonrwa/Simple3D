@@ -39,7 +39,7 @@ from .board import (  # noqa: F401 - re-exported
 )
 from .errors import StepBuilderError  # noqa: F401 - re-exported
 # What one build is asked for (round 73, plan A8).
-from .build import BuildOptions  # noqa: F401 - re-exported
+from .build import BOARD_MODES, BuildOptions  # noqa: F401 - re-exported
 # The XCAF document and its writer (round 73, plan A7).
 from .stepdoc import StepDocument, _set_color  # noqa: F401 - re-exported
 # Component models (round 73, plan A6); re-exported, test_index imports
@@ -70,7 +70,7 @@ from .stackup import (  # noqa: F401 - re-exported
 # and the naming rule moved with it. Re-exported: the window, the worker and
 # the CLI call them as core.<name>.
 from .intermediate import (  # noqa: F401 - re-exported
-    FORMAT_MARKER, RESERVED, Intermediate, dated_output_name, is_full_board,
+    FORMAT_MARKER, RESERVED, Intermediate, batch_jobs, dated_output_name, is_full_board,
     is_simple3d_json, output_stem, resolve_jobs, resolve_json_jobs,
     silkscreen_layers,
 )
@@ -655,6 +655,7 @@ def generate(
         raise TypeError(f"generate(): options= and {sorted(keywords)} given together")
     output_name = options.output_name
     z_datum = options.z_datum                 # validated below, before anything is built
+    board_mode = options.board_mode           # likewise
     minimize_size = options.minimize_size
 
     # A path is read here; an Intermediate the caller already read (the
@@ -666,6 +667,10 @@ def generate(
 
     if z_datum not in ("top", "bottom"):
         raise StepBuilderError(f"z_datum must be 'top' or 'bottom', got {z_datum!r}")
+    if board_mode not in BOARD_MODES:
+        # An unknown mode used to fall through to the plain solid, silently.
+        raise StepBuilderError(f"board_mode must be one of {', '.join(BOARD_MODES)}, "
+                               f"got {board_mode!r}")
 
     if inter is None and not json_file.is_file():
         raise StepBuilderError(f"Input file does not exist: {json_file}")

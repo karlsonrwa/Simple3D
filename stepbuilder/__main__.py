@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from . import core
-from .build import BuildOptions
+from .build import BOARD_MODES, BuildOptions
 from .colors import DEFAULT_SILK, SILK_ORDER, resolve_board_color, resolve_silk_color
 
 
@@ -171,6 +171,13 @@ def main(argv: list[str] | None = None) -> int:
         help="treat json_file as a directory and build every *.json in it (variants)",
     )
     parser.add_argument(
+        "--no-full-board",
+        action="store_true",
+        help="with --batch, leave the whole-board file out and build the variants "
+             "only - the window's 'Build the full-board file too' unticked. A single "
+             "file named directly is always built",
+    )
+    parser.add_argument(
         "--brd-name",
         default=None,
         help="base board name for the output file (default: the JSON's own name)",
@@ -256,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
              "thickness from the inner surface (default 0.5)",
     )
     parser.add_argument(
-        "--board-mode", choices=["solid", "layers", "inspect"], default="solid",
+        "--board-mode", choices=list(BOARD_MODES), default="solid",
         help="how the board body is built, on any board. solid: one solid, one "
              "color (default, smallest). layers: one solid whose faces are "
              "colored by layer kind, so the rim shows the stack. inspect: every "
@@ -309,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
         if not jsons:
             print(f"error: no Simple 3D *.json files in {json_path}", file=sys.stderr)
             return 1
+        jsons = core.batch_jobs(jsons, not args.no_full_board, log)
     else:
         jsons = [json_path]
 

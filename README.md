@@ -559,7 +559,8 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # every variant
 `STEP_DIR` may be a `;`-separated list, and `--step-dir DIR` (repeatable) adds
 more after it — same search order as the window.
 
-Flags: `--batch`, `--z-datum {top,bottom}`, `--color NAME|r,g,b|#rrggbb`,
+Flags: `--batch` (with `--no-full-board` to leave the whole-board file out, as
+the window's checkbox does), `--z-datum {top,bottom}`, `--color NAME|r,g,b|#rrggbb`,
 `--rim-color …`, `--dated-name`, `--brd-name NAME` (names the output file; with
 several variants it is ignored and each JSON's own stem names its output, or
 they would collide), `--no-silkscreen`, `--no-silk-top`, `--no-silk-bottom`,
@@ -1160,7 +1161,8 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # все вариа
 `STEP_DIR` может быть списком через `;`, а `--step-dir DIR` (можно повторять)
 дописывает папки после него — порядок поиска тот же, что и в окне.
 
-Флаги: `--batch`, `--z-datum {top,bottom}`, `--color NAME|r,g,b|#rrggbb`,
+Флаги: `--batch` (с `--no-full-board`, чтобы не собирать файл всей платы, как
+галочка в окне), `--z-datum {top,bottom}`, `--color NAME|r,g,b|#rrggbb`,
 `--rim-color …`, `--dated-name`, `--brd-name NAME` (имя выходного файла; при
 нескольких вариантах игнорируется — иначе они столкнулись бы в одно имя, — и
 каждый файл называется по имени своего JSON), `--no-silkscreen`,
