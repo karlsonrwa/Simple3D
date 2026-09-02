@@ -61,7 +61,7 @@ the keys that differ from the default.
 | `simple3d.il` | 897 | 17 | settings from config, install-folder resolution, `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, the Python pre-flight, the GUI launcher, menu insertion |
 | `stepbuilder/core.py` | 2347 | 55 | stackup arithmetic (restack / drop soldermask / align / levels), per-layer regions and parts, board booleans, silkscreen faces + arc-convention search, component transform, `StepFileIndex`, rim faces, and `generate()` |
 | `stepbuilder/intermediate.py` | 252 | 17 | `Intermediate` (one parse: `is_simple3d`, `is_full_board`, `components`, `metadata`, `validate`, `silkscreen_layers`), `RESERVED`, `resolve_jobs` (+ the path-shaped `resolve_json_jobs`), the old probe names as thin wrappers, `output_stem` / `dated_output_name`. Round 72, plan A2 |
-| `stepbuilder/bend/__init__.py` | 777 | 15 | what is still to be taken apart (see the plan rows marked done for what left), and the re-exports that keep `from stepbuilder.bend import X` working |
+| `stepbuilder/bend/__init__.py` | 86 | 0 | the module docstring (what a bend is and how the fold is built) and the re-exports that keep `from stepbuilder.bend import X` working - the public names, the `DEFAULT_*`, and the underscored ones the tests import; nothing is defined here |
 | `stepbuilder/bend/constants.py` | 37 | 1 | `EPS`, `MIN_ANGLE`, `DEFAULT_*`, `LogFn` — each number with its reason; plan B7 brings the rest here |
 | `stepbuilder/bend/info.py` | 187 | 9 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `bend_from_dict`, `bends_from_json` |
 | `stepbuilder/bend/regions.py` | 170 | 10 | `_Piece` (one `face_box`/`holds` for both), `_Region`, `_Strip`, `_slice_trsf`, the OCC plumbing (`_bbox`, `_extent`, `_is_empty`) |
@@ -69,7 +69,7 @@ the keys that differ from the default.
 | `stepbuilder/bend/cut.py` | 146 | 4 | cutting a shape down to one piece: `_cut_to_region` (every skippable boolean skipped), `_crosses`, the cutters `_slab` and `_plane_face` sized from the shape's own box |
 | `stepbuilder/bend/strip_revolve.py` | 227 | 4 | the exact construction: `_revolve_strip` (a straight strip is its section revolved), `_spans_alike`, `_prism_of`, `PRISM_*` |
 | `stepbuilder/bend/strip_wrap.py` | 414 | 7 | the general construction: `_map_strip` — the flat strip's outline wrapped onto the cylinder, edge by edge, then sewn and checked against the volume the bend says it should have; `MAP_VOLUME_TOLERANCE` |
-| `stepbuilder/bend/plan.py` | 175 | 10 | `FoldPlan` and how it is built: `plan_fold`, `plan_from_json`, the chain, the k-ceiling, `_seam_gap`, `_double_claimed`, the anchor |
+| `stepbuilder/bend/plan.py` | 864 | 25 | `FoldPlan` and how it is built: `plan_fold`, `plan_from_json`, the chain, the k-ceiling, `_seam_gap`, `_double_claimed`, the anchor |
 | `stepbuilder/bend/apply.py` | 179 | 2 | `apply_plan` — cut region by region, bend each strip (revolve, else wrap, else facets), fuse — and `_fuse_all` |
 | `stepbuilder/contour.py` | 267 | 7 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
