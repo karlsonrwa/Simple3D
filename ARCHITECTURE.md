@@ -88,7 +88,7 @@ the keys that differ from the default.
 | `stepbuilder/worker.py` | 176 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, `intermediate.batch_jobs` for the full-board file, per-job isolation, progress slicing; the build's options go through `BuildOptions.from_settings` since A8 |
 | `stepbuilder/worker_bridge.py` | 143 | 9 | `WorkerBridge`: the window's half of the child process - `start`, `drain_once` (queue to five callbacks), `check_alive` (a death is a crash unless `cancelled`), `cancel`, `close`; `crash_advice(code)` is the text. No tkinter. Round 74, plan C5 |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
-| `tests/` (26 files) | ~4900 | — | 21 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
+| `tests/` (27 files) | ~5000 | — | 22 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
 | `tools/` | ~1100 | — | five mechanical SKILL checks (`skill_checks.py` — parens, strings, calls, prog locals, undeclared assignments since round 76 — and `check_arity.py`), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), the SKILL exporter run headless and its own golden corpus (`skill_export.py`, round 75), a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
@@ -269,7 +269,7 @@ flowchart TD
 | `python -m stepbuilder` | no arguments | the window, standalone |
 | `python -m stepbuilder --gui …` | the launcher's form; `parse_known_args` | the window, prefilled |
 | `python -m stepbuilder STEP_DIR JSON OUT [flags]` | headless; `--batch` for a folder | `core.generate` per file, exit 1 on any failure |
-| `python tests/run_all.py [--quick]` | | the 4 checks + 21 suites as subprocesses |
+| `python tests/run_all.py [--quick]` | | the 4 checks + 22 suites as subprocesses |
 | `python tools/skill_checks.py` / `check_arity.py` / `audit_docs.py` | | the mechanical checks, also run by `run_all` |
 | `python tools/skill_export.py --record` / `--check` | Allegro | the SKILL exporter on every `input/*.brd`, headless (`allegro -nograph -s <abs .scr> <copy>`), recorded into `build/skill_golden/` and compared after every Plan D step - the golden corpus of the SKILL half (round 75). One board with `-o` |
 | `load("…/tools/probes/probe_*.il")` | in Allegro, by hand | read-only diagnostics; `probe_variants.il` calls into the exporter |
@@ -420,7 +420,7 @@ each is a step in the plans.
 | # | where | what |
 |---|---|---|
 | 1 | `tests/test_regression_geometry.py:396` | prints `MATCH`/`DRIFT`, exits 0 either way; `run_all` cannot see a drift. (It does match today: 12073.309477. The write statistics show 5038 entities where the memo records 5054; the test never checked entities.) **Fixed in round 71:** exits 1 on either drift; 5038 is right — the count moved at `687ea3f` (round 63) with the volume unchanged |
-| 2 | `makeVariant3dIntermediates.il:2319-2321, 2341, 3505, 3566, 3668` | refdes, `step_name`, zone name, silk layer name, warning text and the variant name are written into the JSON **without** `s3dJsonQuote`; a quote or backslash in a mapping table entry breaks the whole file |
+| 2 | `makeVariant3dIntermediates.il` (was 2319-2321, 2341, 3505, 3566, 3668) | refdes, `step_name`, zone name, silk layer name, warning text and the variant name were written into the JSON **without** `s3dJsonQuote`; a quote or backslash in a mapping table entry broke the whole file. **Fixed in round 76 (D4):** every string goes through `s3dJsonQuote`, `tests/test_emit.py` refuses a new raw site |
 | 3 | `makeVariant3dIntermediates.il` (see 4.1) | undeclared locals in the upstream procedures leak as globals; `makePcb` rebinds its caller's `pcbColor`; `makeVariant3dIntermediates` declares `thicknesses` twice |
 | 4 | `calculateBoardThickness:1267` vs `s3dLayerInBody:1711` | two rules for requirement #1: `pcb.thickness` gates on the `SOLDERMASK` name, the stackups on position + SILK/PASTE; a plain board with a mask named `SM_TOP` is one thickness in *Solid* and another in *Solid colored layers* |
 | 5 | `core.py:395` | `_layer_region` re-imports `BRepAlgoAPI_Cut` locally though it is a module-level name — the `UnboundLocalError` trap `_rim_faces` documents, one added line away. **Fixed in round 71** |

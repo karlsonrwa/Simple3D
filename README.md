@@ -598,7 +598,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 21 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), read-only probes
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 22 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), read-only probes
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1203,7 +1203,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 21 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), зонды
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 22 набора тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), зонды
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

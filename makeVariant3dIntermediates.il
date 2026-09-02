@@ -446,37 +446,18 @@ procedure( s3dEmbeddedModels()
 ; emitted, even empty, so the shape of the file does not depend on the board.
 ; No trailing comma: the caller adds the separator.
 procedure( s3dEmbeddedModelsJson()
-    let( ( models out ( first t ) ( nBad 0 ) )
+    let( ( models out ( first t ) )
         models = s3dEmbeddedModels()
         out = "\"embedded_models\": ["
         foreach( m models
-            ; A quote or backslash would produce invalid JSON, and this file has
-            ; no escaper (the one written for MFRPN is commented out). A model
-            ; file named like that does not occur in practice, so skip it and
-            ; say so rather than corrupt the whole intermediate.
-            if( s3dHasJsonSpecial( m ) then
-                nBad = nBad + 1
-            else
-                unless( first  out = strcat( out ", " ) )
-                first = nil
-                out = strcat( out "\"" m "\"" )
-            )
-        )
-        when( nBad > 0
-            s3dWarn( sprintf( nil "Simple 3D: %d embedded model name(s) contain a quote or backslash and were left out of the report." nBad ) )
+            ; Quoted like every other string that reaches the file (round 76,
+            ; D4). A name with a quote or backslash used to be left out with a
+            ; warning, from the days this file had no escaper of its own.
+            unless( first  out = strcat( out ", " ) )
+            first = nil
+            out = strcat( out s3dJsonQuote( m ) )
         )
         strcat( out "]" )
-    )
-)
-
-; t if the string holds a character that would need JSON escaping.
-procedure( s3dHasJsonSpecial( t_str )
-    let( ( ( bad nil ) c )
-        for( i 1 strlen( t_str )
-            c = substring( t_str i 1 )
-            when( (c == "\"") || (c == "\\")  bad = t )
-        )
-        bad
     )
 )
 
@@ -2345,9 +2326,9 @@ procedure( symbolReturn3DElements( g_symbol )
         ; set step package mapping
         when( stepFileName
             stepPackageMapping = strcat(
-                "\"" sprintf( nil "%s" refDes ) "\": {\n"
+                s3dJsonQuote( sprintf( nil "%s" refDes ) ) ": {\n"
                 "\t\"step_mapping\": {\n"
-                "\t\t\"step_name\": \"" sprintf( nil "%s" stepFileName ) "\",\n"
+                "\t\t\"step_name\": " s3dJsonQuote( sprintf( nil "%s" stepFileName ) ) ",\n"
                 "\t\t\"rotation_x\": " sprintf( nil "%f" rotation_x ) ",\n"
                 "\t\t\"rotation_y\": " sprintf( nil "%f" rotation_y ) ",\n"
                 "\t\t\"rotation_z\": " sprintf( nil "%f" rotation_z ) ",\n"
@@ -2366,10 +2347,7 @@ procedure( symbolReturn3DElements( g_symbol )
                 ; very different heights, so the reader needs to know which
                 ; surface to place it on. nil on an ordinary board, and the
                 ; reader then falls back to the single board surface.
-                "\t\"zone\": " if( zoneName then
-                                   strcat( "\"" zoneName "\"" )
-                               else
-                                   "null" ) ",\n"
+                "\t\"zone\": " s3dJsonQuote( zoneName ) ",\n"     ; nil -> null
                 "\t\"is_mirrored\": " isMirrored ",\n"
                 "\t\"x\": " sprintf( nil "%f" xCoord( xy ) ) ",\n"
                 "\t\"y\": " sprintf( nil "%f" yCoord( xy ) ) ",\n"
@@ -3505,7 +3483,7 @@ procedure( s3dWriteSilkPolys( p_port l_groups )
             ; Which layer this polygon came from. The array stays FLAT - one
             ; object per polygon, exactly as before - so a reader that ignores
             ; this key still builds the whole legend.
-            fprintf( p_port "\t\t\t\t\"layer\": \"%s\",\n" layer )
+            fprintf( p_port "\t\t\t\t\"layer\": %s,\n" s3dJsonQuote( layer ) )
 
             ; Allegro's own area for this polygon, already net of its holes.
             ; This is the reference the Python side resolves the arc convention
@@ -3566,7 +3544,7 @@ procedure( s3dWriteSilkscreen( p_port l_silk )
                 else
                     fprintf( p_port ",\n" )
                 )
-                fprintf( p_port "\t\t\t\"%s\"" message )
+                fprintf( p_port "\t\t\t%s" s3dJsonQuote( message ) )
             )
             fprintf( p_port "\n\t\t],\n" )
         )
@@ -3670,7 +3648,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         name = strcat(
             "\"format\": \"simple3d\",\n"
             "\"format_version\": 8,\n"
-            "\"name\": \"" variantName "\",\n"
+            "\"name\": " s3dJsonQuote( variantName ) ",\n"
             ; Optional, and only ever true: the whole board, variants ignored.
             ; A reader that does not know the key sees an ordinary intermediate,
             ; which is what every version before this one will do.

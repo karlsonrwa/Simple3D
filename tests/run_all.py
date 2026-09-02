@@ -41,6 +41,7 @@ JOBS = [
     ("embedded models cross-check",             TESTS / "test_embedded.py", True),
     ("STEP folder search path",                 TESTS / "test_index.py", True),
     ("JSON quoting",                            TESTS / "test_quote.py", False),
+    ("JSON emission: every string quoted",      TESTS / "test_emit.py", False),
     ("drill offset: the hole is not the pad",   TESTS / "test_drill_offset.py", False),
     ("launcher command shape",                  TESTS / "test_launch_cmd.py", False),
     ("launcher: one parser, the --gui mode",    TESTS / "test_launcher.py", False),

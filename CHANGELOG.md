@@ -11,6 +11,32 @@ to use the tool.
 
 ---
 
+- **2026-09-02** — **A quote in a name no longer breaks the export.** A
+  reference designator, a STEP model name, a zone or layer name, or the
+  variant name with a `"` or `\` in it used to produce an intermediate
+  the Python side refused whole; an embedded-model name like that was
+  left out of the file with a warning. Every string the exporter writes
+  is escaped now, and a test refuses any new place that would write one
+  raw. Under the hood the exporter also declares every name it assigns
+  (Allegro's SKILL is dynamically scoped, so an undeclared one leaked
+  into the session), has one copy of its layer-sweep instead of five,
+  and is checked headless - `tools/skill_export.py` runs it on every
+  board in `input/` and compares the JSON, so a change like this is
+  proven to change nothing on a board without such names.
+  / **Кавычка в имени больше не ломает экспорт.** Позиционное
+  обозначение, имя STEP-модели, зоны или слоя, имя варианта с `"` или
+  `\` давали промежуточный файл, который Python-половина отвергала
+  целиком; имя встроенной модели с такими символами вообще
+  выбрасывалось из файла с предупреждением. Теперь каждая строка,
+  которую пишет экспортер, экранируется, а тест не пропустит новое место,
+  где строка пишется как есть. Внутри экспортер к тому же объявляет
+  каждое имя, которое присваивает (SKILL в Allegro — с динамической
+  областью видимости, необъявленное имя утекало в сеанс), держит одну
+  копию развёртки по слоям вместо пяти и проверяется без окна:
+  `tools/skill_export.py` прогоняет его по каждой плате в `input/` и
+  сравнивает JSON, так что такое изменение доказанно ничего не меняет на
+  плате без подобных имён.
+
 - **2026-09-02** — **The launcher's command line is checked, not skimmed.**
   `python -m stepbuilder --gui ...` (what the Allegro button runs) used to
   have a parser of its own that dropped any flag it did not know without a

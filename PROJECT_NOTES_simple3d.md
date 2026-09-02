@@ -2989,6 +2989,16 @@ D1 and D2 in one commit, closed by all five mechanical checks,
   visibility sweep can be: the three probes run headless on `flex3-a0.brd`
   before and after, 1099 console lines each, no difference - plus the
   JSON corpus and the suite.
+- **D4** (a third commit) every string that reaches the file goes through
+  `s3dJsonQuote`: the placement's refdes key and `step_name`, the zone
+  name (nil → null through the quoter itself), the silk polygon's layer,
+  the silk warnings, the header's variant name - and the embedded-model
+  list, which used to LEAVE OUT a name with a quote or backslash with a
+  warning (`s3dHasJsonSpecial` is gone with it). `tests/test_emit.py`,
+  the 22nd suite: the fragments transliterated and `json.loads`-ed with
+  a quote, a backslash and a tab in every name, and the `.il` read to
+  refuse any line that glues a value between quote characters or writes
+  one through a quoted `%s`. Corpus unchanged; 27/27 in 201 s.
 
 ### What to remember
 
