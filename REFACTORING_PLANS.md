@@ -158,6 +158,8 @@ monotonic before A9.
 ```
 stepbuilder/bend/
   __init__.py     public names: Bend, FoldPlan, plan_fold, plan_from_json, DEFAULT_*
+  constants.py    EPS, MIN_ANGLE, DEFAULT_*, LogFn - each with its reason  (added by B1;
+                  B7's home for the rest of the magic numbers)
   info.py         parse_bend_info, info_length, info_number, Bend, bend_from_dict,
                   bends_from_json
   regions.py      _Piece (face_box + holds, shared), _Region(_Piece), _Strip(_Piece),
@@ -186,7 +188,7 @@ re-exports.
 
 | # | move | tests before | done when |
 |---|---|---|---|
-| B1 | package skeleton; `info.py`; `regions.py` with the `_Piece` mixin | `test_bend.py` [1], [2], [16] | `_Region.holds is _Strip.holds` (one implementation) |
+| B1 | package skeleton; `info.py`; `regions.py` with the `_Piece` mixin | `test_bend.py` [1], [2], [16] | `_Region.holds is _Strip.holds` (one implementation) — **done, round 72**: `bend.py` became `bend/__init__.py` (git sees the rename), `constants.py` / `info.py` / `regions.py` cut out verbatim, `_Piece` holds the one `face_box` + `holds` (asserted `is`), `_slice_trsf` and the OCC plumbing went with the regions; `__init__` re-exports everything, including the three underscored names `test_bend.py` imports. 24/24, golden unchanged |
 | B2 | `pieces.py` | [7c2] (`_cut_into_pieces` with and without curves), [7b0], [7b2] | unchanged |
 | B3 | `cut.py` + `apply.py` | [3], [11], [12], [13], [14] | unchanged; `_slab` keeps "sized and placed from the shape" |
 | B4 | `strip_revolve.py` | [17], [11b] (the ear) | unchanged |

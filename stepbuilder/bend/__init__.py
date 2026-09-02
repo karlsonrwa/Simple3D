@@ -64,306 +64,29 @@ from OCP.gp import gp_Ax1, gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
 # The flat-polygon helpers moved to contour.py (round 72, plan A1); the tests
 # and the window still import them from here, so they are re-exported.
-from .contour import (  # noqa: F401 - re-exported
+from ..contour import (  # noqa: F401 - re-exported
     build_contour, clip_halfplane, contour_points, point_in_polygon,
     point_on_polygon, polygon_area,
 )
-from .errors import StepBuilderError
-
-LogFn = Callable[[str], None]
-
-
-def _noop_log(message: str) -> None:
-    pass
-
-
-# A bend shallower than this is not worth cutting the board for.
-MIN_ANGLE = 0.5
-
-# Degrees of arc per rigid slice, for the bends that cannot be built exactly.
-# 7.5 puts twelve facets in a 90 deg bend and the facet chords 0.2% of the
-# radius inside the true surface.
-DEFAULT_SLICE_ANGLE = 7.5
-
-# The point of the board that stays in the XY plane. The ORIGIN by convention:
-# Allegro's own "Anchor 3D View" never writes its point to the database (24.1),
-# so the design cannot tell us, and a fixed, documented convention beats a
-# heuristic that quietly picks a different piece when a board changes shape.
-DEFAULT_ANCHOR = (0.0, 0.0)
-
-# Where the neutral axis sits in the stack, as a fraction of the thickness from
-# the inner surface. 0.5 is the middle, which is right for a symmetric flex.
-DEFAULT_NEUTRAL_FACTOR = 0.5
-
-# Numerical slack for "is this point on that side of the line".
-EPS = 1.0e-7
-
-
-# --------------------------------------------------------------------------- #
-# IDX_BEND_TYPE_INFO
-# --------------------------------------------------------------------------- #
-
-# Allegro writes lengths with their unit spelled out:
-#     INNER_RADIUS=2.5000 MILLIMETERS
-# The design is required to be in mm anyway (the intermediate is unitless), but
-# the property carries its own unit and a board set up in mils would otherwise
-# read 2.5 mm where it means 2.5 mils.
-_UNITS = {
-    "MILLIMETERS": 1.0, "MILLIMETER": 1.0, "MM": 1.0,
-    "CENTIMETERS": 10.0, "CENTIMETER": 10.0, "CM": 10.0,
-    "MICRONS": 0.001, "MICRON": 0.001, "UM": 0.001,
-    "INCHES": 25.4, "INCH": 25.4, "IN": 25.4,
-    "MILS": 0.0254, "MIL": 0.0254,
-}
-
-_NUMBER = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
-
-
-def parse_bend_info(raw: str) -> dict:
-    """`"TYPE=CircularBend, INNER_ANGLE=28.26, ..."` -> `{"TYPE": "CircularBend", ...}`.
-
-    Deliberately forgiving. The property is undocumented - it appears in neither
-    the SKILL API index nor the DB attribute reference - so its full field list
-    is whatever a given Allegro version chooses to write. Unknown keys are kept
-    as strings rather than dropped, and a field that cannot be read leaves the
-    bend to fall back on the value the dedicated API gave.
-    """
-    out: dict = {}
-    if not isinstance(raw, str):
-        return out
-    for part in raw.split(","):
-        if "=" not in part:
-            continue
-        key, _, value = part.partition("=")
-        key = key.strip().upper()
-        value = value.strip()
-        if key:
-            out[key] = value
-    return out
-
-
-def info_length(value: str | None) -> float | None:
-    """`"2.5000 MILLIMETERS"` -> 2.5. None when there is no number in it."""
-    if not isinstance(value, str):
-        return None
-    match = _NUMBER.search(value)
-    if not match:
-        return None
-    number = float(match.group(0))
-    for word in value[match.end():].strip().upper().split():
-        scale = _UNITS.get(word.strip(".,"))
-        if scale is not None:
-            return number * scale
-    return number
-
-
-def info_number(value: str | None) -> float | None:
-    """The first number in a field, unit or not."""
-    if isinstance(value, (int, float)):
-        return float(value)
-    if not isinstance(value, str):
-        return None
-    match = _NUMBER.search(value)
-    return float(match.group(0)) if match else None
-
-
-# --------------------------------------------------------------------------- #
-# one bend
-# --------------------------------------------------------------------------- #
-
-@dataclass
-class Bend:
-    """One bend, in flat board coordinates."""
-
-    name: str
-    start: tuple[float, float]
-    end: tuple[float, float]
-    angle: float                      # degrees of arc, finished
-    radius: float                     # INNER radius, mm
-    inner_side: str = "top"           # which face is on the inside of the curve
-    order: int | None = None          # Allegro's bending sequence number
-    width: float | None = None        # bend area, measured across the line
-    info: str = ""                    # the raw property, kept for diagnosis
-
-    @property
-    def midpoint(self) -> tuple[float, float]:
-        return ((self.start[0] + self.end[0]) / 2.0,
-                (self.start[1] + self.end[1]) / 2.0)
-
-    @property
-    def length(self) -> float:
-        return math.hypot(self.end[0] - self.start[0], self.end[1] - self.start[1])
-
-    def normal(self) -> tuple[float, float]:
-        """A unit vector across the bend line. Sense is arbitrary here."""
-        dx, dy = self.end[0] - self.start[0], self.end[1] - self.start[1]
-        n = math.hypot(dx, dy)
-        if n <= EPS:
-            return (1.0, 0.0)
-        return (dy / n, -dx / n)
-
-
-def bend_from_dict(entry: dict) -> Bend | None:
-    """One JSON bend entry -> Bend, or None when it cannot be read.
-
-    The exporter emits the parsed fields AND the raw property string. The parsed
-    fields win; the raw string is re-parsed only for what is missing, so a newer
-    Allegro that adds a field can be picked up here without a re-export.
-    """
-    if not isinstance(entry, dict):
-        return None
-    line = entry.get("line") or {}
-    start, end = line.get("start"), line.get("end")
-    if not (isinstance(start, (list, tuple)) and isinstance(end, (list, tuple))):
-        return None
-    if len(start) < 2 or len(end) < 2:
-        return None
-
-    info = entry.get("info") if isinstance(entry.get("info"), str) else ""
-    fields = parse_bend_info(info)
-
-    angle = entry.get("angle")
-    if angle is None:
-        angle = info_number(fields.get("INNER_ANGLE") or fields.get("ANGLE"))
-    radius = entry.get("inner_radius")
-    if radius is None:
-        radius = info_length(fields.get("INNER_RADIUS") or fields.get("RADIUS"))
-    side = entry.get("inner_side") or fields.get("INNER_SIDE") or "TOP"
-    order = entry.get("order")
-    if order is None:
-        order = info_number(fields.get("ORDER"))
-
-    if angle is None or radius is None:
-        return None
-
-    return Bend(
-        name=str(entry.get("name") or "bend"),
-        start=(float(start[0]), float(start[1])),
-        end=(float(end[0]), float(end[1])),
-        angle=abs(float(angle)),
-        radius=abs(float(radius)),
-        inner_side="bottom" if str(side).strip().upper().startswith("B") else "top",
-        order=int(order) if order is not None else None,
-        width=float(entry["width"]) if isinstance(entry.get("width"), (int, float)) else None,
-        info=info,
-    )
-
-
-def bends_from_json(data: dict, log: LogFn = _noop_log) -> list[Bend]:
-    """The `bends` array of a format_version 7 intermediate."""
-    raw = data.get("bends")
-    if not isinstance(raw, list) or not raw:
-        return []
-    bends = []
-    for entry in raw:
-        bend = bend_from_dict(entry)
-        if bend is None:
-            log(f"warning: a bend entry could not be read and is left flat "
-                f"({entry.get('name') if isinstance(entry, dict) else entry!r})")
-            continue
-        if bend.angle < MIN_ANGLE:
-            log(f"Bend {bend.name}: {bend.angle:.2f} deg, left flat")
-            continue
-        if bend.length <= EPS:
-            log(f"warning: bend {bend.name} has a zero-length bend line, skipped")
-            continue
-        bends.append(bend)
-    return bends
-
+from ..errors import StepBuilderError
+# The package, so far (round 72, plan B1): what a bend is, the pieces of the
+# board, the numbers. Everything below still waits for plans B2-B6; the
+# names are re-exported here so `from stepbuilder.bend import X` holds.
+from .constants import (  # noqa: F401 - re-exported
+    DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, EPS, MIN_ANGLE,
+    LogFn, _noop_log,
+)
+from .info import (  # noqa: F401 - re-exported
+    Bend, bend_from_dict, bends_from_json, info_length, info_number,
+    parse_bend_info,
+)
+from .regions import (  # noqa: F401 - re-exported
+    _Piece, _Region, _Strip, _bbox, _extent, _is_empty, _slice_trsf,
+)
 
 # --------------------------------------------------------------------------- #
 # the plan
 # --------------------------------------------------------------------------- #
-
-@dataclass
-class _Region:
-    """A piece of the flat board and the rigid transform that carries it.
-
-    `bounds` are half-plane constraints in flat XY, each (nx, ny, lo, hi)
-    meaning `lo <= n . p <= hi`, with +/-inf for an open side. They are applied
-    to the FLAT shape, before any transform: that is what makes a chain of bends
-    composable, because every cut is made in the one frame where the board is
-    still a plane.
-    """
-
-    label: str
-    bounds: list[tuple[float, float, float, float]]
-    trsf: gp_Trsf
-    moved: bool = True
-    # "panel" - a flat piece carried by one rigid transform; "slice" - one facet
-    # of a bend, used only when the exact construction below does not apply.
-    kind: str = "panel"
-    # The piece of the flat board this region is, as a polygon and as a face.
-    # This is what says which ARM the region belongs to; `bounds` only ever
-    # subdivides it now - the slices of one strip. See _cut_into_pieces.
-    poly: list[tuple[float, float]] | None = None
-    # Every fragment of the piece, when a pinch had to be repaired into several
-    # faces - see _piece_face. `poly` is the first and largest of them.
-    polys: list | None = None
-    face: object = None
-    _box: object = None
-
-    def face_box(self):
-        """The piece's bounding box, worked out once.
-
-        Asked for every shape folded against it, and the legend asks tens of
-        thousands of times - see FoldPlan.apply.
-        """
-        if self.face is not None and self._box is None:
-            self._box = _bbox(self.face)
-        return self._box
-
-    def holds(self, x: float, y: float) -> bool:
-        rings = self.polys or ([self.poly] if self.poly is not None else [])
-        if rings and not any(point_in_polygon((x, y), r)
-                             or point_on_polygon((x, y), r) for r in rings):
-            return False
-        return all(lo - EPS <= nx * x + ny * y <= hi + EPS
-                   for nx, ny, lo, hi in self.bounds)
-
-
-@dataclass
-class _Strip:
-    """The part of the board that curls, and everything needed to curl it.
-
-    Kept apart from the panels because it is built in one of two ways and the
-    choice is made per shape: exactly, as a revolved section, or as the rigid
-    slices in `facets`. See FoldPlan.apply.
-    """
-
-    bend: Bend
-    bounds: list[tuple[float, float, float, float]]
-    normal: tuple[float, float]
-    lo: float
-    hi: float
-    axis_z: float
-    turn: float                       # signed, radians: the finished angle
-    carried: gp_Trsf                  # what the bends before this one do to it
-    facets: list[_Region] = field(default_factory=list)
-    poly: list[tuple[float, float]] | None = None
-    polys: list | None = None
-    face: object = None
-    _box: object = None
-
-    def face_box(self):
-        if self.face is not None and self._box is None:
-            self._box = _bbox(self.face)
-        return self._box
-
-    def holds(self, x: float, y: float) -> bool:
-        rings = self.polys or ([self.poly] if self.poly is not None else [])
-        if rings and not any(point_in_polygon((x, y), r)
-                             or point_on_polygon((x, y), r) for r in rings):
-            return False
-        return all(lo - EPS <= nx * x + ny * y <= hi + EPS
-                   for nx, ny, lo, hi in self.bounds)
-
-    def axis(self) -> gp_Ax1:
-        """The cylinder the board wraps onto, in the flat frame."""
-        nx, ny = self.normal
-        return gp_Ax1(gp_Pnt(nx * self.lo, ny * self.lo, self.axis_z),
-                      gp_Dir(ny, -nx, 0.0))
-
 
 @dataclass
 class FoldPlan:
@@ -1242,33 +965,6 @@ def plan_from_json(data: dict, board_top_z: float, board_bottom_z: float,
                      outline_curves=(contours[0] if contours else None), log=log)
 
 
-def _slice_trsf(carried: gp_Trsf, nx: float, ny: float, lo: float,
-                hinge: float, axis_z: float, phi: float) -> gp_Trsf:
-    """The transform of a piece hinged at `hinge`, rotated `phi` about the arc.
-
-    Two steps, and the order is the whole trick: slide the piece back along the
-    bend direction until its leading edge sits at the start of the arc, THEN
-    rotate it about the cylinder axis. That is what makes the flat material the
-    bend consumes disappear into the arc instead of stretching the board.
-
-    `carried` is everything the earlier bends in the chain already do to this
-    piece, and it is applied last.
-    """
-    shift = hinge - lo
-    slide = gp_Trsf()
-    slide.SetTranslation(gp_Vec(-shift * nx, -shift * ny, 0.0))
-
-    # (nx, ny) is a unit vector, so the point `lo` along it is a foot of the
-    # cylinder axis; the axis itself runs parallel to the bend line, and the
-    # direction n x z is what makes a positive angle tip the far side upwards.
-    origin = gp_Pnt(nx * lo, ny * lo, axis_z)
-    direction = gp_Dir(ny, -nx, 0.0)
-
-    turn = gp_Trsf()
-    turn.SetRotation(gp_Ax1(origin, direction), phi)
-    return carried * turn * slide
-
-
 def _anchor_signs(bends: list[Bend], outline: list[tuple[float, float]],
                   anchor: tuple[float, float] | None,
                   notes: list[str]) -> list[float]:
@@ -1337,35 +1033,6 @@ def _anchor_point(bends: list[Bend], normals: list[tuple[float, float]],
         return (sum(p[0] for p in outline) / len(outline),
                 sum(p[1] for p in outline) / len(outline))
     return (0.0, 0.0)
-
-
-# --------------------------------------------------------------------------- #
-# OCC plumbing
-# --------------------------------------------------------------------------- #
-
-def _bbox(shape: TopoDS_Shape):
-    box = Bnd_Box()
-    BRepBndLib.Add_s(shape, box, True)
-    if box.IsVoid():
-        return None
-    return box.Get()          # (xmin, ymin, zmin, xmax, ymax, zmax)
-
-
-def _extent(box, nx: float, ny: float) -> tuple[float, float]:
-    xmin, ymin, _, xmax, ymax, _ = box
-    values = [nx * x + ny * y for x in (xmin, xmax) for y in (ymin, ymax)]
-    return min(values), max(values)
-
-
-def _is_empty(shape: TopoDS_Shape) -> bool:
-    if shape is None or shape.IsNull():
-        return True
-    for kind in (TopAbs_ShapeEnum.TopAbs_SOLID,
-                 TopAbs_ShapeEnum.TopAbs_FACE,
-                 TopAbs_ShapeEnum.TopAbs_EDGE):
-        if TopExp_Explorer(shape, kind).More():
-            return False
-    return True
 
 
 def _cut_to_region(shape: TopoDS_Shape,

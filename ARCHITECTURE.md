@@ -32,7 +32,7 @@ Python 3.10+ / cadquery-ocp  (package stepbuilder, runs OUTSIDE Allegro)
   gui.py        the Tk window; reads+writes simple3d_config[.local].json
   worker.py     BuildSettings + run_jobs, in a child process
   core.py       the intermediate -> a STEP assembly (board, legend, components)
-  bend.py       folding a flex board along its bend areas
+  bend/         folding a flex board along its bend areas (a package since round 72)
   colors.py     themes, ink colours, layer kinds
 ```
 
@@ -61,7 +61,10 @@ the keys that differ from the default.
 | `simple3d.il` | 897 | 17 | settings from config, install-folder resolution, `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, the Python pre-flight, the GUI launcher, menu insertion |
 | `stepbuilder/core.py` | 2347 | 55 | stackup arithmetic (restack / drop soldermask / align / levels), per-layer regions and parts, board booleans, silkscreen faces + arc-convention search, component transform, `StepFileIndex`, rim faces, and `generate()` |
 | `stepbuilder/intermediate.py` | 252 | 17 | `Intermediate` (one parse: `is_simple3d`, `is_full_board`, `components`, `metadata`, `validate`, `silkscreen_layers`), `RESERVED`, `resolve_jobs` (+ the path-shaped `resolve_json_jobs`), the old probe names as thin wrappers, `output_stem` / `dated_output_name`. Round 72, plan A2 |
-| `stepbuilder/bend.py` | 2412 | 71 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `_Region`/`_Strip`/`FoldPlan`, `plan_fold`, cutting the outline into pieces, the three strip constructions (revolve / wrap / facets), fuse |
+| `stepbuilder/bend/__init__.py` | 2079 | 50 | `FoldPlan`, `plan_fold`, cutting the outline into pieces, the three strip constructions (revolve / wrap / facets), fuse — still one file, to be taken apart by plans B2–B6; re-exports the package's names |
+| `stepbuilder/bend/constants.py` | 37 | 1 | `EPS`, `MIN_ANGLE`, `DEFAULT_*`, `LogFn` — each number with its reason; plan B7 brings the rest here |
+| `stepbuilder/bend/info.py` | 187 | 9 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `bend_from_dict`, `bends_from_json` |
+| `stepbuilder/bend/regions.py` | 170 | 10 | `_Piece` (one `face_box`/`holds` for both), `_Region`, `_Strip`, `_slice_trsf`, the OCC plumbing (`_bbox`, `_extent`, `_is_empty`). Round 72, plan B1 |
 | `stepbuilder/contour.py` | 267 | 7 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
 | `stepbuilder/gui.py` | 1419 | 57 | one `tk.Tk` subclass: widget layout, window placement across monitors, silk-layer panel, the hand-over between widgets and `settings.GuiSettings`, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring |
@@ -73,9 +76,9 @@ the keys that differ from the default.
 | `tools/` | ~850 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
-Counts for `core.py`, `bend.py`, `contour.py`, `errors.py`, `intermediate.py`,
-`gui.py` and `settings.py` are as of round 72 (after plans A1, A2 and C1); the
-other rows are as of round 70. The defs column counts
+Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
+`gui.py` and `settings.py` are as of round 72 (after plans A1, A2, C1, C2 and
+B1); the other rows are as of round 70. The defs column counts
 every `def` and `class` line, nested ones included.
 
 ### 2.2 Dependencies
@@ -98,7 +101,7 @@ graph TD
         GUI --> WORKER[worker.py]
         GUI --> COLORS[colors.py]
         GUI --> SETTINGS[settings.py]
-        GUI -.->|"DEFAULT_* constants"| BEND[bend.py]
+        GUI -.->|"DEFAULT_* constants"| BEND[bend/]
         GUI -.->|"resolve_jobs, output_stem<br/>(re-exported from intermediate)"| CORE
         WORKER -->|"multiprocessing.Process"| CORE
         CORE --> COLORS

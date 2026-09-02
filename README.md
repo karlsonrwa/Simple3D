@@ -582,7 +582,7 @@ stepbuilder/
   errors.py      the one exception the package raises
   intermediate.py  one intermediate JSON, read once; which files to build; output naming
   settings.py    the settings pair: shipped defaults + the local file, merged key by key
-  bend.py        folding a flex board along its bend areas
+  bend/          folding a flex board along its bend areas (a package since round 72)
   colors.py      the board themes and rim options
   worker.py      the build, in a child process, so a crash cannot take the window
   gui.py         the tkinter window, a thin wrapper around core
@@ -1176,7 +1176,7 @@ stepbuilder/
   errors.py      единственное исключение пакета
   intermediate.py  промежуточный JSON, прочитанный один раз; что собирать; имена выходных файлов
   settings.py    пара настроек: штатные значения + локальный файл, слитые по ключам
-  bend.py        сгибание гибкой платы по областям сгиба
+  bend/          сгибание гибкой платы по областям сгиба (с раунда 72 — пакет)
   colors.py      темы платы и варианты цвета торца
   worker.py      сборка в дочернем процессе, чтобы падение не унесло окно
   gui.py         окно tkinter, тонкая обёртка вокруг core
