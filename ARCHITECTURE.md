@@ -59,7 +59,8 @@ the keys that differ from the default.
 |---|---:|---:|---|
 | `makeVariant3dIntermediates.il` | 3925 | 90 | console messages, path helpers, property helpers, the `Variants.lst` parser (upstream), geometry-to-JSON primitives, board thickness, stackups/zones/bends readers, a JSON reader + merge + config loader, silkscreen collection/clipping/streaming, the intermediate writer, the top-level export |
 | `simple3d.il` | 897 | 17 | settings from config, install-folder resolution, `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, the Python pre-flight, the GUI launcher, menu insertion |
-| `stepbuilder/core.py` | 2132 | 45 | per-layer regions and parts, board booleans, silkscreen faces + arc-convention search, component transform, `StepFileIndex`, rim faces, and `generate()` |
+| `stepbuilder/core.py` | 1526 | 31 | silkscreen faces + arc-convention search, component transform, `StepFileIndex`, the XCAF document and writer, and `generate()` |
+| `stepbuilder/board.py` | 625 | 13 | the board body: `make_board_geometry` (a plain board and the zone paths), `_layer_region` (a drawn shape as material or opening), `make_board_layer_parts` + `fuse_keeping_faces` (the inspect and layer-coloured builds), `_stackup_board` + `fuse_and_unify`, `_zone_solid`, `board_cutouts` (repeats dropped), `has_solid`, `_rim_faces`. Round 73, plan A4 (moved whole; the shared zones×layers walk is the next commit) |
 | `stepbuilder/stackup.py` | 223 | 8 | the stackup arithmetic, no OCC: `restack`, `drop_soldermask`, `align_stackups`, `stackup_levels`, `zone_levels`, the soldermask / conductor matchers. Round 73, plan A3 |
 | `stepbuilder/reporting.py` | 29 | 2 | `LogFn`, `ProgressFn` and the two no-ops — every stage module needs them and none may import core for them. Round 73 |
 | `stepbuilder/intermediate.py` | 252 | 17 | `Intermediate` (one parse: `is_simple3d`, `is_full_board`, `components`, `metadata`, `validate`, `silkscreen_layers`), `RESERVED`, `resolve_jobs` (+ the path-shaped `resolve_json_jobs`), the old probe names as thin wrappers, `output_stem` / `dated_output_name`. Round 72, plan A2 |
@@ -73,7 +74,7 @@ the keys that differ from the default.
 | `stepbuilder/bend/strip_wrap.py` | 414 | 7 | the general construction: `_map_strip` — the flat strip's outline wrapped onto the cylinder, edge by edge, then sewn and checked against the volume the bend says it should have; `MAP_VOLUME_TOLERANCE` |
 | `stepbuilder/bend/plan.py` | 900 | 27 | `FoldPlan` and how it is built: `plan_fold`, `plan_from_json`, the chain, the k-ceiling, `_seam_gap`, `_double_claimed`, the anchor |
 | `stepbuilder/bend/apply.py` | 179 | 2 | `apply_plan` — cut region by region, bend each strip (revolve, else wrap, else facets), fuse — and `_fuse_all` |
-| `stepbuilder/contour.py` | 267 | 7 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here. Round 72, plan A1 |
+| `stepbuilder/contour.py` | 290 | 8 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here; `_face_from_wires` (wires → a planar face with holes, used by the board and the legend alike) since A4. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
 | `stepbuilder/gui.py` | 1419 | 57 | one `tk.Tk` subclass: widget layout, window placement across monitors, silk-layer panel, the hand-over between widgets and `settings.GuiSettings`, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring |
 | `stepbuilder/settings.py` | 404 | 18 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`; then the `gui` section as ONE table, `GUI_KEYS` (name, field, default, load, save), `GuiSettings`, `load_gui_settings` (both migrations live in the `load` of the key that superseded them) and `save_gui_settings` (only what differs from the shipped default). Round 72, plans C1–C2 |
@@ -85,8 +86,8 @@ the keys that differ from the default.
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
 Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
-`gui.py`, `settings.py`, `stackup.py` and `reporting.py` are as of round 73
-(after plans A1–A3, C1–C2 and B1–B7); the other rows are as of round 70. The defs column counts
+`gui.py`, `settings.py`, `stackup.py`, `reporting.py` and `board.py` are as of
+round 73 (after plans A1–A4, C1–C2 and B1–B7); the other rows are as of round 70. The defs column counts
 every `def` and `class` line, nested ones included.
 
 ### 2.2 Dependencies
@@ -116,6 +117,8 @@ graph TD
         CORE -->|"plan_from_json (lazy)"| BEND
         CORE --> INTER[intermediate.py]
         CORE --> STACK[stackup.py]
+        CORE --> BOARD[board.py]
+        BOARD --> CONTOUR
         STACK --> ERRORS
         INTER --> ERRORS
         CORE --> CONTOUR[contour.py]

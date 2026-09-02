@@ -94,7 +94,7 @@ if flat not in readme:
 # ---- shipped files listed -------------------------------------------------
 for f in ("makeVariant3dIntermediates.il", "simple3d.il", "simple3d_config.json",
           "core.py", "contour.py", "errors.py", "intermediate.py", "settings.py",
-          "stackup.py", "reporting.py",
+          "stackup.py", "reporting.py", "board.py",
           "gui.py", "colors.py", "bend/",
           "__main__.py"):
     if f not in readme:

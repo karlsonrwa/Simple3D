@@ -23,7 +23,7 @@ from __future__ import annotations
 import math
 from typing import Iterable
 
-from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeFace
 from OCP.GC import GC_MakeArcOfCircle
 from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
 from OCP.TopTools import TopTools_HSequenceOfShape
@@ -265,3 +265,26 @@ def point_in_polygon(point: tuple[float, float],
             if x < xc:
                 inside = not inside
     return inside
+
+
+# --------------------------------------------------------------------------- #
+# wires -> face
+# --------------------------------------------------------------------------- #
+
+def _face_from_wires(outer: TopoDS_Wire, inner: list[TopoDS_Wire]):
+    """Planar face from an outer wire and its hole wires."""
+    maker = BRepBuilderAPI_MakeFace(outer, True)
+    if not maker.IsDone():
+        raise StepBuilderError("silkscreen outline is not planar or self-intersects")
+    for wire in inner:
+        # A hole wire has to run opposite to the outer one for MakeFace to read
+        # it as a void; ShapeFix_Face below repairs whichever way it came.
+        maker.Add(TopoDS.Wire_s(wire.Reversed()))
+    face = maker.Face()
+    if inner:
+        from OCP.ShapeFix import ShapeFix_Face
+
+        fix = ShapeFix_Face(face)
+        fix.FixOrientation()
+        face = fix.Face()
+    return face

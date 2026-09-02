@@ -583,6 +583,7 @@ stepbuilder/
   intermediate.py  one intermediate JSON, read once; which files to build; output naming
   settings.py    the settings pair: shipped defaults + the local file, merged key by key
   stackup.py     the stackup arithmetic: z from thickness, masks out, stackups on one datum, zone faces
+  board.py       the board body: outline, zones, layers, cutouts, the rim faces
   reporting.py   the log and progress callbacks every module reports through
   bend/          folding a flex board along its bend areas (a package since round 72)
   colors.py      the board themes and rim options
@@ -1179,6 +1180,7 @@ stepbuilder/
   intermediate.py  промежуточный JSON, прочитанный один раз; что собирать; имена выходных файлов
   settings.py    пара настроек: штатные значения + локальный файл, слитые по ключам
   stackup.py     арифметика стека: z из толщин, маски долой, стеки на одном уровне, грани зон
+  board.py       тело платы: контур, зоны, слои, вырезы, грани торца
   reporting.py   колбэки лога и прогресса, через которые отчитываются все модули
   bend/          сгибание гибкой платы по областям сгиба (с раунда 72 — пакет)
   colors.py      темы платы и варианты цвета торца
