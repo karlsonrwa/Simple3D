@@ -61,13 +61,14 @@ the keys that differ from the default.
 | `simple3d.il` | 897 | 17 | settings from config, install-folder resolution, `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, the Python pre-flight, the GUI launcher, menu insertion |
 | `stepbuilder/core.py` | 2347 | 55 | stackup arithmetic (restack / drop soldermask / align / levels), per-layer regions and parts, board booleans, silkscreen faces + arc-convention search, component transform, `StepFileIndex`, rim faces, and `generate()` |
 | `stepbuilder/intermediate.py` | 252 | 17 | `Intermediate` (one parse: `is_simple3d`, `is_full_board`, `components`, `metadata`, `validate`, `silkscreen_layers`), `RESERVED`, `resolve_jobs` (+ the path-shaped `resolve_json_jobs`), the old probe names as thin wrappers, `output_stem` / `dated_output_name`. Round 72, plan A2 |
-| `stepbuilder/bend/__init__.py` | 1471 | 33 | what is still to be taken apart (see the plan rows marked done for what left), and the re-exports that keep `from stepbuilder.bend import X` working |
+| `stepbuilder/bend/__init__.py` | 1082 | 26 | what is still to be taken apart (see the plan rows marked done for what left), and the re-exports that keep `from stepbuilder.bend import X` working |
 | `stepbuilder/bend/constants.py` | 37 | 1 | `EPS`, `MIN_ANGLE`, `DEFAULT_*`, `LogFn` — each number with its reason; plan B7 brings the rest here |
 | `stepbuilder/bend/info.py` | 187 | 9 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `bend_from_dict`, `bends_from_json` |
 | `stepbuilder/bend/regions.py` | 170 | 10 | `_Piece` (one `face_box`/`holds` for both), `_Region`, `_Strip`, `_slice_trsf`, the OCC plumbing (`_bbox`, `_extent`, `_is_empty`) |
 | `stepbuilder/bend/pieces.py` | 314 | 9 | cutting the flat outline into the pieces that fold: `_cut_into_pieces`, `_piece_face` (the pinch repair), `_face_poly`, `_band_face`, `_polygon_face`, `_faces_of`, `_touching`, `_closest_point` |
 | `stepbuilder/bend/cut.py` | 146 | 4 | cutting a shape down to one piece: `_cut_to_region` (every skippable boolean skipped), `_crosses`, the cutters `_slab` and `_plane_face` sized from the shape's own box |
 | `stepbuilder/bend/strip_revolve.py` | 227 | 4 | the exact construction: `_revolve_strip` (a straight strip is its section revolved), `_spans_alike`, `_prism_of`, `PRISM_*` |
+| `stepbuilder/bend/strip_wrap.py` | 414 | 7 | the general construction: `_map_strip` — the flat strip's outline wrapped onto the cylinder, edge by edge, then sewn and checked against the volume the bend says it should have; `MAP_VOLUME_TOLERANCE` |
 | `stepbuilder/contour.py` | 267 | 7 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
 | `stepbuilder/gui.py` | 1419 | 57 | one `tk.Tk` subclass: widget layout, window placement across monitors, silk-layer panel, the hand-over between widgets and `settings.GuiSettings`, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring |
@@ -76,7 +77,7 @@ the keys that differ from the default.
 | `stepbuilder/worker.py` | 204 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, batch rule for the full-board file, per-job isolation, progress slicing |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
 | `tests/` (24 files) | ~4700 | — | 20 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
-| `tools/` | ~850 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, a hand test that writes a property, 11 read-only Allegro probes |
+| `tools/` | ~1100 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
 Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
@@ -238,7 +239,7 @@ flowchart TD
 | `python -m stepbuilder` | no arguments | the window, standalone |
 | `python -m stepbuilder --gui …` | the launcher's form; `parse_known_args` | the window, prefilled |
 | `python -m stepbuilder STEP_DIR JSON OUT [flags]` | headless; `--batch` for a folder | `core.generate` per file, exit 1 on any failure |
-| `python tests/run_all.py [--quick]` | | the 3 checks + 20 suites as subprocesses |
+| `python tests/run_all.py [--quick]` | | the 4 checks + 20 suites as subprocesses |
 | `python tools/skill_checks.py` / `check_arity.py` / `audit_docs.py` | | the mechanical checks, also run by `run_all` |
 | `load("…/tools/probes/probe_*.il")` | in Allegro, by hand | read-only diagnostics; `probe_variants.il` calls into the exporter |
 | `load("…/tools/s3d_userprop_test.il")` | in Allegro, by hand | the one file that writes to a design |
@@ -373,6 +374,7 @@ it is.
 | SKILL transliterations in tests (`s3dJsonQuote`, `s3dDrillXY`, `s3dDesignFolder`, the variant rule, `tconc`, `s3dBendsJson`, the layer filter, the negative matcher, the merge) | valuable, scattered | they are the only executable specification of the SKILL side; worth collecting under one name |
 | `tools/skill_checks.py`, `tools/check_arity.py` | reusable | a SKILL lexer and four checks; the lexer is duplicated between the two files |
 | `tools/audit_docs.py` | glue | matches names, not claims (PROJECT_NOTES round 60) |
+| `tools/python_names.py` | glue | pyflakes, kept to undefined names and redefinitions; exists because two moves in round 72 left a name behind and nothing but a name check could see it |
 | `tools/probes/*.il` | record | read-only diagnostics; three attachment probes are a closed investigation kept as history |
 
 ---

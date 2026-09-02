@@ -587,7 +587,7 @@ stepbuilder/
   worker.py      the build, in a child process, so a crash cannot take the window
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, 20 test suites, the golden corpus, read-only probes
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 20 test suites, the golden corpus, read-only probes
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1181,7 +1181,7 @@ stepbuilder/
   worker.py      сборка в дочернем процессе, чтобы падение не унесло окно
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, 20 наборов тестов, золотой корпус, зонды
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 20 наборов тестов, золотой корпус, зонды
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.
