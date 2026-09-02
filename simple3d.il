@@ -244,6 +244,17 @@ procedure( s3dResolveScriptDir()
 )
 
 errset( s3dResolveScriptDir() )
+
+; The exporter lives in nine parts under skill/, loaded by
+; makeVariant3dIntermediates.il (round 76, D6). An allegro.ilinit that loads
+; that file first has done this already; a single load("…/simple3d.il")
+; does it here, from the install folder just resolved - and BEFORE the
+; settings are read, since the config reader is one of the parts.
+unless( boundp( 'S3D_ExporterLoaded ) && S3D_ExporterLoaded
+    when( S3D_ScriptDir != ""
+        load( strcat( S3D_ScriptDir "/makeVariant3dIntermediates.il" ) )
+    )
+)
 s3dLoadSettings()
 
 ; Decide where the JSON and STEP go, given the design's own folder.

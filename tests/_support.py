@@ -99,6 +99,16 @@ def count_solids(shape) -> int:
     return n
 
 
+def exporter_source() -> str:
+    """The SKILL exporter as one text: its nine parts under skill/, in load
+    order (round 76, D6). The suites that read the source for a rule read this,
+    so the split moved no assertion."""
+    parts = ("s3d_util", "s3d_json", "s3d_props", "s3d_variants", "s3d_geometry",
+             "s3d_stackup", "s3d_bends", "s3d_silk", "s3d_export")
+    return "\n".join((ROOT / "skill" / f"{p}.il").read_text(encoding="utf-8", errors="replace")
+                     for p in parts)
+
+
 def entity_count(path) -> int:
     """How many `#n = ...` entities the STEP file carries - a property of the
     writer, not of the geometry, which is why it is pinned separately."""

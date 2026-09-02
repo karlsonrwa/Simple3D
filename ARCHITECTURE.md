@@ -23,7 +23,10 @@ fixed below.
 Allegro PCB Editor (SKILL, one global namespace, loads once per session)
   simple3d.il                     menu item, install-folder resolution, ALWAYS_STEP_EXPORT,
                                   progress meter, Python pre-flight, GUI launch
-  makeVariant3dIntermediates.il   reads the database, writes <design>[_<variant>].json
+  makeVariant3dIntermediates.il   loads skill/s3d_*.il - nine parts (round 77, D6):
+                                  util, json, props, variants, geometry, stackup, bends,
+                                  silk, export - which read the database and write
+                                  <design>[_<variant>].json
         │
         │   the intermediate JSON  ("format": "simple3d", format_version 8)
         ▼
@@ -57,8 +60,17 @@ the keys that differ from the default.
 
 | file | lines | procedures / defs | what it holds |
 |---|---:|---:|---|
-| `makeVariant3dIntermediates.il` | 3925 | 90 | console messages, path helpers, property helpers, the `Variants.lst` parser (upstream), geometry-to-JSON primitives, board thickness, stackups/zones/bends readers, a JSON reader + merge + config loader, silkscreen collection/clipping/streaming, the intermediate writer, the top-level export |
-| `simple3d.il` | 897 | 17 | settings from config, install-folder resolution, `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, the Python pre-flight, the GUI launcher, menu insertion |
+| `makeVariant3dIntermediates.il` | 83 | 2 | the loader (round 77, D6): finds its folder (`S3D_ExporterDir`, else where it was loaded from, else `SIMPLE3D_DIR`) and `load()`s the nine parts below in order |
+| `skill/s3d_util.il` | 211 | 9 | console messages, folders beside the board, indentation, the subclass sweep |
+| `skill/s3d_json.il` | 421 | 18 | `s3dJsonQuote`, the JSON reader, the config pair (shipped + local) |
+| `skill/s3d_props.il` | 293 | 7 | `NO_STEP_EXPORT` / `ALWAYS_STEP_EXPORT`, embedded models, what has a STEP model |
+| `skill/s3d_variants.il` | 475 | 7 | `Variants.lst` (the upstream parser), which symbols a variant exports |
+| `skill/s3d_geometry.il` | 473 | 10 | segments, arcs, circles, slots, the board contour, pin holes |
+| `skill/s3d_stackup.il` | 604 | 13 | board thickness, stackups, zones, per-layer shapes |
+| `skill/s3d_bends.il` | 236 | 8 | bend lines and bend areas |
+| `skill/s3d_silk.il` | 733 | 15 | the silkscreen: config, collection, clipping, the streamed writer |
+| `skill/s3d_export.il` | 602 | 4 | `symbolReturn3DElements`, `makePcb`, the JSON writer, `makeVariant3dIntermediates` |
+| `simple3d.il` | 908 | 17 | settings from config, install-folder resolution, loads `makeVariant3dIntermediates.il` when it has not been loaded (so one `load()` is enough), `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, Python pre-flight, the launcher |
 | `stepbuilder/core.py` | 719 | 12 | the build as a sequence: `_prepare_stackups` → `_Stack`, `_plan_fold`, `_build_board`, `_build_legend`, `_place_components`, then `generate()` (90 lines with its docstring) that calls them in order and writes; `BuildResult`, `total_board_thickness`; and the re-exports that keep every `core.<name>` a caller ever used |
 | `stepbuilder/build.py` | 173 | 3 | `BuildOptions`: the nineteen options of one build as one frozen dataclass, with the meaning of each; `from_settings` (the window's snapshot) and `from_args` (the CLI). Round 73, plan A8 |
 | `stepbuilder/stepdoc.py` | 89 | 6 | `StepDocument`: the XCAF app/doc, shape and colour tools, the root assembly, `set_name`, `set_color`, and `write(path, minimize_size)` with the one writer setting that halves the file, set after the writer is constructed. Round 73, plan A7 |
@@ -360,7 +372,7 @@ it is.
 
 | unit | lines | verdict | why |
 |---|---:|---|---|
-| `makeVariant3dIntermediates.il` as a file | 3925 | **monolith (M5)** | ten concerns in one load unit; the writer, the readers, a JSON library, a variant parser and the silkscreen collector share one namespace and one file |
+| `makeVariant3dIntermediates.il` as a file | 4048 in 9 parts | **was monolith (M5)** — split in round 77 (D6) | ten concerns in one load unit until then; now `skill/s3d_*.il`, one concern each (91 procedures), cut mechanically with every comment in place and the file itself a loader. Every part still shares the one SKILL namespace, so the `s3d` prefix discipline is what keeps them apart |
 | `create3dIntermediateFormat` | 172 | monolith core | string assembly with hand-managed commas, per-export resets, file I/O and the `full_board` rule in one procedure |
 | `makeVariant3dIntermediates` | 168 | orchestration | the variant loop; fine once the pieces are separable |
 | `s3dJson*` reader, `s3dJsonMerge`, `s3dJsonQuote`, `s3dConfigRead`, `s3dLocalConfigFile` | ~400 | **reusable** | a self-contained JSON subset reader/merger/escaper for SKILL; nothing Allegro-specific |

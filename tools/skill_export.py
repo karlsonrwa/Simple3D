@@ -27,7 +27,8 @@ which cost an afternoon over there:
     go wrong unattended. A Variants.lst beside the board travels with it,
     because the exporter looks for it beside the board and nowhere else.
 
-The script loads makeVariant3dIntermediates.il alone - not simple3d.il, whose
+The script loads makeVariant3dIntermediates.il alone (the loader of the nine
+parts under skill/ since round 76) - not simple3d.il, whose
 job is the menu item, the pre-flight and the Python launch - and calls
 makeVariant3dIntermediates(dir, color, config) the way s3dExportCommand does,
 with the shipped simple3d_config.json (not the user's local overlay: the

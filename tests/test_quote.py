@@ -1,7 +1,7 @@
 # Paths, the output folder, check() and the STEP measuring helpers come from
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
-from _support import ROOT, fails, check
+from _support import ROOT, fails, check, exporter_source
 
 """Transliteration of s3dJsonQuote, checked against the json module.
 
@@ -83,7 +83,7 @@ for n in list(range(0x01, 0x20)):
 
 check("the SKILL source escapes CR too",
       '( c == "\\r"  "\\\\r" )' in
-      (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8"))
+      exporter_source())
 
 print("\n[3] a whole emitted object still parses")
 doc = ("{" + s3dJsonQuote("FLEX") + ': {"layers": [{"name": '

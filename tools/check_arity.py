@@ -24,7 +24,9 @@ import re, sys
 from pathlib import Path
 
 FILES = [str(_ROOT / "makeVariant3dIntermediates.il"),
-         str(_ROOT / "simple3d.il")]
+         str(_ROOT / "simple3d.il"),
+         # the exporter's nine parts (round 76, D6)
+         *sorted(str(q) for q in (_ROOT / "skill").glob("s3d_*.il"))]
 
 # Each probe is loaded on its own in a live Allegro session, so each is checked
 # against its own definitions only.

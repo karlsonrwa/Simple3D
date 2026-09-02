@@ -1,7 +1,7 @@
 # Paths, the output folder, check() and the STEP measuring helpers come from
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
-from _support import ROOT, fails, check
+from _support import ROOT, fails, check, exporter_source
 
 """The settings file, and the local one on top of it.
 
@@ -64,7 +64,7 @@ check("a list is replaced whole, so it can be shortened",
       short["gui"]["stepDirs"] == ["a"])
 
 print("\n[3] the SKILL source says the same thing")
-src = (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8")
+src = exporter_source()
 check("the merge exists", re.search(r"procedure\(\s*s3dJsonMerge", src))
 check("a key is found by comparing strings, not by assoc",
       re.search(r"procedure\(\s*s3dJsonEntry", src))

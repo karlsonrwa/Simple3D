@@ -1,7 +1,7 @@
 # Paths, the output folder, check() and the STEP measuring helpers come from
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
-from _support import ROOT, fails, check
+from _support import ROOT, fails, check, exporter_source
 
 """s3dDrillXY: the hole is not always at the pad.
 
@@ -114,7 +114,7 @@ check("at the drill (y=0) it is a clean half-circle",
 check("the mouth was 34% too narrow", wrong_mouth < right_mouth)
 
 print("\n[5] both hole branches go through the one procedure")
-il = (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8")
+il = exporter_source()
 check("s3dDrillXY exists", "procedure( s3dDrillXY( pin padstack )" in il)
 
 def body(name):

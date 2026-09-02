@@ -29,6 +29,8 @@ from pathlib import Path
 FILES = [
     str(_ROOT / "makeVariant3dIntermediates.il"),
     str(_ROOT / "simple3d.il"),
+    # The exporter's nine parts (round 76, D6); the file above is their loader.
+    *sorted(str(q) for q in (_ROOT / "skill").glob("s3d_*.il")),
 ]
 
 # The read-only diagnostics under tools/probes are SKILL too, and a probe with
@@ -357,7 +359,9 @@ def main():
         known = set(defs)
         for name in required:
             for f2 in FILES:
-                if Path(f2).name in name:
+                # Naming the loader means the parts it loads.
+                if Path(f2).name in name or (
+                        Path(f2).parent.name == "skill" and "makeVariant3dIntermediates.il" in name):
                     known |= analyze(f2)[3]
         ok = report(f, bal, broken, calls, known, progs, undeclared) and ok
 

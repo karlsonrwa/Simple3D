@@ -1,7 +1,7 @@
 # Paths, the output folder, check() and the STEP measuring helpers come from
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
-from _support import ROOT, fails, check
+from _support import ROOT, fails, check, exporter_source
 
 """Every string the exporter writes into the intermediate is quoted.
 
@@ -23,7 +23,7 @@ import json
 import re
 import sys
 
-IL = (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8", errors="replace")
+IL = exporter_source()
 
 
 def s3dJsonQuote(value):

@@ -100,7 +100,8 @@ the tool expects — the two `.il` files, `simple3d_config.json` and the
 ```
 d:\Projects\OrCAD\Scripts\Simple3D\
 ├── makeVariant3dIntermediates.il     SKILL exporter (reads the board)
-├── simple3d.il                       menu item + launcher
+├── simple3d.il                       menu item + launcher; loads the exporter
+├── skill\                            the exporter's nine parts (s3d_*.il)
 ├── simple3d_config.json              all settings, both halves read it
 └── stepbuilder\                      the Python package
 ```
@@ -121,11 +122,12 @@ The window should open and its log should say `Settings loaded from …`.
 **4. Load the SKILL files** from `allegro.ilinit`, or by hand each session:
 
 ```
-load("d:/Projects/OrCAD/Scripts/Simple3D/makeVariant3dIntermediates.il")
 load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 ```
 
-`File → Export → Simple 3D` appears.
+`File → Export → Simple 3D` appears. One line: `simple3d.il` loads the exporter
+itself (`makeVariant3dIntermediates.il`, which loads its nine parts from
+`skill\`). The older pair of `load()` lines, the exporter first, keeps working.
 
 **Nothing in the shipped files needs editing to match your machine** — and that
 is deliberate: they are under version control, so a path written into one of
@@ -574,7 +576,8 @@ they would collide), `--no-silkscreen`, `--no-silk-top`, `--no-silk-bottom`,
 ## What is where
 
 ```
-makeVariant3dIntermediates.il   reads the Allegro database, writes the JSON
+makeVariant3dIntermediates.il   loads the exporter: its nine parts under skill/
+skill/s3d_*.il                  the exporter itself - reads the Allegro database, writes the JSON
 simple3d.il                     the menu item, the launcher, the pre-flight check
 simple3d_config.json            every setting, read by both halves
 stepbuilder/
@@ -704,7 +707,8 @@ Chocolatey, причём в системный PATH, который идёт *р
 ```
 d:\Projects\OrCAD\Scripts\Simple3D\
 ├── makeVariant3dIntermediates.il     SKILL-экспортёр (читает плату)
-├── simple3d.il                       пункт меню + запуск
+├── simple3d.il                       пункт меню + запуск; загружает экспортёр
+├── skill\                            девять частей экспортёра (s3d_*.il)
 ├── simple3d_config.json              все настройки, читают обе половины
 └── stepbuilder\                      пакет Python
 ```
@@ -725,11 +729,13 @@ python -m stepbuilder
 **4. Загрузка SKILL-файлов** из `allegro.ilinit` или вручную в каждой сессии:
 
 ```
-load("d:/Projects/OrCAD/Scripts/Simple3D/makeVariant3dIntermediates.il")
 load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 ```
 
-Появится `File → Export → Simple 3D`.
+Появится `File → Export → Simple 3D`. Одной строки достаточно: `simple3d.il`
+сам загружает экспортёр (`makeVariant3dIntermediates.il`, который загружает
+свои девять частей из `skill\`). Прежняя пара строк `load()`, сначала
+экспортёр, тоже работает.
 
 **Ничего в поставляемых файлах править под свою машину не нужно** — и это
 намеренно: они под контролем версий, поэтому путь, вписанный в любой из них, —
@@ -1179,7 +1185,8 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # все вариа
 ## Что где лежит
 
 ```
-makeVariant3dIntermediates.il   читает базу Allegro, пишет JSON
+makeVariant3dIntermediates.il   загружает экспортёр: его девять частей из skill/
+skill/s3d_*.il                  сам экспортёр — читает базу Allegro, пишет JSON
 simple3d.il                     пункт меню, запуск, предполётная проверка
 simple3d_config.json            все настройки, читают обе половины
 stepbuilder/

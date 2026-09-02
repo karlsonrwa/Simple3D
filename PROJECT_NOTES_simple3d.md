@@ -5,7 +5,7 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-02
+## READ THIS FIRST — state as of 2026-09-03
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -33,8 +33,9 @@ Nothing here depends on them, and no copy of their code belongs in this tree:
 | `3dproperties` | `D:\Projects\AI\Claude\3dproperties` — STEP library tooling: inventory table, headless Inventor merge, before/after visual report |
 | `checkBase` | `D:\Projects\AI\Claude\checkBase` — cross-checks the CIS component tables against the 3D, OLB and PDF files. Written 2026-08-02 as `tools/check_base.py` in this repo by mistake, moved out the same day |
 
-Three pieces ship: `makeVariant3dIntermediates.il` (reads Allegro, writes JSON),
-`simple3d.il` (menu item + launcher), `stepbuilder/` (Python + OpenCASCADE,
+Three pieces ship: `makeVariant3dIntermediates.il` (since round 77 a loader for
+the exporter's nine parts under `skill/`, which read Allegro and write JSON),
+`simple3d.il` (menu item + launcher; loads the exporter itself), `stepbuilder/` (Python + OpenCASCADE,
 writes the STEP — since round 73 `core.py` is the sequence of a build's
 stages and `contour.py`, `errors.py`, `intermediate.py`, `settings.py`,
 `stackup.py`, `board.py`, `legend.py`, `models.py`, `stepdoc.py`, `build.py`,
@@ -2950,6 +2951,74 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-03 (round 77) — Plan D6: the exporter in nine files, one load() line
+
+The 4131-line `makeVariant3dIntermediates.il` is nine parts under `skill/`
+and a 83-line loader. Closed by the five mechanical checks, the six suites
+that read the SKILL source, the JSON corpus (seven boards byte-identical
+through the loader), the three rigid-flex probes headless (console identical
+bar the order of Allegro's "redefined" notes), the single-`load()` form
+exporting `flex3-a0` byte-identical, and `tests/run_all.py` 26/27 in
+200 s - the docs audit red for the `skill/` line this write-up puts
+into the README, and green with it.
+
+### What was done
+
+- **A chunker, not a hand.** Every top-level form of the file (a
+  `procedure(` or an `S3D_*` global, found by a paren-depth walk over the
+  comment- and string-stripped text) travels with the comment block above
+  it, in its original order within its part; two section banners that sat
+  above a form belonging elsewhere (the file header above `s3dSay`, the
+  Bends banner above the shared sweep) were re-homed by name. The script
+  refused to write until the multiset of non-blank lines of the nine parts
+  equalled the original's - nothing lost, nothing doubled - and wrote all
+  twenty files at once (the D3 lesson).
+- **Nine parts, not the plan's eight**: `s3d_util` (console, folders,
+  indentation, the subclass sweep of D3), `s3d_json` (quoter, reader, the
+  config pair), `s3d_props`, `s3d_variants` (the upstream parser),
+  `s3d_geometry`, `s3d_stackup`, `s3d_bends`, `s3d_silk`, `s3d_export`.
+  `s3dFolderOf`/`s3dSlashes`/`s3dHeadList` stay in `simple3d.il`: it needs
+  them to find the folder BEFORE any part can be loaded.
+- **The loader.** `makeVariant3dIntermediates.il` finds its folder from
+  `S3D_ExporterDir` when a session set it, else the folder it was loaded
+  from (`get_filename( piport )` at load time, the way `simple3d.il` has
+  found itself since round 59), else `SIMPLE3D_DIR`; then `load()`s the
+  parts in order and sets `S3D_ExporterLoaded`. `simple3d.il` loads it when
+  that flag is not set - after resolving the install folder and BEFORE
+  `s3dLoadSettings`, whose config reader is one of the parts - so one
+  `load("…/simple3d.il")` is enough, and the old pair of lines still works.
+- **Tools and tests read the parts.** `tests/_support.exporter_source()`
+  concatenates the nine in load order; the six suites that grep the SKILL
+  source read that, and every assertion in them passed unchanged.
+  `skill_checks.py` and `check_arity.py` glob `skill/s3d_*.il`; a probe's
+  `REQUIRES: makeVariant3dIntermediates.il` pools the parts. The docs audit
+  reads the parts as one text.
+
+### What to remember
+
+- **A `skill` line in a `.scr` that Allegro cannot finish parsing waits
+  forever, silently.** Four headless runs "hung" today. The cause was one
+  line I had written into the script - `printf(… (boundp(quote(X)) && X))` -
+  which the command reader would not swallow, so the session sat waiting
+  for more, and `axlSetVariable`, the exporter, `exit` were never reached.
+  The proof was marker FILES written by SKILL between the steps
+  (`outfile`/`fprintf`/`close`): a killed Allegro flushes nothing to stdout,
+  so the console is empty exactly when it is needed, but the files stay. m0
+  present and m1 missing named the line. The same technique the
+  AllegroBaseStructure notes use for a probe that hangs, and it should be
+  the FIRST move, not the fifth: I spent three runs bisecting the loaded
+  file before writing a marker.
+- **Every headless session already has the user's INSTALLED Simple 3D
+  loaded.** Their `allegro.ilinit` loads it at startup, which is why every
+  console opens with the "tested under Allegro 24.1" warning and why every
+  procedure the corpus runner loads is reported "redefined" - ninety times.
+  Harmless (the repo's definitions win, loaded last), but a diff of two
+  probe consoles has to drop those lines first, and a headless test that
+  assumes a clean namespace is assuming wrong.
+- **`test_config_merge` and `test_variant_path` need `stepbuilder/`.** On
+  a dry copy without the package they fail at import, which looks like the
+  split broke them. Copy the package too, or read the failure.
 
 ## Update 2026-09-02 (round 76) — Plan D begins: the exporter declares what it assigns
 

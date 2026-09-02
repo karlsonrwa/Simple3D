@@ -1,7 +1,7 @@
 # Paths, the output folder, check() and the STEP measuring helpers come from
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
-from _support import ROOT, OUT, fails, check
+from _support import ROOT, OUT, fails, check, exporter_source
 
 """Transliteration of s3dDesignFolder / s3dVariantFilePath, the way
 test_quote.py transliterates s3dJsonQuote.
@@ -81,7 +81,7 @@ check("parseString-style rebuild loses the leading slashes",
 check("the scan keeps them", s3d_design_folder(unc) == r"\\server\share\boards")
 
 print("\n[4] the SKILL source still says the same thing")
-src = (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8")
+src = exporter_source()
 # The bare name may appear ONLY inside the helper (its own fallback). A
 # `( variantFile "Variants.lst" )` anywhere is the bug coming back: that is a
 # let-init resolving against the working directory again.

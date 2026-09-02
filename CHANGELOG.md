@@ -11,6 +11,24 @@ to use the tool.
 
 ---
 
+- **2026-09-03** — **One `load()` line, and the exporter in nine files.**
+  `simple3d.il` now loads the exporter itself, so `allegro.ilinit` needs one
+  line - `load("…/simple3d.il")` - instead of two; the old pair keeps
+  working. The exporter, `makeVariant3dIntermediates.il`, became a loader
+  for nine parts under a new `skill\` folder (util, json, props, variants,
+  geometry, stackup, bends, silk, export), each one subject; **an install
+  copies that folder too.** Nothing the exporter writes has changed: every
+  board in the test corpus exports byte-identically through the new files.
+  / **Одна строка `load()`, и экспортёр в девяти файлах.** `simple3d.il`
+  теперь сам загружает экспортёр, так что в `allegro.ilinit` достаточно
+  одной строки — `load("…/simple3d.il")` — вместо двух; прежняя пара
+  продолжает работать. Экспортёр `makeVariant3dIntermediates.il` стал
+  загрузчиком девяти частей в новой папке `skill\` (util, json, props,
+  variants, geometry, stackup, bends, silk, export), по одной теме в каждой;
+  **при установке копируйте и эту папку.** Ничего из того, что пишет
+  экспортёр, не изменилось: каждая плата из тестового корпуса
+  экспортируется через новые файлы байт в байт.
+
 - **2026-09-02** — **A quote in a name no longer breaks the export.** A
   reference designator, a STEP model name, a zone or layer name, or the
   variant name with a `"` or `\` in it used to produce an intermediate
