@@ -115,86 +115,31 @@ def total_board_thickness(thickness: dict) -> float:
     )
 
 
-def generate(
-    step_dir: str | Path | Iterable[str | Path],
-    json_file: str | Path | Intermediate,
-    output_dir: str | Path,
-    *,
-    options: BuildOptions | None = None,
-    log: LogFn = _noop_log,
-    progress: ProgressFn = _noop_progress,
-    **keywords,
-) -> BuildResult:
-    """Build the STEP assembly described by *json_file*.
+# --------------------------------------------------------------------------- #
+# the stages of a build (round 73, plan A9)
+# --------------------------------------------------------------------------- #
 
-    step_dir:
-        One model folder, or several as an ordered search path - the first that
-        holds a given filename wins, so a project-local folder listed ahead of
-        the shared library overrides individual models. Each is walked
-        recursively. See StepFileIndex.
+@dataclass
+class _Stack:
+    """What the stackup stage settled, read by every stage after it."""
 
-    Everything else is a BuildOptions field, passed as `options=` or as the
-    keywords of the same names, which build one. See build.BuildOptions for
-    what each means.
-    """
-    if options is None:
-        options = BuildOptions(**keywords)      # an unknown keyword is a TypeError, as before
-    elif keywords:
-        raise TypeError(f"generate(): options= and {sorted(keywords)} given together")
-    output_name = options.output_name
+    thickness: float
+    zones: list | None
+    stackups: dict | None
+    levels: dict | None
+    shift: float
+    board_top_z: float
+    board_bottom_z: float
+    extrude_z_offset: float
+
+
+def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
+    """Thickness, zones, stackups and the two board faces, from the intermediate
+    and the options - the arithmetic every later stage builds between."""
     z_datum = options.z_datum
-    board_color = options.board_color
-    rim_color = options.rim_color
-    silk_top = options.silk_top
-    silk_bottom = options.silk_bottom
-    silk_color = options.silk_color
-    silk_flat = options.silk_flat
-    silk_flat_height = options.silk_flat_height
-    silk_layers_off = options.silk_layers_off
-    minimize_size = options.minimize_size
-    srgb_color = options.srgb_color
     board_mode = options.board_mode
-    layer_colors = options.layer_colors
     ignore_soldermask = options.ignore_soldermask
-    fold_bends = options.fold_bends
-    fold_anchor = options.fold_anchor
-    fold_neutral = options.fold_neutral
-    fold_slice_angle = options.fold_slice_angle
 
-    # A path is read here; an Intermediate the caller already read (the
-    # worker and the CLI batch resolve the jobs first) is used as it is, so a
-    # build parses each file once.
-    inter = json_file if isinstance(json_file, Intermediate) else None
-    json_file = inter.path if inter is not None else Path(json_file)
-    output_dir = Path(output_dir)
-
-    if z_datum not in ("top", "bottom"):
-        raise StepBuilderError(f"z_datum must be 'top' or 'bottom', got {z_datum!r}")
-
-    if inter is None and not json_file.is_file():
-        raise StepBuilderError(f"Input file does not exist: {json_file}")
-
-    # Coarse phases, so the bar moves while the slow part is happening rather
-    # than filling up at the very end. The board is the slow one on a folded
-    # rigid-flex design - a minute of the two it takes - and it used to show
-    # nothing at all.
-    def phase(value: float, label: str) -> None:
-        try:
-            progress(value, 100, label)
-        except TypeError:                    # a caller from before the label
-            progress(int(value), 100)
-
-    phase(2, "Reading the intermediate")
-    index = StepFileIndex(step_dir, log=log)
-
-    log(f"Reading {json_file.name}")
-    if inter is None:
-        inter = Intermediate.read(json_file)
-    inter.validate()
-    data = inter.data
-
-    pcb_name = data["name"]
-    json_stem = output_name or pcb_name
     if ignore_soldermask:
         # The plain-board path keeps its masks in pcb.thickness rather than as
         # stackup layers, so it is the same decision expressed twice.
@@ -266,6 +211,25 @@ def generate(
         board_top_z, board_bottom_z = thickness, 0.0
         extrude_z_offset = thickness       # outline at z=+T, prism goes down to 0
 
+    return _Stack(thickness=thickness, zones=zones, stackups=stackups, levels=levels, shift=shift, board_top_z=board_top_z, board_bottom_z=board_bottom_z, extrude_z_offset=extrude_z_offset)
+
+
+def _plan_fold(data: dict, stack: _Stack, options: BuildOptions, log: LogFn):
+    """The fold plan, or None when the board is exported flat.
+
+    Worked out here, once, because everything the fold touches - the board,
+    the legend, every component - has to be carried by the SAME plan, and the
+    plan needs the two board faces, which are only known now.
+    """
+    fold_bends = options.fold_bends
+    fold_anchor = options.fold_anchor
+    fold_neutral = options.fold_neutral
+    fold_slice_angle = options.fold_slice_angle
+    zones = stack.zones
+    levels = stack.levels
+    board_top_z = stack.board_top_z
+    board_bottom_z = stack.board_bottom_z
+
     # ---- bends ----------------------------------------------------------- #
     # Worked out here, once, because everything the fold touches - the board,
     # the legend, every component - has to be carried by the SAME plan, and the
@@ -300,25 +264,39 @@ def generate(
     elif data.get("bends"):
         log("Bend folding is off: the board is exported flat")
 
-    def folded(shape, fuse: bool = True, note: bool = True):
-        """One shape through the fold, or unchanged when there is nothing to do.
+    return fold
 
-        note=False for the legend: a letter inside a bend area is never the
-        straight strip the exact construction needs, and saying so once per
-        build is noise - the board is what the message is about.
-        """
-        return fold.apply(shape, fuse=fuse, note=note, log=log) if fold else shape
 
-    # (write.surfacecurve.mode is set AFTER the writer is constructed, see
-    # below - the STEPCAFControl_Writer constructor resets it, so setting it
-    # here would be silently undone.)
+def _folded(fold, log: LogFn, shape, fuse: bool = True, note: bool = True):
+    """One shape through the fold, or unchanged when there is nothing to do.
 
-    document = StepDocument(json_stem)
-    doc, shape_tool, color_tool = document.doc, document.shape_tool, document.color_tool
+    note=False for the legend: a letter inside a bend area is never the
+    straight strip the exact construction needs, and saying so once per
+    build is noise - the board is what the message is about.
+    """
+    return fold.apply(shape, fuse=fuse, note=note, log=log) if fold else shape
+
+
+def _build_board(data: dict, stack: _Stack, fold, options: BuildOptions,
+                 document: StepDocument, json_stem: str, log: LogFn) -> None:
+    """The board body into the document: one of the four ways, coloured and
+    named. Nothing after this reads the board itself."""
+    board_color = options.board_color
+    rim_color = options.rim_color
+    srgb_color = options.srgb_color
+    board_mode = options.board_mode
+    layer_colors = options.layer_colors
+    thickness = stack.thickness
+    zones = stack.zones
+    stackups = stack.stackups
+    levels = stack.levels
+    shift = stack.shift
+    extrude_z_offset = stack.extrude_z_offset
+    shape_tool = document.shape_tool
+    color_tool = document.color_tool
     main_assembly = document.root
 
     # ---- board ----------------------------------------------------------- #
-    phase(10, "Building the board")
     log("Building board geometry")
 
     multi = bool(zones and stackups)
@@ -336,7 +314,7 @@ def generate(
         # on the face objects the fuse hands back, and folding a shape replaces
         # every face in it. Fold first and the two steps do not fight.
         if fold:
-            parts = [(zone, layer, folded(solid)) for zone, layer, solid in parts]
+            parts = [(zone, layer, _folded(fold, log, solid)) for zone, layer, solid in parts]
         board, faces = fuse_keeping_faces(parts, log)
 
         pcb_label = shape_tool.NewShape()
@@ -377,7 +355,7 @@ def generate(
         for zone_name, layer, solid in parts:
             layer_name = str(layer.get("name") or "?")
             label = shape_tool.NewShape()
-            shape_tool.SetShape(label, folded(solid))
+            shape_tool.SetShape(label, _folded(fold, log, solid))
             rgb = palette.get(layer_kind(layer), DEFAULT_LAYER_COLORS["other"])
             _set_color(color_tool, label,
                        (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0), srgb_color)
@@ -399,7 +377,7 @@ def generate(
         # which is not something that can be wrapped onto one pair of cylinders.
         # Per layer it is, and the fuse afterwards gives the same solid.
         parts = make_board_layer_parts(data["pcb"], stackups, zones, shift, log)
-        board = fuse_and_unify([folded(solid) for _, _, solid in parts], log)
+        board = fuse_and_unify([_folded(fold, log, solid) for _, _, solid in parts], log)
 
         pcb_label = shape_tool.NewShape()
         shape_tool.SetShape(pcb_label, board)
@@ -407,7 +385,7 @@ def generate(
         board = make_board_geometry(data["pcb"], thickness, extrude_z_offset,
                                     zones=zones, levels=levels, stackups=stackups,
                                     shift=shift, log=log)
-        board = folded(board)
+        board = _folded(fold, log, board)
 
         pcb_label = shape_tool.NewShape()
         shape_tool.SetShape(pcb_label, board)
@@ -455,10 +433,29 @@ def generate(
                             TCollection_ExtendedString(_sanitize(f"PCB_{json_stem}")))
         shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))
 
+
+def _build_legend(data: dict, stack: _Stack, fold, options: BuildOptions,
+                  document: StepDocument, json_stem: str, log: LogFn) -> tuple[int, int]:
+    """The silkscreen legend into the document, one part per side.
+    Returns (solids built, polygons skipped)."""
+    silk_top = options.silk_top
+    silk_bottom = options.silk_bottom
+    silk_color = options.silk_color
+    silk_flat = options.silk_flat
+    silk_flat_height = options.silk_flat_height
+    silk_layers_off = options.silk_layers_off
+    srgb_color = options.srgb_color
+    zones = stack.zones
+    stackups = stack.stackups
+    board_top_z = stack.board_top_z
+    board_bottom_z = stack.board_bottom_z
+    shape_tool = document.shape_tool
+    color_tool = document.color_tool
+    main_assembly = document.root
+
     # ---- silkscreen ------------------------------------------------------ #
     # Its own part per side, so it can be hidden or recolored in the viewer
     # without touching the board, and so the two sides stay distinguishable.
-    phase(60, "Building the legend")
     silk_data = data.get("silkscreen")
     silk_built = 0
     silk_skipped = 0
@@ -513,7 +510,7 @@ def generate(
             # of barely touching prisms was measured at 154% of the file size
             # (round 10g). Folding does not change that arithmetic.
             silk_label = shape_tool.NewShape()
-            shape_tool.SetShape(silk_label, folded(compound, fuse=False, note=False))
+            shape_tool.SetShape(silk_label, _folded(fold, log, compound, fuse=False, note=False))
             _set_color(color_tool, silk_label, ink01, srgb_color)
             TDataStd_Name.Set_s(
                 silk_label,
@@ -522,6 +519,23 @@ def generate(
             shape_tool.AddComponent(main_assembly, silk_label, TopLoc_Location(gp_Trsf()))
     elif want_silk and not silk_data:
         log("No silkscreen in this JSON (re-export from Allegro to include it)")
+
+    return silk_built, silk_skipped
+
+
+def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOptions,
+                      document: StepDocument, index: StepFileIndex, json_stem: str,
+                      output_dir: Path, silk_built: int, silk_skipped: int,
+                      log: LogFn, phase) -> BuildResult:
+    """Every component placed under symbols_top / symbols_bot, one shared part
+    per distinct model. Returns the BuildResult, minus the write."""
+    data = inter.data
+    levels = stack.levels
+    board_top_z = stack.board_top_z
+    board_bottom_z = stack.board_bottom_z
+    doc = document.doc
+    shape_tool = document.shape_tool
+    main_assembly = document.root
 
     # ---- component group assemblies (symbols_top / symbols_bot) ---------- #
     # Created lazily so a single-sided board does not get an empty group.
@@ -609,6 +623,89 @@ def generate(
         result.components_placed += 1
 
     _report_embedded_only(data, result, log)
+
+    return result
+
+
+def generate(
+    step_dir: str | Path | Iterable[str | Path],
+    json_file: str | Path | Intermediate,
+    output_dir: str | Path,
+    *,
+    options: BuildOptions | None = None,
+    log: LogFn = _noop_log,
+    progress: ProgressFn = _noop_progress,
+    **keywords,
+) -> BuildResult:
+    """Build the STEP assembly described by *json_file*.
+
+    step_dir:
+        One model folder, or several as an ordered search path - the first that
+        holds a given filename wins, so a project-local folder listed ahead of
+        the shared library overrides individual models. Each is walked
+        recursively. See StepFileIndex.
+
+    Everything else is a BuildOptions field, passed as `options=` or as the
+    keywords of the same names, which build one. See build.BuildOptions for
+    what each means.
+    """
+    if options is None:
+        options = BuildOptions(**keywords)      # an unknown keyword is a TypeError, as before
+    elif keywords:
+        raise TypeError(f"generate(): options= and {sorted(keywords)} given together")
+    output_name = options.output_name
+    z_datum = options.z_datum                 # validated below, before anything is built
+    minimize_size = options.minimize_size
+
+    # A path is read here; an Intermediate the caller already read (the
+    # worker and the CLI batch resolve the jobs first) is used as it is, so a
+    # build parses each file once.
+    inter = json_file if isinstance(json_file, Intermediate) else None
+    json_file = inter.path if inter is not None else Path(json_file)
+    output_dir = Path(output_dir)
+
+    if z_datum not in ("top", "bottom"):
+        raise StepBuilderError(f"z_datum must be 'top' or 'bottom', got {z_datum!r}")
+
+    if inter is None and not json_file.is_file():
+        raise StepBuilderError(f"Input file does not exist: {json_file}")
+
+    # Coarse phases, so the bar moves while the slow part is happening rather
+    # than filling up at the very end. The board is the slow one on a folded
+    # rigid-flex design - a minute of the two it takes - and it used to show
+    # nothing at all.
+    def phase(value: float, label: str) -> None:
+        try:
+            progress(value, 100, label)
+        except TypeError:                    # a caller from before the label
+            progress(int(value), 100)
+
+    phase(2, "Reading the intermediate")
+    index = StepFileIndex(step_dir, log=log)
+
+    log(f"Reading {json_file.name}")
+    if inter is None:
+        inter = Intermediate.read(json_file)
+    inter.validate()
+    data = inter.data
+
+    pcb_name = data["name"]
+    json_stem = output_name or pcb_name
+
+    stack = _prepare_stackups(data, options, log)
+    fold = _plan_fold(data, stack, options, log)
+    document = StepDocument(json_stem)
+
+    phase(10, "Building the board")
+    _build_board(data, stack, fold, options, document, json_stem, log)
+
+    phase(60, "Building the legend")
+    silk_built, silk_skipped = _build_legend(data, stack, fold, options, document,
+                                             json_stem, log)
+
+    result = _place_components(inter, stack, fold, options, document, index,
+                               json_stem, output_dir, silk_built, silk_skipped,
+                               log, phase)
 
     # ---- write ----------------------------------------------------------- #
     # FIX: the C++ version hardcoded a backslash separator, which produced a

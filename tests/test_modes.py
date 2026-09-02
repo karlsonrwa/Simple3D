@@ -133,5 +133,29 @@ for mode in ("solid", "layers", "inspect"):
     n, _, _ = inspect(OUT / f"p_{mode}.step")
     check(f"plain board, mode {mode}: one solid", n == 1, str(n))
 
+print("\n[6] the progress bar never goes backwards, and the stages answer alone")
+# Round 73 (plan A9): generate is a sequence of stages now. The phase values
+# it reports were asserted nowhere before the split; and each stage has to
+# be callable on its own, which is what the split was for.
+from stepbuilder.build import BuildOptions
+from stepbuilder.core import _prepare_stackups, _plan_fold
+seen = []
+core.generate(step_dir=ROOT / "demo/step_files", json_file=ROOT / "tests/fixtures/rigidflex.json",
+              output_dir=OUT, output_name="phases", progress=lambda v, t, label="": seen.append((v, t, label)),
+              log=lambda m: None)
+values = [v for v, _, _ in seen]
+check("progress is reported", len(values) >= 5, str(len(values)))
+check("never backwards", values == sorted(values), str(values))
+check("out of 100, and ends at 100", all(t == 100 for _, t, _ in seen) and values[-1] == 100, str(seen[-1]))
+check("every phase carries a label", all(label for _, _, label in seen), str([s for s in seen if not s[2]]))
+rf = json.loads((ROOT / "tests/fixtures/rigidflex.json").read_text(encoding="utf-8"))
+stack = _prepare_stackups(rf, BuildOptions(), lambda m: None)
+check("the stackup stage alone: two zones with their faces",
+      stack.zones and len(stack.levels) == 2 and stack.board_top_z > stack.board_bottom_z, str(stack))
+plan = _plan_fold(rf, stack, BuildOptions(), lambda m: None)
+check("the fold stage alone: one bend planned", plan is not None and len(plan.bends) == 1, str(plan and plan.bends))
+flat = _plan_fold(rf, stack, BuildOptions(fold_bends=False), lambda m: None)
+check("and none when folding is off", flat is None)
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)
