@@ -44,7 +44,7 @@ from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 # them. Re-exported here: callers wrote `core.build_contour` and
 # `core.StepBuilderError` for a year.
 from .contour import (  # noqa: F401 - re-exported
-    WIRE_TOLERANCE, build_contour, contour_points, point_in_polygon,
+    WIRE_TOLERANCE, _open_wire_detail, build_contour, contour_points, point_in_polygon,
 )
 from .errors import StepBuilderError  # noqa: F401 - re-exported
 # The intermediate is read once per file (round 72, plan A2); the probes

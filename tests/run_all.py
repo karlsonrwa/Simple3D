@@ -26,6 +26,7 @@ JOBS = [
     ("SKILL: parens, strings, undefined calls", TOOLS / "skill_checks.py", False),
     ("SKILL: call arity",                       TOOLS / "check_arity.py", False),
     ("docs vs code",                            TOOLS / "audit_docs.py", False),
+    ("Python: every name defined (pyflakes)",   TOOLS / "python_names.py", False),
     ("geometry regression (C++ baseline)",      TESTS / "test_regression_geometry.py", True),
     ("board: zones",                            TESTS / "test_zones.py", True),
     ("board: per-layer stackups",               TESTS / "test_layers.py", True),
