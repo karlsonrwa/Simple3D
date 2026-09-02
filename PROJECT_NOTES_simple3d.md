@@ -21,7 +21,7 @@ one settled.
 | Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
 | `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
-| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 73 (2026-09-02): Step 0, all of Plan A, all of Plan B, C1–C2; each row says what it left. Next: C3–C6 (the window), then D (SKILL) |
+| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 74 (2026-09-02): Step 0, Plans A, B and C; each row says what it left. Next: D (SKILL; needs the user in Allegro after D2 and D4), then E |
 | The golden corpus | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 cases; `--check` after every refactoring step. `tests/_support.py` is the one preamble every suite imports (round 71) |
 
 Three tools grew out of this project and now have repositories of their own.
@@ -38,8 +38,9 @@ Three pieces ship: `makeVariant3dIntermediates.il` (reads Allegro, writes JSON),
 writes the STEP — since round 73 `core.py` is the sequence of a build's
 stages and `contour.py`, `errors.py`, `intermediate.py`, `settings.py`,
 `stackup.py`, `board.py`, `legend.py`, `models.py`, `stepdoc.py`, `build.py`,
-`reporting.py` and the `bend/` package hold the rest; `ARCHITECTURE.md` has
-the file table). Plus `simple3d_config.json`, the shipped defaults, and the
+`reporting.py`, the `bend/` package and - since round 74, beside `gui.py` -
+`winplace.py`, `widgets/layers_panel.py` and `worker_bridge.py` hold the
+rest; `ARCHITECTURE.md` has the file table). Plus `simple3d_config.json`, the shipped defaults, and the
 gitignored `simple3d_config.local.json` beside it, which is the only one the
 window writes; both halves read the pair merged. **No absolute path is left in
 any tracked file** (round 59): where the tool is installed comes from the
@@ -2949,6 +2950,95 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-02 (round 74) — Plan C complete: the window is a window
+
+The same day again, after round 73's write-up: C3–C6, six commits, each one
+plan step (C4 is two: the assertions first, then the move), each closed by
+`tests/run_all.py` green, `golden.py --check` with no difference, and a dry
+run on a scratch copy of the package pyflaked and its copied suites run
+before anything touched the working tree. Nothing a STEP file contains
+changed; one thing the launcher does changed, and it is in the CHANGELOG.
+
+### What was done
+
+- **C3** `winplace.py`: where a window opens and where it was, as functions
+  of any `tk.Tk` - the virtual desk, `geometry_is_reachable(virtual, …)`,
+  `parse_geometry`, centre / restore / the normal-geometry filter - with the
+  four numbers named (120×40 px must stay visible; the near-screen slack).
+  No tkinter import. The window keeps thin methods, so `test_geom` [6]'s
+  stand-in desk (`app._virtual_screen = lambda: …`) still steers the answer.
+- **C4, first commit** - `test_gui` [7f]: the round-15/16 behaviours of the
+  silkscreen layer panel had never been asserted. Now they are: one row per
+  layer per side with its polygon count, a refresh keeps the ticks, a layer
+  excluded in the config starts unticked and a new one ticked, a side that
+  is off greys its rows without touching them, All/None act on live sides
+  only, the wheel is grabbed on Enter and released on Leave, the unticked
+  layers reach the config as exclusions.
+- **C4, second commit** - `widgets/layers_panel.py`: `LayersPanel(ttk.LabelFrame)`
+  with `refresh(found, layers_off)`, `current_layers_off`, `set_all`,
+  `update_sides`, `grab_wheel`/`release_wheel`. The window keeps
+  `_layer_vars` / `_layer_rows` as properties onto the panel and passes
+  `_side_wanted` in; freeze/thaw still walks the panel's children. The docs
+  audit reads the `widgets/` package too, since the "Layers" frame the
+  quick-start names lives there now. Two dead imports (`json`, `re`) went.
+- **C5** `worker_bridge.py`: `WorkerBridge(on_log=, on_progress=, on_done=,
+  on_error=, on_crash=)` - `alive`, `start`, `drain_once`, `check_alive` (a
+  death is a crash unless `cancelled`), `cancel`, `close`; `crash_advice(code)`
+  is the text, `ACCESS_VIOLATION` the number; no tkinter. The window keeps the
+  `after` loop and gains `_on_progress/_on_done/_on_error/_on_crash`, the
+  only places widgets are touched; it imports neither `multiprocessing` nor
+  `queue`. `test_gui` [9] pokes the bridge, [9b] drives one with no window.
+- **C6** one `build_parser()` in `__main__.py` for the headless CLI and the
+  `--gui` window (positionals `nargs="?"`; a *window only* group for
+  `--config/--json-dir/--json-file/--output-dir`; `--gui` with positionals,
+  or the headless form without them, is a parser error). `parse_known_args`
+  is gone: a flag the launcher passes that the parser does not know is an
+  error with a message, not something dropped. `_open_window(args)` calls
+  the new public `set_theme`. `tests/test_launcher.py` is the 21st suite: the
+  shipped launcher line (`simple3d.il:634-639`) against a stand-in window,
+  the standalone form, the by-hand flags, the refusals, the headless parse,
+  and [6] - every `--flag` in `simple3d.il` is one the parser knows.
+
+`gui.py`: 1184 lines, was 1419 before C3 and ~1500 in round 70; beside
+it `winplace.py` 138, `widgets/layers_panel.py` 178, `worker_bridge.py` 143.
+`python tests/run_all.py`: **26/26 in 189 s**. Plans A, B and C are
+complete; M5 (the SKILL exporter) is the monolith left.
+
+### What to remember
+
+- **Two flags shared a `dest` with two positionals.** With the positionals
+  made optional (`nargs="?"`) for the `--gui` form, `--json-file` and
+  `--output-dir` mapped to the same attributes as `json_file` and
+  `output_dir` - and argparse writes a positional's default LAST, so the
+  flag's value was wiped and the window got `output_dir=None`. The dry run's
+  stand-in window caught it in test [1] before the real tree was touched.
+  The `--step-dir` flag had carried an explicit `dest` for the same reason
+  since round 8, with a comment; the comment was right and I did not read
+  it first. Both window flags carry `dest=` now.
+- **A red job is a question, not a verdict.** C4b's full run was 24/25: the
+  docs audit checks the quick-start's frame names against `gui.py` verbatim
+  and the "Layers" frame had moved into `widgets/`. The audit was right and
+  the code was right; the audit's idea of "the window" was one file. It
+  reads the package now, the commit carries the fix, and the step was not a
+  failed step - reading the one red line is what settled that.
+- **Assert the behaviour, then move it.** C4 is two commits because the
+  panel's behaviours had no test that named them; the move was then checked
+  by a test written against the old code, not against the new one's idea of
+  itself. The same order as Step 0 for the regression test.
+- **A word count is not a name check.** C3 kept `import re` in `gui.py`
+  because "re" appeared as a word in comments ("re-run"); pyflakes said
+  unused in the next step and both `json` and `re` turned out dead already.
+  pyflakes answers "is this name used"; a regex over the text does not.
+- **`git status` can say M over an empty diff.** `winplace.py` was written
+  LF and converted to CRLF by hand; with `core.autocrlf=true` the content is
+  identical (`git diff --quiet` exit 0) but the index's stat cache said
+  modified until `git add` refreshed it. Not a change - check with `diff`
+  before believing `status`.
+- **`--gui` refuses positionals.** A decision, written down: the three
+  positionals are the headless form's; the launcher never passes them, and
+  accepting them with `--gui` would mean a second way to say `--step-dir`
+  and `--json-file`. `parser.error` with a message that names the flags.
 
 ## Update 2026-09-02 (round 73) — Plan A complete: core.py is a sequence of stages
 

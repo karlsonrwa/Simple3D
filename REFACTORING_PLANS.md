@@ -14,9 +14,10 @@ plus the cross-cutting items (the intermediate's flat namespace, the test
 harness, the argument plumbing) that no single monolith owns. This is the order
 to do it in and what "done" means for each step. Written 2026-09-02 (round 70);
 **Step 0 was done the same day (round 71); A1–A2, C1–C2 and B1–B7 in round 72**
-— every row marked **done** says what it left behind. As of round 73: M1, M2
-and M3 are split (Plans A and B are complete), M4 is lighter but still one
-class, M5 is untouched.
+— every row marked **done** says what it left behind. As of round 74: M1–M4
+are split (Plans A, B and C are complete; the window is one class of its own
+concerns, with placement, the layer list and the child process as modules
+beside it), M5 is untouched.
 
 ---
 
@@ -367,7 +368,7 @@ D1–D5 (SKILL discipline, user verification after D2 and D4) → D6–D8 → E 
 Each arrow is a green run of `tests/run_all.py` plus `tools/golden.py --check`
 — and, since round 72, `tools/python_names.py` before the run.
 
-**Where this stands after round 73:** Step 0, all of Plan A (A1–A10), all of
-Plan B (B1–B7, B5's five extractions included), C1–C2 are done. Next in line:
-C3–C6 (the window), then D (SKILL; the user in Allegro after D2 and D4), then
-E, then F4 and G.
+**Where this stands after round 74:** Step 0, all of Plan A (A1–A10), all of
+Plan B (B1–B7, B5's five extractions included) and all of Plan C (C1–C6) are
+done. Next in line: D (SKILL; the user in Allegro after D2 and D4), then E,
+then F4 and G.
