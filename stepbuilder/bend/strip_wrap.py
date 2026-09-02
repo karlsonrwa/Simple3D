@@ -21,6 +21,9 @@ from OCP.TopAbs import TopAbs_ShapeEnum
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
 from OCP.gp import gp_Dir, gp_Pnt
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+from OCP.BRepLib import BRepLib
+from OCP.TopoDS import TopoDS_Vertex
 from OCP.BRepAdaptor import BRepAdaptor_Curve
 from OCP.Geom2d import Geom2d_Ellipse, Geom2d_Line, Geom2d_TrimmedCurve
 from OCP.Geom2dAPI import Geom2dAPI_PointsToBSpline
@@ -174,6 +177,77 @@ def _edge_curves(frame: _Frame, edge):
     return [_sampled(frame, adaptor, first, last)]
 
 
+def _wire_on(surface, curves):
+    """The wrapped outline as a wire ON *surface*, sharing its corners.
+
+    Each edge is rebuilt from its own 2D curve, so where two of them meet
+    the two surface points agree only as well as the FLAT solid's own
+    vertices did - a couple of tenths of a micron on a shape that came out
+    of a boolean, which is well inside the tolerance the flat shape carries
+    on that vertex and therefore perfectly legal there.
+
+    BRepBuilderAPI_MakeWire joins edges by comparing vertices at
+    Precision::Confusion, a flat 1e-7 that nothing can widen, and when the
+    gap is bigger than that it does not report a failure: it starts a
+    second wire, and IsDone() comes back TRUE as soon as some later edge
+    closes a loop - having silently dropped the rest. Measured on the real
+    board: a four-edge outline came back as a wire of two, the two missing
+    walls stayed unsewn, the shell never closed and the bend fell back to
+    facets, with nothing in the log but "not valid".
+
+    So the corners are made explicit. One vertex per junction, placed
+    between the two curve ends with a tolerance wide enough to reach both,
+    and every edge is built on the vertices its neighbours share: the wire
+    is then connected by TOPOLOGY and no tolerance decides anything. The
+    edge count is checked anyway, because this is exactly the kind of
+    failure that is invisible until a solid comes out inside out.
+    """
+    count = len(curves)
+    if not count:
+        return None
+
+    ends = []
+    for curve, first, last in curves:
+        head, tail = curve.Value(first), curve.Value(last)
+        ends.append((surface.Value(head.X(), head.Y()),
+                     surface.Value(tail.X(), tail.Y())))
+
+    builder = BRep_Builder()
+    corners = []
+    for i in range(count):
+        here, there = ends[i][1], ends[(i + 1) % count][0]
+        corner = TopoDS_Vertex()
+        builder.MakeVertex(
+            corner,
+            gp_Pnt((here.X() + there.X()) / 2.0,
+                   (here.Y() + there.Y()) / 2.0,
+                   (here.Z() + there.Z()) / 2.0),
+            here.Distance(there) / 2.0 + 1.0e-7)
+        corners.append(corner)
+
+    maker = BRepBuilderAPI_MakeWire()
+    for i, (curve, first, last) in enumerate(curves):
+        edge = BRepBuilderAPI_MakeEdge(curve, surface, corners[i - 1],
+                                       corners[i], first, last)
+        if not edge.IsDone():
+            return None
+        maker.Add(edge.Edge())
+    if not maker.IsDone():
+        return None
+    wire = maker.Wire()
+
+    kept = 0
+    walker = TopExp_Explorer(wire, TopAbs_ShapeEnum.TopAbs_EDGE)
+    while walker.More():
+        kept += 1
+        walker.Next()
+    if kept != count:
+        return None
+
+    BRepLib.BuildCurves3d_s(wire)
+    return wire
+
+
 def _map_strip(flat: TopoDS_Shape, strip: _Strip,
                why: list[str] | None = None) -> TopoDS_Shape | None:
     """The bent strip, built by wrapping its outline onto the cylinder.
@@ -273,76 +347,6 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
     if frame is None:
         return None                        # the axis runs through the material
     cyl_top, cyl_bottom = frame.cyl_top, frame.cyl_bottom
-    def wire_on(surface, curves):
-        """The wrapped outline as a wire ON *surface*, sharing its corners.
-
-        Each edge is rebuilt from its own 2D curve, so where two of them meet
-        the two surface points agree only as well as the FLAT solid's own
-        vertices did - a couple of tenths of a micron on a shape that came out
-        of a boolean, which is well inside the tolerance the flat shape carries
-        on that vertex and therefore perfectly legal there.
-
-        BRepBuilderAPI_MakeWire joins edges by comparing vertices at
-        Precision::Confusion, a flat 1e-7 that nothing can widen, and when the
-        gap is bigger than that it does not report a failure: it starts a
-        second wire, and IsDone() comes back TRUE as soon as some later edge
-        closes a loop - having silently dropped the rest. Measured on the real
-        board: a four-edge outline came back as a wire of two, the two missing
-        walls stayed unsewn, the shell never closed and the bend fell back to
-        facets, with nothing in the log but "not valid".
-
-        So the corners are made explicit. One vertex per junction, placed
-        between the two curve ends with a tolerance wide enough to reach both,
-        and every edge is built on the vertices its neighbours share: the wire
-        is then connected by TOPOLOGY and no tolerance decides anything. The
-        edge count is checked anyway, because this is exactly the kind of
-        failure that is invisible until a solid comes out inside out.
-        """
-        count = len(curves)
-        if not count:
-            return None
-
-        ends = []
-        for curve, first, last in curves:
-            head, tail = curve.Value(first), curve.Value(last)
-            ends.append((surface.Value(head.X(), head.Y()),
-                         surface.Value(tail.X(), tail.Y())))
-
-        builder = BRep_Builder()
-        corners = []
-        for i in range(count):
-            here, there = ends[i][1], ends[(i + 1) % count][0]
-            corner = TopoDS_Vertex()
-            builder.MakeVertex(
-                corner,
-                gp_Pnt((here.X() + there.X()) / 2.0,
-                       (here.Y() + there.Y()) / 2.0,
-                       (here.Z() + there.Z()) / 2.0),
-                here.Distance(there) / 2.0 + 1.0e-7)
-            corners.append(corner)
-
-        maker = BRepBuilderAPI_MakeWire()
-        for i, (curve, first, last) in enumerate(curves):
-            edge = BRepBuilderAPI_MakeEdge(curve, surface, corners[i - 1],
-                                           corners[i], first, last)
-            if not edge.IsDone():
-                return None
-            maker.Add(edge.Edge())
-        if not maker.IsDone():
-            return None
-        wire = maker.Wire()
-
-        kept = 0
-        walker = TopExp_Explorer(wire, TopAbs_ShapeEnum.TopAbs_EDGE)
-        while walker.More():
-            kept += 1
-            walker.Next()
-        if kept != count:
-            return None
-
-        BRepLib.BuildCurves3d_s(wire)
-        return wire
-
     sewing = BRepBuilderAPI_Sewing(SEW_TOL)
     for face, _ in tops:
         outer = BRepTools.OuterWire_s(face)
@@ -371,7 +375,7 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
         for surface in (cyl_top, cyl_bottom):
             built = None
             for curves, is_outer in sorted(mapped, key=lambda m: not m[1]):
-                wire = wire_on(surface, curves)
+                wire = _wire_on(surface, curves)
                 if wire is None:
                     return give_up("the wrapped outline did not close into a wire")
                 if built is None:
