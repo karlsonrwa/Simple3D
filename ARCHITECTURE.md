@@ -64,12 +64,12 @@ the keys that differ from the default.
 | `stepbuilder/bend.py` | 2412 | 71 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `_Region`/`_Strip`/`FoldPlan`, `plan_fold`, cutting the outline into pieces, the three strip constructions (revolve / wrap / facets), fuse |
 | `stepbuilder/contour.py` | 267 | 7 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
-| `stepbuilder/gui.py` | 1578 | 58 | one `tk.Tk` subclass: widget layout, window placement across monitors, silk-layer panel, config load/migrate/save, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring |
-| `stepbuilder/settings.py` | 82 | 3 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`. Round 72, plan C1 |
+| `stepbuilder/gui.py` | 1419 | 57 | one `tk.Tk` subclass: widget layout, window placement across monitors, silk-layer panel, the hand-over between widgets and `settings.GuiSettings`, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring |
+| `stepbuilder/settings.py` | 404 | 18 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`; then the `gui` section as ONE table, `GUI_KEYS` (name, field, default, load, save), `GuiSettings`, `load_gui_settings` (both migrations live in the `load` of the key that superseded them) and `save_gui_settings` (only what differs from the shipped default). Round 72, plans C1–C2 |
 | `stepbuilder/__main__.py` | 376 | 4 | two argparse parsers (prefilled GUI, headless CLI), the crash log under `pythonw` |
 | `stepbuilder/worker.py` | 204 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, batch rule for the full-board file, per-job isolation, progress slicing |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
-| `tests/` (22 files) | ~4900 | — | 19 suites + `run_all.py`; several are transliterations of SKILL procedures |
+| `tests/` (24 files) | ~4700 | — | 20 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
 | `tools/` | ~850 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
@@ -232,7 +232,7 @@ flowchart TD
 | `python -m stepbuilder` | no arguments | the window, standalone |
 | `python -m stepbuilder --gui …` | the launcher's form; `parse_known_args` | the window, prefilled |
 | `python -m stepbuilder STEP_DIR JSON OUT [flags]` | headless; `--batch` for a folder | `core.generate` per file, exit 1 on any failure |
-| `python tests/run_all.py [--quick]` | | the 3 checks + 19 suites as subprocesses |
+| `python tests/run_all.py [--quick]` | | the 3 checks + 20 suites as subprocesses |
 | `python tools/skill_checks.py` / `check_arity.py` / `audit_docs.py` | | the mechanical checks, also run by `run_all` |
 | `load("…/tools/probes/probe_*.il")` | in Allegro, by hand | read-only diagnostics; `probe_variants.il` calls into the exporter |
 | `load("…/tools/s3d_userprop_test.il")` | in Allegro, by hand | the one file that writes to a design |
@@ -351,7 +351,7 @@ it is.
 | `bend` pieces (`_polygon_face`, `_band_face`, `_face_poly`, `_piece_face`, `_touching`, `_closest_point`, `_cut_into_pieces`, `_slab`, `_plane_face`) | ~330 | reusable | "cut a planar outline by strips and hand back valid pieces with their polygons"; carries the pinch repair and the sliver rule |
 | `bend` strip constructions (`_spans_alike`, `_revolve_strip`, `_prism_of`) and `_fuse_all` | ~230 | reusable | exact revolve with the two prism tests |
 | `_Region`, `_Strip`, `FoldPlan` | ~350 | data + apply | `face_box`/`holds` duplicated between the two dataclasses; `FoldPlan.apply` is the second-largest method |
-| `gui.StepBuilderApp` | ~1500 | **monolith (M4)** | one class: layout, placement, the layer panel, config I/O with two hand-written key lists, the worker bridge, freeze/thaw, log |
+| `gui.StepBuilderApp` | ~1300 | **monolith (M4)** | one class: layout, placement, the layer panel, the worker bridge, freeze/thaw, log. The two hand-written key lists became `settings.GUI_KEYS` in round 72 (C1–C2); what is left in the class is one `var.set` per field on load and one `var.get` per field on save |
 | `gui._merge_config`, `_read_config_file`, `local_config_path` | ~60 | reusable | the settings-pair rule in Python |
 | `gui` placement (`_virtual_screen`, `_geometry_is_reachable`, `_center_on_primary`, `_restore_geometry`, `_remember_geometry`) | ~95 | reusable | multi-monitor placement for any Tk window |
 | `gui` worker bridge (`_run_in_worker`, `_drain_queue`, `_drain_once`, `_check_worker_alive`, `on_cancel`) | ~110 | reusable | "build in a child process, survive an access violation, cancel" — already copied by hand into step2html |
@@ -363,7 +363,7 @@ it is.
 
 | unit | verdict | why |
 |---|---|---|
-| `tests/*.py` | 20 scripts, one shape | since round 71 every file imports `tests/_support.py` (the paths, `fails`, `check`, `rect`, `read_step`, `volume`, `bbox`, `count_solids`, `entity_count`) instead of its own copy; `run_all` still greps stdout (plan F3). Before that, `test_regression_geometry.py` printed MATCH/DRIFT and never set an exit code |
+| `tests/*.py` | 21 scripts, one shape | since round 71 every file imports `tests/_support.py` (the paths, `fails`, `check`, `rect`, `read_step`, `volume`, `bbox`, `count_solids`, `entity_count`) instead of its own copy; `run_all` still greps stdout (plan F3). Before that, `test_regression_geometry.py` printed MATCH/DRIFT and never set an exit code |
 | SKILL transliterations in tests (`s3dJsonQuote`, `s3dDrillXY`, `s3dDesignFolder`, the variant rule, `tconc`, `s3dBendsJson`, the layer filter, the negative matcher, the merge) | valuable, scattered | they are the only executable specification of the SKILL side; worth collecting under one name |
 | `tools/skill_checks.py`, `tools/check_arity.py` | reusable | a SKILL lexer and four checks; the lexer is duplicated between the two files |
 | `tools/audit_docs.py` | glue | matches names, not claims (PROJECT_NOTES round 60) |

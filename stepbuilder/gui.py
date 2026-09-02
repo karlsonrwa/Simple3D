@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import multiprocessing
-import os
 import queue
 import re
 import tkinter as tk
@@ -40,11 +39,8 @@ from .colors import (
     resolve_board_color,
 )
 
-# Every user-facing setting lives in ONE file, simple3d_config.json, shared with
-# the SKILL side - which is why it sits next to the package rather than in the
-# home directory. The launcher passes its path with --config; run standalone,
-# the package's own folder is the documented install layout.
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "simple3d_config.json"
+# Where the settings pair lives, and why: settings.py.
+DEFAULT_CONFIG_PATH = settings.DEFAULT_CONFIG_PATH
 
 # How the board body is built. One dropdown rather than a pile of checkboxes:
 # the three are alternatives, and "inspect + layer colors" ticked together
@@ -54,6 +50,8 @@ BOARD_MODES = [
     ("layers",  "Solid colored layers"),
     ("inspect", "Not stitched"),
 ]
+# The file stores the keys; settings.py validates against its own list.
+assert tuple(k for k, _ in BOARD_MODES) == settings.BOARD_MODE_KEYS
 
 
 def _mode_label(key: str) -> str:
@@ -85,9 +83,9 @@ PICKER_SWATCH = dict(SWATCH, highlightthickness=0, relief="raised",
 # complaint this colour answers.
 INACTIVE_SWATCH = "#d9d9d9"
 
-RIM_SAME = "Same as board"
-RIM_CREAM = "Cream (dielectric)"
-RIM_CUSTOM = "Custom..."
+# The rim choices are what the settings file stores - the label IS the value -
+# so they live in settings.py; here for the widgets and for the tests.
+RIM_SAME, RIM_CREAM, RIM_CUSTOM = settings.RIM_SAME, settings.RIM_CREAM, settings.RIM_CUSTOM
 
 # Log lines arrive from core as plain text, so severity is inferred from how the
 # line opens. core labels its own non-fatal lines with a "warning:" prefix, which
@@ -1312,240 +1310,83 @@ class StepBuilderApp(tk.Tk):
         """The local file beside the tracked one - settings.local_config_path."""
         return settings.local_config_path(self.config_path)
 
-    def _read_config_file(self, path: Path | None = None,
-                          missing_ok: bool = False) -> tuple[dict, str | None]:
-        """(document, problem) - settings.read_config_file, defaulting to the
-        tracked file. Why "problem" is never treated as "empty" is said there."""
-        return settings.read_config_file(path or self.config_path, missing_ok)
-
     def _load_config(self) -> None:
-        base, self._config_problem = self._read_config_file()
-        local, self._local_problem = self._read_config_file(
-            self.local_config_path, missing_ok=True)
-        data = _merge_config(base, local)
-        gui = data.get("gui")
-        if not isinstance(gui, dict):
-            return
-        # stepDirs (a list) is the shape. stepDir (a single string) is what a
-        # config written before multi-folder support holds; it is read ONCE so
-        # that setting survives the upgrade, and _save_config then drops it -
-        # see there for why it is not mirrored back.
-        dirs = gui.get("stepDirs")
-        if isinstance(dirs, list):
-            self.set_step_dirs([str(d).strip() for d in dirs if str(d).strip()])
-        else:
-            single = str(gui.get("stepDir", "")).strip()
-            self.set_step_dirs([single] if single else [])
-        self.json_file.set(gui.get("jsonFile", ""))
-        self.output_dir.set(gui.get("outputDir", ""))
-        self.z_datum.set(gui.get("zDatum", "top"))
-        self.theme.set(gui.get("boardColor", DEFAULT_THEME))
-        self.rim_choice.set(gui.get("boardEdge", RIM_SAME))
-        self.rim_custom.set(gui.get("boardEdgeCustom", ""))
-        self.silk_top.set(gui.get("silkscreenTop", True))
-        self.silk_bottom.set(gui.get("silkscreenBottom", True))
-        self.silk_color.set(gui.get("silkColor", DEFAULT_SILK))
-        self.silk_flat.set(gui.get("silkscreenFlat", False))
-        off = gui.get("silkscreenLayersOff")
-        self._layers_off = set(off) if isinstance(off, list) else set()
-        try:
-            self.silk_flat_height = abs(float(gui.get("silkscreenFlatHeight",
-                                                      DEFAULT_FLAT_HEIGHT)))
-        except (TypeError, ValueError):
-            self.silk_flat_height = DEFAULT_FLAT_HEIGHT
-        # MFRPN DISABLED (kept for future):
-        # self.mfr_pn_in_name.set(gui.get("mfrPnInName", False))
-        self.minimize.set(gui.get("minimizeFileSize", True))
-        self.build_full.set(gui.get("buildFullBoard", True))
-        # debugLayers was the previous shape of this setting: a single boolean
-        # meaning "inspect". Read once so an existing config keeps working, and
-        # dropped on save - see _save_config.
-        mode = gui.get("boardMode")
-        if not isinstance(mode, str) or mode not in dict(BOARD_MODES):
-            mode = "inspect" if gui.get("debugLayers") else "solid"
-        self.board_mode.set(_mode_label(mode))
-        saved = gui.get("layerColors")
-        if isinstance(saved, dict):
-            for key, value in saved.items():
-                if key in self.layer_colors:
-                    try:
-                        self.layer_colors[key] = parse_hex(str(value))
-                    except ValueError:
-                        pass
-        self.ignore_soldermask.set(gui.get("ignoreSoldermask", False))
-        self.fold_bends.set(gui.get("foldBends", True))
-        # Anything unreadable falls back to the default rather than stopping the
-        # load: these two are hand-edited numbers in a file nothing validates.
-        anchor = gui.get("foldAnchor")
-        if isinstance(anchor, str) and anchor.strip().lower() == "auto":
-            self.fold_anchor = "auto"
-        elif (isinstance(anchor, (list, tuple)) and len(anchor) >= 2
-              and all(isinstance(v, (int, float)) for v in anchor[:2])):
-            self.fold_anchor = (float(anchor[0]), float(anchor[1]))
-        else:
-            self.fold_anchor = None
-        try:
-            self.fold_neutral = float(gui.get("foldNeutral", DEFAULT_NEUTRAL_FACTOR))
-        except (TypeError, ValueError):
-            self.fold_neutral = DEFAULT_NEUTRAL_FACTOR
-        if not 0.0 <= self.fold_neutral <= 1.0:
-            self.fold_neutral = DEFAULT_NEUTRAL_FACTOR
-        try:
-            self.fold_slice_angle = float(gui.get("foldSliceAngle",
-                                                  DEFAULT_SLICE_ANGLE))
-        except (TypeError, ValueError):
-            self.fold_slice_angle = DEFAULT_SLICE_ANGLE
-        if not 0.5 <= self.fold_slice_angle <= 90.0:
-            self.fold_slice_angle = DEFAULT_SLICE_ANGLE
-        geometry = gui.get("windowGeometry")
-        self._saved_geometry = geometry if isinstance(geometry, str) else None
-        self._saved_state = ("zoomed" if gui.get("windowState") == "zoomed"
-                             else "normal")
+        """The pair, merged and decoded by settings.load_gui_settings; here only
+        the hand-over into the widgets. Runs BEFORE _build_ui, so the STEP
+        folders buffer in set_step_dirs until their widget exists."""
+        s, self._config_problem, self._local_problem = \
+            settings.load_gui_settings(self.config_path)
+        self.set_step_dirs(s.step_dirs)
+        self.json_file.set(s.json_file)
+        self.output_dir.set(s.output_dir)
+        self.z_datum.set(s.z_datum)
+        self.theme.set(s.theme)
+        self.rim_choice.set(s.rim_choice)
+        self.rim_custom.set(s.rim_custom)
+        self.silk_top.set(s.silk_top)
+        self.silk_bottom.set(s.silk_bottom)
+        self.silk_color.set(s.silk_color)
+        self.silk_flat.set(s.silk_flat)
+        self._layers_off = s.layers_off
+        self.silk_flat_height = s.silk_flat_height
+        self.minimize.set(s.minimize)
+        self.build_full.set(s.build_full)
+        self.board_mode.set(_mode_label(s.board_mode))
+        self.layer_colors = dict(s.layer_colors)
+        self.ignore_soldermask.set(s.ignore_soldermask)
+        self.fold_bends.set(s.fold_bends)
+        self.fold_anchor = s.fold_anchor
+        self.fold_neutral = s.fold_neutral
+        self.fold_slice_angle = s.fold_slice_angle
+        self._saved_geometry = s.window_geometry
+        self._saved_state = s.window_state
 
     def _save_config(self) -> None:
         """Write the "gui" section into the LOCAL settings file.
 
-        The tracked file is never written. It holds the shipped defaults, it is
-        under version control, and this window rewrites its settings every time
-        it closes - a combination that guarantees a conflict on every update and
-        someone else's window position in every commit. What this writes is
-        simple3d_config.local.json beside it, which is gitignored and merged
-        over the defaults on read.
-
-        Read-modify-write rather than a fresh document: the local file is
-        hand-editable too, and someone may have pinned a key in it that this
-        build knows nothing about.
-
-        If either file cannot be read - missing, unparsable, whatever - NOTHING
-        is written. That is the whole point. An earlier version treated an
-        unreadable file as an empty one and cheerfully wrote back a document
-        holding only "gui", which is exactly how a user's settings file came
-        back with every other section gone. The rule now covers the base file
-        too: with it unreadable the widgets hold defaults rather than settings,
-        and writing those as local overrides would mask the base file
-        permanently once it was repaired.
-
-        A file that cannot be WRITTEN is still ignored silently: a read-only
-        install directory must not turn closing the window into an error dialog.
+        What the widgets hold, handed to settings.save_gui_settings, which
+        owns the rules: the tracked file is never written, nothing is written
+        unless both files were understood at load AND the local one reads
+        cleanly now, only what differs from the shipped default is kept, and
+        the paths Allegro supplied are not a setting. Why each of those is a
+        rule is said there.
         """
-        # Two separate conditions, and missing the first one wiped a user's
-        # stepDir. The file is re-read here, but what would be written comes
-        # from the WIDGETS - and if the load failed at startup the widgets hold
-        # defaults, not settings. So a config that was unreadable when the
-        # window opened and readable by the time it closed (the user repaired
-        # it meanwhile, which is exactly what happened) passed the save-time
-        # check and wrote empty fields over good values.
-        #
-        # Nothing may be written unless the file was understood BOTH when it
-        # was loaded and now.
-        if self._config_problem is not None or self._local_problem is not None:
-            return
-        data, problem = self._read_config_file(self.local_config_path,
-                                               missing_ok=True)
-        if problem is not None:
-            return
-        # Merge into the existing section, do not replace it. The file is
-        # hand-edited, so "gui" can hold keys this build does not know -
-        # comments, a setting added by a later version, a value someone parked
-        # there - and replacing the section wholesale would delete them on
-        # window close. Same reasoning as preserving the other sections, one
-        # level down.
-        gui = data.get("gui")
-        if not isinstance(gui, dict):
-            gui = {}
-        # The superseded single-folder key is REMOVED, not kept in step with the
-        # first entry. Mirroring it would leave two keys meaning one thing
-        # forever: stepDirs always wins, so a hand-edit of stepDir does nothing
-        # and is silently overwritten on the next close. The read above has
-        # already migrated any value it held.
-        #
-        # This is not the "preserve keys we do not understand" rule from the
-        # config-safety work: that protects keys belonging to someone else. This
-        # one is ours and superseded, and dropping it is the migration.
-        gui.pop("stepDir", None)
-        # Superseded by boardMode; the read above has already migrated it.
-        gui.pop("debugLayers", None)
-        dirs = self.step_dirs()
-        gui.update({
-            "stepDirs": dirs,
-            "zDatum": self.z_datum.get(),
-            "boardColor": self.theme.get(),
-            "boardEdge": self.rim_choice.get(),
-            "boardEdgeCustom": self.rim_custom.get(),
-            "silkscreenTop": self.silk_top.get(),
-            "silkscreenBottom": self.silk_bottom.get(),
-            "silkColor": self.silk_color.get(),
-            "silkscreenFlat": self.silk_flat.get(),
-            "silkscreenFlatHeight": self.silk_flat_height,
+        values = settings.GuiSettings(
+            step_dirs=self.step_dirs(),
+            z_datum=self.z_datum.get(),
+            theme=self.theme.get(),
+            rim_choice=self.rim_choice.get(),
+            rim_custom=self.rim_custom.get(),
+            silk_top=self.silk_top.get(),
+            silk_bottom=self.silk_bottom.get(),
+            silk_color=self.silk_color.get(),
+            silk_flat=self.silk_flat.get(),
+            silk_flat_height=self.silk_flat_height,
             # Only overwrite the remembered exclusions once a list has actually
             # been shown; an old JSON with no layers must not wipe them.
-            "silkscreenLayersOff": sorted(
-                self._current_layers_off() if self._layer_vars else self._layers_off),
-            # MFRPN DISABLED (kept for future):
-            # "mfrPnInName": self.mfr_pn_in_name.get(),
-            "minimizeFileSize": self.minimize.get(),
-            "buildFullBoard": self.build_full.get(),
-            "boardMode": _mode_key(self.board_mode.get()),
-            "layerColors": {k: "#%02X%02X%02X" % v
-                            for k, v in self.layer_colors.items()},
-            "ignoreSoldermask": self.ignore_soldermask.get(),
-            "foldBends": self.fold_bends.get(),
-            # Written back as read, so a hand-edited anchor survives a run.
-            "foldAnchor": (list(self.fold_anchor)
-                           if isinstance(self.fold_anchor, tuple)
-                           else self.fold_anchor),
-            "foldNeutral": self.fold_neutral,
-            "foldSliceAngle": self.fold_slice_angle,
-            # Where the window was, so the next run comes up in the same place -
-            # on the same monitor, which is the point on a multi-screen desk.
-            # The non-maximized rect is stored even when closing maximized, so
+            layers_off=set(self._current_layers_off() if self._layer_vars
+                           else self._layers_off),
+            minimize=self.minimize.get(),
+            build_full=self.build_full.get(),
+            board_mode=_mode_key(self.board_mode.get()),
+            layer_colors=dict(self.layer_colors),
+            ignore_soldermask=self.ignore_soldermask.get(),
+            fold_bends=self.fold_bends.get(),
+            fold_anchor=self.fold_anchor,
+            fold_neutral=self.fold_neutral,
+            fold_slice_angle=self.fold_slice_angle,
+            # The NON-maximized rect is stored even when closing maximized, so
             # un-maximizing later gives back a sane window.
-            "windowGeometry": self._last_normal_geometry or self.geometry(),
-            "windowState": "zoomed" if self.state() == "zoomed" else "normal",
-        })
-        # The board being exported is not a setting. When Allegro supplied
-        # these, whatever the file already holds is left as it is; only a
-        # standalone run - where the user picked the paths - records them.
-        if not self._paths_from_launcher:
-            gui["jsonFile"] = self.json_file.get()
-            gui["outputDir"] = self.output_dir.get()
-
-        # ONLY WHAT DIFFERS FROM THE SHIPPED DEFAULT is kept. Writing the whole
-        # section would work, but it would pin every key at whatever this
-        # installation happened to have on the day - and then an improved
-        # default upstream could never reach it again, which is half of what
-        # the split was for. It also means setting a value back to the shipped
-        # one REMOVES it here, rather than freezing today's default forever.
-        #
-        # Keys the base does not mention are kept as they are: they are either
-        # ours and new, or someone else's and none of our business.
-        base, problem = self._read_config_file()
-        base_gui = base.get("gui") if problem is None else None
-        if isinstance(base_gui, dict):
-            gui = {key: value for key, value in gui.items()
-                   if key.startswith("_comment")
-                   or key not in base_gui or base_gui[key] != value}
-        data["gui"] = gui
-        # A note for whoever opens the file wondering what it is. Written only
-        # when the file is being created, so it cannot fight a hand edit.
-        data.setdefault(
-            "_comment",
-            "Local settings for this installation. Overrides simple3d_config.json "
-            "key by key and is not tracked by git, so an update never touches it. "
-            "Delete a key here to go back to the shipped default.")
-        target = self.local_config_path
-        # Written to a temporary file and renamed into place, so it is never
-        # left half written if the process dies mid-save.
-        tmp = target.with_suffix(target.suffix + ".tmp")
-        try:
-            tmp.write_text(json.dumps(data, indent=4, ensure_ascii=False) + "\n",
-                           encoding="utf-8")
-            os.replace(tmp, target)
-        except OSError:
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+            window_geometry=self._last_normal_geometry or self.geometry(),
+            window_state="zoomed" if self.state() == "zoomed" else "normal",
+            json_file=self.json_file.get(),
+            output_dir=self.output_dir.get(),
+        )
+        settings.save_gui_settings(
+            self.config_path, values,
+            paths_from_launcher=self._paths_from_launcher,
+            loaded_cleanly=(self._config_problem is None
+                            and self._local_problem is None))
 
     def _on_close(self) -> None:
         self._save_config()

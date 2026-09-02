@@ -224,7 +224,7 @@ stepbuilder/
 | # | move | tests before | done when |
 |---|---|---|---|
 | C1 | `settings.py` with `merge_config` and `read_config_file` moved verbatim; `gui` imports them | `test_config_merge.py`, `test_gui.py` [3], [4], [4b] | unchanged — **done, round 72**: plus `local_config_path`; `settings.py` imports neither tkinter nor core (asserted); the window keeps `_merge_config` as an alias and thin wrappers for the two methods; a 24-scenario load/save snapshot (eight settings files × none / edited / launched-from-Allegro) is byte-identical before and after |
-| C2 | the key table: `_load_config`/`_save_config` iterate `GUI_KEYS` instead of naming each key twice; migrations as functions | `test_gui.py` [6], [7], [7b], [7d]; `test_geom.py` [3], [7] | adding a setting is one table row |
+| C2 | the key table: `_load_config`/`_save_config` iterate `GUI_KEYS` instead of naming each key twice; migrations as functions | `test_gui.py` [6], [7], [7b], [7d]; `test_geom.py` [3], [7] | adding a setting is one table row — **done, round 72**: `settings.GUI_KEYS` (24 rows, in the order the file is written), `GuiSettings`, `load_gui_settings` / `save_gui_settings` as module functions rather than the class methods sketched above; `RIM_*`, `DEFAULT_CONFIG_PATH` and `BOARD_MODE_KEYS` moved with them (the window asserts its `BOARD_MODES` keys match). The 24-scenario load/save snapshot is byte-identical; new `tests/test_settings.py` (the 20th suite) exercises every rule without a window; `audit_docs.py` reads the key names from the table now. One cost: `settings.py` imports `core` and `bend` for three default numbers, so it is no longer OCP-free — move `DEFAULT_FLAT_HEIGHT`, `DEFAULT_NEUTRAL_FACTOR`, `DEFAULT_SLICE_ANGLE` to a light module if that ever matters (plan G) |
 | C3 | `winplace.py` | `test_geom.py` all | unchanged |
 | C4 | `widgets/layers_panel.py` | `test_gui.py` layer cases; the round-15/16 behaviours (wheel grab, per-side greying, All/None on live sides) need explicit assertions first — add them | unchanged |
 | C5 | `worker_bridge.py` | `test_gui.py` [9] (freeze/thaw, cancel, the fake worker) | `StepBuilderApp` no longer imports `multiprocessing` |
@@ -332,6 +332,7 @@ and Plan D4/D8 (the writer is data-driven by then).
 | G2 | `tools/skill_lex.py` shared by `skill_checks.py` and `check_arity.py` | tools |
 | G3 | `_seam_gap`, `_double_claimed` promoted to the plan's public `check()` so a test can call them without the underscore | bend |
 | G4 | `s3dExportCommand` stops passing `list(0.0 0.4 0.0)`; `makeVariant3dIntermediates` keeps the optional argument for the CLI-from-console use | simple3d.il |
+| G5 | `DEFAULT_FLAT_HEIGHT`, `DEFAULT_NEUTRAL_FACTOR`, `DEFAULT_SLICE_ANGLE` into a light `defaults.py` (re-exported where they are), so `settings.py` stops importing OCP for three numbers (found in C2) | core, bend, settings |
 
 ---
 

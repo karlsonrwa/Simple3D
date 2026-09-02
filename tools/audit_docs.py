@@ -56,8 +56,13 @@ for k in sorted(real_keys):
 MIGRATION_ONLY = {"stepDir", "debugLayers"}
 # Strip comments first: a DISABLED read is not a read (the same false positive
 # the round-18 audit hit with --mfr-pn-in-name).
-missing = ({k for k in re.findall(r'gui\.get\(\s*"(\w+)"', uncommented(gui_py))}
-           - real_keys - MIGRATION_ONLY)
+settings_py = (ROOT / "stepbuilder/settings.py").read_text(encoding="utf-8")
+read_keys = ({k for k in re.findall(r'gui\.get\(\s*"(\w+)"', uncommented(gui_py))}
+             | {k for k in re.findall(r'Key\(\s*"(\w+)"', uncommented(settings_py))}
+             | {k for k in re.findall(r'section\.get\(\s*"(\w+)"', uncommented(settings_py))})
+missing = read_keys - real_keys - MIGRATION_ONLY
+if not read_keys:
+    note("GUI keys", "no gui key reads found at all - the check ran on nothing")
 for k in sorted(missing):
     note("GUI reads a key absent from the shipped config", k)
 
@@ -132,7 +137,9 @@ if not quick_window.strip():
     note("QUICKSTART", "no window section found - the control check ran on nothing")
 
 PROSE = {"Custom…": "Custom...", "White/Black": "White"}
-widget_text = gui_py + (ROOT / "stepbuilder/colors.py").read_text(encoding="utf-8")
+# ... and the rim labels are settings VALUES, so they live in settings.py.
+widget_text = (gui_py + (ROOT / "stepbuilder/colors.py").read_text(encoding="utf-8")
+               + (ROOT / "stepbuilder/settings.py").read_text(encoding="utf-8"))
 for label in re.findall(r"\*\*([A-Z][A-Za-z0-9 =/…]+?)\*\*", quick_window):
     lab = label.strip()
     if lab in ("Input", "Board options", "Silk options", "Layers", "Log"):
