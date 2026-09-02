@@ -89,7 +89,7 @@ the keys that differ from the default.
 | `stepbuilder/worker_bridge.py` | 143 | 9 | `WorkerBridge`: the window's half of the child process - `start`, `drain_once` (queue to five callbacks), `check_alive` (a death is a crash unless `cancelled`), `cancel`, `close`; `crash_advice(code)` is the text. No tkinter. Round 74, plan C5 |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
 | `tests/` (26 files) | ~4900 | — | 21 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
-| `tools/` | ~1100 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), the SKILL exporter run headless and its own golden corpus (`skill_export.py`, round 75), a hand test that writes a property, 11 read-only Allegro probes |
+| `tools/` | ~1100 | — | five mechanical SKILL checks (`skill_checks.py` — parens, strings, calls, prog locals, undeclared assignments since round 76 — and `check_arity.py`), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), the SKILL exporter run headless and its own golden corpus (`skill_export.py`, round 75), a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
 Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
@@ -322,14 +322,16 @@ version only ever *added* an optional key, which is why a v2 file still builds.
 | `S3D_SilkWarnings` | during silk collection | yes | the `warnings` array |
 | `S3D_SilkDefaultTop/Bottom/Thickness`, `S3D_JsonNumChars` | load | constants | config fallback, JSON reader |
 
-Plus the accidental ones: several upstream procedures assign names they never
-declared (`gdsysGetVariantInfo`: `newLine`, `parts`, `subStrings`, `properties`,
-`temp`, `valueKey`, …; `makeSlot`: `tmp`, `xStart`…; `makePcbContour`:
-`element`, `cutouts`; `makePcb`: `pcbColor`; `create3dIntermediateFormat`:
+The accidental ones are gone since round 76 (D1–D2): several upstream
+procedures used to assign names they never declared (`gdsysGetVariantInfo`:
+`newLine`, `parts`, `subStrings`, `properties`, `temp`, `valueKey`, `line`, …;
+`makeSlot`: `tmp`, `xStart`…; `makePcbContour`: `element`, `cutouts`;
+`makePcb`: `pcbColor` — its caller's parameter name; `create3dIntermediateFormat`:
 `placement`, `name`, `pcb`, `outFile`, `outPort`, `lines`). Under SKILL's
-dynamic scoping these land in the nearest enclosing binding or become session
-globals; none of them is read afterwards today, which is the only reason it is
-not a bug. The mechanical checks do not look for this.
+dynamic scoping these landed in the nearest enclosing binding or became session
+globals; none was read afterwards, which is the only reason it was not a bug.
+Every one is declared in its own `let` now, `makePcb` builds `colorJson`, and
+`tools/skill_checks.py` check #5 reports any new one.
 
 ### 4.2 Python state
 

@@ -788,7 +788,12 @@ procedure( gdsysGetVariantInfo()
     ; See s3dVariantFilePath.
     let(    (   ( variantFile s3dVariantFilePath() )
             ( state "findVariant" )
-            pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols )
+            pattern inPort currentVariant variantTable alternateParts part partProperties refDes symbols
+            ; Declared since round 75 (plan D2): SKILL is dynamically scoped, so
+            ; a name assigned here without a declaration became a session
+            ; global - tools/skill_checks.py check #5 reports such a name now.
+            newLine newLineEnd newLineWithinProperty propertyStart propertySeparator blankSpace
+            line parts subStrings properties temp valueKey )
 
         pattern = pcreCompile("[\"\t+\\()]")
         newLine = pcreCompile("\t\t")
@@ -1101,7 +1106,8 @@ procedure( s3dDrillXY( pin padstack )
 )
 
 procedure( makeSlot( pin padstack )
-    let( ( xy x y rotation drillSizeWidth drillSizeHeight slot radius xCenter yCenter xyCenter alpha beta ccw segment )
+    let( ( xy x y rotation drillSizeWidth drillSizeHeight slot radius xCenter yCenter xyCenter alpha beta ccw segment
+           tmp xStart yStart xEnd yEnd xyStart xyEnd )   ; declared, round 75 (D2)
         ; get coordinates - the DRILL's, not the pad's
         rotation = pin->rotation
 
@@ -2163,7 +2169,7 @@ procedure( s3dBendsJson()
 )
 
 procedure( makePcbContour( dsn )
-    let( ( outline segments ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) )
+    let( ( outline segments ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) element cutouts )
         ; make pcb geometry
         outline = dsn->designOutline
         segments = outline->segments
@@ -2414,8 +2420,11 @@ procedure( symbolReturnPinHoles()
 )
 
 procedure( makePcb( thicknesses edges cuts color )
-    let( ()
-        pcbColor = strcat(
+    let( ( colorJson )
+        ; colorJson, not pcbColor: that is the caller's parameter name, and an
+        ; undeclared assignment to it here rebound the caller's variable
+        ; (round 75, D2).
+        colorJson = strcat(
           "\"color\": {\n"
           "\t\"r\": " sprintf( nil "%f" car( color ) ) ",\n"
           "\t\"g\": " sprintf( nil "%f" cadr( color ) ) ",\n"
@@ -2440,7 +2449,7 @@ procedure( makePcb( thicknesses edges cuts color )
                 "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
                 "\t},\n"
                 s3dAddIndent(
-                    pcbColor
+                    colorJson
                 )
                 ",\n"
                 "\t\"edges\": [\n"
@@ -2470,7 +2479,7 @@ procedure( makePcb( thicknesses edges cuts color )
                 "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
                 "\t},\n"
                 s3dAddIndent( 
-                    pcbColor
+                    colorJson
                 )
                 ",\n"
                 "\t\"edges\": [\n"
@@ -3582,7 +3591,8 @@ procedure( s3dWriteSilkscreen( p_port l_silk )
 ; at write time is the round-42 shape - it would describe whatever the previous
 ; call set if this one ever forgot to.
 procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName @optional ( silk nil ) ( g_fullBoard nil ) )
-    let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) baseCut body )
+    let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) baseCut body
+           placement name pcb outFile outPort lines )   ; the last six: declared here, not in the caller (round 75, D2)
         ; Number each variant's no-refdes mechanicals from 1 (see symbolReturn3DElements).
         S3D_MechSeq = 0
         ; Rebuilt per export: a shape added between two runs in one session
@@ -3757,7 +3767,11 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 )
 
 procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0.0) ) ( configFile nil ) )
-    let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName thicknesses elements placement outFile outPort pcb lines )
+    let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName )
+        ; The list used to go on: a second `thicknesses`, and `elements placement
+        ; outFile outPort pcb lines` - names this procedure never touches. They
+        ; were create3dIntermediateFormat's, reaching its let through SKILL's
+        ; dynamic scope; since round 75 (D2) it declares them itself.
 
         ; get design and design name
         dsnName = axlCurrentDesign()

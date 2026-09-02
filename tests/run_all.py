@@ -23,7 +23,7 @@ TESTS = ROOT / "tests"
 
 # (label, script, heavy?) - heavy means it builds real geometry with OCCT
 JOBS = [
-    ("SKILL: parens, strings, undefined calls", TOOLS / "skill_checks.py", False),
+    ("SKILL: parens, strings, calls, leaks",     TOOLS / "skill_checks.py", False),
     ("SKILL: call arity",                       TOOLS / "check_arity.py", False),
     ("docs vs code",                            TOOLS / "audit_docs.py", False),
     ("Python: every name defined (pyflakes)",   TOOLS / "python_names.py", False),

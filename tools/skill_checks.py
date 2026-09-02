@@ -10,12 +10,15 @@ _OUT.mkdir(parents=True, exist_ok=True)
 if str(_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_ROOT))
 
-"""Four mechanical checks on the Simple3D SKILL sources (see round 14b notes):
+"""Five mechanical checks on the Simple3D SKILL sources (see round 14b notes):
   1. parenthesis balance (per file)
   2. string literals broken across a real newline
   3. calls to project-shaped procedures that are defined nowhere
   4. prog() locals written in let's (var value) form, which prog rejects at
      CALL time - so the file loads clean and the procedure dies when used
+  5. an assignment inside a procedure to a name it never declared (round
+     75, plan D1): SKILL is dynamically scoped, so such a name lands in
+     the nearest caller that has it, or becomes a session global
 
 Strings and ; comments are stripped before paren/call analysis so that parens or
 names inside them do not count.
@@ -121,6 +124,102 @@ def check_prog_locals(text, nostr):
     return problems
 
 
+# ---- check 5: assignments to names a procedure never declared ------------- #
+#
+# SKILL has no lexical scope. A name assigned inside a procedure is local ONLY
+# if it is a parameter or in a let/prog/letseq list; otherwise the assignment
+# lands in the nearest caller up the DYNAMIC chain that has that name, or
+# creates a session global that outlives the export. The exporter carried 21
+# such names for years (round 70's review listed them; ARCHITECTURE.md 4.1);
+# none was read afterwards, which is the only reason it was not a bug - and
+# makePcb assigned `pcbColor`, its caller's parameter name. Nothing else here
+# could see that: the other checks compare calls with definitions, not
+# assignments with declarations.
+
+IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
+# `name =` that is an assignment: not `==` (the lookahead), not `!=`/`<=`/`>=`
+# (the character before `=` is then not the name), not `obj->attr =` (a `>`
+# right before the name), not `tbl[key] =` (a `]` before the `=`).
+ASSIGN_RE = re.compile(rf"(?<![\w>])({IDENT})\s*=(?!=)")
+# Forms that bind a name without a let: the loop variable of foreach/for/
+# forall/setof/exists, and `foreach( mapcar x ...)`.
+BINDER_RE = re.compile(rf"\b(?:foreach|for|forall|setof|exists)\(\s*(?:(?:mapcar|mapc|mapcan|maplist)\s+)?({IDENT})")
+SCOPE_RE = re.compile(r"\b(?:let|prog|letseq|lambda)\(\s*\(")
+PROC_RE = re.compile(rf"\bprocedure\(\s*({IDENT})\s*\(")
+GLOBAL_PREFIX = "S3D_"          # the project's declared session globals
+
+
+def balanced_end(src, i):
+    """Index just past the group that opens at src[i] == '('."""
+    depth = 0
+    while i < len(src):
+        if src[i] == "(":
+            depth += 1
+        elif src[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return len(src)
+
+
+def names_in_list(group):
+    """The names a binding list declares: bare symbols and the heads of
+    (sym value) forms. `@optional ( x 1 )` and `@key`/`@rest` read the same
+    way; the @-words themselves are dropped by the caller."""
+    out = set()
+    inner = group.strip()[1:-1]
+    i = 0
+    while i < len(inner):
+        ch = inner[i]
+        if ch == "(":
+            j = balanced_end(inner, i)
+            m = re.match(rf"\(\s*({IDENT})", inner[i:j])
+            if m:
+                out.add(m.group(1))
+            i = j
+        else:
+            m = re.match(IDENT, inner[i:])
+            if m:
+                out.add(m.group(0))
+                i += len(m.group(0))
+            else:
+                i += 1
+    return out
+
+
+def check_undeclared(nostr):
+    """[(line, procedure, name)] for each assignment to an undeclared name.
+
+    *nostr* is the source with comments and strings removed. Declared means:
+    a parameter, a name in any let/prog/letseq/lambda list of the procedure
+    (nesting is not tracked - a name declared in an inner let counts for the
+    whole body, which errs on the quiet side), a loop binder, or a project
+    global (S3D_*). gets(name port) is an assignment too and is reported like
+    one.
+    """
+    problems = []
+    for m in PROC_RE.finditer(nostr):
+        proc = m.group(1)
+        head_start = m.end() - 1
+        head_end = balanced_end(nostr, head_start)
+        declared = names_in_list(nostr[head_start:head_end]) - {"optional", "key", "rest"}
+        body_end = balanced_end(nostr, m.start() + len("procedure"))
+        body = nostr[head_end:body_end]
+        for sm in SCOPE_RE.finditer(body):
+            g = sm.end() - 1
+            declared |= names_in_list(body[g:balanced_end(body, g)])
+        declared |= set(BINDER_RE.findall(body))
+        targets = [(am.start(), am.group(1)) for am in ASSIGN_RE.finditer(body)]
+        targets += [(gm.start(), gm.group(1)) for gm in re.finditer(rf"\bgets\(\s*({IDENT})", body)]
+        for pos, name in sorted(targets):
+            if name in declared or name.startswith(GLOBAL_PREFIX) or name in ("t", "nil"):
+                continue
+            line = nostr.count("\n", 0, head_end + pos) + 1
+            problems.append((line, proc, name))
+    return problems
+
+
 def analyze(path):
     text = Path(path).read_text(encoding="utf-8", errors="replace")
     # code with comments and strings removed, for parens + calls
@@ -136,9 +235,10 @@ def analyze(path):
     defs = set(re.findall(r"procedure\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(", nostr))
     calls = set(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(", nostr))
     progs = check_prog_locals(text, nostr)
-    return text, bal, broken, defs, calls, progs
+    undeclared = check_undeclared(nostr)
+    return text, bal, broken, defs, calls, progs, undeclared
 
-def report(path, bal, broken, calls, known, progs=()):
+def report(path, bal, broken, calls, known, progs=(), undeclared=()):
     """Print one file's findings; True if it is clean."""
     ok = True
     print(f"=== {Path(path).name} ===")
@@ -171,6 +271,17 @@ def report(path, bal, broken, calls, known, progs=()):
             print(f"    line {n}: prog( ({src_} )")
     else:
         print("  prog locals: all bare symbols")
+
+    if undeclared:
+        ok = False
+        print("  assignments to names the procedure never declared (they leak):")
+        by_proc = {}
+        for n, proc, name in undeclared:
+            by_proc.setdefault(proc, []).append(f"{name} (line {n})")
+        for proc, items in by_proc.items():
+            print(f"    {proc}: {', '.join(items)}")
+    else:
+        print("  undeclared assignments: none")
     return ok
 
 
@@ -191,6 +302,24 @@ def self_test():
         problems.append("the prog-locals check fires on bare symbols")
     if check_prog_locals(let_ok, let_ok):
         problems.append("the prog-locals check fires on a let, where the form is legal")
+    # Check 5, the same way: a leak it must see, and every legal form it
+    # must not mistake for one.
+    leak = ("procedure( f( a )\n    let( ( b )\n        c = a + b\n        obj->w = 1\n"
+            "        while( gets( line port ) nil )\n    )\n)")
+    found = {name for _, _, name in check_undeclared(strip_strings(leak))}
+    if found != {"c", "line"}:
+        problems.append(f"the undeclared check sees {sorted(found)}, not c and line")
+    clean = ("procedure( g( a @optional ( d 1 ) @key e )\n"
+             "    let( ( b ( c nil ) )\n"
+             "        c = a + b\n        d = 2\n        e = 3\n"
+             "        foreach( x lst x = 1 )\n        for( i 1 3 i = 0 )\n"
+             "        S3D_Flag = t\n        obj->w = 1\n        tbl[a] = 1\n"
+             "        if( a == b || a != c || a >= d || a <= e then t )\n"
+             "        prog( ( r ) r = 1 return( r ) )\n"
+             "        mapcar( lambda( ( q ) q = 1 ) lst )\n    )\n)")
+    wrong = check_undeclared(strip_strings(clean))
+    if wrong:
+        problems.append(f"the undeclared check fires on declared names: {wrong}")
     if problems:
         print("SELF-TEST FAILED:")
         for p in problems:
@@ -203,16 +332,16 @@ def main():
     all_defs = set()
     per_file = {}
     for f in FILES:
-        text, bal, broken, defs, calls, progs = analyze(f)
-        per_file[f] = (bal, broken, calls, progs)
+        text, bal, broken, defs, calls, progs, undeclared = analyze(f)
+        per_file[f] = (bal, broken, calls, progs, undeclared)
         all_defs |= defs
 
     ok = True
-    for f, (bal, broken, calls, progs) in per_file.items():
-        ok = report(f, bal, broken, calls, all_defs, progs) and ok
+    for f, (bal, broken, calls, progs, undeclared) in per_file.items():
+        ok = report(f, bal, broken, calls, all_defs, progs, undeclared) and ok
 
     for f in PROBES:
-        text, bal, broken, defs, calls, progs = analyze(f)
+        text, bal, broken, defs, calls, progs, undeclared = analyze(f)
         # A probe is checked against its OWN definitions, so that a typo in it
         # cannot be satisfied by a procedure in the exporter. One kind of probe
         # legitimately calls into the shipped files - a diagnostic ABOUT the
@@ -230,7 +359,7 @@ def main():
             for f2 in FILES:
                 if Path(f2).name in name:
                     known |= analyze(f2)[3]
-        ok = report(f, bal, broken, calls, known, progs) and ok
+        ok = report(f, bal, broken, calls, known, progs, undeclared) and ok
 
     print()
     print("ALL CHECKS PASS" if ok else "CHECKS FAILED")

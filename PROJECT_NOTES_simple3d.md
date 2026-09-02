@@ -2951,6 +2951,51 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-09-02 (round 76) — Plan D begins: the exporter declares what it assigns
+
+D1 and D2 in one commit, closed by all five mechanical checks,
+`tools/skill_export.py --check` (the seven boards' JSON unchanged) and
+`tests/run_all.py` 26/26 in 201 s.
+
+### What was done
+
+- **D1** `tools/skill_checks.py` check #5: an assignment inside a
+  `procedure(` to a name it never declared. Declared means a parameter
+  (`@optional ( x v )` read like a let entry), a name in any
+  `let`/`prog`/`letseq`/`lambda` list of the body, or a
+  `foreach`/`for`/`forall`/`setof`/`exists` binder; `S3D_*` is the project's
+  own global namespace. `obj->attr =`, `tbl[k] =` and the comparison
+  operators are not assignments. `gets( name port )` is one, and is reported
+  — the plan had listed it among the exemptions, and the one name that
+  exemption hid (`line` in `gdsysGetVariantInfo`) is the reason it was
+  dropped. The self-test feeds a leak (`c` and `line`) and a clean fragment
+  carrying every legal form. On the tree before D2 the check printed
+  ARCHITECTURE 4.1's list exactly, plus `line`: 22 names in five procedures;
+  `simple3d.il` and the twelve probes clean.
+- **D2** the 22 names declared where they are assigned. `makePcb` builds
+  `colorJson` instead of assigning `pcbColor` — its caller's parameter name,
+  which under dynamic scope it had been rebinding for the rest of that call.
+  `makeVariant3dIntermediates`' let list lost the second `thicknesses` and
+  six names it never touched (`elements placement outFile outPort pcb
+  lines`): they had been `create3dIntermediateFormat`'s, reaching its
+  caller's let through dynamic scope; it declares them itself now.
+
+### What to remember
+
+- **A leak that reaches the caller's let is still a leak.** Six of the 22
+  were "declared" — in the wrong procedure. The check does not see through
+  that (it takes the caller's list as the caller's), so it reported them at
+  the callee, which is where the declaration belongs; the caller's stale
+  entries were found by reading, not by the tool. A name in a let that the
+  procedure never uses is worth a look every time.
+- **One commit for a check and its fix.** D1 alone would have left HEAD
+  with check #5 red on 22 lines; D2 alone would have been 22 declarations
+  with nothing to say they were all of them. The plan rows stay two, the
+  commit is one.
+- **The exemption list of a check is where the bugs hide.** "Not a
+  `gets` binding" was written into the plan from memory of how the parser
+  reads a file, and it would have exempted the one leak in the parser.
+
 ## Update 2026-09-02 (round 75) — the exporter runs headless; the SKILL half has a golden corpus
 
 The round-74 report said Plan D would need the user in Allegro after every
