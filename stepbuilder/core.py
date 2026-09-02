@@ -12,19 +12,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
-from OCP.IFSelect import IFSelect_ReturnStatus
-from OCP.Interface import Interface_Static
 from OCP.Quantity import Quantity_Color, Quantity_TypeOfColor
 from OCP.STEPCAFControl import STEPCAFControl_Writer
-from OCP.STEPControl import STEPControl_StepModelType
 from OCP.TCollection import TCollection_ExtendedString
 from OCP.TDataStd import TDataStd_Name
 from OCP.TDF import TDF_Label
-from OCP.TDocStd import TDocStd_Document
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS_Shape
-from OCP.XCAFApp import XCAFApp_Application
-from OCP.XCAFDoc import XCAFDoc_ColorType, XCAFDoc_DocumentTool
+from OCP.XCAFDoc import XCAFDoc_ColorType
 from OCP.gp import gp_Trsf
 
 # The contour primitives and the one exception live in modules of their own
@@ -43,6 +38,8 @@ from .board import (  # noqa: F401 - re-exported
     make_board_geometry, make_board_layer_parts,
 )
 from .errors import StepBuilderError  # noqa: F401 - re-exported
+# The XCAF document and its writer (round 73, plan A7).
+from .stepdoc import StepDocument, _set_color  # noqa: F401 - re-exported
 # Component models (round 73, plan A6); re-exported, test_index imports
 # StepFileIndex from here.
 from .models import (  # noqa: F401 - re-exported
@@ -114,21 +111,6 @@ def total_board_thickness(thickness: dict) -> float:
         + float(thickness.get("soldermask_top", 0.0))
         + float(thickness.get("soldermask_bottom", 0.0))
     )
-
-
-def _set_color(color_tool, label, rgb01, srgb: bool) -> None:
-    color_type = (
-        Quantity_TypeOfColor.Quantity_TOC_sRGB
-        if srgb
-        else Quantity_TypeOfColor.Quantity_TOC_RGB
-    )
-    color = Quantity_Color(rgb01[0], rgb01[1], rgb01[2], color_type)
-    for target in (
-        XCAFDoc_ColorType.XCAFDoc_ColorSurf,
-        XCAFDoc_ColorType.XCAFDoc_ColorCurv,
-        XCAFDoc_ColorType.XCAFDoc_ColorGen,
-    ):
-        color_tool.SetColor(label, color, target)
 
 
 def generate(
@@ -389,15 +371,9 @@ def generate(
     # below - the STEPCAFControl_Writer constructor resets it, so setting it
     # here would be silently undone.)
 
-    app = XCAFApp_Application.GetApplication_s()
-    doc = TDocStd_Document(TCollection_ExtendedString("MDTV-XCAF"))
-    app.NewDocument(TCollection_ExtendedString("MDTV-XCAF"), doc)
-
-    shape_tool = XCAFDoc_DocumentTool.ShapeTool_s(doc.Main())
-    color_tool = XCAFDoc_DocumentTool.ColorTool_s(doc.Main())
-
-    main_assembly = shape_tool.NewShape()
-    TDataStd_Name.Set_s(main_assembly, TCollection_ExtendedString(_sanitize(json_stem)))
+    document = StepDocument(json_stem)
+    doc, shape_tool, color_tool = document.doc, document.shape_tool, document.color_tool
+    main_assembly = document.root
 
     # ---- board ----------------------------------------------------------- #
     phase(10, "Building the board")
@@ -692,32 +668,12 @@ def generate(
 
     _report_embedded_only(data, result, log)
 
-    # Without this the written document is empty.
-    shape_tool.UpdateAssemblies()
-
     # ---- write ----------------------------------------------------------- #
     # FIX: the C++ version hardcoded a backslash separator, which produced a
     # file literally named "out\name.step" on anything but Windows.
     phase(96, "Writing the STEP file")
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    writer = STEPCAFControl_Writer()
-    writer.SetColorMode(True)
-    writer.SetNameMode(True)
-
-    # Set write.surfacecurve.mode HERE, after the writer is constructed: its
-    # constructor resets this global to 1, so setting it any earlier is undone.
-    # mode 0 drops the p-curves on faces -> about half the file size, geometry
-    # identical (same volume and bbox, verified). Set explicitly both ways so
-    # the sticky global never leaks between successive builds in one process.
-    Interface_Static.SetIVal_s("write.surfacecurve.mode", 0 if minimize_size else 1)
-
-    if not writer.Transfer(doc, STEPControl_StepModelType.STEPControl_AsIs):
-        raise StepBuilderError("STEP writer transfer failed")
-
-    status = writer.Write(str(result.output))
-    if status != IFSelect_ReturnStatus.IFSelect_RetDone:
-        raise StepBuilderError(f"Failed to write {result.output} (status {status})")
+    document.write(result.output, minimize_size)
 
     phase(100, "Done")
     log(f"Wrote {result.output}")
