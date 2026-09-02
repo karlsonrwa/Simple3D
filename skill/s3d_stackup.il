@@ -279,9 +279,9 @@ procedure( s3dShapeJson( o_shape )
     )
 )
 
-; Shapes on the RIGID FLEX class, grouped by subclass name. Built once per
-; export; nil until s3dCollectRigidFlexShapes has run.
-S3D_RigidFlexShapes = nil
+; Shapes on the RIGID FLEX class, grouped by subclass name, live in the export
+; state's 'shapes (round 77, D7; a session global before): nil until
+; s3dCollectRigidFlexShapes has run, rebuilt per file.
 
 ; Ask for the WHOLE class once and sort the answer, rather than asking for each
 ; stackup layer by name.
@@ -297,9 +297,10 @@ S3D_RigidFlexShapes = nil
 ; Only the RIGID FLEX class is consulted. PACKAGE GEOMETRY/SOLDERMASK_* also
 ; exists but describes footprint openings, not the extent of a board layer, so
 ; asking for it would be wrong rather than merely unhelpful.
-procedure( s3dCollectRigidFlexShapes()
-    let( ( shapes key pos ( n 0 ) )
-        S3D_RigidFlexShapes = makeTable( "s3dRigidFlexShapes" nil )
+procedure( s3dCollectRigidFlexShapes( g_state )
+    let( ( shapes key pos table ( n 0 ) )
+        table = makeTable( "s3dRigidFlexShapes" nil )
+        g_state['shapes] = table
         shapes = nil
         errset( shapes = axlDBGetShapes( "RIGID FLEX" ) )
 
@@ -315,24 +316,25 @@ procedure( s3dCollectRigidFlexShapes()
                 when( pos
                     key = substring( key pos + 1 strlen( key ) - pos )
                     n = n + 1
-                    S3D_RigidFlexShapes[key] = cons( s S3D_RigidFlexShapes[key] )
+                    table[key] = cons( s table[key] )
                 )
             )
         )
         when( n > 0
             printf( "Simple 3D: %d shape(s) on RIGID FLEX subclasses.\n" n )
         )
-        S3D_RigidFlexShapes
+        table
     )
 )
 
 ; Every drawn shape of one stackup layer, as a JSON array. nil when the layer
 ; has none - conductors, the dielectric and the soldermask are not drawn on
 ; the RIGID FLEX class, and those layers span the whole zone instead.
-procedure( s3dLayerShapesJson( t_layerName )
-    let( ( shapes body ( first t ) one )
-        unless( S3D_RigidFlexShapes  s3dCollectRigidFlexShapes() )
-        shapes = S3D_RigidFlexShapes[t_layerName]
+procedure( s3dLayerShapesJson( t_layerName g_state )
+    let( ( shapes body ( first t ) one table )
+        unless( g_state['shapes]  s3dCollectRigidFlexShapes( g_state ) )
+        table = g_state['shapes]
+        shapes = table[t_layerName]
         when( shapes
             body = "[\n"
             foreach( s shapes
@@ -427,7 +429,7 @@ procedure( s3dLayerInBody( o_layer )
     )
 )
 
-procedure( s3dStackupJson( t_name g_stackup )
+procedure( s3dStackupJson( t_name g_stackup g_state )
     let( ( all layers span thk ( total 0.0 ) ( above 0.0 ) ( cum 0.0 ) ( i 0 )
            ( nSkip 0 ) zTop zBot shapes body out ( first t )
            silkTop silkBot allSpan )
@@ -513,7 +515,7 @@ procedure( s3dStackupJson( t_name g_stackup )
             when( thk > 0.0
                 shapes = nil
                 when( layer->name
-                    shapes = s3dLayerShapesJson( layer->name )
+                    shapes = s3dLayerShapesJson( layer->name g_state )
                 )
                 body = strcat(
                     "{\n"
@@ -537,7 +539,7 @@ procedure( s3dStackupJson( t_name g_stackup )
 )
 
 ; Every stackup the design has, keyed by name. Empty object on a plain board.
-procedure( s3dStackupsJson()
+procedure( s3dStackupsJson( g_state )
     let( ( names out ( first t ) )
         names = nil
         errset( names = axlXSectionGet( nil 'stackups ) )
@@ -547,7 +549,7 @@ procedure( s3dStackupsJson()
                 when( stringp( s )
                     unless( first  out = strcat( out ",\n" ) )
                     first = nil
-                    out = strcat( out s3dAddIndent( s3dStackupJson( s s ) ) )
+                    out = strcat( out s3dAddIndent( s3dStackupJson( s s g_state ) ) )
                 )
             )
             strcat( out "\n}" )
@@ -563,7 +565,7 @@ procedure( s3dStackupsJson()
             ; here: on a rigid-flex design nil 'all returns the combined "All
             ; Stackups" view, which is not any real stackup (round 27).
             strcat( "\"stackups\": {\n"
-                    s3dAddIndent( s3dStackupJson( "Primary" nil ) )
+                    s3dAddIndent( s3dStackupJson( "Primary" nil g_state ) )
                     "\n}" )
         )
     )

@@ -2994,6 +2994,17 @@ into the README, and green with it.
   `skill_checks.py` and `check_arity.py` glob `skill/s3d_*.il`; a probe's
   `REQUIRES: makeVariant3dIntermediates.il` pools the parts. The docs audit
   reads the parts as one text.
+- **D7** (a second commit, same round) the four per-export session globals
+  - `S3D_MechSeq`, `S3D_RigidFlexShapes`, `S3D_BendLines`,
+  `S3D_SilkWarnings`, reset in two places and once forgotten (round 42) -
+  are one table, `makeTable( "s3dExportState" nil )`, made per design in
+  `makeVariant3dIntermediates` and handed down through nine signatures;
+  `create3dIntermediateFormat` restarts its per-file half (`'mechSeq`,
+  `'shapes`). A table rather than the plan's list because it is mutated
+  below the maker - the shape cache fills lazily inside the stackup and
+  bend writers - and a SKILL list handed down is a copy of its head.
+  `check_arity` is what proved every call site moved (it flags a call
+  whose count no longer fits the definition). Corpus unchanged; 27/27 in 203 s.
 
 ### What to remember
 

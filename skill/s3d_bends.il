@@ -42,10 +42,10 @@
 ;=====================================================================
 
 
-; Bend lines swept off their subclass. nil until asked for; only ever asked
-; for on a design that HAS bends, so an ordinary board pays no visibility
-; churn for a feature it does not use.
-S3D_BendLines = nil
+; Bend lines swept off their subclass live in the export state's 'bendLines
+; (round 77, D7; a session global before): nil until asked for, and only
+; ever asked for on a design that HAS bends, so an ordinary board pays no
+; visibility churn for a feature it does not use.
 
 procedure( s3dSweepBendLines()
     s3dSelectVisibleOn( list( "RIGID FLEX/BEND_LINE" ) list( "noall" "lines" )
@@ -141,10 +141,11 @@ procedure( s3dSpanAcross( o_shape l_a l_b )
 
 ; The bend area whose bBox contains a point. Bend areas "cannot overlap"
 ; (Defining a Bend Area), so containment picks exactly one.
-procedure( s3dBendAreaAt( l_pt )
-    let( ( ( found nil ) )
-        unless( S3D_RigidFlexShapes  s3dCollectRigidFlexShapes() )
-        foreach( s S3D_RigidFlexShapes["BEND_AREA"]
+procedure( s3dBendAreaAt( l_pt g_state )
+    let( ( ( found nil ) table )
+        unless( g_state['shapes]  s3dCollectRigidFlexShapes( g_state ) )
+        table = g_state['shapes]
+        foreach( s table["BEND_AREA"]
             when( !found && errset( s3dBBoxHas( s->bBox l_pt ) ) &&
                   s3dBBoxHas( s->bBox l_pt )
                 found = s
@@ -156,7 +157,7 @@ procedure( s3dBendAreaAt( l_pt )
 
 ; The whole bend array. "bends": [] on any board without them, which is
 ; every board this tool has exported until now.
-procedure( s3dBendsJson()
+procedure( s3dBendsJson( g_state )
     let( ( names parts line area ends mid radius width info body out
            ( first t ) ( n 0 ) ( made 0 ) ( swept nil ) ( warned nil ) )
         names = nil
@@ -178,11 +179,11 @@ procedure( s3dBendsJson()
                     ; because it is announced.
                     unless( line
                         unless( swept
-                            S3D_BendLines = s3dSweepBendLines()
+                            g_state['bendLines] = s3dSweepBendLines()
                             swept = t
                         )
-                        when( length( S3D_BendLines ) == length( names )
-                            line = nth( n - 1 S3D_BendLines )
+                        when( length( g_state['bendLines] ) == length( names )
+                            line = nth( n - 1 g_state['bendLines] )
                             unless( warned
                                 warned = t
                                 s3dWarn( "Simple 3D: bend lines are not in their bend groups; pairing them with the bend names IN ORDER. Check the folded model." )
@@ -196,7 +197,7 @@ procedure( s3dBendsJson()
                     else
                         mid = list( (xCoord( car( ends ) ) + xCoord( cadr( ends ) )) / 2.0
                                     (yCoord( car( ends ) ) + yCoord( cadr( ends ) )) / 2.0 )
-                        unless( area  area = s3dBendAreaAt( mid ) )
+                        unless( area  area = s3dBendAreaAt( mid g_state ) )
 
                         radius = nil
                         errset( radius = axlGetBendInnerRadius( b ) )

@@ -62,7 +62,7 @@
 ; holding. Callers now iterate the design, so the dbid is passed straight
 ; through and refdes is read off it. A string is still accepted, because it
 ; costs three lines and keeps the old call shape working.
-procedure( symbolReturn3DElements( g_symbol )
+procedure( symbolReturn3DElements( g_symbol g_state )
     let( ( stepPackageMapping refDes dbid sym mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole mfrPn zone zoneName ( holes 'unbound ) )
 
         stepPackageMapping = nil
@@ -80,10 +80,10 @@ procedure( symbolReturn3DElements( g_symbol )
             ; so several of them cannot collapse onto one duplicate JSON key -
             ; json.load keeps only the last, which would silently drop the rest.
             unless( stringp( refDes )
-                S3D_MechSeq = S3D_MechSeq + 1
+                g_state['mechSeq] = g_state['mechSeq] + 1
                 refDes = sprintf( nil "%s_MECH%d"
                                   if( sym->name then sym->name else "MECH" )
-                                  S3D_MechSeq )
+                                  g_state['mechSeq] )
             )
         )
 
@@ -251,14 +251,16 @@ procedure( makePcb( thicknesses edges cuts color )
 ; in the JSON. An explicit argument rather than a global, because a global read
 ; at write time is the round-42 shape - it would describe whatever the previous
 ; call set if this one ever forgot to.
-procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName @optional ( silk nil ) ( g_fullBoard nil ) )
+procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName g_state @optional ( silk nil ) ( g_fullBoard nil ) )
     let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) baseCut body
            placement name pcb outFile outPort lines )   ; the last six: declared here, not in the caller (round 75, D2)
-        ; Number each variant's no-refdes mechanicals from 1 (see symbolReturn3DElements).
-        S3D_MechSeq = 0
-        ; Rebuilt per export: a shape added between two runs in one session
+        ; The export state, per FILE (round 77, D7; the caller made the table
+        ; and owns its per-design half): the no-refdes mechanicals are numbered
+        ; from 1 in each file (see symbolReturn3DElements), and the RIGID FLEX
+        ; shapes are rebuilt - a shape added between two runs in one session
         ; must be picked up, and it is one query.
-        S3D_RigidFlexShapes = nil
+        g_state['mechSeq] = 0
+        g_state['shapes] = nil
 
         ; reset base board contour
         when( car( edgeCuts )
@@ -291,7 +293,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 
         ; export step package mapping information
         foreach( symbol symbols
-            placement = symbolReturn3DElements( symbol )
+            placement = symbolReturn3DElements( symbol g_state )
 
             when( placement
                 if( boundp( 'stepModelPlacements ) then
@@ -343,9 +345,9 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
             ; which is what every version before this one will do.
             if( g_fullBoard then "\"full_board\": true,\n" else "" )
             s3dEmbeddedModelsJson() ",\n"
-            s3dStackupsJson() ",\n"
+            s3dStackupsJson( g_state ) ",\n"
             s3dZonesJson() ",\n"
-            s3dBendsJson()
+            s3dBendsJson( g_state )
         )
 
         ; make pcb (including all cutouts and holes)
@@ -428,7 +430,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 )
 
 procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0.0) ) ( configFile nil ) )
-    let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName )
+    let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName state )
         ; The list used to go on: a second `thicknesses`, and `elements placement
         ; outFile outPort pcb lines` - names this procedure never touches. They
         ; were create3dIntermediateFormat's, reaching its let through SKILL's
@@ -438,15 +440,20 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
         dsnName = axlCurrentDesign()
         dsn = axlDBGetDesign()
 
-        ; Both of these are per-DESIGN caches, and the SKILL files are loaded
-        ; once per Allegro session - so without this they survive from one
-        ; board to the next and the second export gets the FIRST board's
-        ; shapes and bend lines, as dbids belonging to a database that may not
-        ; even be open any more. Nothing says so: the JSON simply describes the
-        ; wrong board. S3D_MechSeq and S3D_SilkWarnings are already reset the
-        ; same way, one level down; these two were missed.
-        S3D_RigidFlexShapes = nil
-        S3D_BendLines = nil
+        ; The export state (round 77, D7): what one export accumulates, in one
+        ; table handed down through the writers instead of four session
+        ; globals reset in two places. Per DESIGN: the RIGID FLEX shapes and
+        ; the bend lines - dbids of THIS database; as globals they used to
+        ; survive from one board to the next (the SKILL files load once per
+        ; session) and the second export described the FIRST board, with
+        ; nothing to say so - and the silkscreen warnings. Per FILE: the
+        ; sequence that numbers no-refdes mechanicals, which
+        ; create3dIntermediateFormat restarts.
+        state = makeTable( "s3dExportState" nil )
+        state['shapes] = nil
+        state['bendLines] = nil
+        state['silkWarnings] = nil
+        state['mechSeq] = 0
 
         ; create dir (recursively - createDir makes only one level at a time,
         ; so walk the path and create each missing segment).
@@ -472,7 +479,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
         ; the console said nothing at all. A swallowed error is worse than a
         ; loud one - the board still exports either way.
         silk = nil
-        unless( errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) ) t )
+        unless( errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) state ) t )
             s3dErr( "Simple 3D: silkscreen collection failed (message above)." )
             s3dErr( "Simple 3D: the board and its components are still exported; only the legend is missing." )
             silk = nil
@@ -548,7 +555,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
 
                     variantName = lowerCase( strcat( dsnName "_" variant ) )
                     fileName = lowerCase( strcat( dir "/" variantName ".json" ) )
-                    create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName silk )
+                    create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName state silk )
                 )
 
                 ; And the whole board, variants ignored, as one more file. Same
@@ -563,7 +570,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
                     fileName = strcat( dir "/" variantName ".json" )
                     create3dIntermediateFormat( thicknesses edgeCuts pcbColor
                                                 symbols variantName fileName
-                                                silk t )
+                                                state silk t )
                     printf( "Simple 3D: plus the whole board (variants ignored) -> %s.json\n"
                             variantName )
                 )
@@ -596,7 +603,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
 
             variantName = lowerCase( dsnName )
             fileName = strcat( dir "/" variantName ".json" )
-            create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName silk )
+            create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName state silk )
         )
     )
 )

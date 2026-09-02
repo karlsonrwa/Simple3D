@@ -113,11 +113,6 @@ S3D_NoExportProp = "NO_STEP_EXPORT"
 ; because the difference is intent - so the intent is written on the part.
 S3D_AlwaysExportProp = "ALWAYS_STEP_EXPORT"
 
-; Per-export sequence for synthesising unique JSON keys for symbols that carry a
-; STEP model but no refdes (mechanical parts). Reset at the top of every
-; create3dIntermediateFormat so each variant numbers its mechanicals from 1.
-S3D_MechSeq = 0
-
 ; t if the named property is attached to this object.
 ;
 ; Presence is the test, not the value: NO_STEP_EXPORT is a flag with no value,

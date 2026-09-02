@@ -195,10 +195,10 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
 ; - the Allegro console scrolls away, the GUI log does not, and it colors a
 ; line beginning with "warning" orange.
 ;
-; A module-level accumulator rather than a return value: the collector already
-; returns layer groups, and threading a second channel through it and through
-; the clipper would obscure both for the sake of a message.
-S3D_SilkWarnings = nil
+; Accumulated in the export state's 'silkWarnings rather than returned: the
+; collector already returns layer groups, and threading a second channel
+; through it and through the clipper would obscure both for the sake of a
+; message. (A session global until round 77, D7.)
 
 ; t if this object has no plotted width, and so would vanish in the artwork.
 ;
@@ -362,7 +362,7 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
 ;
 ; The sweep is s3dSelectVisibleOn, which puts the visibility and find-filter
 ; state back before the conversion below starts.
-procedure( s3dCollectSilkByLayer( l_layers s_endCap )
+procedure( s3dCollectSilkByLayer( l_layers s_endCap g_state )
     let( ( elems polys out key groups order zero message ( nBad 0 ) )
         out = nil
         groups = makeTable( "s3dSilkGroups" nil )
@@ -390,7 +390,7 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap )
                     message = strcat( "zero width: " s3dDescribeObject( elem key )
                                       " - skipped, it cannot be plotted" )
                     s3dWarn( sprintf( nil "Simple 3D: %s." message ) )
-                    S3D_SilkWarnings = cons( message S3D_SilkWarnings )
+                    g_state['silkWarnings] = cons( message g_state['silkWarnings] )
                 )
 
                 ; Per element, so one object the converter cannot handle costs
@@ -588,7 +588,7 @@ procedure( s3dClipGroups( l_groups l_board )
 
 ; Collect the whole silkscreen once for the design.
 ; -> list( f_thickness l_topPolys l_bottomPolys )  or nil if disabled/empty.
-procedure( s3dMakeSilkscreen( l_config )
+procedure( s3dMakeSilkscreen( l_config g_state )
     let( ( top bottom thickness clip endCap doExport topPolys botPolys board )
         top = nth( 0 l_config )
         bottom = nth( 1 l_config )
@@ -600,12 +600,12 @@ procedure( s3dMakeSilkscreen( l_config )
         when( doExport
             printf( "Simple 3D: collecting silkscreen...\n" )
             ; Cleared per export, not per side, so both sides report together.
-            S3D_SilkWarnings = nil
+            g_state['silkWarnings] = nil
             ; Both sides come back as ( (layer polys) ... ), so everything from
             ; here on works in groups: s3dGroupCount to count across them and
             ; s3dClipGroups to clip each layer on its own.
-            topPolys = s3dCollectSilkByLayer( top endCap )
-            botPolys = s3dCollectSilkByLayer( bottom endCap )
+            topPolys = s3dCollectSilkByLayer( top endCap g_state )
+            botPolys = s3dCollectSilkByLayer( bottom endCap g_state )
             printf( "Simple 3D: silkscreen polygons - top %d, bottom %d\n"
                     s3dGroupCount( topPolys ) s3dGroupCount( botPolys ) )
             foreach( group append( topPolys botPolys )
@@ -624,13 +624,13 @@ procedure( s3dMakeSilkscreen( l_config )
                 )
             )
 
-            when( S3D_SilkWarnings
+            when( g_state['silkWarnings]
                 s3dWarn( sprintf( nil "Simple 3D: %d silkscreen object(s) were skipped; see the warnings above and the GUI log."
-                                  length( S3D_SilkWarnings ) ) )
+                                  length( g_state['silkWarnings] ) ) )
             )
 
             when( topPolys || botPolys
-                list( thickness topPolys botPolys reverse( S3D_SilkWarnings ) )
+                list( thickness topPolys botPolys reverse( g_state['silkWarnings] ) )
             )
         )
     )

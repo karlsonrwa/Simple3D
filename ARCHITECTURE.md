@@ -226,7 +226,7 @@ flowchart TD
     G --> H[makeVariant3dIntermediates cadDir]
 
     subgraph EXP["makeVariant3dIntermediates.il — one export"]
-        H --> H1[reset per-design globals<br/>S3D_RigidFlexShapes, S3D_BendLines]
+        H --> H1[make the export state<br/>shapes, bend lines, silk warnings, mech sequence]
         H1 --> H2[s3dBoardThickness<br/>the board's own stackup, by position]
         H2 --> H3[makePcbContour<br/>outline + CUTOUT shapes → primitives]
         H3 --> H4[s3dSilkConfig + s3dMakeSilkscreen<br/>collect per layer, clip to board, ONCE per design]
@@ -327,11 +327,11 @@ version only ever *added* an optional key, which is why a v2 file still builds.
 | `S3D_ScriptDir`, `S3D_LoadedFrom`, `S3D_ConfigFile` | load, `s3dResolveScriptDir` | re-resolved at each export | launcher, pre-flight |
 | `S3D_Python`, `S3D_PythonW`, `S3D_CommandVisible`, `S3D_CommandName`, `S3D_DefineAlwaysProp` | `s3dLoadSettings` | re-read at each export | launcher, menu (label at load only) |
 | `S3D_NoExportProp`, `S3D_AlwaysExportProp` | load | constants | symbol selection |
-| `S3D_MechSeq` | per `create3dIntermediateFormat` | yes | synthetic keys for no-refdes symbols |
+| ~~`S3D_MechSeq`~~ | — | — | since round 77 (D7) the export state's `'mechSeq`, reset per file by `create3dIntermediateFormat` |
 | `S3D_CtrlChars` | first use (`'unset` → compiled or nil) | no, by design | `s3dJsonQuote` |
 | `S3D_NegativeLayers`, `S3D_ExportFullBoard` | `s3dSilkConfig`, defaults restored first | yes (round 61) | layer polarity, the whole-board file |
-| `S3D_RigidFlexShapes`, `S3D_BendLines` | lazily during an export | yes (round 42) | stackup shapes, bend fallback |
-| `S3D_SilkWarnings` | during silk collection | yes | the `warnings` array |
+| ~~`S3D_RigidFlexShapes`, `S3D_BendLines`~~ | — | — | since round 77 (D7) the export state's `'shapes` (per file) and `'bendLines` (per design), a table `makeVariant3dIntermediates` makes and hands down |
+| ~~`S3D_SilkWarnings`~~ | — | — | since round 77 (D7) the export state's `'silkWarnings`, cleared by `s3dMakeSilkscreen` |
 | `S3D_SilkDefaultTop/Bottom/Thickness`, `S3D_JsonNumChars` | load | constants | config fallback, JSON reader |
 
 The accidental ones are gone since round 76 (D1–D2): several upstream
