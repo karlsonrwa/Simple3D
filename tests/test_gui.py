@@ -464,7 +464,7 @@ check("and the button says Generate again",
       app.generate_button.cget("text") == "Generate")
 
 # Cancel with nothing running must be a no-op rather than an error.
-app._worker = None
+app._bridge.process = None
 app.on_cancel()
 check("cancel with no build running is harmless",
       app.generate_button.cget("text") == "Generate")
@@ -487,20 +487,60 @@ class _FakeWorker:
 
 
 fake = _FakeWorker()
-app._worker = fake
+app._bridge.process = fake
 app._set_busy(True)
 app.on_cancel()
 check("the build is terminated", fake.killed)
 check("the window comes back", app.generate_button.cget("text") == "Generate")
 check("and says so", app.status.get() == "Cancelled", app.status.get())
 check("controls are usable again", states() == before)
-# _check_worker_alive runs on the next drain and must stay quiet: a deliberate
-# kill has a non-zero exit code, and reporting that as a crash would be a lie
-# with a traceback attached.
-app._worker, app._finished, app._cancelled = fake, False, True
-app._check_worker_alive()
+# check_alive runs on the next drain and must stay quiet: a deliberate kill
+# has a non-zero exit code, and reporting that as a crash would be a lie with
+# a traceback attached.
+app._bridge.process, app._bridge.finished, app._bridge.cancelled = fake, False, True
+app._bridge.check_alive()
 check("a cancelled build is not reported as a crash",
-      app.status.get() == "Cancelled" and app._worker is None, app.status.get())
+      app.status.get() == "Cancelled" and app._bridge.process is None, app.status.get())
+check("the window no longer imports multiprocessing",
+      not hasattr(gui_mod, "multiprocessing") and not hasattr(gui_mod, "queue"))
+
+print("\n[9b] the bridge alone: a death is reported, a kill is not - worker_bridge")
+# No window: the five callbacks collect what the bridge reports, and the
+# process is the same stand-in. Round 74, plan C5.
+from stepbuilder.worker_bridge import ACCESS_VIOLATION, WorkerBridge, crash_advice
+seen = []
+bridge = WorkerBridge(on_log=lambda m: seen.append(("log", m)),
+                      on_progress=lambda *a: seen.append(("progress", a)),
+                      on_done=lambda m: seen.append(("done", m)),
+                      on_error=lambda m: seen.append(("error", m)),
+                      on_crash=lambda d: seen.append(("crash", d)))
+check("nothing running to begin with", not bridge.alive and bridge.cancel() is False)
+dead = _FakeWorker(); dead.killed = True; dead.exitcode = ACCESS_VIOLATION
+bridge.process, bridge.finished, bridge.cancelled = dead, False, False
+bridge.check_alive()
+check("an access violation is reported as a crash, with the advice",
+      seen and seen[-1][0] == "crash" and "access violation" in seen[-1][1]
+      and "Not stitched" in seen[-1][1] and bridge.finished and bridge.process is None,
+      str(seen[-1:]))
+clean = _FakeWorker(); clean.killed = True; clean.exitcode = 0
+seen.clear(); bridge.process, bridge.finished = clean, False
+bridge.check_alive()
+check("a clean exit is not a crash", not seen and bridge.finished and bridge.process is None)
+seen.clear(); bridge.process, bridge.finished, bridge.cancelled = dead, False, True
+bridge.check_alive()
+check("a deliberate kill is quiet, and the mark is used up",
+      not seen and not bridge.cancelled and bridge.finished)
+seen.clear(); bridge.process, bridge.finished = dead, True
+bridge.check_alive()
+check("a build that already said done is not looked at again", not seen and bridge.process is dead)
+live = _FakeWorker(); bridge.process = live
+check("cancel kills a live build", bridge.cancel() is True and live.killed
+      and bridge.cancelled and bridge.process is None and bridge.finished)
+check("crash_advice names the exit code when there is one",
+      "exit code -15" in crash_advice(-15) and "exit code" not in crash_advice(None)
+      and "access violation" not in crash_advice(-15))
+bridge.close()
+check("close with nothing running is harmless", not bridge.alive)
 
 app.destroy()
 

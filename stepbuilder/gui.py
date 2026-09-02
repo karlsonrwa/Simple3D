@@ -12,8 +12,6 @@ the command line, or by setting them via the config file the SKILL side writes.
 
 from __future__ import annotations
 
-import multiprocessing
-import queue
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -22,7 +20,8 @@ from . import core
 from . import settings
 from . import winplace
 from .widgets.layers_panel import LayersPanel
-from .worker import BuildSettings, run_jobs
+from .worker import BuildSettings
+from .worker_bridge import WorkerBridge
 from .bend import DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
 from .core import DEFAULT_FLAT_HEIGHT
 from .colors import (
@@ -119,10 +118,12 @@ class StepBuilderApp(tk.Tk):
 
         # A process, not a thread: OCC can die outright and take the whole
         # interpreter with it, and with a thread that means this window
-        # vanishing with nothing written anywhere. See worker.py.
-        self._queue = multiprocessing.Queue()
-        self._worker: multiprocessing.Process | None = None
-        self._finished = False
+        # vanishing with nothing written anywhere. See worker.py; the bridge
+        # starts it, drains its queue and notices it die (worker_bridge.py).
+        # What it reports lands in the _on_* methods below, on the Tk thread.
+        self._bridge = WorkerBridge(
+            on_log=self._append_log, on_progress=self._on_progress,
+            on_done=self._on_done, on_error=self._on_error, on_crash=self._on_crash)
 
         # The STEP folders are a Text widget, not a StringVar, and _load_config
         # runs BEFORE _build_ui - so reads and writes buffer here until the
@@ -184,7 +185,6 @@ class StepBuilderApp(tk.Tk):
         self._busy = False
         self._frozen: dict = {}
         self._dimmed: dict = {}
-        self._cancelled = False
         self._paths_from_launcher = False
         # Layers switched OFF, by name. Exclusions rather than inclusions: a
         # layer this build has never seen must default to ON, or a layer that
@@ -877,14 +877,10 @@ class StepBuilderApp(tk.Tk):
     # ------------------------------------------------------------ plumbing - #
 
     def _run_in_worker(self, settings: BuildSettings) -> None:
-        if self._worker and self._worker.is_alive():
+        if self._bridge.alive:
             return
         self._set_busy(True)
-        self._finished = False
-        self._cancelled = False
-        self._worker = multiprocessing.Process(
-            target=run_jobs, args=(settings, self._queue), daemon=True)
-        self._worker.start()
+        self._bridge.start(settings)
 
     def _drain_queue(self) -> None:
         # The reschedule sits in a finally, and that is the whole point: this
@@ -899,73 +895,36 @@ class StepBuilderApp(tk.Tk):
             self._drain_job = self.after(100, self._drain_queue)
 
     def _drain_once(self) -> None:
-        try:
-            while True:
-                kind, payload = self._queue.get_nowait()
-                if kind == "log":
-                    self._append_log(payload)
-                elif kind == "progress":
-                    current, total, *rest = payload
-                    self.progress["maximum"] = max(total, 1)
-                    self.progress["value"] = current
-                    if rest and rest[0]:
-                        self.status.set(rest[0])
-                elif kind == "done":
-                    self._finished = True
-                    self._append_log(payload, "success")
-                    self.status.set(payload)
-                    self._set_busy(False)
-                elif kind == "error":
-                    self._finished = True
-                    self._append_log(payload, "error")
-                    self.status.set("Failed")
-                    self._set_busy(False)
-                    # The last line, when there is one: a traceback's last line
-                    # is the exception itself. An empty message would leave
-                    # splitlines() with nothing to index.
-                    lines = payload.strip().splitlines()
-                    messagebox.showerror("StepBuilder",
-                                         lines[-1] if lines else "The build failed")
-        except queue.Empty:
-            pass
+        self._bridge.drain_once()
 
-        self._check_worker_alive()
+    # What the bridge reports, on the Tk thread. Widgets are touched here and
+    # nowhere in worker_bridge.py.
 
-    def _check_worker_alive(self) -> None:
-        """A build that died without saying so still has to be reported.
+    def _on_progress(self, current: int, total: int, status: str | None) -> None:
+        self.progress["maximum"] = max(total, 1)
+        self.progress["value"] = current
+        if status:
+            self.status.set(status)
 
-        OpenCASCADE can take its process down with an access violation rather
-        than an exception - measured on a real board, in the fuse that stitches
-        the layer solids - and before the build moved into a child process that
-        was this window disappearing. Now the exit code arrives here instead.
-        """
-        if self._worker is None or self._worker.is_alive() or self._finished:
-            return
-        if self._cancelled:
-            # Killed on purpose: the exit code is whatever terminate() gives,
-            # and reporting that as a crash would be a lie with a traceback
-            # attached.
-            self._cancelled = False
-            self._worker = None
-            self._finished = True
-            return
-        code = self._worker.exitcode
-        self._worker = None
-        self._finished = True
-        if code == 0:
-            return                       # said its piece and exited cleanly
+    def _on_done(self, message: str) -> None:
+        self._append_log(message, "success")
+        self.status.set(message)
+        self._set_busy(False)
+
+    def _on_error(self, message: str) -> None:
+        self._append_log(message, "error")
+        self.status.set("Failed")
+        self._set_busy(False)
+        # The last line, when there is one: a traceback's last line is the
+        # exception itself. An empty message would leave splitlines() with
+        # nothing to index.
+        lines = message.strip().splitlines()
+        messagebox.showerror("StepBuilder", lines[-1] if lines else "The build failed")
+
+    def _on_crash(self, detail: str) -> None:
+        """A build that died without saying so - WorkerBridge.check_alive."""
         self._set_busy(False)
         self.status.set("The build crashed")
-        detail = (f"The build stopped without finishing (exit code {code})."
-                  if code is not None else "The build stopped without finishing.")
-        if code == -1073741819:          # 0xC0000005
-            detail += ("\nThat is an access violation inside OpenCASCADE, not "
-                       "something the export can catch.")
-        detail += ("\n\nWhat usually gets a board through: set Body stitching "
-                   "to 'Not stitched' (it fuses nothing), or raise "
-                   "gui.foldSliceAngle - a bend that has to be faceted makes "
-                   "harder work for the fuse the finer it is sliced. The log "
-                   "above ends at whatever it was doing.")
         self._append_log(detail, "error")
         messagebox.showerror("StepBuilder", detail)
 
@@ -1075,16 +1034,12 @@ class StepBuilderApp(tk.Tk):
         can be left half finished, and a half-written STEP is not obviously
         broken when you open it.
         """
-        worker = self._worker
-        if worker is None or not worker.is_alive():
+        if not self._bridge.alive:
             return
-        self._cancelled = True
         self._append_log("Cancelled. Any file being written just now may be "
                          "incomplete - check its size, or build it again.",
                          "warning")
-        worker.terminate()
-        self._worker = None
-        self._finished = True
+        self._bridge.cancel()
         self._set_busy(False)
         self.status.set("Cancelled")
 
@@ -1215,13 +1170,7 @@ class StepBuilderApp(tk.Tk):
         # A build outlives its window otherwise: the child is a process now, and
         # closing the window while one is running would leave it grinding away
         # on a file nobody is waiting for.
-        if self._worker is not None and self._worker.is_alive():
-            self._worker.terminate()
-        try:
-            self._queue.close()
-            self._queue.cancel_join_thread()
-        except Exception:
-            pass
+        self._bridge.close()
         self.destroy()
 
 

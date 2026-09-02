@@ -100,7 +100,7 @@ if flat not in readme:
 for f in ("makeVariant3dIntermediates.il", "simple3d.il", "simple3d_config.json",
           "core.py", "contour.py", "errors.py", "intermediate.py", "settings.py",
           "stackup.py", "reporting.py", "board.py", "legend.py", "models.py",
-          "stepdoc.py", "build.py", "winplace.py",
+          "stepdoc.py", "build.py", "winplace.py", "worker_bridge.py",
           "gui.py", "colors.py", "bend/", "widgets/",
           "__main__.py"):
     if f not in readme:

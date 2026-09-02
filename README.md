@@ -595,6 +595,7 @@ stepbuilder/
   colors.py      the board themes and rim options
   widgets/       the panels the window is built from: layers_panel.py, the silkscreen layer list
   worker.py      the build, in a child process, so a crash cannot take the window
+  worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
 tools/, tests/   SKILL checks, the docs audit, the Python name check, 20 test suites, the golden corpus, read-only probes
@@ -1199,6 +1200,7 @@ stepbuilder/
   colors.py      темы платы и варианты цвета торца
   widgets/       панели, из которых собрано окно: layers_panel.py — список слоёв шелкографии
   worker.py      сборка в дочернем процессе, чтобы падение не унесло окно
+  worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
 tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 20 наборов тестов, золотой корпус, зонды

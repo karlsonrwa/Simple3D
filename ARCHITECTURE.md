@@ -80,12 +80,13 @@ the keys that differ from the default.
 | `stepbuilder/bend/apply.py` | 179 | 2 | `apply_plan` — cut region by region, bend each strip (revolve, else wrap, else facets), fuse — and `_fuse_all` |
 | `stepbuilder/contour.py` | 290 | 8 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here; `_face_from_wires` (wires → a planar face with holes, used by the board and the legend alike) since A4. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
-| `stepbuilder/gui.py` | 1229 | 55 | one `tk.Tk` subclass: widget layout, the hand-over between widgets and `settings.GuiSettings`, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring; placement through `winplace`, the layer list through `widgets.layers_panel` |
+| `stepbuilder/gui.py` | 1178 | 58 | one `tk.Tk` subclass: widget layout, the hand-over between widgets and `settings.GuiSettings`, freeze/thaw, log colouring, the Tk-side reactions to a build (`_on_progress/_on_done/_on_error/_on_crash`); placement through `winplace`, the layer list through `widgets.layers_panel`, the child process through `worker_bridge` |
 | `stepbuilder/widgets/layers_panel.py` | 178 | 9 | `LayersPanel(ttk.LabelFrame)`: the scrolled Top/Bottom checkbox list - `refresh(found, layers_off)`, `current_layers_off`, `set_all` (live sides only), `update_sides`, wheel grab/release. Round 74, plan C4 |
 | `stepbuilder/winplace.py` | 138 | 6 | window placement for any `tk.Tk`: the virtual desk, `geometry_is_reachable`, `parse_geometry`, centre / restore / the normal-geometry filter; no tkinter import. Round 74, plan C3 |
 | `stepbuilder/settings.py` | 404 | 18 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`; then the `gui` section as ONE table, `GUI_KEYS` (name, field, default, load, save), `GuiSettings`, `load_gui_settings` (both migrations live in the `load` of the key that superseded them) and `save_gui_settings` (only what differs from the shipped default). Round 72, plans C1–C2 |
 | `stepbuilder/__main__.py` | 362 | 4 | two argparse parsers (prefilled GUI, headless CLI), the crash log under `pythonw`; the build's options go through `BuildOptions.from_args` since A8 |
 | `stepbuilder/worker.py` | 176 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, `intermediate.batch_jobs` for the full-board file, per-job isolation, progress slicing; the build's options go through `BuildOptions.from_settings` since A8 |
+| `stepbuilder/worker_bridge.py` | 143 | 9 | `WorkerBridge`: the window's half of the child process - `start`, `drain_once` (queue to five callbacks), `check_alive` (a death is a crash unless `cancelled`), `cancel`, `close`; `crash_advice(code)` is the text. No tkinter. Round 74, plan C5 |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
 | `tests/` (24 files) | ~4700 | — | 20 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
 | `tools/` | ~1100 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), a hand test that writes a property, 11 read-only Allegro probes |
@@ -94,8 +95,8 @@ the keys that differ from the default.
 Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
 `gui.py`, `settings.py`, `stackup.py`, `reporting.py`, `board.py`, `legend.py`,
 `models.py`, `stepdoc.py`, `build.py`, `worker.py`, `__main__.py`,
-`winplace.py` and `widgets/layers_panel.py` are as of round 74 (after plans A,
-B, C1–C4); the other rows are as of round 70. The defs column counts
+`winplace.py`, `widgets/layers_panel.py` and `worker_bridge.py` are as of round
+74 (after plans A, B, C1–C5); the other rows are as of round 70. The defs column counts
 every `def` and `class` line, nested ones included.
 
 ### 2.2 Dependencies
@@ -115,7 +116,8 @@ graph TD
     subgraph Python["stepbuilder (Python + OCP)"]
         MAIN --> GUI[gui.py]
         MAIN -->|headless CLI| CORE[core.py]
-        GUI --> WORKER[worker.py]
+        GUI --> BRIDGE[worker_bridge.py]
+        BRIDGE --> WORKER[worker.py]
         GUI --> COLORS[colors.py]
         GUI --> SETTINGS[settings.py]
         GUI --> WINPLACE[winplace.py]
@@ -337,7 +339,7 @@ not a bug. The mechanical checks do not look for this.
   explicitly both ways after the writer is constructed.
 - `StepBuilderApp` instance state: every setting as a Tk variable or plain
   attribute, `_layers_off`, `_frozen`/`_dimmed` (the pre-build widget states),
-  `_worker` + `_queue`, `_paths_from_launcher`, the saved geometry.
+  `_bridge` (the `WorkerBridge`), `_paths_from_launcher`, the saved geometry.
 - `BuildSettings` is the one frozen, picklable snapshot that crosses the
   process boundary; `core.generate` takes it apart into 22 keyword arguments.
 
@@ -389,7 +391,7 @@ it is.
 | `gui.StepBuilderApp` | ~1300 | **monolith (M4)** | one class: layout, placement, the layer panel, the worker bridge, freeze/thaw, log. The two hand-written key lists became `settings.GUI_KEYS` in round 72 (C1–C2); what is left in the class is one `var.set` per field on load and one `var.get` per field on save |
 | `gui._merge_config`, `_read_config_file`, `local_config_path` | ~60 | reusable | the settings-pair rule in Python |
 | `gui` placement (`_virtual_screen`, `_geometry_is_reachable`, `_center_on_primary`, `_restore_geometry`, `_remember_geometry`) | ~95 | reusable | multi-monitor placement for any Tk window |
-| `gui` worker bridge (`_run_in_worker`, `_drain_queue`, `_drain_once`, `_check_worker_alive`, `on_cancel`) | ~110 | reusable | "build in a child process, survive an access violation, cancel" — already copied by hand into step2html |
+| `worker_bridge.py` (was the `gui` worker bridge: `_run_in_worker`, `_drain_queue`, `_drain_once`, `_check_worker_alive`, `on_cancel`) | ~150 | reusable | "build in a child process, survive an access violation, cancel" — already copied by hand into step2html; since round 74 (C5) a class with no tkinter in it, so the copy can become an import |
 | `worker.py` | 204 | glue, reusable pattern | the batch rule lives here and only here (the CLI has no equivalent) |
 | `__main__.py` | ~360 | glue | two parsers for overlapping flags; the `generate(...)` argument list used to appear here, in `worker._run` and in `gui._snapshot` — since round 73 (A8) it is `build.BuildOptions`, built once per caller |
 | `colors.py` | 160 | reusable | as is |
