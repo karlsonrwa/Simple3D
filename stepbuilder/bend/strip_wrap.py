@@ -21,6 +21,8 @@ from OCP.TopAbs import TopAbs_ShapeEnum
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
 from OCP.gp import gp_Dir, gp_Pnt
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+from OCP.BRepFill import BRepFill
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
 from OCP.BRepLib import BRepLib
 from OCP.TopoDS import TopoDS_Vertex
@@ -248,6 +250,52 @@ def _wire_on(surface, curves):
     return wire
 
 
+def _face_on(surface, mapped: list) -> tuple:
+    """The wrapped outline as one face ON *surface*: the outer wire first,
+    then every hole. Returns (face, None) or (None, why)."""
+    built = None
+    for curves, is_outer in sorted(mapped, key=lambda m: not m[1]):
+        wire = _wire_on(surface, curves)
+        if wire is None:
+            return None, "the wrapped outline did not close into a wire"
+        if built is None:
+            maker = BRepBuilderAPI_MakeFace(surface, wire, True)
+        else:
+            # A hole. Its wire runs the opposite way round to the outer
+            # one on the flat face, and it has to keep doing so here, or
+            # the face comes out with the hole as its material.
+            maker = BRepBuilderAPI_MakeFace(built, TopoDS.Wire_s(wire.Reversed()))
+        if not maker.IsDone():
+            return None, "the wrapped outline did not close into a face"
+        built = maker.Face()
+    if built is None:
+        return None, "no face came out of the wrapped outline"
+    return built, None
+
+
+def _walls(mapped: list, cyl_top, cyl_bottom) -> tuple:
+    """The walls, one per edge, ruled between the two cylinders.
+    Returns (faces, None) or ([], why)."""
+    walls = []
+    for curves, _ in mapped:
+        for curve, first, last in curves:
+            top_edge = BRepBuilderAPI_MakeEdge(curve, cyl_top, first, last)
+            bottom_edge = BRepBuilderAPI_MakeEdge(curve, cyl_bottom, first, last)
+            if not (top_edge.IsDone() and bottom_edge.IsDone()):
+                return [], "a wall edge could not be built"
+            one, two = top_edge.Edge(), bottom_edge.Edge()
+            BRepLib.BuildCurves3d_s(one)
+            BRepLib.BuildCurves3d_s(two)
+            try:
+                wall = BRepFill.Face_s(one, two)
+            except Exception as exc:
+                return [], f"a wall could not be ruled ({exc})"
+            if wall.IsNull():
+                return [], "a wall came out empty"
+            walls.append(wall)
+    return walls, None
+
+
 def _map_strip(flat: TopoDS_Shape, strip: _Strip,
                why: list[str] | None = None) -> TopoDS_Shape | None:
     """The bent strip, built by wrapping its outline onto the cylinder.
@@ -373,42 +421,16 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
             mapped.append((curves, is_outer))
 
         for surface in (cyl_top, cyl_bottom):
-            built = None
-            for curves, is_outer in sorted(mapped, key=lambda m: not m[1]):
-                wire = _wire_on(surface, curves)
-                if wire is None:
-                    return give_up("the wrapped outline did not close into a wire")
-                if built is None:
-                    maker = BRepBuilderAPI_MakeFace(surface, wire, True)
-                else:
-                    # A hole. Its wire runs the opposite way round to the outer
-                    # one on the flat face, and it has to keep doing so here, or
-                    # the face comes out with the hole as its material.
-                    maker = BRepBuilderAPI_MakeFace(built, TopoDS.Wire_s(wire.Reversed()))
-                if not maker.IsDone():
-                    return give_up("the wrapped outline did not close into a face")
-                built = maker.Face()
+            built, reason = _face_on(surface, mapped)
             if built is None:
-                return give_up("no face came out of the wrapped outline")
+                return give_up(reason)
             sewing.Add(built)
 
-        # the walls, one per edge, ruled between the two cylinders
-        for curves, _ in mapped:
-            for curve, first, last in curves:
-                top_edge = BRepBuilderAPI_MakeEdge(curve, cyl_top, first, last)
-                bottom_edge = BRepBuilderAPI_MakeEdge(curve, cyl_bottom, first, last)
-                if not (top_edge.IsDone() and bottom_edge.IsDone()):
-                    return give_up("a wall edge could not be built")
-                one, two = top_edge.Edge(), bottom_edge.Edge()
-                BRepLib.BuildCurves3d_s(one)
-                BRepLib.BuildCurves3d_s(two)
-                try:
-                    wall = BRepFill.Face_s(one, two)
-                except Exception as exc:
-                    return give_up(f"a wall could not be ruled ({exc})")
-                if wall.IsNull():
-                    return give_up("a wall came out empty")
-                sewing.Add(wall)
+        walls, reason = _walls(mapped, cyl_top, cyl_bottom)
+        if reason is not None:
+            return give_up(reason)
+        for wall in walls:
+            sewing.Add(wall)
 
     sewing.Perform()
     shell = sewing.SewedShape()
