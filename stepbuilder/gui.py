@@ -22,6 +22,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import core
 from . import settings
+from . import winplace
 from .worker import BuildSettings, run_jobs
 from .bend import DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
 from .core import DEFAULT_FLAT_HEIGHT
@@ -488,96 +489,31 @@ class StepBuilderApp(tk.Tk):
     # --------------------------------------------------- window placement -- #
 
     def _virtual_screen(self) -> tuple[int, int, int, int]:
-        """(x, y, w, h) covering EVERY monitor, not just the primary one.
-
-        Tk's winfo_screenwidth/height describe the primary display only, so a
-        window legitimately sitting on a second monitor looks off-screen by
-        those numbers - which is exactly the case this feature exists for.
-        Windows reports the whole virtual desktop through GetSystemMetrics
-        (SM_[XY]VIRTUALSCREEN / SM_C[XY]VIRTUALSCREEN), and a monitor left of
-        the primary gives a negative origin.
-
-        Falls back to the primary display if that call is unavailable, so this
-        degrades to single-monitor behaviour rather than failing.
-        """
-        try:
-            import ctypes
-
-            metrics = ctypes.windll.user32.GetSystemMetrics
-            x, y, w, h = (metrics(i) for i in (76, 77, 78, 79))
-            if w > 0 and h > 0:
-                return x, y, w, h
-        except Exception:
-            pass
-        return 0, 0, self.winfo_screenwidth(), self.winfo_screenheight()
+        """(x, y, w, h) of every monitor - winplace.virtual_screen; a method so a
+        test can stand in a different desk."""
+        return winplace.virtual_screen(self)
 
     def _geometry_is_reachable(self, w: int, h: int, x: int, y: int) -> bool:
-        """Can the user actually see and grab a window placed here?
+        return winplace.geometry_is_reachable(self._virtual_screen(), w, h, x, y)
 
-        The case that matters: the window was last closed on a second monitor
-        that is no longer attached. Restoring those coordinates puts it
-        somewhere invisible with no way to drag it back, which reads as the
-        program failing to start.
-        """
-        vx, vy, vw, vh = self._virtual_screen()
-        if y < vy:
-            return False                      # title bar above every screen
-        visible_w = max(0, min(x + w, vx + vw) - max(x, vx))
-        visible_h = max(0, min(y + h, vy + vh) - max(y, vy))
-        return visible_w >= 120 and visible_h >= 40
-
-    # What a first run opens at. The natural request is wider than this; the
-    # groups simply start narrower and the silk column, which is the one with
-    # weight, gives the room back as soon as the window is widened.
-    FIRST_RUN_WIDTH = 908
+    FIRST_RUN_WIDTH = winplace.FIRST_RUN_WIDTH
 
     def _center_on_primary(self) -> None:
-        """First run, or a remembered position that is no longer usable."""
-        self.update_idletasks()
-        w = self.FIRST_RUN_WIDTH
-        h = self.winfo_reqheight()
-        self.geometry(f"{w}x{h}")
-        self.update_idletasks()
-        x = max(0, (self.winfo_screenwidth() - w) // 2)
-        y = max(0, (self.winfo_screenheight() - h) // 2)
-        self.geometry(f"+{x}+{y}")
+        winplace.center_on_primary(self, self.FIRST_RUN_WIDTH)
 
     def _restore_geometry(self) -> None:
-        if self._saved_geometry:
-            # Tk writes a negative coordinate as "+-1920", so the sign sits
-            # after the plus. A bare "-1920" in a geometry string means
-            # something else entirely (an offset from the right edge), which is
-            # why this matches the "+" form only and centres on anything else.
-            match = re.match(r"^(\d+)x(\d+)\+(-?\d+)\+(-?\d+)$",
-                             self._saved_geometry.strip())
-            if match:
-                w, h, x, y = (int(g) for g in match.groups())
-                if self._geometry_is_reachable(w, h, x, y):
-                    self.geometry(f"{w}x{h}+{x}+{y}")
-                    if self._saved_state == "zoomed":
-                        self.state("zoomed")
-                    return
-                self.after(200, lambda: self._append_log(
-                    "The remembered window position is off-screen (a monitor may "
-                    "have been disconnected); centred on the main screen instead."))
-        self._center_on_primary()
+        winplace.restore_geometry(
+            self, self._saved_geometry, self._saved_state,
+            reachable=self._geometry_is_reachable, center=self._center_on_primary,
+            on_unreachable=lambda: self.after(200, lambda: self._append_log(
+                "The remembered window position is off-screen (a monitor may "
+                "have been disconnected); centred on the main screen instead.")))
 
     def _remember_geometry(self, _event=None) -> None:
-        """Keep the last non-maximized geometry. Bound to <Configure>.
-
-        Two filters, and the second one is not redundant: maximizing arrives as
-        a Configure whose event can still be seen while state() reports
-        "normal", so the maximized rect would be recorded as if the user had
-        sized the window that way, and un-maximizing on the next run would give
-        back a screen-sized window that is not maximized.
-        """
-        if self.state() != "normal":
-            return
-        near_screen = (self.winfo_width() >= self.winfo_screenwidth() - 20
-                       and self.winfo_height() >= self.winfo_screenheight() - 80)
-        if near_screen:
-            return
-        self._last_normal_geometry = self.geometry()
+        """Keep the last non-maximized geometry. Bound to <Configure>."""
+        geometry = winplace.normal_geometry(self)
+        if geometry is not None:
+            self._last_normal_geometry = geometry
 
     def _build_board_mode_row(self, parent) -> None:
         """How the board body is built, and the color of each layer kind.

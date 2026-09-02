@@ -97,6 +97,12 @@ app._virtual_screen = lambda: (0, 0, 1920, 1080)           # that monitor unplug
 check("the same left-monitor spot is now refused",
       not app._geometry_is_reachable(900, 700, -1600, 100))
 app.destroy()
+# The same rule as a function of the desk, with no window at all (round 73, C3).
+from stepbuilder import winplace
+two = (-1920, 0, 3840, 1080)
+check("winplace: reachable on the left monitor", winplace.geometry_is_reachable(two, 900, 700, -1600, 100))
+check("winplace: a 70px sliver is not", not winplace.geometry_is_reachable(two, 900, 700, 1850, 100))
+check("winplace: above every screen is not", not winplace.geometry_is_reachable(two, 900, 700, 100, -50))
 
 print("\n[7] maximized: the NON-maximized rect is what gets saved")
 app,p = make({"gui": {}}, "zoom.json")
@@ -115,6 +121,10 @@ check("reopens maximized", app2.state() == "zoomed", app2.state())
 app2.destroy()
 
 print("\n[8] a garbled value falls back to centring instead of crashing")
+check("winplace.parse_geometry reads Tk's form, negative coordinates included",
+      winplace.parse_geometry("900x700+-1600+120") == (900, 700, -1600, 120))
+check("and refuses the rest", all(winplace.parse_geometry(b) is None for b in
+      ("nonsense", "900x700", "", None, "1x1+abc+def", "900x700-10-10")))
 for bad in ("nonsense", "900x700", "", "1x1+abc+def", "900x700-10-10"):
     a,_ = make({"gui": {"windowGeometry": bad}}, "bad.json")
     check(f"{bad!r} -> centred", abs(a.winfo_x() - (SW-FIRST_W)//2) <= 4, f"x={a.winfo_x()}")
