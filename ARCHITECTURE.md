@@ -59,7 +59,8 @@ the keys that differ from the default.
 |---|---:|---:|---|
 | `makeVariant3dIntermediates.il` | 3925 | 90 | console messages, path helpers, property helpers, the `Variants.lst` parser (upstream), geometry-to-JSON primitives, board thickness, stackups/zones/bends readers, a JSON reader + merge + config loader, silkscreen collection/clipping/streaming, the intermediate writer, the top-level export |
 | `simple3d.il` | 897 | 17 | settings from config, install-folder resolution, `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, the Python pre-flight, the GUI launcher, menu insertion |
-| `stepbuilder/core.py` | 1015 | 18 | component transform, `StepFileIndex`, the XCAF document and writer, `total_board_thickness`, and `generate()` |
+| `stepbuilder/core.py` | 724 | 7 | `BuildResult`, `total_board_thickness`, `_set_color`, and `generate()` — the XCAF document, the board and legend assembly, the component placement loop and the writer, still in one function |
+| `stepbuilder/models.py` | 359 | 14 | component models: `StepFileIndex` (an ordered search path over the model folders, case-folded as the last resort), `ModelCache` (each distinct STEP read once into the document; `labels_for` says "missing" or "unreadable" once per file), `component_transform`, `_report_embedded_only`, `_sanitize`. Round 73, plan A6 |
 | `stepbuilder/legend.py` | 544 | 13 | the silkscreen legend: the arc conventions and `_pick_convention` (settled by the board's own areas), `_wire_from_vertices`, `_silk_face`, `build_silkscreen`, `_merge_coplanar`, `clip_silk_to_zones`, `DEFAULT_FLAT_HEIGHT` / `DEFAULT_SILK_THICKNESS`. Round 73, plan A5 |
 | `stepbuilder/board.py` | 633 | 14 | the board body: `make_board_geometry` (a plain board and the zone paths), `layer_solids` (THE zones×layers walk: `_layer_region` turns a drawn shape into material or an opening, each layer extruded at its own height, cutouts per layer when asked), `make_board_layer_parts` + `fuse_keeping_faces` (the inspect and layer-coloured builds), `_stackup_board` + `fuse_and_unify`, `_zone_solid`, `board_cutouts` (repeats dropped), `has_solid`, `_rim_faces`. Round 73, plan A4 |
 | `stepbuilder/stackup.py` | 223 | 8 | the stackup arithmetic, no OCC: `restack`, `drop_soldermask`, `align_stackups`, `stackup_levels`, `zone_levels`, the soldermask / conductor matchers. Round 73, plan A3 |
@@ -87,9 +88,9 @@ the keys that differ from the default.
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
 Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
-`gui.py`, `settings.py`, `stackup.py`, `reporting.py`, `board.py` and `legend.py`
-are as of round 73 (after plans A1–A5, C1–C2 and B1–B7); the other rows are as
-of round 70. The defs column counts
+`gui.py`, `settings.py`, `stackup.py`, `reporting.py`, `board.py`, `legend.py`
+and `models.py` are as of round 73 (after plans A1–A6, C1–C2 and B1–B7); the
+other rows are as of round 70. The defs column counts
 every `def` and `class` line, nested ones included.
 
 ### 2.2 Dependencies
@@ -123,6 +124,8 @@ graph TD
         BOARD --> CONTOUR
         CORE --> LEGEND[legend.py]
         LEGEND --> CONTOUR
+        CORE --> MODELS[models.py]
+        MODELS --> OCP
         STACK --> ERRORS
         INTER --> ERRORS
         CORE --> CONTOUR[contour.py]

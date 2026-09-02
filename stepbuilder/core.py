@@ -8,7 +8,6 @@ from the GUI, from the CLI, or from tests.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -16,17 +15,17 @@ from typing import Iterable
 from OCP.IFSelect import IFSelect_ReturnStatus
 from OCP.Interface import Interface_Static
 from OCP.Quantity import Quantity_Color, Quantity_TypeOfColor
-from OCP.STEPCAFControl import STEPCAFControl_Reader, STEPCAFControl_Writer
+from OCP.STEPCAFControl import STEPCAFControl_Writer
 from OCP.STEPControl import STEPControl_StepModelType
-from OCP.TCollection import TCollection_AsciiString, TCollection_ExtendedString
+from OCP.TCollection import TCollection_ExtendedString
 from OCP.TDataStd import TDataStd_Name
-from OCP.TDF import TDF_Label, TDF_LabelSequence, TDF_Tool
+from OCP.TDF import TDF_Label
 from OCP.TDocStd import TDocStd_Document
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS_Shape
 from OCP.XCAFApp import XCAFApp_Application
 from OCP.XCAFDoc import XCAFDoc_ColorType, XCAFDoc_DocumentTool
-from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
+from OCP.gp import gp_Trsf
 
 # The contour primitives and the one exception live in modules of their own
 # (round 72, plan A1) so that bend.py no longer has to reach into core for
@@ -44,6 +43,12 @@ from .board import (  # noqa: F401 - re-exported
     make_board_geometry, make_board_layer_parts,
 )
 from .errors import StepBuilderError  # noqa: F401 - re-exported
+# Component models (round 73, plan A6); re-exported, test_index imports
+# StepFileIndex from here.
+from .models import (  # noqa: F401 - re-exported
+    ModelCache, StepFileIndex, _free_shape_entries, _label_entry,
+    _report_embedded_only, _rotation, _same_root, _sanitize, component_transform,
+)
 # The silkscreen legend (round 73, plan A5); re-exported, the window imports
 # DEFAULT_FLAT_HEIGHT from here and the tests call core.build_silkscreen.
 from .legend import (  # noqa: F401 - re-exported
@@ -72,205 +77,8 @@ from .intermediate import (  # noqa: F401 - re-exported
 )
 
 # --------------------------------------------------------------------------- #
-# transforms
-# --------------------------------------------------------------------------- #
-
-def _rotation(axis: gp_Dir, degrees: float) -> gp_Trsf:
-    trsf = gp_Trsf()
-    trsf.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), axis), math.radians(degrees))
-    return trsf
-
-
-def component_transform(
-    mapping: dict,
-    component: dict,
-    board_top_z: float,
-    board_bottom_z: float,
-    zone_levels: dict | None = None,
-) -> gp_Trsf:
-    """Build the full placement transform for one component.
-
-    Order is significant and matches the original: applied right to left, so the
-    STEP model is first oriented by its mapping rotation, shifted by its mapping
-    offset, optionally flipped, then rotated by the symbol angle and moved into
-    place.
-
-    board_top_z / board_bottom_z are the z of the two board faces (which one is
-    zero depends on the chosen datum). Top parts sit on board_top_z, mirrored
-    (bottom) parts are flipped 180 deg about Y and sit on board_bottom_z. Parts
-    rest on the soldermask face, i.e. on the board surface, because real pads
-    carry solder that lifts the part to mask level.
-    """
-    rx = _rotation(gp_Dir(1, 0, 0), mapping["rotation_x"])
-    ry = _rotation(gp_Dir(0, 1, 0), mapping["rotation_y"])
-    rz = _rotation(gp_Dir(0, 0, 1), mapping["rotation_z"])
-    rotation = rz * ry * rx
-
-    offset = gp_Trsf()
-    offset.SetTranslation(
-        gp_Vec(mapping["offset_x"], mapping["offset_y"], mapping["offset_z"])
-    )
-
-    angle = _rotation(gp_Dir(0, 0, 1), component["angle"])
-
-    mirror = gp_Trsf()
-    if component["is_mirrored"]:
-        z = board_bottom_z
-        mirror = _rotation(gp_Dir(0, 1, 0), 180.0)
-    else:
-        z = board_top_z
-
-    # On a multi-stackup board the surface a part rests on is its ZONE's, not
-    # the board's: a part on a 2.44 mm stiffener and one on 0.365 mm flex are
-    # two millimetres apart. zone_levels is None on an ordinary board, and on a
-    # part whose zone is unknown the board-wide surface is the right fallback.
-    if zone_levels:
-        zone = component.get("zone")
-        if zone and zone in zone_levels:
-            zone_top, zone_bottom = zone_levels[zone]
-            z = zone_bottom if component["is_mirrored"] else zone_top
-
-    position = gp_Trsf()
-    position.SetTranslation(gp_Vec(component["x"], component["y"], z))
-
-    return position * angle * mirror * offset * rotation
-
-
-# --------------------------------------------------------------------------- #
-# step file lookup
-# --------------------------------------------------------------------------- #
-
-class StepFileIndex:
-    """Filename -> path index over one or more model folders, built once.
-
-    The C++ version ran a recursive_directory_iterator for every cache miss,
-    which is O(components x files). One walk is enough.
-
-    Several roots form an ORDERED SEARCH PATH, like PATH or an include path:
-    the first root that holds a given filename wins. That makes it possible to
-    keep a shared company library and let a project-local folder listed above it
-    override individual models. Each root is still walked recursively, so
-    subfolders need no listing of their own.
-
-    First-wins was already the behaviour within a single root (dict.setdefault
-    over rglob), but the order rglob happens to walk in is arbitrary, so a
-    duplicate resolved unpredictably and in silence. With explicit roots the
-    precedence is declared, and a name found in more than one root is reported
-    with the path that won - a silent substitution of the wrong model is a
-    thing you find out about at the CAD stage otherwise.
-
-    A root that does not exist is reported and skipped; only having no usable
-    root at all is fatal. One mistyped entry in a list of four should not cost
-    the build.
-    """
-
-    def __init__(self, roots, log: LogFn = _noop_log):
-        if isinstance(roots, (str, Path)):
-            roots = [roots]
-        self.roots: list[Path] = []
-        missing: list[Path] = []
-        for entry in roots:
-            entry = str(entry).strip()
-            if not entry:
-                continue
-            path = Path(entry)
-            (self.roots if path.is_dir() else missing).append(path)
-
-        for path in missing:
-            log(f"warning: STEP folder does not exist, skipped: {path}")
-
-        if not self.roots:
-            if missing:
-                raise StepBuilderError(
-                    "None of the STEP folders exist: "
-                    + ", ".join(str(p) for p in missing)
-                )
-            raise StepBuilderError("No STEP folder was given")
-
-        self._log = log
-        self._case_folded = 0
-        self._index: dict[str, Path] = {}
-        # The same index folded to lower case, for the lookup of last resort.
-        # Windows cannot hold two files in one folder whose names differ only in
-        # case, but the name being looked up does not come from the disk - it
-        # comes from Allegro's STEP mapping table, where it is typed by hand -
-        # so MODEL.STEP on disk against model.step in the mapping is an ordinary
-        # miss, and it used to read as "could not find model.step". Exact match
-        # is still tried first and always wins, so nothing that resolved before
-        # resolves differently now; and first-wins here follows the same root
-        # order, which is what settles the ambiguity that a case-SENSITIVE
-        # filesystem can present and Windows cannot.
-        self._folded: dict[str, Path] = {}
-        shadowed = 0
-        for root in self.roots:
-            for path in root.rglob("*"):
-                if not path.is_file():
-                    continue
-                winner = self._index.setdefault(path.name, path)
-                self._folded.setdefault(path.name.lower(), path)
-                # Only across roots: two files of one name inside a single root
-                # cannot be told apart by precedence, and reporting the walk
-                # order would suggest a meaning it does not have.
-                if winner != path and not _same_root(winner, root):
-                    shadowed += 1
-                    if shadowed <= 10:
-                        log(f"{path.name}: using {winner} (also in {root})")
-        if shadowed > 10:
-            log(f"({shadowed - 10} further name(s) found in more than one folder)")
-
-    def find(self, name: str) -> Path | None:
-        hit = self._index.get(name)
-        if hit is None and name:
-            # The index is keyed on the bare filename; a mapping that carries a
-            # path component ("subdir/model.step") would otherwise miss a file
-            # that is sitting right there.
-            bare = Path(name).name
-            hit = self._index.get(bare)
-            if hit is None:
-                hit = self._folded.get(bare.lower())
-                if hit is not None:
-                    self._note_case(bare, hit)
-        return hit
-
-    def _note_case(self, asked: str, found: Path) -> None:
-        """Say that a model was found only by ignoring case - a few times.
-
-        Worth saying: it means the mapping table and the disk disagree, which is
-        a real thing to tidy up, and on a case-sensitive filesystem it is the
-        difference between a build and a missing model. Not worth saying two
-        hundred times on a board whose whole library is spelled the other way,
-        hence the same cap the shadowed-name report uses.
-        """
-        self._case_folded += 1
-        if self._case_folded <= 10:
-            self._log(f"{asked}: using {found.name} - the names differ only in case")
-        elif self._case_folded == 11:
-            self._log("(further model names matched only after ignoring case)")
-
-
-def _same_root(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-
-# --------------------------------------------------------------------------- #
 # assembly
 # --------------------------------------------------------------------------- #
-
-def _label_entry(label: TDF_Label) -> str:
-    entry = TCollection_AsciiString()
-    TDF_Tool.Entry_s(label, entry)
-    return entry.ToCString()
-
-
-def _free_shape_entries(shape_tool) -> dict[str, TDF_Label]:
-    seq = TDF_LabelSequence()
-    shape_tool.GetFreeShapes(seq)
-    return {_label_entry(seq.Value(i)): seq.Value(i) for i in range(1, seq.Length() + 1)}
-
 
 @dataclass
 class BuildResult:
@@ -291,45 +99,6 @@ class BuildResult:
     silkscreen_skipped: int = 0
     # MFRPN reporting DISABLED (property attachment unreliable); kept for future:
     # missing_mfr_pn: list[str] = field(default_factory=list)
-
-
-def _report_embedded_only(data: dict, result: BuildResult, log: LogFn) -> None:
-    """Name the models the board carries but the disk does not, and say what to do.
-
-    Allegro keeps its own copy of every mapped 3D model inside the .brd. This
-    tool does not read those copies - it builds from model files on disk - so a
-    board can look complete in Allegro's own 3D while a component is missing
-    here. Without this the log said only "could not find X.step", which does not
-    distinguish "that model does not exist anywhere" from "it is right there in
-    the board, just not in your STEP folders" - and only the second has a fix.
-
-    Silent when the JSON predates format_version 4, when the board has no
-    embedded models, or when nothing is missing.
-    """
-    embedded = data.get("embedded_models")
-    if not isinstance(embedded, list) or not embedded:
-        return
-
-    # Compare on the bare filename: the index resolves that way too, so a
-    # mapping carrying a path component still matches.
-    missing = {Path(str(name)).name for name in result.missing_step_files}
-    if not missing:
-        return
-
-    both = sorted({str(name) for name in embedded
-                   if Path(str(name)).name in missing})
-    if not both:
-        return
-
-    result.embedded_not_on_disk = both
-    log(f"warning: {len(both)} model(s) are stored inside the board but were "
-        f"not found on disk: {', '.join(both)}")
-    log("warning: Allegro's own 3D shows these because the board carries a copy "
-        "of each mapped model. Simple 3D builds from model files on disk. To "
-        "include them: export the board from Allegro's 3DX canvas, take the "
-        "missing model files out of that export, put them in a folder listed "
-        "under \"STEP files\" (the board's own folder is a convenient one), and "
-        "run again.")
 
 
 def total_board_thickness(thickness: dict) -> float:
@@ -360,11 +129,6 @@ def _set_color(color_tool, label, rgb01, srgb: bool) -> None:
         XCAFDoc_ColorType.XCAFDoc_ColorGen,
     ):
         color_tool.SetColor(label, color, target)
-
-
-def _sanitize(name: str) -> str:
-    """Make a string safe as a STEP product/instance name."""
-    return "".join(c if c.isalnum() or c in "_-+." else "_" for c in name)
 
 
 def generate(
@@ -867,12 +631,9 @@ def generate(
         silkscreen_skipped=silk_skipped,
     )
 
-    # One shared part per distinct STEP model (task 5). The label is imported
-    # once and every refdes referencing that model becomes an instance of it, so
-    # ten identical resistors cost one solid, not ten. Named by the model file,
-    # which co-varies with geometry -> no cross-board substitution.
-    label_cache: dict[str, list[TDF_Label]] = {}
-    named_parts: set[str] = set()
+    # One shared part per distinct STEP model: models.ModelCache reads each
+    # file once and names the part after it.
+    models = ModelCache(index, doc, shape_tool, log)
 
     total = len(components)
     for i, (ref_des, component) in enumerate(components.items(), start=1):
@@ -886,63 +647,11 @@ def generate(
 
         step_name = mapping["step_name"]
 
-        if step_name not in label_cache:
-            path = index.find(step_name)
-            if path is None:
-                log(f"warning: could not find {step_name}")
-                result.missing_step_files.append(step_name)
-                label_cache[step_name] = []
-            else:
-                # A model file that is PRESENT but unusable costs its own
-                # component and nothing more - the same treatment a missing one
-                # gets. It used to raise, which meant one file locked by another
-                # application, one zero-byte copy or one dialect OCCT declines
-                # took the whole board down. The three ways it can fail are
-                # reported separately: they have different causes.
-                log(f"Reading {step_name}")
-                reader = STEPCAFControl_Reader()
-                reader.SetColorMode(True)
-                reader.SetNameMode(True)
-
-                problem = None
-                new_labels: list[TDF_Label] = []
-                try:
-                    if reader.ReadFile(str(path)) != IFSelect_ReturnStatus.IFSelect_RetDone:
-                        problem = ("could not be read (locked, empty, or not a "
-                                   "STEP file OCCT accepts)")
-                    else:
-                        # FIX: diff the free shapes around the transfer instead
-                        # of assuming everything from index 2 belongs to this file.
-                        before = _free_shape_entries(shape_tool)
-                        if not reader.Transfer(doc):
-                            problem = "could not be transferred into the assembly"
-                        else:
-                            after = _free_shape_entries(shape_tool)
-                            new_labels = [lab for e, lab in after.items()
-                                          if e not in before]
-                            if not new_labels:
-                                problem = "contained no shapes"
-                except Exception as exc:                # OCCT can throw here
-                    problem = f"raised {exc.__class__.__name__}: {exc}"
-
-                if problem is not None:
-                    # Kept apart from missing_step_files on purpose: the file IS
-                    # on disk, so the "it is inside the board, not on your disk"
-                    # advice _report_embedded_only gives would be wrong here.
-                    log(f"warning: {step_name} {problem}: {path}")
-                    result.unreadable_step_files.append(step_name)
-                    label_cache[step_name] = []
-                else:
-                    # Name the shared part after the model file (stem), once.
-                    part_name = _sanitize(Path(step_name).stem)
-                    if part_name and part_name not in named_parts:
-                        TDataStd_Name.Set_s(
-                            new_labels[0], TCollection_ExtendedString(part_name)
-                        )
-                        named_parts.add(part_name)
-                    label_cache[step_name] = new_labels
-
-        roots = label_cache[step_name]
+        roots, problem = models.labels_for(step_name)
+        if problem == "missing":
+            result.missing_step_files.append(step_name)
+        elif problem == "unreadable":
+            result.unreadable_step_files.append(step_name)
         if not roots:
             result.components_skipped.append(ref_des)
             continue
