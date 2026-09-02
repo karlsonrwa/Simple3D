@@ -21,8 +21,8 @@ one settled.
 | Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
 | `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
-| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 74 (2026-09-02): Step 0, Plans A, B and C; each row says what it left. Next: D (SKILL; needs the user in Allegro after D2 and D4), then E |
-| The golden corpus | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 cases; `--check` after every refactoring step. `tests/_support.py` is the one preamble every suite imports (round 71) |
+| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 74 (2026-09-02): Step 0, Plans A, B and C; each row says what it left. Next: D (SKILL; the export half checked headless by `tools/skill_export.py`, the menu half by the user), then E |
+| The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd`; `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
 
 Three tools grew out of this project and now have repositories of their own.
 Nothing here depends on them, and no copy of their code belongs in this tree:
@@ -2950,6 +2950,73 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-02 (round 75) — the exporter runs headless; the SKILL half has a golden corpus
+
+The round-74 report said Plan D would need the user in Allegro after every
+step, and that I do not run Allegro myself. The user's reply: look at the
+other projects, you learned to run everything yourself there. They were
+right. `AllegroBaseStructure` has driven Allegro unattended since its dump
+work:
+
+    allegro -nograph -s <ABSOLUTE .scr path> <copy of the board>
+
+with a script of `skill load("…")`, `skill errset( fn(…) t )`, `exit`. Two
+rules travel with it: the `-s` path must be absolute (a relative one is
+resolved against the DESIGN's folder, and Allegro then sits in its command
+loop with no window to say why - the trap that once produced "Allegro cannot
+be driven from a shell" over there), and never `-safe` (it drops the site
+configuration, where the licence server is named).
+
+### What was done
+
+- **`tools/skill_export.py`** - the exporter headless, and a golden corpus for
+  it. `--record` exports every `input/*.brd` through a throwaway copy (the
+  original is never opened or locked; a `Variants.lst` beside it travels
+  with the copy) into `build/skill_golden/<board>/`, with the Allegro console
+  saved beside the JSON; `--check` exports again and diffs, `-o` does one
+  board. It loads `makeVariant3dIntermediates.il` alone and calls
+  `makeVariant3dIntermediates(dir, color, config)` with the shipped config,
+  the way `s3dExportCommand` does - not `simple3d.il`, whose job is the menu
+  item, the meter and the Python launch.
+- **Recorded, then checked twice** - `--record` and a `--check` right after
+  it: seven boards, 7 intermediates, 132 s for the set, no difference.
+  The headless export of `Cadence_Demo.brd` is byte-identical to the
+  `cadence_demo.json` the user exported from the menu (83041 lines, 0 differ).
+
+| board | size | export | wrote |
+|---|---|---|---|
+| `Cadence_Demo.brd` | 13.6 MB | 20 s | `cadence_demo.json` |
+| `flex-b2.brd` | 2.7 MB | 19 s | `flex-b2.json` |
+| `flex2-a0.brd` | 2.6 MB | 18 s | `flex2-a0.json` |
+| `flex3-a0.brd` | 2.4 MB | 18 s | `flex3-a0.json` |
+| `my_test_board-a0.brd` | 31.4 MB | 20 s | `my_test_board-a0.json` |
+| `my_test_board2.brd` | 1.1 MB | 19 s | `my_test_board2.json` |
+| `variants_test-b0.brd` | 1.9 MB | 18 s | `variants_test-b0.json` |
+
+(Start-up is ~10 s of each; SPB 25.1, `D:\Cadence\SPB_25.1\tools\bin\allegro.exe`.)
+
+### What it changes for Plan D
+
+Every D step is closed the way A–C were: `--record` at the step's start (or
+the existing record), the change, `--check`. What still needs a person is what
+a script cannot see: the menu item, the meter and the GUI launch in
+`simple3d.il`. The plan rows say so now instead of "user verification
+required"; the boards used are the seven in `input/` and no others - the
+user asked for exactly that.
+
+### What to remember
+
+- **"I cannot run X" needs a date.** The limit was true before the
+  AllegroBaseStructure work found the absolute-path trap, and it survived in
+  this project's memo and in my own notes long after it stopped being true.
+  A limit written down should say what was tried and when, so the next
+  reader can tell a finding from a habit.
+- **The corpus is only as honest as its inputs.** The record is made with
+  the shipped `simple3d_config.json`, not the user's local overlay, so it
+  does not depend on one machine's settings - and it is byte-identical to
+  the user's own export anyway, which says the overlay changes nothing the
+  exporter writes on that board.
 
 ## Update 2026-09-02 (round 74) — Plan C complete: the window is a window
 

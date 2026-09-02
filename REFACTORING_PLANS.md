@@ -281,6 +281,18 @@ skill/s3d_export.il         makePcb, symbolReturn3DElements, create3dIntermediat
 the parts in order, so an `allegro.ilinit` that names it keeps working; the
 README then documents the single `load("…/simple3d.il")`.
 
+**How a D step is closed (round 75).** The exporter runs headless:
+`tools/skill_export.py --record` exports every board in `input/` through a
+throwaway copy (`allegro -nograph -s <absolute .scr> <copy>`, the exporter
+loaded alone, `makeVariant3dIntermediates(dir, color, config)` called the way
+`s3dExportCommand` calls it) into `build/skill_golden/`; `--check` after the
+step exports again and diffs. Seven boards, one intermediate each, about
+132 s for the set; the export of `Cadence_Demo.brd` is byte-identical to the
+one the user made from the menu. So the "user verification" rows below
+shrink to what a script cannot see: the menu item, the meter and the Python
+launch in `simple3d.il` - and D6's loader is exercised by the same check,
+since the script loads whatever `makeVariant3dIntermediates.il` is.
+
 ### Steps
 
 | # | change | checks before | done when |
@@ -290,7 +302,7 @@ README then documents the single `load("…/simple3d.il")`.
 | D3 | `s3dWithLayersVisible( l_layers l_filter body )` — the visibility snapshot / find filter / `axlAddSelectAll` / restore idiom — used by `s3dSweepBendLines`, `s3dCollectSilkByLayer` and the three probes that carry copies | round 14's DYNTHEMALS note in the helper | one copy |
 | D4 | JSON escaping: every string that reaches the file goes through `s3dJsonQuote` (`symbolReturn3DElements` refdes + `step_name`, the zone name, `s3dWriteSilkPolys` layer, `s3dWriteSilkscreen` warnings, the `name` header); `s3dEmbeddedModelsJson` quotes instead of skipping | `test_quote.py`; a new transliterated `test_emit.py` that feeds a refdes and a step name with `"` and `\` through the emitter and `json.loads` the result | no raw `"\"" x "\""` left in the writer |
 | D5 | thickness: `pcb.thickness` derived from the `Primary` stackup's kept layers when there is one (the sum `s3dStackupJson` already computes), `calculateBoardThickness` kept only for the rigid-flex `nil 'all` case it was never right for — or dropped with `pcb.thickness` computed by the reader from `stackups` (a format change: see Plan E) | `test_plain_modes.py` [5]; the round-34 numbers (1.104 on the user's board) | one rule for requirement #1 |
-| D6 | the file split above, mechanically: cut and paste procedures in their existing order into the eight files; `simple3d.il` gains the loader; both checks pool all files | all four checks over the new file set (`FILES` in both tools becomes a glob); `test_config_merge.py` [3], `test_variant_path.py` source greps updated to the new files | Allegro loads it: **user verification required**, one export on a plain board and one on a rigid-flex board |
+| D6 | the file split above, mechanically: cut and paste procedures in their existing order into the eight files; `simple3d.il` gains the loader; both checks pool all files | all four checks over the new file set (`FILES` in both tools becomes a glob); `test_config_merge.py` [3], `test_variant_path.py` source greps updated to the new files | Allegro loads it: `tools/skill_export.py --check` on the seven boards (three of them rigid-flex) says the JSON is unchanged; the menu item and the launch are the **user's** live check |
 | D7 | `create3dIntermediateFormat`: an export-state list `(mechSeq shapes bendLines silkWarnings)` passed down instead of four globals reset in two places | the round-42/61 resets pinned in `test_variant_path.py` [8] | no per-export global left except the config-filled two |
 | D8 | the JSON body: build a list of `(key value-string)` pairs and join once, instead of `strcat` with hand-placed commas and the `parseString(body "\n")` re-indent | a transliterated writer test (the round-36 style) that parses the output for: no components, no cutouts, no silk, full board, all four combinations | one place decides commas |
 
@@ -370,5 +382,6 @@ Each arrow is a green run of `tests/run_all.py` plus `tools/golden.py --check`
 
 **Where this stands after round 74:** Step 0, all of Plan A (A1–A10), all of
 Plan B (B1–B7, B5's five extractions included) and all of Plan C (C1–C6) are
-done. Next in line: D (SKILL; the user in Allegro after D2 and D4), then E,
-then F4 and G.
+done. Next in line: D (SKILL; the export half closed headless by
+`tools/skill_export.py --check` after every step - round 75 - the menu half
+by the user), then E, then F4 and G.
