@@ -59,7 +59,8 @@ the keys that differ from the default.
 |---|---:|---:|---|
 | `makeVariant3dIntermediates.il` | 3925 | 90 | console messages, path helpers, property helpers, the `Variants.lst` parser (upstream), geometry-to-JSON primitives, board thickness, stackups/zones/bends readers, a JSON reader + merge + config loader, silkscreen collection/clipping/streaming, the intermediate writer, the top-level export |
 | `simple3d.il` | 897 | 17 | settings from config, install-folder resolution, `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, the Python pre-flight, the GUI launcher, menu insertion |
-| `stepbuilder/core.py` | 680 | 6 | `BuildResult`, `total_board_thickness`, and `generate()` — the board and legend assembly and the component placement loop, still in one function (A9) |
+| `stepbuilder/core.py` | 622 | 6 | `BuildResult`, `total_board_thickness`, and `generate()` — takes a `BuildOptions` (or the old keywords), then the board and legend assembly and the component placement loop, still in one function (A9) |
+| `stepbuilder/build.py` | 173 | 3 | `BuildOptions`: the nineteen options of one build as one frozen dataclass, with the meaning of each; `from_settings` (the window's snapshot) and `from_args` (the CLI). Round 73, plan A8 |
 | `stepbuilder/stepdoc.py` | 89 | 6 | `StepDocument`: the XCAF app/doc, shape and colour tools, the root assembly, `set_name`, `set_color`, and `write(path, minimize_size)` with the one writer setting that halves the file, set after the writer is constructed. Round 73, plan A7 |
 | `stepbuilder/models.py` | 359 | 14 | component models: `StepFileIndex` (an ordered search path over the model folders, case-folded as the last resort), `ModelCache` (each distinct STEP read once into the document; `labels_for` says "missing" or "unreadable" once per file), `component_transform`, `_report_embedded_only`, `_sanitize`. Round 73, plan A6 |
 | `stepbuilder/legend.py` | 544 | 13 | the silkscreen legend: the arc conventions and `_pick_convention` (settled by the board's own areas), `_wire_from_vertices`, `_silk_face`, `build_silkscreen`, `_merge_coplanar`, `clip_silk_to_zones`, `DEFAULT_FLAT_HEIGHT` / `DEFAULT_SILK_THICKNESS`. Round 73, plan A5 |
@@ -81,8 +82,8 @@ the keys that differ from the default.
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
 | `stepbuilder/gui.py` | 1419 | 57 | one `tk.Tk` subclass: widget layout, window placement across monitors, silk-layer panel, the hand-over between widgets and `settings.GuiSettings`, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring |
 | `stepbuilder/settings.py` | 404 | 18 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`; then the `gui` section as ONE table, `GUI_KEYS` (name, field, default, load, save), `GuiSettings`, `load_gui_settings` (both migrations live in the `load` of the key that superseded them) and `save_gui_settings` (only what differs from the shipped default). Round 72, plans C1–C2 |
-| `stepbuilder/__main__.py` | 376 | 4 | two argparse parsers (prefilled GUI, headless CLI), the crash log under `pythonw` |
-| `stepbuilder/worker.py` | 204 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, batch rule for the full-board file, per-job isolation, progress slicing |
+| `stepbuilder/__main__.py` | 362 | 4 | two argparse parsers (prefilled GUI, headless CLI), the crash log under `pythonw`; the build's options go through `BuildOptions.from_args` since A8 |
+| `stepbuilder/worker.py` | 187 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, batch rule for the full-board file, per-job isolation, progress slicing; the build's options go through `BuildOptions.from_settings` since A8 |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
 | `tests/` (24 files) | ~4700 | — | 20 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
 | `tools/` | ~1100 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), a hand test that writes a property, 11 read-only Allegro probes |
@@ -90,8 +91,9 @@ the keys that differ from the default.
 
 Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
 `gui.py`, `settings.py`, `stackup.py`, `reporting.py`, `board.py`, `legend.py`,
-`models.py` and `stepdoc.py` are as of round 73 (after plans A1–A7, C1–C2 and
-B1–B7); the other rows are as of round 70. The defs column counts
+`models.py`, `stepdoc.py`, `build.py`, `worker.py` and `__main__.py` are as of
+round 73 (after plans A1–A8, C1–C2 and B1–B7); the other rows are as of round
+70. The defs column counts
 every `def` and `class` line, nested ones included.
 
 ### 2.2 Dependencies
@@ -129,6 +131,9 @@ graph TD
         MODELS --> OCP
         CORE --> STEPDOC[stepdoc.py]
         STEPDOC --> OCP
+        WORKER --> BUILD[build.py]
+        MAIN --> BUILD
+        CORE --> BUILD
         STACK --> ERRORS
         INTER --> ERRORS
         CORE --> CONTOUR[contour.py]
@@ -382,7 +387,7 @@ it is.
 | `gui` placement (`_virtual_screen`, `_geometry_is_reachable`, `_center_on_primary`, `_restore_geometry`, `_remember_geometry`) | ~95 | reusable | multi-monitor placement for any Tk window |
 | `gui` worker bridge (`_run_in_worker`, `_drain_queue`, `_drain_once`, `_check_worker_alive`, `on_cancel`) | ~110 | reusable | "build in a child process, survive an access violation, cancel" — already copied by hand into step2html |
 | `worker.py` | 204 | glue, reusable pattern | the batch rule lives here and only here (the CLI has no equivalent) |
-| `__main__.py` | 376 | glue | two parsers for overlapping flags; the `generate(...)` argument list appears here, in `worker._run` and in `gui._snapshot` |
+| `__main__.py` | ~360 | glue | two parsers for overlapping flags; the `generate(...)` argument list used to appear here, in `worker._run` and in `gui._snapshot` — since round 73 (A8) it is `build.BuildOptions`, built once per caller |
 | `colors.py` | 160 | reusable | as is |
 
 ### 5.3 Tests and tools

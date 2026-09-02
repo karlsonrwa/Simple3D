@@ -305,6 +305,34 @@ try:
 except Exception:
     check("frozen (mutation refused)", True)
 
+print("\n[8b] the build's option list exists once - build.BuildOptions")
+# Round 73 (plan A8). generate used to name its nineteen options in its
+# signature, worker._run in its call and __main__ in its call; a new option
+# meant three edits and the CLI once lost one that way (--brd-name, round 46).
+from stepbuilder.build import BuildOptions
+from stepbuilder.worker import BuildSettings
+opts = BuildOptions.from_settings(snap, "stem")
+SNAPSHOT_ONLY = {"step_dirs", "json_file", "output_dir", "brd_name", "dated_name",
+                 "build_full_board"}
+check("every snapshot field the build uses is an option, under generate's name",
+      set(BuildOptions.__dataclass_fields__)
+      == (set(BuildSettings.__dataclass_fields__) - SNAPSHOT_ONLY - {"minimize"})
+      | {"minimize_size", "output_name", "srgb_color"},
+      str(set(BuildOptions.__dataclass_fields__) ^ set(BuildSettings.__dataclass_fields__)))
+check("from_settings carries the snapshot's values",
+      opts.output_name == "stem" and opts.board_mode == snap.board_mode
+      and opts.minimize_size == snap.minimize and opts.fold_bends == snap.fold_bends
+      and opts.silk_layers_off == snap.silk_layers_off)
+check("and the CLI-only option keeps its default", opts.srgb_color is True)
+try:
+    opts.z_datum = "bottom"; check("options are frozen", False, "mutation allowed")
+except Exception:
+    check("options are frozen", True)
+try:
+    BuildOptions(no_such_option=1); check("an unknown option is refused", False, "accepted")
+except TypeError:
+    check("an unknown option is refused", True)
+
 print("\n[9] the window is inert while a build runs")
 # Pressing Generate used to leave every control live: paths, colors and
 # checkboxes could be changed under a build that had already taken its snapshot,

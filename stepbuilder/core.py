@@ -38,6 +38,8 @@ from .board import (  # noqa: F401 - re-exported
     make_board_geometry, make_board_layer_parts,
 )
 from .errors import StepBuilderError  # noqa: F401 - re-exported
+# What one build is asked for (round 73, plan A8).
+from .build import BuildOptions  # noqa: F401 - re-exported
 # The XCAF document and its writer (round 73, plan A7).
 from .stepdoc import StepDocument, _set_color  # noqa: F401 - re-exported
 # Component models (round 73, plan A6); re-exported, test_index imports
@@ -118,28 +120,10 @@ def generate(
     json_file: str | Path | Intermediate,
     output_dir: str | Path,
     *,
-    output_name: str | None = None,
-    z_datum: str = "top",
-    board_color: tuple[int, int, int] | None = None,
-    rim_color: tuple[int, int, int] | None = None,
-    silk_top: bool = True,
-    silk_bottom: bool = True,
-    silk_color: tuple[int, int, int] | None = None,
-    silk_flat: bool = False,
-    silk_flat_height: float = DEFAULT_FLAT_HEIGHT,
-    silk_layers_off: set[str] | frozenset[str] | None = None,
-    # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False,
-    minimize_size: bool = True,
-    srgb_color: bool = True,
-    board_mode: str = "solid",
-    layer_colors: dict | None = None,
-    ignore_soldermask: bool = False,
-    fold_bends: bool = True,
-    fold_anchor: tuple[float, float] | str | None = None,
-    fold_neutral: float | None = None,
-    fold_slice_angle: float | None = None,
+    options: BuildOptions | None = None,
     log: LogFn = _noop_log,
     progress: ProgressFn = _noop_progress,
+    **keywords,
 ) -> BuildResult:
     """Build the STEP assembly described by *json_file*.
 
@@ -148,77 +132,35 @@ def generate(
         holds a given filename wins, so a project-local folder listed ahead of
         the shared library overrides individual models. Each is walked
         recursively. See StepFileIndex.
-    output_name:
-        Base filename (without .step). Defaults to the JSON's `name` field.
-    z_datum:
-        "top"    -> z=0 at the top face, board extends downwards (top parts at 0).
-        "bottom" -> z=0 at the bottom face, board extends upwards (bottom parts at 0).
-    board_color / rim_color:
-        RGB 0-255. board_color defaults to the JSON's pcb.color. rim_color, if
-        given, paints the board sides + underside separately from the top face.
-    silk_top / silk_bottom:
-        Build the printed legend on that side, if the JSON carries one
-        (format_version 2+). Both False skips silkscreen entirely. Silently
-        does nothing for an older JSON or a board with no silkscreen.
-    silk_color:
-        RGB 0-255 for the ink; defaults to colors.SILK_COLORS["White"].
-    silk_flat:
-        Draw the legend as surfaces instead of thin solids. About a quarter of
-        the file size; the ink then has no thickness and cannot be used in
-        downstream boolean work. See build_silkscreen.
-    silk_flat_height:
-        Clearance in mm between the board face and a flat legend, so the two
-        are not coplanar and do not flicker. Ignored in solid mode.
-    silk_layers_off:
-        Layer names whose polygons are left out of this build. The export
-        collects every layer the config lists and tags each polygon with its
-        own, so which of them reach the model is decided here, per build, with
-        no re-export. Polygons with no layer (format_version 2) are never
-        filtered - there is nothing to match them against.
-    minimize_size:
-        Set write.surfacecurve.mode = 0 (about half the file size, geometry
-        unchanged) and share one part per distinct model.
-    srgb_color:
-        Treat colors as sRGB (what you set is what you see). False reproduces
-        the original C++ linear-RGB behaviour.
-    board_mode:
-        How the board body is built - on ANY board, not only a multi-stackup
-        one: with no zones, the outline becomes one implicit zone on the single
-        stackup. The two non-solid modes need the stackup layers, so a JSON
-        written before format_version 6 warns and falls back to one solid.
-          "solid"   - one solid, one color, coplanar faces merged. Smallest.
-          "layers"  - one solid, but the layer interfaces are kept and each
-                      face is colored by what kind of layer it belongs to, so
-                      the rim shows the stack. About 4.7x "solid".
-          "inspect" - every layer a separate named part. For taking the board
-                      apart by eye; largest of the three.
-    layer_colors:
-        {kind: (r, g, b)} for board_mode="layers", kinds as in colors.LAYER_KINDS
-        (copper, base, coverlay, adhesive, stiffener, soldermask, other).
-        Missing kinds fall back to colors.DEFAULT_LAYER_COLORS.
-    ignore_soldermask:
-        Leave the soldermask out of the board entirely, however the design
-        defines it, and close the stack up toward the core by exactly the
-        thickness removed - on both sides, independently. Components then sit
-        on the copper rather than on the mask. Applies to a multi-stackup
-        board's layers and to a plain board's pcb.thickness alike.
-    fold_bends:
-        Fold the board along its bend areas (format_version 7). The board, the
-        legend and the components all move together. False exports it flat,
-        which is how Allegro holds it and how every export before this behaved.
-        A board with no bend areas is unaffected either way. See bend.py.
-    fold_anchor:
-        (x, y) of the piece that stays in the XY plane. None means the
-        documented default, the ORIGIN; "auto" holds the largest piece the bend
-        lines leave instead.
-    fold_neutral:
-        Where the neutral axis sits in the stack, as a fraction of thickness
-        from the inner surface (default 0.5). It sets how much flat material a
-        bend consumes: angle x (radius + k x thickness).
-    fold_slice_angle:
-        Degrees of arc per slice for a bend that has to be faceted (default
-        7.5). Only reached when neither exact construction applies.
+
+    Everything else is a BuildOptions field, passed as `options=` or as the
+    keywords of the same names, which build one. See build.BuildOptions for
+    what each means.
     """
+    if options is None:
+        options = BuildOptions(**keywords)      # an unknown keyword is a TypeError, as before
+    elif keywords:
+        raise TypeError(f"generate(): options= and {sorted(keywords)} given together")
+    output_name = options.output_name
+    z_datum = options.z_datum
+    board_color = options.board_color
+    rim_color = options.rim_color
+    silk_top = options.silk_top
+    silk_bottom = options.silk_bottom
+    silk_color = options.silk_color
+    silk_flat = options.silk_flat
+    silk_flat_height = options.silk_flat_height
+    silk_layers_off = options.silk_layers_off
+    minimize_size = options.minimize_size
+    srgb_color = options.srgb_color
+    board_mode = options.board_mode
+    layer_colors = options.layer_colors
+    ignore_soldermask = options.ignore_soldermask
+    fold_bends = options.fold_bends
+    fold_anchor = options.fold_anchor
+    fold_neutral = options.fold_neutral
+    fold_slice_angle = options.fold_slice_angle
+
     # A path is read here; an Intermediate the caller already read (the
     # worker and the CLI batch resolve the jobs first) is used as it is, so a
     # build parses each file once.

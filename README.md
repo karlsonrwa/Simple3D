@@ -587,6 +587,7 @@ stepbuilder/
   legend.py      the silkscreen legend, and the arc convention settled by the board's own areas
   models.py      component models: the folder index, one read per model, the placement transform
   stepdoc.py     the assembly document and the STEP writer
+  build.py       the options of one build, in one place, for the window and the CLI alike
   reporting.py   the log and progress callbacks every module reports through
   bend/          folding a flex board along its bend areas (a package since round 72)
   colors.py      the board themes and rim options
@@ -1187,6 +1188,7 @@ stepbuilder/
   legend.py      шелкография, и соглашение о дугах, установленное по площадям самой платы
   models.py      модели компонентов: индекс папок, одно чтение на модель, преобразование установки
   stepdoc.py     документ сборки и запись STEP
+  build.py       параметры одной сборки в одном месте, для окна и консоли одинаково
   reporting.py   колбэки лога и прогресса, через которые отчитываются все модули
   bend/          сгибание гибкой платы по областям сгиба (с раунда 72 — пакет)
   colors.py      темы платы и варианты цвета торца

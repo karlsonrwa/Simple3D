@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from . import core
+from .build import BuildOptions
 from .colors import DEFAULT_SILK, SILK_ORDER, resolve_board_color, resolve_silk_color
 
 
@@ -322,28 +323,10 @@ def main(argv: list[str] | None = None) -> int:
                 jf, output_dir, brd_name=args.brd_name,
                 several=len(jsons) > 1, dated=args.dated_name)
             result = core.generate(
-                step_dirs,
-                job,
-                output_dir,
-                output_name=output_name,
-                z_datum=args.z_datum,
-                board_color=board_color,
-                rim_color=rim_color,
-                silk_top=not (args.no_silkscreen or args.no_silk_top),
-                silk_bottom=not (args.no_silkscreen or args.no_silk_bottom),
-                silk_color=silk_color,
-                silk_flat=args.flat_silkscreen,
-                silk_flat_height=args.silk_flat_height,
-                silk_layers_off=set(args.silk_layer_off),
-                # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
-                minimize_size=not args.no_minimize,
-                srgb_color=not args.legacy_color,
-                board_mode=args.board_mode,
-                ignore_soldermask=args.ignore_soldermask,
-                fold_bends=not args.no_fold,
-                fold_anchor=fold_anchor,
-                fold_neutral=args.fold_neutral,
-                fold_slice_angle=args.fold_slice_angle,
+                step_dirs, job, output_dir,
+                options=BuildOptions.from_args(
+                    args, output_name=output_name, board_color=board_color,
+                    rim_color=rim_color, silk_color=silk_color, fold_anchor=fold_anchor),
                 log=log,
             )
         except core.StepBuilderError as exc:

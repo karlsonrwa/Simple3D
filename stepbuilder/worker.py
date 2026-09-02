@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import core
+from .build import BuildOptions
 
 
 @dataclass(frozen=True)
@@ -138,27 +139,8 @@ def _run(settings: BuildSettings, channel) -> None:
                 jf, settings.output_dir, brd_name=settings.brd_name,
                 several=len(jobs) > 1, dated=settings.dated_name)
             result = core.generate(
-                list(settings.step_dirs),
-                inter,
-                settings.output_dir,
-                output_name=output_name,
-                z_datum=settings.z_datum,
-                board_color=settings.board_color,
-                rim_color=settings.rim_color,
-                silk_top=settings.silk_top,
-                silk_bottom=settings.silk_bottom,
-                silk_color=settings.silk_color,
-                silk_flat=settings.silk_flat,
-                silk_flat_height=settings.silk_flat_height,
-                silk_layers_off=settings.silk_layers_off,
-                minimize_size=settings.minimize,
-                board_mode=settings.board_mode,
-                layer_colors=settings.layer_colors,
-                ignore_soldermask=settings.ignore_soldermask,
-                fold_bends=settings.fold_bends,
-                fold_anchor=settings.fold_anchor,
-                fold_neutral=settings.fold_neutral,
-                fold_slice_angle=settings.fold_slice_angle,
+                list(settings.step_dirs), inter, settings.output_dir,
+                options=BuildOptions.from_settings(settings, output_name),
                 log=lambda m: channel.put(("log", m)),
                 progress=progress,
             )
