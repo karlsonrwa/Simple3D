@@ -1307,6 +1307,60 @@ procedure( calculateBoardThickness()
 )
 
 ;=====================================================================
+;  (top core bottom) of the board for pcb.thickness - requirement #1, one rule
+;
+;  Until round 76 (D5) this was calculateBoardThickness alone: the cross
+;  section from axlXSectionGet( nil 'all ) summed by layer TYPE, with the
+;  masks picked out by NAME ("SOLDERMASK..."), while every named stackup was
+;  measured by POSITION in s3dStackupJson. Two rules for one number - and the
+;  first was never right on a rigid-flex design (nil 'all is the combined
+;  "All Stackups" view, not any real stackup - round 27) nor on a stack whose
+;  outer layers are not called SOLDERMASK.
+;
+;  Now: the stackup the board IS - PRIMARY when the design names its
+;  stackups, the cross section itself when it does not - measured the way
+;  s3dStackupJson measures every stackup: the layers that are body material
+;  (s3dLayerInBody), split at the outermost conductors (s3dConductorSpan).
+;  On every plain board of the corpus the three numbers are exactly what
+;  calculateBoardThickness gave; on a rigid-flex design with a PRIMARY they
+;  are that stackup's own numbers instead of the combined view's. A design
+;  whose named stackups hold no PRIMARY keeps calculateBoardThickness: there
+;  is no one stackup that is "the board".
+;=====================================================================
+procedure( s3dBoardThickness()
+    let( ( names query all layers span ( above 0.0 ) ( core 0.0 ) ( below 0.0 ) ( i 0 ) )
+        names = nil
+        errset( names = axlXSectionGet( nil 'stackups ) )
+        query = cond(
+            ( !names                      nil )        ; a plain board: the cross section itself
+            ( member( "PRIMARY" names )   "PRIMARY" )
+            ( t                           'none ) )
+        all = nil
+        unless( query == 'none
+            errset( all = axlXSectionGet( query 'all ) )
+        )
+        layers = nil
+        foreach( layer all
+            when( s3dLayerInBody( layer )  layers = cons( layer layers ) )
+        )
+        layers = reverse( layers )
+        span = s3dConductorSpan( layers )
+        if( (query == 'none) || !span then
+            calculateBoardThickness()
+        else
+            foreach( layer layers
+                cond(
+                    ( i < car( span )    above = above + s3dLayerThk( layer ) )
+                    ( i > cadr( span )   below = below + s3dLayerThk( layer ) )
+                    ( t                  core  = core  + s3dLayerThk( layer ) ) )
+                i = i + 1
+            )
+            list( above core below )
+        )
+    )
+)
+
+;=====================================================================
 ;  MULTI-STACKUP / RIGID-FLEX
 ;
 ;  A rigid-flex board is several zones, each with its own stackup and its
@@ -3763,8 +3817,9 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
         ; so walk the path and create each missing segment).
         s3dMakeDirs( dir )
 
-        ; calculate pcb thickness
-        thicknesses = calculateBoardThickness()
+        ; calculate pcb thickness - by position, from the board's own stackup
+        ; (round 76, D5); see s3dBoardThickness.
+        thicknesses = s3dBoardThickness()
 
         ; make pcb contour
         edgeCuts = makePcbContour( dsn )

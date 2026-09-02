@@ -215,7 +215,7 @@ flowchart TD
 
     subgraph EXP["makeVariant3dIntermediates.il — one export"]
         H --> H1[reset per-design globals<br/>S3D_RigidFlexShapes, S3D_BendLines]
-        H1 --> H2[calculateBoardThickness<br/>legacy single-stackup sum]
+        H1 --> H2[s3dBoardThickness<br/>the board's own stackup, by position]
         H2 --> H3[makePcbContour<br/>outline + CUTOUT shapes → primitives]
         H3 --> H4[s3dSilkConfig + s3dMakeSilkscreen<br/>collect per layer, clip to board, ONCE per design]
         H4 --> H5{"Variants.lst<br/>beside the .brd?"}
@@ -422,7 +422,7 @@ each is a step in the plans.
 | 1 | `tests/test_regression_geometry.py:396` | prints `MATCH`/`DRIFT`, exits 0 either way; `run_all` cannot see a drift. (It does match today: 12073.309477. The write statistics show 5038 entities where the memo records 5054; the test never checked entities.) **Fixed in round 71:** exits 1 on either drift; 5038 is right — the count moved at `687ea3f` (round 63) with the volume unchanged |
 | 2 | `makeVariant3dIntermediates.il` (was 2319-2321, 2341, 3505, 3566, 3668) | refdes, `step_name`, zone name, silk layer name, warning text and the variant name were written into the JSON **without** `s3dJsonQuote`; a quote or backslash in a mapping table entry broke the whole file. **Fixed in round 76 (D4):** every string goes through `s3dJsonQuote`, `tests/test_emit.py` refuses a new raw site |
 | 3 | `makeVariant3dIntermediates.il` (see 4.1) | undeclared locals in the upstream procedures leak as globals; `makePcb` rebinds its caller's `pcbColor`; `makeVariant3dIntermediates` declares `thicknesses` twice |
-| 4 | `calculateBoardThickness:1267` vs `s3dLayerInBody:1711` | two rules for requirement #1: `pcb.thickness` gates on the `SOLDERMASK` name, the stackups on position + SILK/PASTE; a plain board with a mask named `SM_TOP` is one thickness in *Solid* and another in *Solid colored layers* |
+| 4 | `calculateBoardThickness` vs `s3dLayerInBody` | two rules for requirement #1: `pcb.thickness` gated on the `SOLDERMASK` name, the stackups on position + SILK/PASTE; a plain board with a mask named `SM_TOP` was one thickness in *Solid* and another in *Layers*. **Fixed in round 76 (D5):** `s3dBoardThickness` measures the board's own stackup by position; `calculateBoardThickness` remains only for a rigid-flex design with no `PRIMARY` |
 | 5 | `core.py:395` | `_layer_region` re-imports `BRepAlgoAPI_Cut` locally though it is a module-level name — the `UnboundLocalError` trap `_rim_faces` documents, one added line away. **Fixed in round 71** |
 | 6 | `worker.py:105` vs `__main__.py:304` | the "Build the full-board file too" rule exists only in the GUI batch; `--batch` always builds it. **Fixed in round 73 (A10):** the rule is `intermediate.batch_jobs`, the worker and the CLI's new `--no-full-board` both go through it |
 | 7 | `core.py:1724-1784`, `gui.py:820` | `is_simple3d_json`, `is_full_board`, `silkscreen_layers` and `generate` each parse the whole file; on the 2.7 MB demo intermediate that is four parses per build and one per debounced keystroke. **Fixed in round 72 (A2):** `resolve_jobs` parses once and hands the `Intermediate` to `generate`; the window parses once per file per refresh |

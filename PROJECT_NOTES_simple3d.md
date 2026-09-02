@@ -484,7 +484,7 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 
 | # | requirement | status |
 |---|---|---|
-| 1 | mask thickness in board | done; core.total_board_thickness: board+both masks. Verified 1.104. Limitation: mask layers count only if named `SOLDERMASK*` (round 2 decision) — a stackup naming them otherwise contributes 0.0 silently. |
+| 1 | mask thickness in board | done; core.total_board_thickness: board+both masks. Verified 1.104. The round-2 limitation (mask layers counted only if named `SOLDERMASK*`) ended in round 76 (D5): `pcb.thickness` is measured by position from the board's own stackup, the same rule as the stackups; only a rigid-flex design with no `PRIMARY` still uses the name gate. |
 | 2 | color dropdown in GUI | done; colors.py: 8 themes from XML, dropdown + swatch. |
 | 3 | simple3d.il menu, pcb→cad, dated name, prefill | done; anchor 3d_export_ui; --dated-name accumulating _ |
 | 4 | symbols_top/bot, unique names `refdes_<jsonname>` | **PARTIAL** — groups and shared parts done (part = model file). The `refdes_<jsonname>` instance naming this requirement asks for was **removed in round 8** as over-complication, so no reference designator survives into the STEP at all. The requirement itself was never withdrawn: either restore the naming or amend requirement 4. |
@@ -2998,7 +2998,22 @@ D1 and D2 in one commit, closed by all five mechanical checks,
   the 22nd suite: the fragments transliterated and `json.loads`-ed with
   a quote, a backslash and a tab in every name, and the `.il` read to
   refuse any line that glues a value between quote characters or writes
-  one through a quoted `%s`. Corpus unchanged; 27/27 in 201 s.
+  one through a quoted `%s`. Corpus unchanged; 27/27.
+- **D5** (a fourth commit) one rule for requirement #1: `s3dBoardThickness`
+  measures `pcb.thickness` from the board's own stackup by POSITION -
+  `PRIMARY` when the design names its stackups, the cross section itself
+  when it does not - with `s3dLayerInBody` and `s3dConductorSpan`, the way
+  `s3dStackupJson` measures every stackup; `calculateBoardThickness` (the
+  `SOLDERMASK` name gate over the combined `nil 'all` view) stays only for
+  a rigid-flex design with no `PRIMARY`. The corpus predicted the outcome
+  before SKILL was touched: on the four plain/PRIMARY boards the three
+  numbers are identical (1.104 on `my_test_board-a0`), the two no-PRIMARY
+  flex boards are untouched, and `flex3-a0` alone changes - (0, 0.095,
+  0.025), the combined view's nonsense, becomes (0.575, 0.095, 0.075), its
+  PRIMARY stackup's own 0.745. `--check` drifted on exactly that board.
+  Built from the old and the new JSON, its STEP is identical in volume,
+  solids, entities and bbox: the zoned path never reads `pcb.thickness`.
+  Corpus re-recorded; 27/27 in 201 s.
 
 ### What to remember
 
@@ -3026,6 +3041,12 @@ D1 and D2 in one commit, closed by all five mechanical checks,
   a second. Read the diff of what was applied before theorising about
   the API; and a multi-file edit script writes nothing until every
   replacement has matched, or it is not an edit script.
+- **Predict the corpus before changing the rule.** D5 was decided from
+  the seven recorded JSONs: the new rule computed on them in Python said
+  which boards would change and by how much, before a line of SKILL was
+  written; the Allegro run then confirmed the prediction exactly. A
+  golden corpus is a way to ask "what would this do" as well as "did
+  this change anything".
 - **Two lists or one, the find filter does not care.** Measured while
   chasing the above: `axlSetFindFilter( ?enabled f ?onButtons f )` with
   the same list object twice selects the same five bend lines as two
