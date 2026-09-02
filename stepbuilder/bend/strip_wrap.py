@@ -13,6 +13,7 @@ walls, and the sewing-and-checking, one commit each.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 from OCP.BRep import BRep_Builder
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
@@ -20,6 +21,8 @@ from OCP.TopAbs import TopAbs_ShapeEnum
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
 from OCP.gp import gp_Dir, gp_Pnt
+from OCP.Geom import Geom_CylindricalSurface
+from OCP.gp import gp_Ax3, gp_Pnt2d
 
 from .constants import EPS, LENGTH_PROBE_STEPS, MIN_ANGLE, SAMPLE_MAX, SAMPLE_MIN, SAMPLE_STEP, SEW_TOL
 from .regions import _Strip
@@ -29,6 +32,50 @@ from .strip_revolve import PRISM_TOLERANCE, _prism_of
 # How far the wrapped solid may weigh from what the bend says it should before
 # it is thrown away and the facets used instead.
 MAP_VOLUME_TOLERANCE = 0.01
+
+
+@dataclass
+class _Frame:
+    """The cylinder a strip wraps onto, and the map into its parameter space.
+
+    Z runs along the bend line, X points at the flat board; `rho` is the
+    neutral radius, backed out of the strip's width and angle. `to2d` is the
+    whole of the bend map: a flat point becomes (angle across the bend,
+    distance along it), and in that space the map is affine.
+    """
+
+    rho: float
+    origin: gp_Pnt
+    along: gp_Dir
+    normal: tuple[float, float]
+    r_top: float
+    r_bottom: float
+    cyl_top: Geom_CylindricalSurface
+    cyl_bottom: Geom_CylindricalSurface
+
+    @classmethod
+    def of(cls, strip: _Strip, rho: float, z_top: float, z_bottom: float):
+        """None when the axis runs through the material (a radius of zero)."""
+        # the cylinder frame: Z along the bend line, X pointing at the flat board
+        nx, ny = strip.normal
+        sign = 1.0 if strip.turn > 0 else -1.0
+        origin = gp_Pnt(nx * strip.lo, ny * strip.lo, strip.axis_z)
+        along = gp_Dir(ny, -nx, 0.0) if sign > 0 else gp_Dir(-ny, nx, 0.0)
+        frame = gp_Ax3(origin, along, gp_Dir(0.0, 0.0, -sign))
+        r_top = abs(strip.axis_z - z_top)
+        r_bottom = abs(strip.axis_z - z_bottom)
+        if min(r_top, r_bottom) <= EPS:
+            return None
+        return cls(rho, origin, along, (nx, ny), r_top, r_bottom,
+                   Geom_CylindricalSurface(frame, r_top),
+                   Geom_CylindricalSurface(frame, r_bottom))
+
+    def to2d(self, point: gp_Pnt) -> gp_Pnt2d:
+        """A flat point as (angle across the bend, distance along it)."""
+        nx, ny = self.normal
+        dx, dy = point.X() - self.origin.X(), point.Y() - self.origin.Y()
+        return gp_Pnt2d((nx * dx + ny * dy) / self.rho,
+                        self.along.X() * dx + self.along.Y() * dy)
 
 
 def _map_strip(flat: TopoDS_Shape, strip: _Strip,
@@ -126,26 +173,11 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
     if volume <= 0 or abs(area * thickness - volume) > PRISM_TOLERANCE * volume:
         return give_up("the piece is not the extrusion of its own top face")
 
-    # the cylinder frame: Z along the bend line, X pointing at the flat board
-    nx, ny = strip.normal
-    sign = 1.0 if strip.turn > 0 else -1.0
-    origin = gp_Pnt(nx * strip.lo, ny * strip.lo, strip.axis_z)
-    along = gp_Dir(ny, -nx, 0.0) if sign > 0 else gp_Dir(-ny, nx, 0.0)
-    frame = gp_Ax3(origin, along, gp_Dir(0.0, 0.0, -sign))
-    r_top = abs(strip.axis_z - z_top)
-    r_bottom = abs(strip.axis_z - z_bottom)
-    if min(r_top, r_bottom) <= EPS:
+    frame = _Frame.of(strip, rho, z_top, z_bottom)
+    if frame is None:
         return None                        # the axis runs through the material
-    cyl_top = Geom_CylindricalSurface(frame, r_top)
-    cyl_bottom = Geom_CylindricalSurface(frame, r_bottom)
-
-    ax, ay = origin.X(), origin.Y()
-    zx, zy = along.X(), along.Y()
-
-    def to2d(point: gp_Pnt) -> gp_Pnt2d:
-        """A flat point as (angle across the bend, distance along it)."""
-        dx, dy = point.X() - ax, point.Y() - ay
-        return gp_Pnt2d((nx * dx + ny * dy) / rho, zx * dx + zy * dy)
+    cyl_top, cyl_bottom = frame.cyl_top, frame.cyl_bottom
+    to2d = frame.to2d
 
     def sampled(adaptor, first, last):
         """A stretch of one flat edge, as a 2D spline in parameter space."""
