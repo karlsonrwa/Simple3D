@@ -189,7 +189,7 @@ re-exports.
 | # | move | tests before | done when |
 |---|---|---|---|
 | B1 | package skeleton; `info.py`; `regions.py` with the `_Piece` mixin | `test_bend.py` [1], [2], [16] | `_Region.holds is _Strip.holds` (one implementation) — **done, round 72**: `bend.py` became `bend/__init__.py` (git sees the rename), `constants.py` / `info.py` / `regions.py` cut out verbatim, `_Piece` holds the one `face_box` + `holds` (asserted `is`), `_slice_trsf` and the OCC plumbing went with the regions; `__init__` re-exports everything, including the three underscored names `test_bend.py` imports. 24/24, golden unchanged |
-| B2 | `pieces.py` | [7c2] (`_cut_into_pieces` with and without curves), [7b0], [7b2] | unchanged |
+| B2 | `pieces.py` | [7c2] (`_cut_into_pieces` with and without curves), [7b0], [7b2] | unchanged — **done, round 72**: `pieces.py` cut out verbatim (the eight functions and the note on why the outline is cut rather than split by half-planes); `__init__` re-exports them; 24/24, golden unchanged |
 | B3 | `cut.py` + `apply.py` | [3], [11], [12], [13], [14] | unchanged; `_slab` keeps "sized and placed from the shape" |
 | B4 | `strip_revolve.py` | [17], [11b] (the ear) | unchanged |
 | B5 | `strip_wrap.py`: first move `_map_strip` whole, then extract `CylinderFrame`, then `edge_to_2d`, then `wire_on`, then walls, then validation — one commit each | [17b], [17c], [17d], [17e] (the loose corner), [7c2] | each extraction leaves [17e] green; `wire_on` still builds edges on shared vertices |
