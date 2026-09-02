@@ -100,6 +100,8 @@ stepbuilder/
   contour.py       build_contour, WIRE_TOLERANCE, _open_wire_detail,
                    contour_points, polygon_area, clip_halfplane,
                    point_in_polygon, point_on_polygon           (from core + bend)
+  errors.py        StepBuilderError — contour, bend and core all raise it, so it
+                   cannot live in any of them                   (added by A1)
   intermediate.py  Intermediate: one parse per file; .is_simple3d, .is_full_board,
                    .silkscreen_layers, .components, .metadata; _validate;
                    resolve_json_jobs, output_stem, dated_output_name
@@ -131,7 +133,7 @@ stepbuilder/
 
 | # | move | tests that must exist before | done when |
 |---|---|---|---|
-| A1 | `contour.py`: move `build_contour` and the five polygon helpers out of `core`/`bend`; both import from it | `test_bend.py` [10], [10a]; `test_dupcuts.py` | the `core`↔`bend` cycle is gone (`python -c "import stepbuilder.bend"` before `core` works) |
+| A1 | `contour.py`: move `build_contour` and the five polygon helpers out of `core`/`bend`; both import from it | `test_bend.py` [10], [10a]; `test_dupcuts.py` | the `core`↔`bend` cycle is gone (`python -c "import stepbuilder.bend"` before `core` works) — **done, round 72**: moved verbatim, `errors.py` added for the exception, both modules re-export; `import stepbuilder.bend` leaves `core` unloaded (asserted); 23/23, golden unchanged |
 | A2 | `intermediate.py`: `Intermediate` class wrapping one `json.loads`; `is_simple3d_json`/`is_full_board`/`silkscreen_layers` become thin wrappers; `worker` and `gui` call the class | `test_variant_path.py` [8]; `test_gui.py` layer list; `test_embedded.py` [6] (`_reserved`) | one parse per file per Generate; the `_reserved` tuple lives in one place with the SKILL comment pointing at it |
 | A3 | `stackup.py`: move the six pure functions | `test_nomask.py`, `test_layers.py` [0], `test_zones.py` [2] | `core.stackup_levels is stackup.stackup_levels` |
 | A4 | `board.py`: move the board builders; write `layer_solids(pcb, stackups, zones, shift, cutouts_per_layer: bool)` and have `make_board_layer_parts` and `_stackup_board` both use it | `test_layers.py`, `test_modes.py`, `test_plain_modes.py`, `test_neg.py`, `test_dupcuts.py` [5] | one zones×layers walk; golden corpus unchanged |

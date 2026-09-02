@@ -62,6 +62,14 @@ from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Iterator, TopoDS_Shape
 from OCP.TopTools import TopTools_ListOfShape
 from OCP.gp import gp_Ax1, gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
+# The flat-polygon helpers moved to contour.py (round 72, plan A1); the tests
+# and the window still import them from here, so they are re-exported.
+from .contour import (  # noqa: F401 - re-exported
+    build_contour, clip_halfplane, contour_points, point_in_polygon,
+    point_on_polygon, polygon_area,
+)
+from .errors import StepBuilderError
+
 LogFn = Callable[[str], None]
 
 
@@ -261,136 +269,6 @@ def bends_from_json(data: dict, log: LogFn = _noop_log) -> list[Bend]:
             continue
         bends.append(bend)
     return bends
-
-
-# --------------------------------------------------------------------------- #
-# flat polygon helpers - used only to decide which side of the board is held
-# --------------------------------------------------------------------------- #
-
-def contour_points(contour, arc_steps: int = 8) -> list[tuple[float, float]]:
-    """A JSON contour as a plain polygon. Arcs are sampled, not preserved.
-
-    Only ever used for area and containment tests, where a chord approximation
-    is not merely acceptable but the point: this decides which side of a bend
-    holds still, and that answer must not depend on a curve's exact sampling.
-    """
-    points: list[tuple[float, float]] = []
-    for prim in contour or []:
-        kind = prim.get("type", "segment")
-        if kind == "segment":
-            points.append((float(prim["start"][0]), float(prim["start"][1])))
-            points.append((float(prim["end"][0]), float(prim["end"][1])))
-        elif kind in ("arc", "circle"):
-            cx, cy = (float(prim["center"][0]), float(prim["center"][1])) \
-                if kind == "arc" else (float(prim["x"]), float(prim["y"]))
-            r = float(prim["radius"])
-            if kind == "circle":
-                a0, a1 = 0.0, 360.0
-            else:
-                # alpha..beta bound the arc; `ccw` says which END the contour
-                # enters it by, not which way the sweep goes. See the note in
-                # core.build_contour: reading `ccw` as the direction turns a 90
-                # degree corner into the 270 degree arc the long way round, and
-                # leaves the contour with joints up to 19.8 mm apart. Here the
-                # direction does matter - the polygon is walked in order - so
-                # the arc is sampled backwards when it is entered from beta.
-                a0, a1 = float(prim["alpha"]), float(prim["beta"])
-                while a1 < a0:
-                    a1 += 360.0
-                if not prim.get("ccw", True):
-                    a0, a1 = a1, a0
-            for i in range(arc_steps + 1):
-                a = math.radians(a0 + (a1 - a0) * i / arc_steps)
-                points.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-    # drop consecutive duplicates, which every shared vertex produces
-    out: list[tuple[float, float]] = []
-    for p in points:
-        if not out or math.hypot(p[0] - out[-1][0], p[1] - out[-1][1]) > 1e-9:
-            out.append(p)
-    return out
-
-
-def polygon_area(points: list[tuple[float, float]]) -> float:
-    """Unsigned area by the shoelace formula."""
-    if len(points) < 3:
-        return 0.0
-    total = 0.0
-    for i in range(len(points)):
-        x0, y0 = points[i]
-        x1, y1 = points[(i + 1) % len(points)]
-        total += x0 * y1 - x1 * y0
-    return abs(total) / 2.0
-
-
-def clip_halfplane(points: list[tuple[float, float]],
-                   nx: float, ny: float, d: float) -> list[tuple[float, float]]:
-    """Sutherland-Hodgman clip to `n . p <= d`.
-
-    Correct for a non-convex subject polygon as long as the clip region is a
-    half plane, which it always is here: the pieces it can leave joined along
-    the clip line have zero area and do not disturb the area comparison this
-    is used for.
-    """
-    if not points:
-        return []
-    out: list[tuple[float, float]] = []
-    n = len(points)
-    for i in range(n):
-        cur = points[i]
-        nxt = points[(i + 1) % n]
-        dc = nx * cur[0] + ny * cur[1] - d
-        dn = nx * nxt[0] + ny * nxt[1] - d
-        if dc <= 0:
-            out.append(cur)
-        if (dc < 0 < dn) or (dn < 0 < dc):
-            t = dc / (dc - dn)
-            out.append((cur[0] + t * (nxt[0] - cur[0]),
-                        cur[1] + t * (nxt[1] - cur[1])))
-    return out
-
-
-def point_on_polygon(point: tuple[float, float],
-                     polygon: list[tuple[float, float]],
-                     tol: float = 1.0e-6) -> bool:
-    """Is the point within *tol* of the polygon's boundary?
-
-    Ray casting answers a strict inside/outside, and the questions asked of a
-    fold region are usually about a CORNER of the board or the seam between two
-    pieces - points that sit exactly on a boundary and belong to both. Half
-    planes had EPS for this; polygons need the same allowance, spelled out.
-    """
-    x, y = point
-    n = len(polygon)
-    for i in range(n):
-        x0, y0 = polygon[i]
-        x1, y1 = polygon[(i + 1) % n]
-        dx, dy = x1 - x0, y1 - y0
-        length = dx * dx + dy * dy
-        if length <= 0.0:
-            if math.hypot(x - x0, y - y0) <= tol:
-                return True
-            continue
-        t = ((x - x0) * dx + (y - y0) * dy) / length
-        t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
-        if math.hypot(x - (x0 + t * dx), y - (y0 + t * dy)) <= tol:
-            return True
-    return False
-
-
-def point_in_polygon(point: tuple[float, float],
-                     polygon: list[tuple[float, float]]) -> bool:
-    """Ray casting. Used to find which zone a bend line sits in."""
-    x, y = point
-    inside = False
-    n = len(polygon)
-    for i in range(n):
-        x0, y0 = polygon[i]
-        x1, y1 = polygon[(i + 1) % n]
-        if (y0 > y) != (y1 > y):
-            xc = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
-            if x < xc:
-                inside = not inside
-    return inside
 
 
 # --------------------------------------------------------------------------- #
@@ -1797,7 +1675,6 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list,
     if curves:
         from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 
-        from .core import StepBuilderError, build_contour
         try:
             maker = BRepBuilderAPI_MakeFace(build_contour(curves, 0.0), True)
             face = maker.Face() if maker.IsDone() else None

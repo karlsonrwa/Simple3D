@@ -59,8 +59,10 @@ the keys that differ from the default.
 |---|---:|---:|---|
 | `makeVariant3dIntermediates.il` | 3925 | 90 | console messages, path helpers, property helpers, the `Variants.lst` parser (upstream), geometry-to-JSON primitives, board thickness, stackups/zones/bends readers, a JSON reader + merge + config loader, silkscreen collection/clipping/streaming, the intermediate writer, the top-level export |
 | `simple3d.il` | 897 | 17 | settings from config, install-folder resolution, `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, the Python pre-flight, the GUI launcher, menu insertion |
-| `stepbuilder/core.py` | 2587 | 62 | contour → wire, stackup arithmetic (restack / drop soldermask / align / levels), per-layer regions and parts, board booleans, silkscreen faces + arc-convention search, component transform, `StepFileIndex`, intermediate probes (`is_simple3d_json`, `is_full_board`, `silkscreen_layers`), output naming, rim faces, and `generate()` |
-| `stepbuilder/bend.py` | 2535 | 69 | `IDX_BEND_TYPE_INFO` parser, `Bend`, flat-polygon helpers, `_Region`/`_Strip`/`FoldPlan`, `plan_fold`, cutting the outline into pieces, the three strip constructions (revolve / wrap / facets), fuse |
+| `stepbuilder/core.py` | 2487 | 62 | stackup arithmetic (restack / drop soldermask / align / levels), per-layer regions and parts, board booleans, silkscreen faces + arc-convention search, component transform, `StepFileIndex`, intermediate probes (`is_simple3d_json`, `is_full_board`, `silkscreen_layers`), output naming, rim faces, and `generate()` |
+| `stepbuilder/bend.py` | 2412 | 71 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `_Region`/`_Strip`/`FoldPlan`, `plan_fold`, cutting the outline into pieces, the three strip constructions (revolve / wrap / facets), fuse |
+| `stepbuilder/contour.py` | 267 | 7 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here. Round 72, plan A1 |
+| `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
 | `stepbuilder/gui.py` | 1623 | 58 | one `tk.Tk` subclass: widget layout, window placement across monitors, silk-layer panel, config load/migrate/save, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring |
 | `stepbuilder/__main__.py` | 376 | 4 | two argparse parsers (prefilled GUI, headless CLI), the crash log under `pythonw` |
 | `stepbuilder/worker.py` | 204 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, batch rule for the full-board file, per-job isolation, progress slicing |
@@ -68,6 +70,10 @@ the keys that differ from the default.
 | `tests/` (22 files) | ~4900 | — | 19 suites + `run_all.py`; several are transliterations of SKILL procedures |
 | `tools/` | ~850 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
+
+Counts for `core.py`, `bend.py`, `contour.py` and `errors.py` are as of round
+72 (after plan A1); the other rows are as of round 70. The defs column counts
+every `def` and `class` line, nested ones included.
 
 ### 2.2 Dependencies
 
@@ -92,8 +98,13 @@ graph TD
         GUI -.->|"resolve_json_jobs,<br/>silkscreen_layers, output_stem"| CORE
         WORKER -->|"multiprocessing.Process"| CORE
         CORE --> COLORS
-        CORE -->|"plan_from_json, contour_points,<br/>point_in_polygon (lazy)"| BEND
-        BEND -.->|"build_contour, StepBuilderError (lazy)"| CORE
+        CORE -->|"plan_from_json (lazy)"| BEND
+        CORE --> CONTOUR[contour.py]
+        BEND --> CONTOUR
+        CONTOUR --> ERRORS[errors.py]
+        CORE --> ERRORS
+        BEND --> ERRORS
+        CONTOUR --> OCP
         CORE --> OCP[(OCP / OpenCASCADE)]
         BEND --> OCP
     end
@@ -117,12 +128,15 @@ graph TD
 
 Two things the picture makes visible:
 
-- **`core` and `bend` import each other**, both lazily (inside functions).
-  `core` needs `contour_points` / `point_in_polygon` for the legend clip and
-  the silk centroid; `bend` needs `build_contour` and `StepBuilderError` to
-  cut the outline with its real arcs. The cycle is hidden by the local imports
-  and is the first thing a split has to break (a shared `contour`/geometry
-  module, see the plans).
+- **`core` and `bend` imported each other** until round 72, both lazily
+  (inside functions): `core` needed `contour_points` / `point_in_polygon` for
+  the legend clip and the silk centroid; `bend` needed `build_contour` and
+  `StepBuilderError` to cut the outline with its real arcs. Plan A1 moved all
+  of those into `contour.py`, and the exception into `errors.py`. The one edge
+  left is `core → bend` for the fold plan; `import stepbuilder.bend` no longer
+  loads `core`. Both modules re-export the moved names, so
+  `core.build_contour`, `core.StepBuilderError` and
+  `bend.contour_points` still resolve.
 - **`simple3d.il` is not standalone.** It calls seven procedures and reads one
   global defined in the exporter file, so the documented load order is a
   hard dependency, not a convention.

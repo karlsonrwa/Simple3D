@@ -37,16 +37,16 @@ from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape, TopoDS_Wire
 from OCP.TopTools import TopTools_HSequenceOfShape
 from OCP.XCAFApp import XCAFApp_Application
 from OCP.XCAFDoc import XCAFDoc_ColorType, XCAFDoc_DocumentTool
-from OCP.gp import gp_Ax1, gp_Ax2, gp_Circ, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
+from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
-# Tolerance used to stitch contour edges into a closed wire.
-# Matches the value used by the original C++ implementation.
-WIRE_TOLERANCE = 1.0e-5
-
-
-class StepBuilderError(Exception):
-    """Raised for any condition the original code handled with cin.get()."""
-
+# The contour primitives and the one exception live in modules of their own
+# (round 72, plan A1) so that bend.py no longer has to reach into core for
+# them. Re-exported here: callers wrote `core.build_contour` and
+# `core.StepBuilderError` for a year.
+from .contour import (  # noqa: F401 - re-exported
+    WIRE_TOLERANCE, build_contour, contour_points, point_in_polygon,
+)
+from .errors import StepBuilderError  # noqa: F401 - re-exported
 
 # --------------------------------------------------------------------------- #
 # reporting
@@ -64,106 +64,6 @@ def _noop_log(message: str) -> None:
 
 def _noop_progress(current: int, total: int, label: str = "") -> None:
     pass
-
-
-# --------------------------------------------------------------------------- #
-# contour geometry
-# --------------------------------------------------------------------------- #
-
-def build_contour(contour: Iterable[dict], z_offset: float = 0.0) -> TopoDS_Wire:
-    """Turn a list of JSON primitives (segment / arc / circle) into a wire."""
-    edges = []
-
-    for segment in contour:
-        kind = segment.get("type", "segment")
-
-        if kind == "arc":
-            center = gp_Pnt(segment["center"][0], segment["center"][1], z_offset)
-            circle = gp_Circ(gp_Ax2(center, gp_Dir(0, 0, 1)), segment["radius"])
-            # alpha..beta bound the arc; `ccw` says which END the contour enters
-            # it by, NOT which way the sweep goes. Passing ccw as the sense - as
-            # this did - turns a 90 degree corner into the 270 degree arc the
-            # long way round. Settled by measurement on Cadence's demo board:
-            # under this reading every contour in the file joins head to tail to
-            # 0.000 mm, including the board outline; under the old one three of
-            # them had joints 5.657, 12.728 and 19.799 mm apart and every
-            # affected arc came out at 270 degrees where the design draws 90.
-            #
-            # Direction does not matter here: the stitcher below reorders and
-            # reverses edges as it likes, so the arc is always built the short
-            # way from alpha to beta. contour_points, which walks the contour in
-            # order, does have to honour `ccw` - see there.
-            alpha = math.radians(segment["alpha"])
-            beta = math.radians(segment["beta"])
-            while beta < alpha:
-                beta += 2.0 * math.pi
-            arc = GC_MakeArcOfCircle(circle, alpha, beta, True).Value()
-            edges.append(BRepBuilderAPI_MakeEdge(arc).Edge())
-
-        elif kind == "circle":
-            center = gp_Pnt(segment["x"], segment["y"], z_offset)
-            circle = gp_Circ(gp_Ax2(center, gp_Dir(0, 0, 1)), segment["radius"])
-            edges.append(BRepBuilderAPI_MakeEdge(circle).Edge())
-
-        elif kind == "segment":
-            start = gp_Pnt(segment["start"][0], segment["start"][1], z_offset)
-            end = gp_Pnt(segment["end"][0], segment["end"][1], z_offset)
-            edges.append(BRepBuilderAPI_MakeEdge(start, end).Edge())
-
-        else:
-            raise StepBuilderError(f"Unknown contour primitive: {kind!r}")
-
-    if not edges:
-        raise StepBuilderError("Contour contains no primitives")
-
-    edge_seq = TopTools_HSequenceOfShape()
-    for edge in edges:
-        edge_seq.Append(edge)
-
-    wires = TopTools_HSequenceOfShape()
-    ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(
-        edge_seq, WIRE_TOLERANCE, False, wires
-    )
-
-    if wires.Length() < 1:
-        raise StepBuilderError("Could not stitch contour edges into a wire")
-    if wires.Length() > 1:
-        # The original code silently took wire #1 and dropped the rest, which
-        # produces a subtly wrong board. Surfacing it is more useful.
-        raise StepBuilderError(
-            f"Contour is not closed: edges formed {wires.Length()} separate "
-            f"wires (tolerance {WIRE_TOLERANCE}). Check for gaps in the outline."
-        )
-
-    wire = TopoDS.Wire_s(wires.Value(1))
-    if not wire.Closed():
-        # A single but open wire: MakeFace would silently build garbage.
-        # Report the actual gap and where it is: a large gap means the source
-        # never emitted a closing edge, a tiny one means the tolerance is what
-        # needs looking at. Without this the message cannot tell them apart.
-        raise StepBuilderError(
-            f"Contour is open (start and end do not meet within {WIRE_TOLERANCE})."
-            + _open_wire_detail(wire)
-        )
-    return wire
-
-
-def _open_wire_detail(wire: TopoDS_Wire) -> str:
-    """' Gap 3.81 mm between (x, y) and (x, y).' — best effort, never raises."""
-    try:
-        from OCP.BRep import BRep_Tool
-        from OCP.TopExp import TopExp
-        from OCP.TopoDS import TopoDS_Vertex
-
-        v1, v2 = TopoDS_Vertex(), TopoDS_Vertex()
-        TopExp.Vertices_s(wire, v1, v2)
-        if v1.IsNull() or v2.IsNull():
-            return ""
-        p1, p2 = BRep_Tool.Pnt_s(v1), BRep_Tool.Pnt_s(v2)
-        return (f" Gap {p1.Distance(p2):.6g} between "
-                f"({p1.X():.4f}, {p1.Y():.4f}) and ({p2.X():.4f}, {p2.Y():.4f}).")
-    except Exception:
-        return ""
 
 
 # A layer counts as soldermask if this survives in its name or IPC function
@@ -1623,7 +1523,6 @@ def _silk_point(polygon: dict) -> tuple[float, float] | None:
     if verts:
         pts = [(float(v[0]), float(v[1])) for v in verts if len(v) >= 2]
     else:
-        from .bend import contour_points
         pts = contour_points(polygon.get("outline") or [])
     if not pts:
         return None
@@ -1650,8 +1549,6 @@ def clip_silk_to_zones(polygons: list, stackups: dict | None, zones: list | None
         return polygons
     if not any(isinstance(st.get("silkscreen"), dict) for st in stackups.values()):
         return polygons                    # older intermediate: it cannot say
-
-    from .bend import contour_points, point_in_polygon
 
     printed, bare = [], []
     for zone in zones:
