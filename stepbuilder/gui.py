@@ -12,10 +12,8 @@ the command line, or by setting them via the config file the SKILL side writes.
 
 from __future__ import annotations
 
-import json
 import multiprocessing
 import queue
-import re
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -23,6 +21,7 @@ from tkinter import filedialog, messagebox, ttk
 from . import core
 from . import settings
 from . import winplace
+from .widgets.layers_panel import LayersPanel
 from .worker import BuildSettings, run_jobs
 from .bend import DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
 from .core import DEFAULT_FLAT_HEIGHT
@@ -189,13 +188,9 @@ class StepBuilderApp(tk.Tk):
         self._paths_from_launcher = False
         # Layers switched OFF, by name. Exclusions rather than inclusions: a
         # layer this build has never seen must default to ON, or a layer that
-        # appears on a new board would silently go missing.
+        # appears on a new board would silently go missing. The ticks
+        # themselves live in the LayersPanel built by _build_ui.
         self._layers_off: set[str] = set()
-        self._layer_vars: dict[str, tk.BooleanVar] = {}
-        # Which side each checkbox belongs to, so switching a side off can grey
-        # its layers out WITHOUT changing them - the ticks are still what gets
-        # saved and what applies again when the side comes back.
-        self._layer_rows: dict[str, list] = {"top": [], "bottom": []}
         self._layer_refresh_job = None
         self._drain_job = None
 
@@ -376,51 +371,12 @@ class StepBuilderApp(tk.Tk):
         # row carries its polygon count - that is what explains a large file.
         ttk.Separator(silk, orient="horizontal").grid(
             row=2, column=0, sticky="ew", pady=(8, 6))
-        layers_frame = ttk.LabelFrame(silk, text="Layers", padding=4)
-        layers_frame.grid(row=3, column=0, sticky="ew")
+        self.layers = LayersPanel(silk, side_wanted=self._side_wanted)
+        self.layers.grid(row=3, column=0, sticky="ew")
         # Everything in the group that should grey out when both sides are off.
         # The two side checkboxes are deliberately NOT in here: they are how the
         # group is switched back on.
-        self._silk_group_widgets = [self._silk_color_label, layers_frame]
-        layers_frame.columnconfigure(0, weight=1)
-
-        self._layers_canvas = tk.Canvas(layers_frame, height=96, highlightthickness=0)
-        self._layers_canvas.grid(row=0, column=0, sticky="ew")
-        layers_scroll = ttk.Scrollbar(layers_frame, orient="vertical",
-                                      command=self._layers_canvas.yview)
-        layers_scroll.grid(row=0, column=1, sticky="ns")
-        self._layers_canvas.configure(yscrollcommand=layers_scroll.set)
-        self._layers_inner = ttk.Frame(self._layers_canvas)
-        self._layers_window = self._layers_canvas.create_window(
-            (0, 0), window=self._layers_inner, anchor="nw")
-        self._layers_inner.bind(
-            "<Configure>",
-            lambda e: self._layers_canvas.configure(
-                scrollregion=self._layers_canvas.bbox("all")))
-        self._layers_canvas.bind(
-            "<Configure>",
-            lambda e: self._layers_canvas.itemconfigure(self._layers_window,
-                                                        width=e.width))
-
-        # The wheel over the panel must scroll it. Binding the canvas alone is
-        # not enough: the pointer is nearly always over a Checkbutton or the
-        # inner frame, and those consume the event, so the wheel only worked on
-        # the scrollbar itself. Binding every child is worse - the list is
-        # rebuilt constantly. So grab the wheel while the pointer is inside the
-        # panel and release it on the way out, which leaves the wheel alone
-        # everywhere else in the window.
-        self._layers_canvas.bind("<Enter>", self._grab_wheel)
-        self._layers_canvas.bind("<Leave>", self._release_wheel)
-
-        layer_buttons = ttk.Frame(layers_frame)
-        layer_buttons.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        all_btn = ttk.Button(layer_buttons, text="All", width=6,
-                             command=lambda: self._set_all_layers(True))
-        all_btn.pack(side="left")
-        none_btn = ttk.Button(layer_buttons, text="None", width=6,
-                              command=lambda: self._set_all_layers(False))
-        none_btn.pack(side="left", padx=(4, 0))
-        self._silk_group_widgets += [all_btn, none_btn]
+        self._silk_group_widgets = [self._silk_color_label, self.layers, *self.layers.buttons]
 
         # Neither a board setting nor a legend one - it shrinks the whole file,
         # component models included - so it sits on its own between the groups
@@ -705,31 +661,6 @@ class StepBuilderApp(tk.Tk):
 
     # ------------------------------------------------------- silk layers -- #
 
-    def _grab_wheel(self, _event=None) -> None:
-        self.bind_all("<MouseWheel>", self._on_layers_wheel)
-        # X11 reports the wheel as buttons 4 and 5; harmless on Windows.
-        self.bind_all("<Button-4>", self._on_layers_wheel)
-        self.bind_all("<Button-5>", self._on_layers_wheel)
-
-    def _release_wheel(self, _event=None) -> None:
-        self.unbind_all("<MouseWheel>")
-        self.unbind_all("<Button-4>")
-        self.unbind_all("<Button-5>")
-
-    def _on_layers_wheel(self, event) -> None:
-        # Nothing to scroll when the list already fits: without this the canvas
-        # rubber-bands the content out of view on a short list.
-        region = self._layers_canvas.bbox("all")
-        if not region or region[3] - region[1] <= self._layers_canvas.winfo_height():
-            return
-        if getattr(event, "num", None) == 4:
-            step = -1
-        elif getattr(event, "num", None) == 5:
-            step = 1
-        else:
-            step = -1 if event.delta > 0 else 1
-        self._layers_canvas.yview_scroll(step, "units")
-
     def _schedule_layer_refresh(self, *_args) -> None:
         """Rebuild the layer list shortly after the JSON path settles.
 
@@ -743,9 +674,6 @@ class StepBuilderApp(tk.Tk):
     def _refresh_layers(self) -> None:
         """Read the queued JSON(s) and redraw the checkbox list."""
         self._layer_refresh_job = None
-        for child in self._layers_inner.winfo_children():
-            child.destroy()
-
         field = self.json_file.get().strip()
         found: dict[str, dict[str, int]] = {}
         if field:
@@ -758,54 +686,7 @@ class StepBuilderApp(tk.Tk):
                     for layer, n in counts.items():
                         into[layer] = into.get(layer, 0) + n
 
-        if not found:
-            # grid, like the side columns below: pack and grid cannot both
-            # manage children of one container, and this label shares
-            # _layers_inner with them.
-            ttk.Label(self._layers_inner, foreground="#777",
-                      text="No layer information in this JSON — the whole "
-                           "legend is built. Re-export to choose layers.").grid(
-                row=0, column=0, sticky="w", padx=4, pady=2)
-            self._layer_vars = {}
-            self._layer_rows = {"top": [], "bottom": []}
-            return
-
-        # Keep the ticks the user already set for layers that are still here,
-        # so a refresh does not undo a selection.
-        previous = {name: var.get() for name, var in self._layer_vars.items()}
-        self._layer_vars = {}
-
-        # Side by side, not stacked: a board's two sides rarely have many
-        # layers each, so two short columns fit where one long list would
-        # scroll, and the sides stay comparable at a glance. Columns are
-        # allocated only to sides that have layers, so a top-only board does
-        # not leave a gap where Bottom would have been.
-        self._layer_rows = {"top": [], "bottom": []}
-        column = 0
-        for side in ("top", "bottom"):
-            if side not in found:
-                continue
-            side_frame = ttk.Frame(self._layers_inner)
-            side_frame.grid(row=0, column=column, sticky="nw", padx=(0, 18))
-            column += 1
-            ttk.Label(side_frame, text=side.capitalize(),
-                      foreground="#555").pack(anchor="w", padx=2, pady=(2, 0))
-            for layer in sorted(found[side]):
-                # A layer already switched off in the config starts unticked;
-                # one this build has never seen starts ON. Storing exclusions
-                # rather than inclusions is what makes that the default - a
-                # layer that appears on a new board must not go missing
-                # silently.
-                state = previous.get(layer, layer not in self._layers_off)
-                var = tk.BooleanVar(value=state)
-                self._layer_vars[layer] = var
-                box = ttk.Checkbutton(
-                    side_frame, variable=var,
-                    text=f"{layer}   ({found[side][layer]})",
-                )
-                box.pack(anchor="w", padx=(16, 4))
-                self._layer_rows[side].append((layer, var, box))
-
+        self.layers.refresh(found, self._layers_off)
         # A side switched off greys its layers out immediately, not on the next
         # refresh.
         self._update_silk_row()
@@ -813,32 +694,25 @@ class StepBuilderApp(tk.Tk):
     def _side_wanted(self, side: str) -> bool:
         return self.silk_top.get() if side == "top" else self.silk_bottom.get()
 
-    def _set_all_layers(self, state: bool) -> None:
-        """All / None, but only for sides that are switched on.
-
-        A greyed-out side keeps its ticks. Changing them from here would edit a
-        selection whose effect is not visible, and it is that same selection
-        which gets saved to the config.
-        """
-        for side, rows in self._layer_rows.items():
-            if not self._side_wanted(side):
-                continue
-            for _layer, var, _box in rows:
-                var.set(state)
-
     def _current_layers_off(self) -> set[str]:
         """Layer names currently unticked."""
-        return {name for name, var in self._layer_vars.items() if not var.get()}
+        return self.layers.current_layers_off()
+
+    @property
+    def _layer_vars(self) -> dict:
+        """The panel's tick per layer - what _save_config and the tests read."""
+        return self.layers.vars
+
+    @property
+    def _layer_rows(self) -> dict:
+        return self.layers.rows
 
     def _update_silk_row(self) -> None:
         """Keep the ink swatch and the enabled state in step with the checkboxes."""
         on = self.silk_top.get() or self.silk_bottom.get()
         # Grey the layers of a side that is off. State only - the variables are
         # untouched, so the ticks come back exactly as they were.
-        for side, rows in self._layer_rows.items():
-            state = "normal" if self._side_wanted(side) else "disabled"
-            for _layer, _var, box in rows:
-                box.configure(state=state)
+        self.layers.update_sides()
         self.silk_box.configure(state="readonly" if on else "disabled")
         self.silk_flat_check.configure(state="normal" if on else "disabled")
         # With both sides off nothing in this group does anything, so the whole

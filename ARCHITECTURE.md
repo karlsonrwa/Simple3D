@@ -80,7 +80,8 @@ the keys that differ from the default.
 | `stepbuilder/bend/apply.py` | 179 | 2 | `apply_plan` — cut region by region, bend each strip (revolve, else wrap, else facets), fuse — and `_fuse_all` |
 | `stepbuilder/contour.py` | 290 | 8 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here; `_face_from_wires` (wires → a planar face with holes, used by the board and the legend alike) since A4. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
-| `stepbuilder/gui.py` | 1355 | 57 | one `tk.Tk` subclass: widget layout, silk-layer panel, the hand-over between widgets and `settings.GuiSettings`, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring; placement through `winplace` |
+| `stepbuilder/gui.py` | 1229 | 55 | one `tk.Tk` subclass: widget layout, the hand-over between widgets and `settings.GuiSettings`, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring; placement through `winplace`, the layer list through `widgets.layers_panel` |
+| `stepbuilder/widgets/layers_panel.py` | 178 | 9 | `LayersPanel(ttk.LabelFrame)`: the scrolled Top/Bottom checkbox list - `refresh(found, layers_off)`, `current_layers_off`, `set_all` (live sides only), `update_sides`, wheel grab/release. Round 74, plan C4 |
 | `stepbuilder/winplace.py` | 138 | 6 | window placement for any `tk.Tk`: the virtual desk, `geometry_is_reachable`, `parse_geometry`, centre / restore / the normal-geometry filter; no tkinter import. Round 74, plan C3 |
 | `stepbuilder/settings.py` | 404 | 18 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`; then the `gui` section as ONE table, `GUI_KEYS` (name, field, default, load, save), `GuiSettings`, `load_gui_settings` (both migrations live in the `load` of the key that superseded them) and `save_gui_settings` (only what differs from the shipped default). Round 72, plans C1–C2 |
 | `stepbuilder/__main__.py` | 362 | 4 | two argparse parsers (prefilled GUI, headless CLI), the crash log under `pythonw`; the build's options go through `BuildOptions.from_args` since A8 |
@@ -92,9 +93,9 @@ the keys that differ from the default.
 
 Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
 `gui.py`, `settings.py`, `stackup.py`, `reporting.py`, `board.py`, `legend.py`,
-`models.py`, `stepdoc.py`, `build.py`, `worker.py`, `__main__.py` and
-`winplace.py` are as of round 74 (after plans A, B, C1–C3); the other rows are
-as of round 70. The defs column counts
+`models.py`, `stepdoc.py`, `build.py`, `worker.py`, `__main__.py`,
+`winplace.py` and `widgets/layers_panel.py` are as of round 74 (after plans A,
+B, C1–C4); the other rows are as of round 70. The defs column counts
 every `def` and `class` line, nested ones included.
 
 ### 2.2 Dependencies
@@ -118,6 +119,7 @@ graph TD
         GUI --> COLORS[colors.py]
         GUI --> SETTINGS[settings.py]
         GUI --> WINPLACE[winplace.py]
+        GUI --> LAYERS[widgets/layers_panel.py]
         GUI -.->|"DEFAULT_* constants"| BEND[bend/]
         GUI -.->|"resolve_jobs, output_stem<br/>(re-exported from intermediate)"| CORE
         WORKER -->|"multiprocessing.Process"| CORE

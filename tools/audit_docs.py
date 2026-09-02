@@ -17,7 +17,11 @@ ROOT = _ROOT
 readme = (ROOT / "README.md").read_text(encoding="utf-8")
 quick = (ROOT / "QUICKSTART.md").read_text(encoding="utf-8")
 main_py = (ROOT / "stepbuilder/__main__.py").read_text(encoding="utf-8")
-gui_py = (ROOT / "stepbuilder/gui.py").read_text(encoding="utf-8")
+# The window and the panels it is built from (widgets/, round 74): a frame
+# the quick-start names may live in either.
+gui_py = "\n".join(p.read_text(encoding="utf-8") for p in
+                   [ROOT / "stepbuilder/gui.py",
+                    *sorted((ROOT / "stepbuilder/widgets").glob("*.py"))])
 # The flat-legend default lives in legend.py since round 73 (plan A5).
 legend_py = (ROOT / "stepbuilder/legend.py").read_text(encoding="utf-8")
 cfg = json.loads((ROOT / "simple3d_config.json").read_text(encoding="utf-8"))
@@ -97,7 +101,7 @@ for f in ("makeVariant3dIntermediates.il", "simple3d.il", "simple3d_config.json"
           "core.py", "contour.py", "errors.py", "intermediate.py", "settings.py",
           "stackup.py", "reporting.py", "board.py", "legend.py", "models.py",
           "stepdoc.py", "build.py", "winplace.py",
-          "gui.py", "colors.py", "bend/",
+          "gui.py", "colors.py", "bend/", "widgets/",
           "__main__.py"):
     if f not in readme:
         note("file not in layout listing", f)

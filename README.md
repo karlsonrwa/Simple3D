@@ -593,6 +593,7 @@ stepbuilder/
   reporting.py   the log and progress callbacks every module reports through
   bend/          folding a flex board along its bend areas (a package since round 72)
   colors.py      the board themes and rim options
+  widgets/       the panels the window is built from: layers_panel.py, the silkscreen layer list
   worker.py      the build, in a child process, so a crash cannot take the window
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
@@ -1196,6 +1197,7 @@ stepbuilder/
   reporting.py   колбэки лога и прогресса, через которые отчитываются все модули
   bend/          сгибание гибкой платы по областям сгиба (с раунда 72 — пакет)
   colors.py      темы платы и варианты цвета торца
+  widgets/       панели, из которых собрано окно: layers_panel.py — список слоёв шелкографии
   worker.py      сборка в дочернем процессе, чтобы падение не унесло окно
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
