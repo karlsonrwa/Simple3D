@@ -287,6 +287,61 @@ check("several variants ignore the board name and use their own stem",
                       dated=True).startswith("board_a0_simple_"),
       str(output_stem(one, NAMES, brd_name="Board_A0", several=True, dated=True)))
 
+print("\n[7f] the silkscreen layer panel: ticks, sides, All/None, the wheel")
+# The round-15/16 behaviours, asserted before the panel becomes a widget of
+# its own (round 74, plan C4): a refresh keeps the ticks, an excluded layer
+# starts unticked and an unknown one ticked, a side that is off greys its rows
+# without touching them, All/None act on live sides only, and the wheel is
+# grabbed only while the pointer is over the panel.
+LAYERS = TMP / "layers.json"
+LAYERS.write_text(json.dumps({
+    "format": "simple3d", "format_version": 7, "name": "layers", "pcb": {},
+    "silkscreen": {"top": [{"layer": "SILK_A"}, {"layer": "SILK_A"}, {"layer": "SILK_B"}],
+                   "bottom": [{"layer": "SILK_C"}]}}), encoding="utf-8")
+app.silk_top.set(True); app.silk_bottom.set(True)
+app._layers_off = {"SILK_B"}
+app.json_file.set(str(LAYERS))
+if app._layer_refresh_job is not None:
+    app.after_cancel(app._layer_refresh_job)
+app._refresh_layers()
+rows = {side: [name for name, _, _ in items] for side, items in app._layer_rows.items()}
+check("one row per layer, per side", rows == {"top": ["SILK_A", "SILK_B"], "bottom": ["SILK_C"]}, str(rows))
+check("a row carries its polygon count", app._layer_rows["top"][0][2].cget("text") == "SILK_A   (2)",
+      app._layer_rows["top"][0][2].cget("text"))
+check("a layer excluded in the config starts unticked, the others ticked",
+      app._layer_vars["SILK_B"].get() is False and app._layer_vars["SILK_A"].get() is True
+      and app._layer_vars["SILK_C"].get() is True)
+check("what is off is what the config would get", app._current_layers_off() == {"SILK_B"})
+app._layer_vars["SILK_A"].set(False)
+app._refresh_layers()
+check("a refresh keeps the ticks the user set", app._layer_vars["SILK_A"].get() is False
+      and app._layer_vars["SILK_B"].get() is False and app._layer_vars["SILK_C"].get() is True)
+app.silk_bottom.set(False); app._update_silk_row()
+check("a side that is off greys its rows", str(app._layer_rows["bottom"][0][2].cget("state")) == "disabled"
+      and str(app._layer_rows["top"][0][2].cget("state")) == "normal")
+check("without touching their ticks", app._layer_vars["SILK_C"].get() is True)
+app._set_all_layers(False)
+check("None acts on the live side only", app._layer_vars["SILK_A"].get() is False
+      and app._layer_vars["SILK_B"].get() is False and app._layer_vars["SILK_C"].get() is True)
+app.silk_bottom.set(True); app._update_silk_row()
+check("switching the side back on ungreys it", str(app._layer_rows["bottom"][0][2].cget("state")) == "normal")
+app._set_all_layers(True)
+check("All ticks every row of every live side", all(v.get() for v in app._layer_vars.values()))
+app._grab_wheel()
+check("the wheel is grabbed while the pointer is over the panel", bool(app.bind_all("<MouseWheel>")))
+app._release_wheel()
+check("and released on the way out", not app.bind_all("<MouseWheel>"))
+app._layer_vars["SILK_C"].set(False)
+app._save_config()
+check("the ticks reach the config as exclusions",
+      json.loads(local_cfg.read_text(encoding="utf-8"))["gui"].get("silkscreenLayersOff") == ["SILK_C"],
+      str(json.loads(local_cfg.read_text(encoding="utf-8"))["gui"].get("silkscreenLayersOff")))
+app.json_file.set("")
+if app._layer_refresh_job is not None:
+    app.after_cancel(app._layer_refresh_job)
+app._refresh_layers()
+check("no JSON: one label, no rows", not app._layer_vars and not any(app._layer_rows.values()))
+
 print("\n[8] snapshot is complete and frozen")
 snap = app._snapshot()
 # Names, not a count: a bare number says "16 != 15" when a field is added and
