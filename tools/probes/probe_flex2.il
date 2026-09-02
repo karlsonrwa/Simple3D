@@ -1,6 +1,10 @@
 ;=====================================================================
 ;  probe_flex2.il - DIAGNOSTIC ONLY. Reads the design, changes nothing.
 ;
+;  REQUIRES: makeVariant3dIntermediates.il  (s3dSelectVisibleOn, s3dWarn)
+;  Load the exporter first: the subclass sweep is its s3dSelectVisibleOn
+;  since round 76 (D3) instead of a copy kept here.
+;
 ;  Fills the two gaps probe_flex.il left:
 ;
 ;    1. The zone outline is NOT in zone->shapeBoundary (nil on every zone
@@ -81,29 +85,11 @@ procedure( s3dProbeZoneMembers()
 
 ; ---- 2: real bend line geometry --------------------------------------
 procedure( s3dProbeBendGeometry()
-    let( ( saveVis saveEnabled saveOn elems ( n 0 ) )
+    let( ( elems ( n 0 ) )
         printf( "\n===== BEND LINE GEOMETRY =====\n" )
 
-        saveVis     = axlVisibleGet()
-        saveEnabled = axlGetFindFilter( t )
-        saveOn      = axlGetFindFilter( nil )
-
-        axlVisibleDesign( nil )
-        unless( axlVisibleLayer( "RIGID FLEX/BEND_LINE" t )
-            printf( "  no such layer\n" )
-        )
-        axlClearSelSet()
-        axlSetFindFilter( ?enabled list( "noall" "lines" "shapes" "text" )
-                          ?onButtons list( "noall" "lines" "shapes" "text" ) )
-        axlAddSelectAll()
-        elems = axlGetSelSet()
-        axlClearSelSet()
-
-        errset( axlVisibleSet( saveVis ) )
-        when( saveEnabled || saveOn
-            errset( axlSetFindFilter( ?enabled saveEnabled
-                                      ?onButtons remove( "DYNTHEMALS" saveOn ) ) )
-        )
+        elems = s3dSelectVisibleOn( list( "RIGID FLEX/BEND_LINE" ) list( "noall" "lines" "shapes" "text" )
+                                    "  no such layer: %s" )
 
         foreach( e elems
             n = n + 1
@@ -117,29 +103,11 @@ procedure( s3dProbeBendGeometry()
 ; ---- 3: is the zone outline reachable as a plain subclass sweep? -----
 ; Fallback route, in case groupMembers turns out not to hold the geometry.
 procedure( s3dProbeZoneOutlineLayer()
-    let( ( saveVis saveEnabled saveOn elems ( n 0 ) )
+    let( ( elems ( n 0 ) )
         printf( "\n===== RIGID FLEX/ZONE_OUTLINE sweep =====\n" )
 
-        saveVis     = axlVisibleGet()
-        saveEnabled = axlGetFindFilter( t )
-        saveOn      = axlGetFindFilter( nil )
-
-        axlVisibleDesign( nil )
-        unless( axlVisibleLayer( "RIGID FLEX/ZONE_OUTLINE" t )
-            printf( "  no such layer\n" )
-        )
-        axlClearSelSet()
-        axlSetFindFilter( ?enabled list( "noall" "lines" "shapes" "text" )
-                          ?onButtons list( "noall" "lines" "shapes" "text" ) )
-        axlAddSelectAll()
-        elems = axlGetSelSet()
-        axlClearSelSet()
-
-        errset( axlVisibleSet( saveVis ) )
-        when( saveEnabled || saveOn
-            errset( axlSetFindFilter( ?enabled saveEnabled
-                                      ?onButtons remove( "DYNTHEMALS" saveOn ) ) )
-        )
+        elems = s3dSelectVisibleOn( list( "RIGID FLEX/ZONE_OUTLINE" ) list( "noall" "lines" "shapes" "text" )
+                                    "  no such layer: %s" )
 
         foreach( e elems
             n = n + 1

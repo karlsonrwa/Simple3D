@@ -1954,24 +1954,37 @@ procedure( s3dZonesJson()
 ;  tried first here too, with a subclass sweep as the fallback.
 ;=====================================================================
 
-; Bend lines swept off their subclass. nil until asked for; only ever asked
-; for on a design that HAS bends, so an ordinary board pays no visibility
-; churn for a feature it does not use.
-S3D_BendLines = nil
-
-procedure( s3dSweepBendLines()
+; Everything on the given subclasses, selected with the design otherwise
+; hidden - the one sweep the exporter and the probes share (round 76, D3;
+; until then five copies of it).
+;
+; The visibility and find-filter state is snapshotted and restored, per the
+; programming model in the axlVisibleDesign documentation. Without that the
+; user is left staring at a blank board after an export. Restored BEFORE the
+; caller does anything with the result, so a slow or failing conversion
+; afterwards cannot strand the session with a hidden design.
+;
+; A layer that does not exist is reported through s3dWarn with t_missingFmt
+; (one %s, the layer) and the sweep goes on with the others.
+;
+; axlGetFindFilter reports DYNTHEMALS among the on-buttons but refuses to
+; take it back ("Options are ignored for onButtons"), so handing its own
+; answer straight back produced a warning on every export (round 14). It is
+; dropped from what is restored.
+procedure( s3dSelectVisibleOn( l_layers l_filter t_missingFmt )
     let( ( saveVis saveEnabled saveOn elems )
         saveVis     = axlVisibleGet()
         saveEnabled = axlGetFindFilter( t )
         saveOn      = axlGetFindFilter( nil )
 
         axlVisibleDesign( nil )
-        unless( axlVisibleLayer( "RIGID FLEX/BEND_LINE" t )
-            s3dWarn( "Simple 3D: no RIGID FLEX/BEND_LINE subclass in this design." )
+        foreach( layer l_layers
+            unless( axlVisibleLayer( layer t )
+                s3dWarn( sprintf( nil t_missingFmt layer ) )
+            )
         )
         axlClearSelSet()
-        axlSetFindFilter( ?enabled list( "noall" "lines" )
-                          ?onButtons list( "noall" "lines" ) )
+        axlSetFindFilter( ?enabled l_filter ?onButtons l_filter )
         axlAddSelectAll()
         elems = axlGetSelSet()
         axlClearSelSet()
@@ -1983,6 +1996,16 @@ procedure( s3dSweepBendLines()
         )
         elems
     )
+)
+
+; Bend lines swept off their subclass. nil until asked for; only ever asked
+; for on a design that HAS bends, so an ordinary board pays no visibility
+; churn for a feature it does not use.
+S3D_BendLines = nil
+
+procedure( s3dSweepBendLines()
+    s3dSelectVisibleOn( list( "RIGID FLEX/BEND_LINE" ) list( "noall" "lines" )
+                        "Simple 3D: no %s subclass in this design." )
 )
 
 ; The members of the group named t_name, or nil.
@@ -3185,45 +3208,16 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
 ; figures owned by symbols as well as the loose ones (which is why exportJson
 ; has to filter on elem->parent->refdes - here both are wanted).
 ;
-; The visibility and find-filter state is snapshotted and restored, per the
-; programming model in the axlVisibleDesign documentation. Without that the
-; user is left staring at a blank board after an export.
+; The sweep is s3dSelectVisibleOn, which puts the visibility and find-filter
+; state back before the conversion below starts.
 procedure( s3dCollectSilkByLayer( l_layers s_endCap )
-    let( ( saveVis saveEnabled saveOn elems polys out key groups order zero message ( nBad 0 ) )
+    let( ( elems polys out key groups order zero message ( nBad 0 ) )
         out = nil
         groups = makeTable( "s3dSilkGroups" nil )
         order = tconc( nil nil )
         when( l_layers
-            saveVis = axlVisibleGet()
-            saveEnabled = axlGetFindFilter( t )
-            saveOn = axlGetFindFilter( nil )
-
-            axlVisibleDesign( nil )
-            foreach( layer l_layers
-                unless( axlVisibleLayer( layer t )
-                    s3dWarn( sprintf( nil "Simple 3D: no such layer: %s" layer ) )
-                )
-            )
-            axlClearSelSet()
-            axlSetFindFilter( ?enabled list( "noall" "lines" "shapes" "text" )
-                              ?onButtons list( "noall" "lines" "shapes" "text" ) )
-            axlAddSelectAll()
-            elems = axlGetSelSet()
-            axlClearSelSet()
-
-            ; Restore before the (much slower) polygon conversion, so an error
-            ; in the conversion cannot strand the session with a hidden design.
-            errset( axlVisibleSet( saveVis ) )
-            when( saveEnabled || saveOn
-                ; axlGetFindFilter reports DYNTHEMALS among the on-buttons but
-                ; refuses to take it back ("Options are ignored for onButtons"),
-                ; so handing its own answer straight back produces a warning on
-                ; every export. Drop it rather than leave the noise.
-                errset(
-                    axlSetFindFilter( ?enabled saveEnabled
-                                      ?onButtons remove( "DYNTHEMALS" saveOn ) )
-                )
-            )
+            elems = s3dSelectVisibleOn( l_layers list( "noall" "lines" "shapes" "text" )
+                                        "Simple 3D: no such layer: %s" )
 
             foreach( elem elems
                 ; Bucket by the SOURCE object's layer, before conversion: a

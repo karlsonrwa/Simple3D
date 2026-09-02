@@ -1,6 +1,10 @@
 ;=====================================================================
 ;  probe_flex.il - DIAGNOSTIC ONLY. Reads the design, changes nothing.
 ;
+;  REQUIRES: makeVariant3dIntermediates.il  (s3dSelectVisibleOn, s3dWarn)
+;  Load the exporter first: the subclass sweep is its s3dSelectVisibleOn
+;  since round 76 (D3) instead of a copy kept here.
+;
 ;  Dumps everything Allegro exposes about multi-stackup and rigid-flex, so
 ;  the real shape of the data decides the design instead of the reference:
 ;
@@ -122,29 +126,11 @@ procedure( s3dProbeBends()
 ; (TYPE, INNER_SIDE, INNER_ANGLE, ORDER, ...) lives in a property called
 ; IDX_BEND_TYPE_INFO, which no reference page describes - so dump it raw.
 procedure( s3dProbeBendLines( t_layer )
-    let( ( saveVis saveEnabled saveOn elems props ( n 0 ) )
+    let( ( elems props ( n 0 ) )
         printf( "\n===== BEND LINES on %s =====\n" t_layer )
 
-        saveVis     = axlVisibleGet()
-        saveEnabled = axlGetFindFilter( t )
-        saveOn      = axlGetFindFilter( nil )
-
-        axlVisibleDesign( nil )
-        unless( axlVisibleLayer( t_layer t )
-            printf( "  no such layer: %s\n" t_layer )
-        )
-        axlClearSelSet()
-        axlSetFindFilter( ?enabled list( "noall" "lines" "shapes" "text" )
-                          ?onButtons list( "noall" "lines" "shapes" "text" ) )
-        axlAddSelectAll()
-        elems = axlGetSelSet()
-        axlClearSelSet()
-
-        errset( axlVisibleSet( saveVis ) )
-        when( saveEnabled || saveOn
-            errset( axlSetFindFilter( ?enabled saveEnabled
-                                      ?onButtons remove( "DYNTHEMALS" saveOn ) ) )
-        )
+        elems = s3dSelectVisibleOn( list( t_layer ) list( "noall" "lines" "shapes" "text" )
+                                    "  no such layer: %s" )
 
         foreach( e elems
             n = n + 1

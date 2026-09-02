@@ -1,6 +1,10 @@
 ;=====================================================================
 ;  probe_bend.il - DIAGNOSTIC ONLY. Reads the design, changes nothing.
 ;
+;  REQUIRES: makeVariant3dIntermediates.il  (s3dSelectVisibleOn, s3dWarn)
+;  Load the exporter first: the subclass sweep is its s3dSelectVisibleOn
+;  since round 76 (D3) instead of a copy kept here.
+;
 ;  Everything Allegro exposes about BENDS, so folding is designed from the
 ;  data rather than from the reference - which describes almost none of it.
 ;
@@ -218,29 +222,11 @@ procedure( s3dProbeRigidFlexSubclasses()
 ; Lines, shapes and text in one sweep: a bend line is a path and a bend
 ; area is a shape, and both have to be caught by whatever filter is set.
 procedure( s3dProbeBendSubclass( t_layer )
-    let( ( saveVis saveEnabled saveOn elems ( n 0 ) )
+    let( ( elems ( n 0 ) )
         printf( "\n===== %s =====\n" t_layer )
 
-        saveVis     = axlVisibleGet()
-        saveEnabled = axlGetFindFilter( t )
-        saveOn      = axlGetFindFilter( nil )
-
-        axlVisibleDesign( nil )
-        unless( axlVisibleLayer( t_layer t )
-            printf( "  no such layer in this design\n" )
-        )
-        axlClearSelSet()
-        axlSetFindFilter( ?enabled list( "noall" "lines" "shapes" "text" )
-                          ?onButtons list( "noall" "lines" "shapes" "text" ) )
-        axlAddSelectAll()
-        elems = axlGetSelSet()
-        axlClearSelSet()
-
-        errset( axlVisibleSet( saveVis ) )
-        when( saveEnabled || saveOn
-            errset( axlSetFindFilter( ?enabled saveEnabled
-                                      ?onButtons remove( "DYNTHEMALS" saveOn ) ) )
-        )
+        elems = s3dSelectVisibleOn( list( t_layer ) list( "noall" "lines" "shapes" "text" )
+                                    "  no such layer in this design: %s" )
 
         foreach( e elems
             n = n + 1

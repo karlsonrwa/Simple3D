@@ -2979,6 +2979,16 @@ D1 and D2 in one commit, closed by all five mechanical checks,
   six names it never touched (`elements placement outFile outPort pcb
   lines`): they had been `create3dIntermediateFormat`'s, reaching its
   caller's let through dynamic scope; it declares them itself now.
+- **D3** (a second commit, same round) `s3dSelectVisibleOn( l_layers
+  l_filter t_missingFmt )`: the visibility snapshot / find filter /
+  `axlAddSelectAll` / restore sweep, once. `s3dSweepBendLines` is one call
+  to it; `s3dCollectSilkByLayer` calls it and lost its three save
+  variables; the three rigid-flex probes call it too, with a `REQUIRES:`
+  marker so the checker pools the exporter's definitions for them. The
+  round-14 DYNTHEMALS note lives in the helper. Checked the only way a
+  visibility sweep can be: the three probes run headless on `flex3-a0.brd`
+  before and after, 1099 console lines each, no difference - plus the
+  JSON corpus and the suite.
 
 ### What to remember
 
@@ -2995,6 +3005,22 @@ D1 and D2 in one commit, closed by all five mechanical checks,
 - **The exemption list of a check is where the bugs hide.** "Not a
   `gets` binding" was written into the plan from memory of how the parser
   reads a file, and it would have exempted the one leak in the parser.
+- **A script that stops halfway leaves a tree that runs.** The D3 script
+  asserted CRLF on every file; `probe_flex.il` is LF, so it stopped after
+  writing the exporter and `probe_bend.il` - with the old sweep removed
+  from the probe and the new call not yet inserted. The probe loaded, ran,
+  and printed "nothing found on this subclass" for every bend line. I
+  spent one Allegro run proving `axlSetFindFilter` does not mutate the
+  list it is handed (it does not - five variants, five objects each)
+  before reading the probe's `git diff`, which showed the missing line in
+  a second. Read the diff of what was applied before theorising about
+  the API; and a multi-file edit script writes nothing until every
+  replacement has matched, or it is not an edit script.
+- **Two lists or one, the find filter does not care.** Measured while
+  chasing the above: `axlSetFindFilter( ?enabled f ?onButtons f )` with
+  the same list object twice selects the same five bend lines as two
+  literals, `copy( f )`, or both copied - and reports the list unchanged
+  after. The helper passes one list twice on purpose.
 
 ## Update 2026-09-02 (round 75) — the exporter runs headless; the SKILL half has a golden corpus
 
