@@ -7,8 +7,8 @@ hardcoded here, so the tool needs neither the XML at runtime nor a parser.
 Transparency is intentionally dropped: the board is one opaque solid, so only
 the RGB triple is kept.
 
-Values are 0-255 sRGB, matching how Allegro stores them. `as_fraction` converts
-to the 0..1 the STEP writer wants.
+Values are 0-255 sRGB, matching how Allegro stores them; the STEP writer
+divides by 255 where it builds its Quantity_Color.
 """
 
 from __future__ import annotations
@@ -71,12 +71,6 @@ def resolve_silk_color(name: str) -> tuple[int, int, int]:
     if name in SILK_COLORS:
         return SILK_COLORS[name]
     return parse_hex(name)
-
-
-def as_fraction(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
-    """0-255 sRGB triple -> 0..1 triple for the STEP writer."""
-    r, g, b = rgb
-    return (r / 255.0, g / 255.0, b / 255.0)
 
 
 def parse_hex(text: str) -> tuple[int, int, int]:

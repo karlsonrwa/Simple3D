@@ -50,11 +50,6 @@ for k in sorted(real_keys):
     if k not in readme:
         note("config key undocumented", k)
 
-# keys the GUI reads/writes must exist in the shipped file
-gui_keys = set(re.findall(r'gui\.get\(\s*"(\w+)"', gui_py)) | \
-            set(re.findall(r'^\s+"(\w+)":', uncommented(gui_py), re.M))
-for k in sorted(gui_keys & real_keys):
-    pass
 # Keys read ONLY to migrate a settings file written by an older build. They are
 # deliberately absent from the shipped config - shipping them would recreate the
 # duplicate the migration exists to remove.

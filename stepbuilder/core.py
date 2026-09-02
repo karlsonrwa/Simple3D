@@ -392,7 +392,10 @@ def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
     if not faces:
         return zone_face if layer.get("negative") else None
 
-    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common, BRepAlgoAPI_Cut
+    # Only the name that is not imported at module level. Importing
+    # BRepAlgoAPI_Cut here too made it a LOCAL of this whole function, so
+    # any use above this line would have raised UnboundLocalError.
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
 
     builder = BRep_Builder()
     drawn = TopoDS_Compound()
