@@ -21,7 +21,7 @@ from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
 from OCP.gp import gp_Dir, gp_Pnt
 
-from .constants import EPS, MIN_ANGLE
+from .constants import EPS, LENGTH_PROBE_STEPS, MIN_ANGLE, SAMPLE_MAX, SAMPLE_MIN, SAMPLE_STEP, SEW_TOL
 from .regions import _Strip
 from .strip_revolve import PRISM_TOLERANCE, _prism_of
 
@@ -151,11 +151,11 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
         """A stretch of one flat edge, as a 2D spline in parameter space."""
         length = 0.0
         previous = adaptor.Value(first)
-        for i in range(1, 9):                    # rough length, for the density
-            here = adaptor.Value(first + (last - first) * i / 8.0)
+        for i in range(1, LENGTH_PROBE_STEPS + 1):   # rough length, for the density
+            here = adaptor.Value(first + (last - first) * i / LENGTH_PROBE_STEPS)
             length += previous.Distance(here)
             previous = here
-        count = min(200, max(8, int(length / 0.05) + 8))
+        count = min(SAMPLE_MAX, max(SAMPLE_MIN, int(length / SAMPLE_STEP) + SAMPLE_MIN))
         points = TColgp_Array1OfPnt2d(1, count)
         for i in range(count):
             t = first + (last - first) * i / (count - 1)
@@ -304,7 +304,7 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
         BRepLib.BuildCurves3d_s(wire)
         return wire
 
-    sewing = BRepBuilderAPI_Sewing(1.0e-6)
+    sewing = BRepBuilderAPI_Sewing(SEW_TOL)
     for face, _ in tops:
         outer = BRepTools.OuterWire_s(face)
         wires = []

@@ -18,7 +18,7 @@ from OCP.gp import gp_Pnt, gp_Trsf
 
 from ..contour import clip_halfplane, contour_points, point_in_polygon, point_on_polygon, polygon_area
 from .apply import apply_plan
-from .constants import DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, EPS, LogFn, _noop_log
+from .constants import CLAIM_GRID, DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, DOUBLE_CLAIM_WARN, DRAWN_AREA_TOL_ABS, DRAWN_AREA_TOL_REL, EPS, FLAT_FRAME_MARGIN, LogFn, SEAM_TOL, SEAM_WARN, SLICE_OVERLAP_MIN, _noop_log
 from .info import Bend, bends_from_json
 from .pieces import _closest_point, _cut_into_pieces, _touching
 from .regions import _Region, _slice_trsf, _Strip
@@ -93,7 +93,7 @@ class FoldPlan:
           it stays in `regions` to answer "where does this point end up", and
           it must not outrank the panel a face actually belongs to.
         """
-        margin = 1.0
+        margin = FLAT_FRAME_MARGIN
         if self.flat_top is not None and self.flat_bottom is not None:
             low = min(self.flat_top, self.flat_bottom) - margin
             high = max(self.flat_top, self.flat_bottom) + margin
@@ -216,7 +216,7 @@ def _chain_at(ordered: list, factor: float, stack_at, board_top_z: float,
         developed = (bend.radius + factor * thickness) * theta
         drawn = bend.radius * theta
         if notes is not None and bend.width and bend.width > EPS and drawn > EPS:
-            if abs(bend.width - drawn) > max(0.05, 0.1 * drawn):
+            if abs(bend.width - drawn) > max(DRAWN_AREA_TOL_ABS, DRAWN_AREA_TOL_REL * drawn):
                 notes.append(
                     f"  note: {bend.name}'s bend area is {bend.width:.3f} mm "
                     f"across, where its radius and angle draw {drawn:.3f} mm; "
@@ -371,7 +371,7 @@ def _walk(plan: FoldPlan, kept: list, strip_pieces: list, parts: list, polys: li
             # Overlap so consecutive slices interpenetrate instead of touching
             # along a line: the wedge a rotated slice opens on the outside of
             # the bend is about half the thickness times the slice angle.
-            overlap = max(0.02, abs(top - bottom) * theta / steps)
+            overlap = max(SLICE_OVERLAP_MIN, abs(top - bottom) * theta / steps)
 
             facets = []
             for j in range(steps):
@@ -620,7 +620,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # and built twice. Cheap next to the fold itself, and silence here would
     # mean a plausible wrong model handed back with nothing said.
     doubled = _double_claimed(plan, outline)
-    if doubled > 0.02:
+    if doubled > DOUBLE_CLAIM_WARN:
         plan.notes.append(
             f"  warning: {doubled * 100:.0f}% of this board is claimed by more "
             f"than one piece, so that material will be built more than once. "
@@ -634,7 +634,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # model still builds and still measures the right volume, so nothing else
     # here would have caught it.
     gap = _seam_gap(plan)
-    if gap > 1.0e-6:
+    if gap > SEAM_WARN:
         plan.notes.append(
             f"  warning: the fold does not join up - a seam comes apart by "
             f"{gap:.3f} mm, so a piece of the board will float away from the "
@@ -675,7 +675,7 @@ def _seam_gap(plan: FoldPlan) -> float:
             near = None
             for region in panels:
                 if not (point_in_polygon((ex, ey), region.poly)
-                        or point_on_polygon((ex, ey), region.poly, 0.05)):
+                        or point_on_polygon((ex, ey), region.poly, SEAM_TOL)):
                     continue
                 theirs = gp_Pnt(ex, ey, 0.0).Transformed(region.trsf)
                 d = mine.Distance(theirs)
@@ -686,7 +686,7 @@ def _seam_gap(plan: FoldPlan) -> float:
 
 
 def _double_claimed(plan: FoldPlan, outline: list[tuple[float, float]],
-                    step: float = 2.0) -> float:
+                    step: float = CLAIM_GRID) -> float:
     """Fraction of the board area that more than one fold region claims.
 
     Sampled on a grid rather than computed exactly: the answer is wanted as a

@@ -21,7 +21,7 @@ from OCP.gp import gp_Pnt
 
 from ..contour import build_contour, point_in_polygon
 from ..errors import StepBuilderError
-from .constants import LogFn, _noop_log
+from .constants import BAND_REACH, FACE_POLY_PER_CURVE, LogFn, SLIVER_RATIO, _noop_log
 
 
 # --------------------------------------------------------------------------- #
@@ -84,7 +84,7 @@ def _faces_of(shape) -> list:
     return out
 
 
-def _face_poly(face, per_curve: int = 12) -> list[tuple[float, float]]:
+def _face_poly(face, per_curve: int = FACE_POLY_PER_CURVE) -> list[tuple[float, float]]:
     """A face's outer wire as an ordered 2-D polygon.
 
     The wire is no longer polygonal: the board outline is cut with its ARCS
@@ -175,7 +175,7 @@ def _piece_face(face, log: LogFn = _noop_log, what: str = "a piece"):
     # nothing at all. Anything under a hundredth of the piece goes, and the log
     # says how much, so this can never quietly eat something real.
     biggest = area(good[0])
-    slivers = [f for f in good[1:] if area(f) < 0.01 * biggest]
+    slivers = [f for f in good[1:] if area(f) < SLIVER_RATIO * biggest]
     if slivers:
         log(f"{what}: {len(slivers)} sliver(s) totalling "
             f"{sum(area(f) for f in slivers):.4f} mm2 left by the repair were "
@@ -268,7 +268,7 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list,
         # band has to be - measured from the board, not from the origin.
         across = [(-ny) * vx + nx * vy for vx, vy in outline]
         band = _band_face(nx, ny, base - half, base + half,
-                          min(across) - 10.0, max(across) + 10.0)
+                          min(across) - BAND_REACH, max(across) + BAND_REACH)
         if band is None:
             return None
         common = BRepAlgoAPI_Common(face, band)

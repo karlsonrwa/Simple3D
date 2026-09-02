@@ -13,8 +13,10 @@ Companion to [ARCHITECTURE.md](ARCHITECTURE.md), which names five monoliths:
 plus the cross-cutting items (the intermediate's flat namespace, the test
 harness, the argument plumbing) that no single monolith owns. This is the order
 to do it in and what "done" means for each step. Written 2026-09-02 (round 70);
-**Step 0 was done the same day (round 71)** — its status is under its table.
-Nothing past Step 0 has been started.
+**Step 0 was done the same day (round 71); A1–A2, C1–C2 and B1–B7 in round 72**
+— every row marked **done** says what it left behind. As of round 72: M2 is
+split, M3 is moved whole but not split, M1 and M4 are lighter but still one
+function and one class, M5 is untouched.
 
 ---
 
@@ -194,7 +196,7 @@ re-exports.
 | B4 | `strip_revolve.py` | [17], [11b] (the ear) | unchanged — **done, round 72**: `strip_revolve.py` cut out verbatim with `PRISM_TOLERANCE` and `PRISM_SPAN_TOLERANCE`; `MAP_VOLUME_TOLERANCE` stayed beside `_map_strip` for B5; done after B3's first half (`cut.py`) because the revolve needs `_plane_face`; 24/24, golden unchanged |
 | B5 | `strip_wrap.py`: first move `_map_strip` whole, then extract `CylinderFrame`, then `edge_to_2d`, then `wire_on`, then walls, then validation — one commit each | [17b], [17c], [17d], [17e] (the loose corner), [7c2] | each extraction leaves [17e] green; `wire_on` still builds edges on shared vertices. **First commit done, round 72** (the whole move, with `MAP_VOLUME_TOLERANCE`); the five extractions are still to do |
 | B6 | `plan.py`: `plan_fold` → the closures become module functions taking explicit arguments: `chain_at(ordered, factor, stack_at, top, bottom, notes)`, `readable(chain, notes)`, `walk(...)`, `neutral_ceiling(...)`; `plan_fold` becomes the sequence | [5], [5b], [6], [7], [7a], [7a1], [7b], [7b1] (300 random layouts), [7c], [7c1], [7d] | `plan_fold` under 120 lines; the k-ceiling uses the same `chain_at`/`readable` (already the point of round 66) — **done, round 72**: first the whole move (`plan_fold`, `plan_from_json`, the invariants, the anchor helpers into `plan.py`; `__init__` defines nothing), then the closures lifted out with explicit arguments: `_chain_at(ordered, factor, stack_at, top, bottom, notes)`, `_strips_overlap`, `_readable(items, neutral_factor, notes)`, `_piece_at(panels, point)`, `_side_of(kept, parts, npanel, polys, part, s)`, `_walk(plan, kept, strip_pieces, parts, polys, npanel, neighbours, held, slice_angle) -> (carried, labels)`, `_neutral_ceiling(...)`; bodies lifted from the source by markers, only signatures and call sites changed; `plan_fold` is 192 lines with its 44-line docstring; the k-ceiling uses the same `_chain_at` / `_readable`; 25/25, golden unchanged |
-| B7 | name the magic numbers: `FLAT_FRAME_MARGIN = 1.0`, `BAND_REACH = 10.0`, `SEAM_TOL = 0.05`, `DOUBLE_CLAIM_WARN = 0.02`, `CLAIM_GRID = 2.0`, `SLIVER_RATIO = 0.01`, `FACE_POLY_PER_CURVE = 12`, `SAMPLE_*`, `SEW_TOL = 1e-6`, each with the one-line reason from the code comment | — | no bare literal in a geometric comparison |
+| B7 | name the magic numbers: `FLAT_FRAME_MARGIN = 1.0`, `BAND_REACH = 10.0`, `SEAM_TOL = 0.05`, `DOUBLE_CLAIM_WARN = 0.02`, `CLAIM_GRID = 2.0`, `SLIVER_RATIO = 0.01`, `FACE_POLY_PER_CURVE = 12`, `SAMPLE_*`, `SEW_TOL = 1e-6`, each with the one-line reason from the code comment | — | no bare literal in a geometric comparison — **done, round 72**: fourteen names in `constants.py`, each with the reason that used to sit beside the literal (`FLAT_FRAME_MARGIN`, `BAND_REACH`, `SEAM_TOL`, `SEAM_WARN`, `DOUBLE_CLAIM_WARN`, `CLAIM_GRID`, `SLIVER_RATIO`, `FACE_POLY_PER_CURVE`, `DRAWN_AREA_TOL_ABS/REL`, `SLICE_OVERLAP_MIN`, `LENGTH_PROBE_STEPS`, `SAMPLE_STEP/MIN/MAX`, `SEW_TOL`); left as literals on purpose: the `0.999` cosine tests and the `1.0e-6` wall tilt in `_prism_of`, and the Precision::Confusion `1.0e-7` in the wrap, which are OCC's own thresholds rather than this tool's; 25/25, golden unchanged |
 
 Risks: `_map_strip` recurses on disjoint solids and threads `why` through; keep
 the first-reason semantics of `give_up`. `plan_fold` mutates `plan.notes` from
@@ -362,4 +364,9 @@ window; no OCC involved, fast to test) → B1–B4 (moves only) → A3–A8 → 
 (the two hard extractions, with the fold suite as the net) → A9, A10 → C3–C6 →
 D1–D5 (SKILL discipline, user verification after D2 and D4) → D6–D8 → E → F4.
 
-Each arrow is a green run of `tests/run_all.py` plus `tools/golden.py --check`.
+Each arrow is a green run of `tests/run_all.py` plus `tools/golden.py --check`
+— and, since round 72, `tools/python_names.py` before the run.
+
+**Where this stands after round 72:** Step 0, A1, A2, C1, C2, B1, B2, B3, B4,
+B5's first commit, B6, B7 are done, in that order. Next in line: A3–A8, then
+B5's five extractions (with [17e] as the net), A9–A10, C3–C6, then D.
