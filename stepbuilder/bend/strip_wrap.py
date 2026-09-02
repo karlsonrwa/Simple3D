@@ -21,6 +21,13 @@ from OCP.TopAbs import TopAbs_ShapeEnum
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
 from OCP.gp import gp_Dir, gp_Pnt
+from OCP.BRepAdaptor import BRepAdaptor_Curve
+from OCP.Geom2d import Geom2d_Ellipse, Geom2d_Line, Geom2d_TrimmedCurve
+from OCP.Geom2dAPI import Geom2dAPI_PointsToBSpline
+from OCP.GeomAbs import GeomAbs_CurveType
+from OCP.TColgp import TColgp_Array1OfPnt2d
+from OCP.TopAbs import TopAbs_Orientation
+from OCP.gp import gp_Ax22d, gp_Dir2d, gp_Vec2d
 from OCP.Geom import Geom_CylindricalSurface
 from OCP.gp import gp_Ax3, gp_Pnt2d
 
@@ -76,6 +83,95 @@ class _Frame:
         dx, dy = point.X() - self.origin.X(), point.Y() - self.origin.Y()
         return gp_Pnt2d((nx * dx + ny * dy) / self.rho,
                         self.along.X() * dx + self.along.Y() * dy)
+
+
+def _sampled(frame: _Frame, adaptor, first, last):
+    """A stretch of one flat edge, as a 2D spline in parameter space."""
+    length = 0.0
+    previous = adaptor.Value(first)
+    for i in range(1, LENGTH_PROBE_STEPS + 1):   # rough length, for the density
+        here = adaptor.Value(first + (last - first) * i / LENGTH_PROBE_STEPS)
+        length += previous.Distance(here)
+        previous = here
+    count = min(SAMPLE_MAX, max(SAMPLE_MIN, int(length / SAMPLE_STEP) + SAMPLE_MIN))
+    points = TColgp_Array1OfPnt2d(1, count)
+    for i in range(count):
+        t = first + (last - first) * i / (count - 1)
+        points.SetValue(i + 1, frame.to2d(adaptor.Value(t)))
+    curve = Geom2dAPI_PointsToBSpline(points).Curve()
+    return curve, curve.FirstParameter(), curve.LastParameter()
+
+
+def _edge_curves(frame: _Frame, edge):
+    """One flat edge as 2D curves in the cylinder's parameter space.
+
+    A CLOSED edge - a drill hole is one circle and nothing else - comes back
+    as two halves. Sampling it whole would hand the fitter a point list whose
+    first and last point are the same, and the curve that comes out of that
+    is not a curve.
+    """
+    adaptor = BRepAdaptor_Curve(edge)
+    first, last = adaptor.FirstParameter(), adaptor.LastParameter()
+    if edge.Orientation() == TopAbs_Orientation.TopAbs_REVERSED:
+        first, last = last, first
+
+    if adaptor.GetType() == GeomAbs_CurveType.GeomAbs_Line:
+        start, end = frame.to2d(adaptor.Value(first)), frame.to2d(adaptor.Value(last))
+        step = gp_Vec2d(start, end)
+        length = step.Magnitude()
+        if length < 1.0e-9:
+            return None
+        return [(Geom2d_TrimmedCurve(Geom2d_Line(start, gp_Dir2d(step)),
+                                     0.0, length), 0.0, length)]
+
+    if adaptor.GetType() == GeomAbs_CurveType.GeomAbs_Circle:
+        # An arc becomes an ELLIPSE, exactly: the map scales one axis and
+        # leaves the other, and that is all a circle needs to become one.
+        #
+        # This is not a nicety. Sampling a relief notch as a spline puts a
+        # wiggle of a few nanometres at its ends, where it meets the
+        # straight edge it was cut into, and OCC calls the wire
+        # self-intersecting and throws the whole solid away. Every FLEX2
+        # layer of the real board failed exactly there.
+        circle = adaptor.Circle()
+        centre = frame.to2d(circle.Location())
+        across, along = circle.Radius() / frame.rho, circle.Radius()
+        if across >= along:
+            axes = gp_Ax22d(centre, gp_Dir2d(1.0, 0.0), gp_Dir2d(0.0, 1.0))
+            major, minor = across, along
+        else:
+            axes = gp_Ax22d(centre, gp_Dir2d(0.0, 1.0), gp_Dir2d(-1.0, 0.0))
+            major, minor = along, across
+        if minor < 1.0e-12:
+            return None
+        ellipse = Geom2d_Ellipse(axes, major, minor)
+
+        def where(point) -> float:
+            step = gp_Vec2d(centre, point)
+            return math.atan2(
+                step.Dot(gp_Vec2d(axes.YDirection())) / minor,
+                step.Dot(gp_Vec2d(axes.XDirection())) / major) % (2 * math.pi)
+
+        start = where(frame.to2d(adaptor.Value(first)))
+        end = where(frame.to2d(adaptor.Value(last)))
+        middle = where(frame.to2d(adaptor.Value((first + last) / 2.0)))
+        forward = (middle - start) % (2 * math.pi) <= (end - start) % (2 * math.pi)
+        if adaptor.Value(first).Distance(adaptor.Value(last)) < 1.0e-9:
+            span = 2 * math.pi                     # a whole circle: a hole
+            forward = True
+        elif forward:
+            span = (end - start) % (2 * math.pi)
+        else:
+            span = (start - end) % (2 * math.pi)
+        low = start if forward else end
+        curve = Geom2d_TrimmedCurve(ellipse, low, low + span, forward)
+        return [(curve, curve.FirstParameter(), curve.LastParameter())]
+
+    if adaptor.Value(first).Distance(adaptor.Value(last)) < 1.0e-9:
+        middle = (first + last) / 2.0
+        return [_sampled(frame, adaptor, first, middle),
+                _sampled(frame, adaptor, middle, last)]
+    return [_sampled(frame, adaptor, first, last)]
 
 
 def _map_strip(flat: TopoDS_Shape, strip: _Strip,
@@ -177,95 +273,6 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
     if frame is None:
         return None                        # the axis runs through the material
     cyl_top, cyl_bottom = frame.cyl_top, frame.cyl_bottom
-    to2d = frame.to2d
-
-    def sampled(adaptor, first, last):
-        """A stretch of one flat edge, as a 2D spline in parameter space."""
-        length = 0.0
-        previous = adaptor.Value(first)
-        for i in range(1, LENGTH_PROBE_STEPS + 1):   # rough length, for the density
-            here = adaptor.Value(first + (last - first) * i / LENGTH_PROBE_STEPS)
-            length += previous.Distance(here)
-            previous = here
-        count = min(SAMPLE_MAX, max(SAMPLE_MIN, int(length / SAMPLE_STEP) + SAMPLE_MIN))
-        points = TColgp_Array1OfPnt2d(1, count)
-        for i in range(count):
-            t = first + (last - first) * i / (count - 1)
-            points.SetValue(i + 1, to2d(adaptor.Value(t)))
-        curve = Geom2dAPI_PointsToBSpline(points).Curve()
-        return curve, curve.FirstParameter(), curve.LastParameter()
-
-    def curves2d(edge):
-        """One flat edge as 2D curves in the cylinder's parameter space.
-
-        A CLOSED edge - a drill hole is one circle and nothing else - comes back
-        as two halves. Sampling it whole would hand the fitter a point list whose
-        first and last point are the same, and the curve that comes out of that
-        is not a curve.
-        """
-        adaptor = BRepAdaptor_Curve(edge)
-        first, last = adaptor.FirstParameter(), adaptor.LastParameter()
-        if edge.Orientation() == TopAbs_Orientation.TopAbs_REVERSED:
-            first, last = last, first
-
-        if adaptor.GetType() == GeomAbs_CurveType.GeomAbs_Line:
-            start, end = to2d(adaptor.Value(first)), to2d(adaptor.Value(last))
-            step = gp_Vec2d(start, end)
-            length = step.Magnitude()
-            if length < 1.0e-9:
-                return None
-            return [(Geom2d_TrimmedCurve(Geom2d_Line(start, gp_Dir2d(step)),
-                                         0.0, length), 0.0, length)]
-
-        if adaptor.GetType() == GeomAbs_CurveType.GeomAbs_Circle:
-            # An arc becomes an ELLIPSE, exactly: the map scales one axis and
-            # leaves the other, and that is all a circle needs to become one.
-            #
-            # This is not a nicety. Sampling a relief notch as a spline puts a
-            # wiggle of a few nanometres at its ends, where it meets the
-            # straight edge it was cut into, and OCC calls the wire
-            # self-intersecting and throws the whole solid away. Every FLEX2
-            # layer of the real board failed exactly there.
-            circle = adaptor.Circle()
-            centre = to2d(circle.Location())
-            across, along = circle.Radius() / rho, circle.Radius()
-            if across >= along:
-                axes = gp_Ax22d(centre, gp_Dir2d(1.0, 0.0), gp_Dir2d(0.0, 1.0))
-                major, minor = across, along
-            else:
-                axes = gp_Ax22d(centre, gp_Dir2d(0.0, 1.0), gp_Dir2d(-1.0, 0.0))
-                major, minor = along, across
-            if minor < 1.0e-12:
-                return None
-            ellipse = Geom2d_Ellipse(axes, major, minor)
-
-            def where(point) -> float:
-                step = gp_Vec2d(centre, point)
-                return math.atan2(
-                    step.Dot(gp_Vec2d(axes.YDirection())) / minor,
-                    step.Dot(gp_Vec2d(axes.XDirection())) / major) % (2 * math.pi)
-
-            start = where(to2d(adaptor.Value(first)))
-            end = where(to2d(adaptor.Value(last)))
-            middle = where(to2d(adaptor.Value((first + last) / 2.0)))
-            forward = (middle - start) % (2 * math.pi) <= (end - start) % (2 * math.pi)
-            if adaptor.Value(first).Distance(adaptor.Value(last)) < 1.0e-9:
-                span = 2 * math.pi                     # a whole circle: a hole
-                forward = True
-            elif forward:
-                span = (end - start) % (2 * math.pi)
-            else:
-                span = (start - end) % (2 * math.pi)
-            low = start if forward else end
-            curve = Geom2d_TrimmedCurve(ellipse, low, low + span, forward)
-            return [(curve, curve.FirstParameter(), curve.LastParameter())]
-
-        if adaptor.Value(first).Distance(adaptor.Value(last)) < 1.0e-9:
-            middle = (first + last) / 2.0
-            return [sampled(adaptor, first, middle),
-                    sampled(adaptor, middle, last)]
-        return [sampled(adaptor, first, last)]
-
     def wire_on(surface, curves):
         """The wrapped outline as a wire ON *surface*, sharing its corners.
 
@@ -351,7 +358,7 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
             curves = []
             walker = BRepTools_WireExplorer(wire)
             while walker.More():
-                one = curves2d(walker.Current())
+                one = _edge_curves(frame, walker.Current())
                 if one is None:
                     return give_up("an edge of the outline could not be carried "
                                    "onto the cylinder")
