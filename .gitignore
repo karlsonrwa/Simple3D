@@ -238,3 +238,8 @@ simple3d_config.json.tmp
 # at. They are real designs - keep them out of a public repository. The demo
 # board under demo/ is the one that IS meant to be tracked.
 failed/
+
+# Boards and intermediates put here to be worked on (2026-09-02: 57 MB of the
+# user's own .brd files sat untracked and unignored, one `git add -A` from the
+# public remote). Same rule as failed/: real designs, data, not tool.
+input/

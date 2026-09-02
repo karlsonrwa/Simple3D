@@ -55,8 +55,9 @@ each version only ever *added* something optional — so an intermediate you kep
 from an older release does not have to be re-exported to be used.
 
 Allegro's own progress form is on screen from the moment you press Export,
-because all of the above happens before any window of ours appears. Nothing
-temporary is written next to your board.
+because all of the above happens before any window of ours appears. The only
+temporary file is the pre-flight check's log, `_simple3d_preflight.txt`, written
+into the output folder and deleted as soon as it has been read.
 
 ## Installation
 
@@ -582,12 +583,15 @@ stepbuilder/
   worker.py      the build, in a child process, so a crash cannot take the window
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, 19 test suites, read-only probes
+tools/, tests/   SKILL checks, the docs audit, 19 test suites, the golden corpus, read-only probes
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
 when. `PROJECT_NOTES_simple3d.md` is the development memo — how each decision
 was reached, round by round; useful for working *on* the tool, not for using it.
+`ARCHITECTURE.md` is the map of the code — what each file holds, the pipeline
+stage by stage, which pieces are monoliths and which could be reused elsewhere —
+and `REFACTORING_PLANS.md` is the order in which to take those monoliths apart.
 
 ---
 
@@ -640,8 +644,9 @@ SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE �
 интермедиат, оставшийся от старого релиза, переэкспортировать не обязательно.
 
 Штатный индикатор Allegro на экране с момента нажатия Export: всё перечисленное
-происходит до того, как появится наше окно. Рядом с платой ничего временного не
-пишется.
+происходит до того, как появится наше окно. Единственный временный файл — лог
+предполётной проверки `_simple3d_preflight.txt`: он пишется в выходную папку и
+удаляется, как только прочитан.
 
 ## Установка
 
@@ -1168,9 +1173,12 @@ stepbuilder/
   worker.py      сборка в дочернем процессе, чтобы падение не унесло окно
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, 19 наборов тестов, зонды
+tools/, tests/   проверки SKILL, аудит документации, 19 наборов тестов, золотой корпус, зонды
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.
 `PROJECT_NOTES_simple3d.md` — рабочая записка разработки: как принималось каждое
 решение, раунд за раундом; нужна для работы **над** инструментом, а не с ним.
+`ARCHITECTURE.md` — карта кода: что лежит в каждом файле, конвейер по стадиям,
+какие куски являются монолитом, а какие можно переиспользовать; а
+`REFACTORING_PLANS.md` — в каком порядке эти монолиты разбирать.
