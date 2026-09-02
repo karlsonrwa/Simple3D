@@ -1,14 +1,7 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, fails, check
 
 """s3dDrillXY: the hole is not always at the pad.
 
@@ -33,14 +26,6 @@ edit cannot quietly go back to pin->xy in one branch and not the other.
 import math
 import re
 import sys
-
-fails = []
-
-
-def check(name, cond, detail=""):
-    print(f"  {'PASS' if cond else 'FAIL'}  {name}{'' if cond else '  <- ' + detail}")
-    if not cond:
-        fails.append(name)
 
 
 def close(a, b, tol=1e-9):
@@ -129,7 +114,7 @@ check("at the drill (y=0) it is a clean half-circle",
 check("the mouth was 34% too narrow", wrong_mouth < right_mouth)
 
 print("\n[5] both hole branches go through the one procedure")
-il = (_ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8")
+il = (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8")
 check("s3dDrillXY exists", "procedure( s3dDrillXY( pin padstack )" in il)
 
 def body(name):

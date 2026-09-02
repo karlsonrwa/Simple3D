@@ -1,25 +1,13 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, out_dir, fails, check
 
 """Embedded-vs-disk cross-check."""
 import json, sys
-ROOT = _ROOT
-sys.path.insert(0, str(ROOT))
 from stepbuilder import core
 
-OUT = _OUT / "emb"; OUT.mkdir(exist_ok=True)
-fails=[]
-def check(n,c,d=""):
-    print(f"  {'PASS' if c else 'FAIL'}  {n}{'' if c else '  <- '+d}"); c or fails.append(n)
+OUT = out_dir("emb")
 
 base = json.loads((ROOT/"demo/ap-214/demo.json").read_text())
 

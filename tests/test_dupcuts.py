@@ -1,14 +1,7 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import fails, check, rect, volume
 
 """A cutout that appears twice used to erase the whole board body.
 
@@ -27,32 +20,9 @@ import sys
 
 from stepbuilder import core
 
-fails = []
-
-
-def check(name, cond, detail=""):
-    print(f"  {'PASS' if cond else 'FAIL'}  {name}{'' if cond else '  <- ' + str(detail)}")
-    if not cond:
-        fails.append(name)
-
-
-def rect(a, b, c, d):
-    return [{"type": "segment", "start": [a, b], "end": [c, b]},
-            {"type": "segment", "start": [c, b], "end": [c, d]},
-            {"type": "segment", "start": [c, d], "end": [a, d]},
-            {"type": "segment", "start": [a, d], "end": [a, b]}]
-
 
 def circle(x, y, r):
     return [{"type": "circle", "x": x, "y": y, "radius": r}]
-
-
-def volume(shape):
-    from OCP.BRepGProp import BRepGProp
-    from OCP.GProp import GProp_GProps
-    props = GProp_GProps()
-    BRepGProp.VolumeProperties_s(shape, props)
-    return props.Mass()
 
 
 def board(edges):

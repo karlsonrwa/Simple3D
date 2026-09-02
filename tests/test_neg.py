@@ -1,25 +1,11 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, out_dir, fails, check, rect, volume, read_step
 
 import json, sys
-ROOT=_ROOT; sys.path.insert(0,str(ROOT))
 from stepbuilder import core
-OUT=_OUT / "neg"; OUT.mkdir(exist_ok=True)
-fails=[]
-def check(n,c,d=""):
-    print(f"  {'PASS' if c else 'FAIL'}  {n}{'' if c else '  <- '+d}"); c or fails.append(n)
-def rect(a,b,c,d):
-    return [{"type":"segment","start":[a,b],"end":[c,b]},{"type":"segment","start":[c,b],"end":[c,d]},
-            {"type":"segment","start":[c,d],"end":[a,d]},{"type":"segment","start":[a,d],"end":[a,b]}]
+OUT = out_dir("neg")
 
 print("\n[1] транслитерация s3dLayerIsNegative на реальных слоях")
 NEG=["COVERLAY","SOLDERMASK","PASTEMASK"]
@@ -49,11 +35,7 @@ def build(name, negative):
     jf=OUT/f"{name}.json"; jf.write_text(json.dumps(d))
     core.generate(step_dir=ROOT/"demo/step_files",json_file=jf,output_dir=OUT,
                   output_name=name,log=lambda m:None)
-    from OCP.STEPControl import STEPControl_Reader
-    from OCP.GProp import GProp_GProps
-    from OCP.BRepGProp import BRepGProp
-    r=STEPControl_Reader(); r.ReadFile(str(OUT/f"{name}.step")); r.TransferRoots()
-    g=GProp_GProps(); BRepGProp.VolumeProperties_s(r.OneShape(),g); return g.Mass()
+    return volume(read_step(OUT/f"{name}.step"))
 vp=build("pos",False); vn=build("neg",True)
 copper=10*10*0.05
 check(f"позитив: медь + шейп 4x4x0.1 = {copper+1.6:.2f}", abs(vp-(copper+4*4*0.1))<0.01, f"{vp:.3f}")
@@ -71,12 +53,8 @@ d={"format":"simple3d","format_version":6,"name":"nosh",
    "zones":[{"name":"Z","stackup":"S","contour":rect(0,0,10,10)}]}
 jf=OUT/"nosh.json"; jf.write_text(json.dumps(d))
 core.generate(step_dir=ROOT/"demo/step_files",json_file=jf,output_dir=OUT,output_name="nosh",log=lambda m:None)
-from OCP.STEPControl import STEPControl_Reader
-from OCP.GProp import GProp_GProps
-from OCP.BRepGProp import BRepGProp
-r=STEPControl_Reader(); r.ReadFile(str(OUT/"nosh.step")); r.TransferRoots()
-g=GProp_GProps(); BRepGProp.VolumeProperties_s(r.OneShape(),g)
-check("сплошной слой на всю зону", abs(g.Mass()-100*0.1)<0.01, f"{g.Mass():.3f}")
+v=volume(read_step(OUT/"nosh.step"))
+check("сплошной слой на всю зону", abs(v-100*0.1)<0.01, f"{v:.3f}")
 
 print("\nРЕЗУЛЬТАТ:", "ВСЁ ПРОЙДЕНО" if not fails else f"{len(fails)} ОШИБОК: {fails}")
 sys.exit(0 if not fails else 1)

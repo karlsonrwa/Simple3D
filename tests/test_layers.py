@@ -1,30 +1,13 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, out_dir, fails, check, rect, volume, read_step, count_solids
 
 """Per-layer stackup build, from the real xsection of the user's board."""
 import json, sys
-ROOT = _ROOT
-sys.path.insert(0, str(ROOT))
 from stepbuilder import core
-OUT = _OUT / "lay"; OUT.mkdir(exist_ok=True)
-fails=[]
-def check(n,c,d=""):
-    print(f"  {'PASS' if c else 'FAIL'}  {n}{'' if c else '  <- '+d}"); c or fails.append(n)
+OUT = out_dir("lay")
 
-def rect(x0,y0,x1,y1):
-    return [{"type":"segment","start":[x0,y0],"end":[x1,y0]},
-            {"type":"segment","start":[x1,y0],"end":[x1,y1]},
-            {"type":"segment","start":[x1,y1],"end":[x0,y1]},
-            {"type":"segment","start":[x0,y1],"end":[x0,y0]}]
 
 def layers(spec):
     """spec: [(name,type,thk)] top->bottom. Returns layers with z from core top."""
@@ -126,15 +109,11 @@ def build(name, s2_shape=None):
     logs=[]
     core.generate(step_dir=ROOT/"demo/step_files",json_file=jf,output_dir=OUT,
                       output_name=name,log=logs.append)
-    from OCP.STEPControl import STEPControl_Reader
-    from OCP.GProp import GProp_GProps
-    from OCP.BRepGProp import BRepGProp
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
-    r=STEPControl_Reader(); r.ReadFile(str(OUT/f"{name}.step")); r.TransferRoots()
-    s=r.OneShape(); g=GProp_GProps(); BRepGProp.VolumeProperties_s(s,g)
+    s=read_step(OUT/f"{name}.step")
     bb=Bnd_Box(); BRepBndLib.Add_s(s,bb)
-    return g.Mass(), bb, logs, (OUT/f"{name}.step").stat().st_size
+    return volume(s), bb, logs, (OUT/f"{name}.step").stat().st_size
 
 print("\n[1] слои без шейпов -> зона целиком (как раньше), Z верны")
 v1,bb1,logs1,sz1 = build("nolay")
@@ -165,12 +144,7 @@ check("объём как у зоны целиком (обрезано)", abs(v4-
 check("нет предупреждения об обрезке", not [m for m in logs4 if "unclipped" in m])
 
 print("\n[5] сплавление: одно тело, файл меньше компаунда")
-from OCP.STEPControl import STEPControl_Reader
-from OCP.TopExp import TopExp_Explorer
-from OCP.TopAbs import TopAbs_SOLID
-r=STEPControl_Reader(); r.ReadFile(str(OUT/"nolay.step")); r.TransferRoots()
-e=TopExp_Explorer(r.OneShape(),TopAbs_SOLID); n=0
-while e.More(): n+=1; e.Next()
+n=count_solids(read_step(OUT/"nolay.step"))
 check(f"плата + компонентов = {n} тел (не 18 отдельных слоёв)", n<=3, str(n))
 
 print("\n[6] обычная плата не затронута")
@@ -182,11 +156,8 @@ lg=[]
 core.generate(step_dir=ROOT/"demo/step_files",json_file=f2,output_dir=OUT,
               output_name="plain",log=lg.append)
 check("нет послойного лога", not [m for m in lg if "layer solid" in m])
-r2=STEPControl_Reader(); r2.ReadFile(str(OUT/"plain.step")); r2.TransferRoots()
-from OCP.GProp import GProp_GProps
-from OCP.BRepGProp import BRepGProp
-g2=GProp_GProps(); BRepGProp.VolumeProperties_s(r2.OneShape(),g2)
-check("объём = контур x 1.096", abs(g2.Mass()-41*26.5*1.096)/(41*26.5*1.096)<1e-6, f"{g2.Mass():.3f}")
+v2=volume(read_step(OUT/"plain.step"))
+check("объём = контур x 1.096", abs(v2-41*26.5*1.096)/(41*26.5*1.096)<1e-6, f"{v2:.3f}")
 
 print("\nРЕЗУЛЬТАТ:", "ВСЁ ПРОЙДЕНО" if not fails else f"{len(fails)} ОШИБОК: {fails}")
 sys.exit(0 if not fails else 1)

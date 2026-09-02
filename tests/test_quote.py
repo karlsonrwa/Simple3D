@@ -1,14 +1,7 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, fails, check
 
 """Transliteration of s3dJsonQuote, checked against the json module.
 
@@ -47,13 +40,6 @@ def _is_other_control(c):
     """The SKILL side's [\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f], as a predicate."""
     n = ord(c)
     return 0x01 <= n <= 0x1f and c not in "\t\n\r"
-
-
-fails = []
-def check(name, cond, detail=""):
-    print(f"  {'PASS' if cond else 'FAIL'}  {name}{'' if cond else '  <- ' + detail}")
-    if not cond:
-        fails.append(name)
 
 
 print("\n[1] real layer / stackup / zone names")
@@ -97,7 +83,7 @@ for n in list(range(0x01, 0x20)):
 
 check("the SKILL source escapes CR too",
       '( c == "\\r"  "\\\\r" )' in
-      (_ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8"))
+      (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8"))
 
 print("\n[3] a whole emitted object still parses")
 doc = ("{" + s3dJsonQuote("FLEX") + ': {"layers": [{"name": '

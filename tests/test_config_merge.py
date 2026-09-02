@@ -1,14 +1,7 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, fails, check
 
 """The settings file, and the local one on top of it.
 
@@ -19,14 +12,6 @@ transliterated here and both are run over the same cases.
 import json, re, sys
 
 from stepbuilder.gui import _merge_config
-
-fails = []
-
-
-def check(name, cond, detail=""):
-    print(f"  {'PASS' if cond else 'FAIL'}  {name}{'' if cond else '  <- ' + detail}")
-    if not cond:
-        fails.append(name)
 
 
 def skill_merge(base, over):
@@ -79,7 +64,7 @@ check("a list is replaced whole, so it can be shortened",
       short["gui"]["stepDirs"] == ["a"])
 
 print("\n[3] the SKILL source says the same thing")
-src = (_ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8")
+src = (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8")
 check("the merge exists", re.search(r"procedure\(\s*s3dJsonMerge", src))
 check("a key is found by comparing strings, not by assoc",
       re.search(r"procedure\(\s*s3dJsonEntry", src))
@@ -88,7 +73,7 @@ check("both readers go through the merged config", found >= 2, str(found))
 check("the local name is derived rather than spelled out twice",
       re.search(r"procedure\(\s*s3dLocalConfigFile", src)
       and src.count('".local.json"') == 1)
-launcher = (_ROOT / "simple3d.il").read_text(encoding="utf-8")
+launcher = (ROOT / "simple3d.il").read_text(encoding="utf-8")
 check("the launcher reads it too", "s3dConfigRead( S3D_ConfigFile )" in launcher)
 
 print("\n[4] where the tool is installed, with no path written down")
@@ -119,7 +104,7 @@ check("the export refuses to run when it is still unknown",
       re.search(r'when\(\s*S3D_ScriptDir == ""[\s\S]{0,600}?return\(\s*nil\s*\)', launcher))
 
 # The same rule for the tracked config: no machine's paths in it.
-cfg = json.loads((_ROOT / "simple3d_config.json").read_text(encoding="utf-8"))
+cfg = json.loads((ROOT / "simple3d_config.json").read_text(encoding="utf-8"))
 check("the shipped config names no model folder", cfg["gui"]["stepDirs"] == [],
       str(cfg["gui"]["stepDirs"]))
 check("and no value in it looks like an absolute path",

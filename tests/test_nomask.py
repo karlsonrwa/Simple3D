@@ -1,25 +1,11 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, out_dir, fails, check, rect, volume, read_step
 
 import json, sys
-ROOT=_ROOT; sys.path.insert(0,str(ROOT))
 from stepbuilder import core
-OUT=_OUT / "nomask"; OUT.mkdir(exist_ok=True)
-fails=[]
-def check(n,c,d=""):
-    print(f"  {'PASS' if c else 'FAIL'}  {n}{'' if c else '  <- '+d}"); c or fails.append(n)
-def rect(a,b,c,d):
-    return [{"type":"segment","start":[a,b],"end":[c,b]},{"type":"segment","start":[c,b],"end":[c,d]},
-            {"type":"segment","start":[c,d],"end":[a,d]},{"type":"segment","start":[a,d],"end":[a,b]}]
+OUT = out_dir("nomask")
 
 # РЕАЛЬНЫЙ STIFFENER2 с платы пользователя
 S2=[("STIFFENER_TOP2","MASK",2.0),("ADHESIVE_TOP2","MASK",0.025),("COVERLAY_TOP","MASK",0.025),
@@ -81,15 +67,11 @@ def build(name, ignore):
     logs=[]
     core.generate(step_dir=ROOT/"demo/step_files",json_file=jf,output_dir=OUT,
                   output_name=name,ignore_soldermask=ignore,log=logs.append)
-    from OCP.STEPControl import STEPControl_Reader
-    from OCP.GProp import GProp_GProps
-    from OCP.BRepGProp import BRepGProp
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
-    r=STEPControl_Reader(); r.ReadFile(str(OUT/f"{name}.step")); r.TransferRoots()
-    g=GProp_GProps(); BRepGProp.VolumeProperties_s(r.OneShape(),g)
-    bb=Bnd_Box(); BRepBndLib.Add_s(r.OneShape(),bb)
-    return g.Mass(), bb, logs
+    s=read_step(OUT/f"{name}.step")
+    bb=Bnd_Box(); BRepBndLib.Add_s(s,bb)
+    return volume(s), bb, logs
 v1,bb1,_ = build("with",False)
 v2,bb2,lg = build("without",True)
 check(f"объём {v1:.2f} -> {v2:.2f}, разница = 100x0.05", abs((v1-v2)-100*0.05)<0.01, f"{v1-v2:.3f}")
@@ -106,12 +88,8 @@ f2=OUT/"plain.json"; f2.write_text(json.dumps(d2))
 for nm,ig,want in [("p_with",False,1.096),("p_without",True,1.036)]:
     core.generate(step_dir=ROOT/"demo/step_files",json_file=f2,output_dir=OUT,
                   output_name=nm,ignore_soldermask=ig,log=lambda m:None)
-    from OCP.STEPControl import STEPControl_Reader
-    from OCP.GProp import GProp_GProps
-    from OCP.BRepGProp import BRepGProp
-    r=STEPControl_Reader(); r.ReadFile(str(OUT/f"{nm}.step")); r.TransferRoots()
-    g=GProp_GProps(); BRepGProp.VolumeProperties_s(r.OneShape(),g)
-    check(f"{'без' if ig else 'с'} маской: толщина {want}", abs(g.Mass()-100*want)<0.01, f"{g.Mass()/100:.4f}")
+    v=volume(read_step(OUT/f"{nm}.step"))
+    check(f"{'без' if ig else 'с'} маской: толщина {want}", abs(v-100*want)<0.01, f"{v/100:.4f}")
 
 print("\nРЕЗУЛЬТАТ:", "ВСЁ ПРОЙДЕНО" if not fails else f"{len(fails)} ОШИБОК: {fails}")
 sys.exit(0 if not fails else 1)

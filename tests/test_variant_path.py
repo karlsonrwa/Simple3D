@@ -1,14 +1,7 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, OUT, fails, check
 
 """Transliteration of s3dDesignFolder / s3dVariantFilePath, the way
 test_quote.py transliterates s3dJsonQuote.
@@ -26,12 +19,6 @@ test, along with the ones that look alike but are not - a bare drive root, mixed
 separators, a name with no folder at all.
 """
 import re, sys
-
-fails = []
-def check(name, cond, detail=""):
-    print(f"  {'PASS' if cond else 'FAIL'}  {name}{'' if cond else '  <- ' + str(detail)}")
-    if not cond:
-        fails.append(name)
 
 
 def s3d_design_folder(full):
@@ -94,7 +81,7 @@ check("parseString-style rebuild loses the leading slashes",
 check("the scan keeps them", s3d_design_folder(unc) == r"\\server\share\boards")
 
 print("\n[4] the SKILL source still says the same thing")
-src = (_ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8")
+src = (ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8")
 # The bare name may appear ONLY inside the helper (its own fallback). A
 # `( variantFile "Variants.lst" )` anywhere is the bug coming back: that is a
 # let-init resolving against the working directory again.
@@ -211,7 +198,7 @@ print("\n[6b] the property has to be created before it can be attached")
 # until something defines it, and a property dictionary belongs to a DESIGN -
 # so defining it once at load would only ever reach the board open at that
 # moment. Both call sites are what make it reach a board opened later.
-launcher = (_ROOT / "simple3d.il").read_text(encoding="utf-8")
+launcher = (ROOT / "simple3d.il").read_text(encoding="utf-8")
 check("the dictionary entry is created as BOOLEAN",
       re.search(r'axlDBCreatePropDictEntry\(\s*S3D_AlwaysExportProp\s*"BOOLEAN"\s*t\s*\)',
                 launcher))
@@ -360,14 +347,14 @@ check("it is named <design>.json, which no <design>_<variant> can collide with",
 check("and marked in the file rather than left to be guessed from its name",
       re.search(r'if\(\s*g_fullBoard\s+then\s+"\\"full_board\\": true', src))
 check("the marker is a reserved key, or the reader walks it as a component",
-      '"full_board"' in (_ROOT / "stepbuilder/core.py").read_text(encoding="utf-8")
+      '"full_board"' in (ROOT / "stepbuilder/core.py").read_text(encoding="utf-8")
       and re.search(r'_reserved = \([^)]*"full_board"',
-                    (_ROOT / "stepbuilder/core.py").read_text(encoding="utf-8"), re.S))
+                    (ROOT / "stepbuilder/core.py").read_text(encoding="utf-8"), re.S))
 
 # The Python half decides only whether a BATCH includes it. A file the user
 # pointed at directly is never dropped: a checkbox that silently refuses the one
 # file you selected is worse than one that appears to do nothing.
-worker = (_ROOT / "stepbuilder/worker.py").read_text(encoding="utf-8")
+worker = (ROOT / "stepbuilder/worker.py").read_text(encoding="utf-8")
 check("a queued folder can leave the full-board file out",
       re.search(r"if len\(jobs\) > 1 and not settings\.build_full_board", worker))
 check("but a single file chosen by hand is built anyway, and says so",
@@ -377,7 +364,7 @@ check("but a single file chosen by hand is built anyway, and says so",
 import json as _json
 from stepbuilder.core import is_full_board, is_simple3d_json
 
-FB = _OUT / "fullboard"
+FB = OUT / "fullboard"
 FB.mkdir(parents=True, exist_ok=True)
 base = {"format": "simple3d", "format_version": 7, "pcb": {}}
 (FB / "board.json").write_text(_json.dumps({**base, "name": "board",

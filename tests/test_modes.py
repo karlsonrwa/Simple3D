@@ -1,32 +1,15 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, out_dir, fails, check, rect, read_step, count_solids
 
 """The three board modes, on the real STIFFENER2 / FLEX stackups."""
 import json, sys
-ROOT = _ROOT; sys.path.insert(0, str(ROOT))
 from stepbuilder import core
 from stepbuilder.colors import layer_kind
 
-OUT = _OUT / "modes"; OUT.mkdir(exist_ok=True)
-fails = []
-def check(n, c, d=""):
-    print(f"  {'PASS' if c else 'FAIL'}  {n}{'' if c else '  <- ' + d}")
-    if not c: fails.append(n)
+OUT = out_dir("modes")
 
-def rect(a, b, c, d):
-    return [{"type": "segment", "start": [a, b], "end": [c, b]},
-            {"type": "segment", "start": [c, b], "end": [c, d]},
-            {"type": "segment", "start": [c, d], "end": [a, d]},
-            {"type": "segment", "start": [a, d], "end": [a, b]}]
 
 S2 = [("STIFFENER_TOP2", "MASK", 2.0), ("ADHESIVE_TOP2", "MASK", 0.025),
       ("COVERLAY_TOP", "MASK", 0.025), ("ADHESIVE_TOP", "MASK", 0.05),
@@ -66,9 +49,6 @@ def inspect(path):
     from OCP.XCAFDoc import XCAFDoc_DocumentTool, XCAFDoc_ColorTool
     from OCP.TDF import TDF_LabelSequence
     from OCP.Quantity import Quantity_Color
-    from OCP.TopExp import TopExp_Explorer
-    from OCP.TopAbs import TopAbs_SOLID
-    from OCP.STEPControl import STEPControl_Reader
     app = XCAFApp_Application.GetApplication_s()
     doc = TDocStd_Document(TCollection_ExtendedString("d"))
     app.NewDocument(TCollection_ExtendedString("MDTV-XCAF"), doc)
@@ -81,9 +61,7 @@ def inspect(path):
         c = Quantity_Color()
         if XCAFDoc_ColorTool.GetColor_s(seq.Value(i), c):
             cols.add((round(c.Red(), 3), round(c.Green(), 3), round(c.Blue(), 3)))
-    r = STEPControl_Reader(); r.ReadFile(str(path)); r.TransferRoots()
-    e = TopExp_Explorer(r.OneShape(), TopAbs_SOLID); n = 0
-    while e.More(): n += 1; e.Next()
+    n = count_solids(read_step(path))
     return n, cols, path.stat().st_size
 
 print("\n[1] layer_kind classifies the real stackup")

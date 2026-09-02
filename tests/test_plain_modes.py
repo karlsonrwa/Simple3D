@@ -1,26 +1,12 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, out_dir, fails, check, rect, volume, read_step, count_solids
 
 """Body stitching must work on an ORDINARY single-stackup board too."""
 import json, sys
-ROOT=_ROOT; sys.path.insert(0,str(ROOT))
 from stepbuilder import core
-OUT=_OUT / "plainmodes"; OUT.mkdir(exist_ok=True)
-fails=[]
-def check(n,c,d=""):
-    print(f"  {'PASS' if c else 'FAIL'}  {n}{'' if c else '  <- '+d}"); c or fails.append(n)
-def rect(a,b,c,d):
-    return [{"type":"segment","start":[a,b],"end":[c,b]},{"type":"segment","start":[c,b],"end":[c,d]},
-            {"type":"segment","start":[c,d],"end":[a,d]},{"type":"segment","start":[a,d],"end":[a,b]}]
+OUT = out_dir("plainmodes")
 # a plain 2-layer board, exactly what axlXSectionGet(nil 'all) would give
 PRIMARY=[("SILKSCREEN_TOP","MASK",0.0),("SOLDERMASK_TOP","MASK",0.025),
          ("TOP","CONDUCTOR",0.045),("DIEL","DIELECTRIC",0.964),
@@ -39,19 +25,11 @@ def build(name, mode, with_stackups=True):
     logs=[]
     core.generate(step_dir=ROOT/"demo/step_files",json_file=jf,output_dir=OUT,
                   output_name=name,board_mode=mode,log=logs.append)
-    from OCP.STEPControl import STEPControl_Reader
-    from OCP.TopExp import TopExp_Explorer
-    from OCP.TopAbs import TopAbs_SOLID
-    from OCP.GProp import GProp_GProps
-    from OCP.BRepGProp import BRepGProp
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
-    r=STEPControl_Reader(); r.ReadFile(str(OUT/f"{name}.step")); r.TransferRoots()
-    s=r.OneShape(); e=TopExp_Explorer(s,TopAbs_SOLID); n=0
-    while e.More(): n+=1; e.Next()
-    g=GProp_GProps(); BRepGProp.VolumeProperties_s(s,g)
+    s=read_step(OUT/f"{name}.step")
     bb=Bnd_Box(); BRepBndLib.Add_s(s,bb)
-    return n,g.Mass(),bb,logs
+    return count_solids(s),volume(s),bb,logs
 
 print("\n[1] Solid on a plain board: the single-prism path, untouched")
 n,v,bb,lg=build("p_solid","solid")

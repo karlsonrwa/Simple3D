@@ -1,31 +1,14 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, out_dir, fails, check, rect, volume, read_step
 
 """Multi-stackup, built from the real zone data of the user's rigid-flex board."""
 import json, sys
-ROOT = _ROOT
-sys.path.insert(0, str(ROOT))
 from stepbuilder import core
 
-OUT = _OUT / "zones"; OUT.mkdir(exist_ok=True)
-fails=[]
-def check(n,c,d=""):
-    print(f"  {'PASS' if c else 'FAIL'}  {n}{'' if c else '  <- '+d}"); c or fails.append(n)
+OUT = out_dir("zones")
 
-def rect(x0,y0,x1,y1):
-    return [{"type":"segment","start":[x0,y0],"end":[x1,y0]},
-            {"type":"segment","start":[x1,y0],"end":[x1,y1]},
-            {"type":"segment","start":[x1,y1],"end":[x0,y1]},
-            {"type":"segment","start":[x0,y1],"end":[x0,y0]}]
 
 # the real profiles measured on the board (above, core, below)
 PROF = {"FLEX":(0.075,0.215,0.075), "STIFFENER1":(0.200,0.215,0.075),
@@ -71,12 +54,7 @@ jf=OUT/"flex.json"; jf.write_text(json.dumps(d))
 logs=[]
 res=core.generate(step_dir=ROOT/"demo/step_files", json_file=jf, output_dir=OUT,
                   output_name="flex", log=logs.append)
-from OCP.STEPControl import STEPControl_Reader
-from OCP.GProp import GProp_GProps
-from OCP.BRepGProp import BRepGProp
-r=STEPControl_Reader(); r.ReadFile(str(OUT/"flex.step")); r.TransferRoots()
-p=GProp_GProps(); BRepGProp.VolumeProperties_s(r.OneShape(), p)
-got=p.Mass()
+got=volume(read_step(OUT/"flex.step"))
 want=(16*11.38*2.44)+(41*15.12*0.365)+(17.2*3.54*0.49)+(16.34*2.1*0.365)
 check(f"volume {got:.4f} vs zone sum {want:.4f}", abs(got-want)/want < 0.02,
       f"diff {abs(got-want):.4f}")
@@ -93,10 +71,10 @@ def place(zone):
     f=OUT/f"c_{zone or 'none'}.json"; f.write_text(json.dumps(dd))
     core.generate(step_dir=ROOT/"demo/step_files", json_file=f, output_dir=OUT,
                       output_name=f"c_{zone or 'none'}", log=lambda m: None)
-    rr=STEPControl_Reader(); rr.ReadFile(str(OUT/f"c_{zone or 'none'}.step")); rr.TransferRoots()
+    s=read_step(OUT/f"c_{zone or 'none'}.step")
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
-    bb=Bnd_Box(); BRepBndLib.Add_s(rr.OneShape(), bb)
+    bb=Bnd_Box(); BRepBndLib.Add_s(s, bb)
     return bb.CornerMax().Z()
 zmax_stiff = place("STIFFENER2")
 zmax_flex  = place("FLEX2")
@@ -116,10 +94,9 @@ logs2=[]
 res2=core.generate(step_dir=ROOT/"demo/step_files", json_file=f2, output_dir=OUT,
                    output_name="plain", log=logs2.append)
 check("no multi-stackup log", not [m for m in logs2 if "Multi-stackup" in m])
-r2=STEPControl_Reader(); r2.ReadFile(str(OUT/"plain.step")); r2.TransferRoots()
-p2=GProp_GProps(); BRepGProp.VolumeProperties_s(r2.OneShape(), p2)
-check("plain volume = outline x 1.096", abs(p2.Mass()-(41.6*32.0*1.096))/(41.6*32.0*1.096)<1e-6,
-      f"{p2.Mass():.4f}")
+v2=volume(read_step(OUT/"plain.step"))
+check("plain volume = outline x 1.096", abs(v2-(41.6*32.0*1.096))/(41.6*32.0*1.096)<1e-6,
+      f"{v2:.4f}")
 check("empty zones list behaves as no zones", True)
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")

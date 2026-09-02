@@ -1,29 +1,15 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, out_dir, fails, check
 
 """Silkscreen path as a real package import (exercises `from .colors import`),
 plus layer filtering, flat mode, warnings and the area cross-check."""
 import json, sys
 
-ROOT = _ROOT
-sys.path.insert(0, str(ROOT))
 from stepbuilder import core           # package import, not a bare module
 
-OUT = _OUT / "silk"
-OUT.mkdir(exist_ok=True)
-fails = []
-def check(name, cond, detail=""):
-    print(f"  {'PASS' if cond else 'FAIL'}  {name}{'' if cond else '  <- ' + detail}")
-    if not cond: fails.append(name)
+OUT = out_dir("silk")
 
 base = json.loads((ROOT / "demo/ap-214/demo.json").read_text())
 

@@ -1,14 +1,7 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, out_dir, fails, check, rect, volume, bbox, read_step
 
 """Folding flex bends: the property parser, the plan, and the built geometry.
 
@@ -18,8 +11,6 @@ lands, how high the fold reaches) and the geometry is required to match it.
 """
 import json, math, sys
 
-ROOT = _ROOT
-sys.path.insert(0, str(ROOT))
 from stepbuilder import core
 from stepbuilder.bend import (
     Bend, DEFAULT_SLICE_ANGLE, bend_from_dict, bends_from_json, clip_halfplane,
@@ -30,44 +21,13 @@ from stepbuilder.bend import (
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
 from OCP.BRepGProp import BRepGProp
 from OCP.GProp import GProp_GProps
-from OCP.Bnd import Bnd_Box
-from OCP.BRepBndLib import BRepBndLib
 from OCP.gp import gp_Dir, gp_Pnt
 
-OUT = _OUT / "bend"
-OUT.mkdir(exist_ok=True)
-fails = []
-
-
-def check(n, c, d=""):
-    print(f"  {'PASS' if c else 'FAIL'}  {n}{'' if c else '  <- ' + str(d)}")
-    c or fails.append(n)
+OUT = out_dir("bend")
 
 
 def near(a, b, tol=1e-6):
     return abs(a - b) <= tol
-
-
-def volume(shape):
-    # The ITERATIVE integrator. The plain call measures a solid with B-spline
-    # walls - which is what a wrapped bend has - about 1.5% light, and every
-    # number in this file would be measuring that instead of the geometry.
-    props = GProp_GProps()
-    BRepGProp.VolumeProperties_s(shape, props, 1.0e-6, False, False)
-    return props.Mass()
-
-
-def bbox(shape):
-    box = Bnd_Box()
-    BRepBndLib.Add_s(shape, box, True)
-    return box.Get()
-
-
-def rect(x0, y0, x1, y1):
-    return [{"type": "segment", "start": [x0, y0], "end": [x1, y0]},
-            {"type": "segment", "start": [x1, y0], "end": [x1, y1]},
-            {"type": "segment", "start": [x1, y1], "end": [x0, y1]},
-            {"type": "segment", "start": [x0, y1], "end": [x0, y0]}]
 
 
 # --------------------------------------------------------------------------- #
@@ -841,17 +801,12 @@ demo["bends"] = [{
 jf = OUT / "folded.json"
 jf.write_text(json.dumps(demo))
 
-from OCP.STEPControl import STEPControl_Reader
-
 
 def build(name, **kw):
     logs = []
     core.generate(step_dir=ROOT / "demo/step_files", json_file=jf, output_dir=OUT,
                   output_name=name, minimize_size=False, log=logs.append, **kw)
-    reader = STEPControl_Reader()
-    reader.ReadFile(str(OUT / f"{name}.step"))
-    reader.TransferRoots()
-    return reader.OneShape(), logs
+    return read_step(OUT / f"{name}.step"), logs
 
 
 shape, logs = build("folded")
@@ -942,10 +897,7 @@ check("the ear really is inside the bend area",
 ear_logs = []
 core.generate(step_dir=ROOT / "demo/step_files", json_file=ear_file, output_dir=OUT,
               output_name="eared", minimize_size=False, log=ear_logs.append)
-ear_reader = STEPControl_Reader()
-ear_reader.ReadFile(str(OUT / "eared.step"))
-ear_reader.TransferRoots()
-ear_shape = ear_reader.OneShape()
+ear_shape = read_step(OUT / "eared.step")
 
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
 
@@ -975,10 +927,7 @@ def plain_volume(name, fold):
     core.generate(step_dir=ROOT / "demo/step_files", json_file=pf, output_dir=OUT,
                   output_name=name, minimize_size=False, fold_bends=fold,
                   log=lambda m: None)
-    reader = STEPControl_Reader()
-    reader.ReadFile(str(OUT / f"{name}.step"))
-    reader.TransferRoots()
-    return volume(reader.OneShape())
+    return volume(read_step(OUT / f"{name}.step"))
 
 
 on = plain_volume("plain_on", True)
@@ -1072,10 +1021,7 @@ for mode in ("solid", "layers", "inspect"):
     core.generate(step_dir=ROOT / "demo/step_files", json_file=rfj, output_dir=OUT,
                   output_name=f"rf_{mode}", minimize_size=False, board_mode=mode,
                   log=logs.append)
-    reader = STEPControl_Reader()
-    reader.ReadFile(str(OUT / f"rf_{mode}.step"))
-    reader.TransferRoots()
-    shape = reader.OneShape()
+    shape = read_step(OUT / f"rf_{mode}.step")
     heights[mode] = bbox(shape)[5]
     volumes[mode] = volume(shape)
     check(f"{mode}: the fold is applied", any("Folding 1 bend" in m for m in logs),

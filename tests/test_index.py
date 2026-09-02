@@ -1,22 +1,13 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, OUT, fails, check
 
 """StepFileIndex as an ordered search path."""
 import sys, shutil
-ROOT = _ROOT
-sys.path.insert(0, str(ROOT))
 from stepbuilder.core import StepFileIndex, StepBuilderError
 
-T = _OUT / "idx"
+T = OUT / "idx"
 shutil.rmtree(T, ignore_errors=True)
 lib, proj, nested = T/"lib", T/"proj", T/"lib"/"sub"
 for d in (lib, proj, nested): d.mkdir(parents=True)
@@ -26,9 +17,6 @@ for d in (lib, proj, nested): d.mkdir(parents=True)
 (proj/"only_proj.step").write_text("P")
 (nested/"deep.step").write_text("D")         # recursive within a root
 
-fails=[]
-def check(n,c,d=""):
-    print(f"  {'PASS' if c else 'FAIL'}  {n}{'' if c else '  <- '+d}"); c or fails.append(n)
 
 print("\n[1] precedence follows list order")
 logs=[]
@@ -120,7 +108,7 @@ print("\n[9] a model file that is present but unusable costs its own component")
 import json
 from stepbuilder import core
 
-W = _OUT / "unreadable"
+W = OUT / "unreadable"
 shutil.rmtree(W, ignore_errors=True)
 (W / "models").mkdir(parents=True)
 shutil.copy(ROOT / "demo/step_files/cap_D8x10mm.stp", W / "models")

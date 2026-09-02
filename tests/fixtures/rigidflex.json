@@ -1,0 +1,317 @@
+{
+ "format": "simple3d",
+ "format_version": 7,
+ "name": "rigidflex",
+ "pcb": {
+  "thickness": {
+   "soldermask_top": 0.0,
+   "board": 0.365,
+   "soldermask_bottom": 0.0
+  },
+  "color": {
+   "r": 0.0,
+   "g": 0.4,
+   "b": 0.0
+  },
+  "edges": [
+   [
+    {
+     "type": "segment",
+     "start": [
+      0,
+      0
+     ],
+     "end": [
+      41,
+      0
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      41,
+      0
+     ],
+     "end": [
+      41,
+      26.5
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      41,
+      26.5
+     ],
+     "end": [
+      0,
+      26.5
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      0,
+      26.5
+     ],
+     "end": [
+      0,
+      0
+     ]
+    }
+   ]
+  ]
+ },
+ "stackups": {
+  "FLEX": {
+   "thickness": 0.365,
+   "layers": [
+    {
+     "name": "COVERLAY_TOP",
+     "type": "MASK",
+     "thickness": 0.025,
+     "z_top": 0.07500000000000001,
+     "z_bottom": 0.05000000000000001,
+     "shapes": null
+    },
+    {
+     "name": "ADHESIVE_TOP",
+     "type": "MASK",
+     "thickness": 0.05,
+     "z_top": 0.05000000000000001,
+     "z_bottom": 6.938893903907228e-18,
+     "shapes": null
+    },
+    {
+     "name": "TOP",
+     "type": "CONDUCTOR",
+     "thickness": 0.045,
+     "z_top": 0.0,
+     "z_bottom": -0.045,
+     "shapes": null
+    },
+    {
+     "name": "DIEL",
+     "type": "DIELECTRIC",
+     "thickness": 0.125,
+     "z_top": -0.045,
+     "z_bottom": -0.16999999999999998,
+     "shapes": null
+    },
+    {
+     "name": "BOTTOM",
+     "type": "CONDUCTOR",
+     "thickness": 0.045,
+     "z_top": -0.16999999999999998,
+     "z_bottom": -0.21499999999999997,
+     "shapes": null
+    },
+    {
+     "name": "ADHESIVE_BOTTOM",
+     "type": "MASK",
+     "thickness": 0.05,
+     "z_top": -0.21499999999999997,
+     "z_bottom": -0.26499999999999996,
+     "shapes": null
+    },
+    {
+     "name": "COVERLAY_BOTTOM",
+     "type": "MASK",
+     "thickness": 0.025,
+     "z_top": -0.26499999999999996,
+     "z_bottom": -0.29,
+     "shapes": null
+    }
+   ]
+  },
+  "STIFFENER2": {
+   "thickness": 2.44,
+   "layers": [
+    {
+     "name": "STIFFENER_TOP2",
+     "type": "MASK",
+     "thickness": 2.0,
+     "z_top": 2.05,
+     "z_bottom": 0.04999999999999982,
+     "shapes": null
+    },
+    {
+     "name": "ADHESIVE_TOP2",
+     "type": "MASK",
+     "thickness": 0.025,
+     "z_top": 0.04999999999999982,
+     "z_bottom": 0.02499999999999982,
+     "shapes": null
+    },
+    {
+     "name": "SOLDERMASK_TOP",
+     "type": "MASK",
+     "thickness": 0.025,
+     "z_top": 0.02499999999999991,
+     "z_bottom": -9.020562075079397e-17,
+     "shapes": null
+    },
+    {
+     "name": "TOP",
+     "type": "CONDUCTOR",
+     "thickness": 0.045,
+     "z_top": 0.0,
+     "z_bottom": -0.045,
+     "shapes": null
+    },
+    {
+     "name": "DIEL",
+     "type": "DIELECTRIC",
+     "thickness": 0.125,
+     "z_top": -0.04499999999999993,
+     "z_bottom": -0.16999999999999993,
+     "shapes": null
+    },
+    {
+     "name": "BOTTOM",
+     "type": "CONDUCTOR",
+     "thickness": 0.045,
+     "z_top": -0.16999999999999993,
+     "z_bottom": -0.2149999999999999,
+     "shapes": null
+    },
+    {
+     "name": "SOLDERMASK_BOTTOM",
+     "type": "MASK",
+     "thickness": 0.025,
+     "z_top": -0.21499999999999986,
+     "z_bottom": -0.23999999999999985,
+     "shapes": null
+    },
+    {
+     "name": "COVERLAY_BOTTOM",
+     "type": "MASK",
+     "thickness": 0.025,
+     "z_top": -0.23999999999999977,
+     "z_bottom": -0.2649999999999998,
+     "shapes": null
+    }
+   ]
+  }
+ },
+ "zones": [
+  {
+   "name": "S2",
+   "stackup": "STIFFENER2",
+   "contour": [
+    {
+     "type": "segment",
+     "start": [
+      0,
+      0
+     ],
+     "end": [
+      16,
+      0
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      16,
+      0
+     ],
+     "end": [
+      16,
+      11.38
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      16,
+      11.38
+     ],
+     "end": [
+      0,
+      11.38
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      0,
+      11.38
+     ],
+     "end": [
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "name": "F2",
+   "stackup": "FLEX",
+   "contour": [
+    {
+     "type": "segment",
+     "start": [
+      0,
+      11.38
+     ],
+     "end": [
+      41,
+      11.38
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      41,
+      11.38
+     ],
+     "end": [
+      41,
+      26.5
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      41,
+      26.5
+     ],
+     "end": [
+      0,
+      26.5
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      0,
+      26.5
+     ],
+     "end": [
+      0,
+      11.38
+     ]
+    }
+   ]
+  }
+ ],
+ "bends": [
+  {
+   "name": "B1",
+   "line": {
+    "start": [
+     0.0,
+     20.0
+    ],
+    "end": [
+     41.0,
+     20.0
+    ]
+   },
+   "inner_radius": 0.5,
+   "width": null,
+   "info": "TYPE=CircularBend, INNER_SIDE=TOP, INNER_ANGLE=90.0000, INNER_RADIUS=0.5000 MILLIMETERS, ORDER=0"
+  }
+ ]
+}

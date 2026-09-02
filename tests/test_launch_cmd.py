@@ -1,14 +1,7 @@
-# Paths are derived from this file's own location, so the suite runs from
-# wherever the repository is checked out. Anything a test writes goes to
-# build/test-output/, which is gitignored.
-import sys as _sys
-from pathlib import Path as _Path
-
-_ROOT = _Path(__file__).resolve().parent.parent
-_OUT = _ROOT / "build" / "test-output"
-_OUT.mkdir(parents=True, exist_ok=True)
-if str(_ROOT) not in _sys.path:
-    _sys.path.insert(0, str(_ROOT))
+# Paths, the output folder, check() and the STEP measuring helpers come from
+# tests/_support.py, so the suite runs from wherever the repository is checked
+# out and every suite fails the same way. Output goes to build/test-output/.
+from _support import ROOT, OUT, fails, check
 
 """The shape of the command line s3dLaunch and s3dPreflight hand to cmd.
 
@@ -40,15 +33,9 @@ if sys.platform != "win32":
     print("not Windows - this shape is cmd-specific; skipped")
     sys.exit(0)
 
-fails = []
-def check(name, cond, detail=""):
-    print(f"  {'PASS' if cond else 'FAIL'}  {name}{'' if cond else '  <- ' + detail}")
-    if not cond:
-        fails.append(name)
-
 
 # Spaces in both directories, deliberately: that is the case that broke.
-WORK = _OUT / "launch cmd"
+WORK = OUT / "launch cmd"
 SCRIPT_DIR = WORK / "my script dir"      # stands in for S3D_ScriptDir
 DESIGN_DIR = WORK / "my design dir"      # stands in for the design's cad folder
 if WORK.exists():
@@ -176,7 +163,7 @@ check("quoted-first form does NOT deliver the spaced path",
       not intact, "it survived - cmd's stripping rule may have changed")
 
 print("\n[5] simple3d.il still uses the shape this suite proves")
-il = (_ROOT / "simple3d.il").read_text(encoding="utf-8")
+il = (ROOT / "simple3d.il").read_text(encoding="utf-8")
 check('s3dLaunch uses  start "" /D', 'start \\"\\" /D' in il)
 check('s3dPreflight uses  start /B /WAIT "" /D', 'start /B /WAIT \\"\\" /D' in il)
 check("no batch file is written any more",
