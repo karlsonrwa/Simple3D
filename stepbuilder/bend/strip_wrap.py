@@ -21,6 +21,10 @@ from OCP.TopAbs import TopAbs_ShapeEnum
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
 from OCP.gp import gp_Dir, gp_Pnt
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeSolid
+from OCP.BRepCheck import BRepCheck_Analyzer
+from OCP.BRepGProp import BRepGProp
+from OCP.GProp import GProp_GProps
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 from OCP.BRepFill import BRepFill
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
@@ -296,6 +300,58 @@ def _walls(mapped: list, cyl_top, cyl_bottom) -> tuple:
     return walls, None
 
 
+def _sewn_solid(sewing) -> tuple:
+    """Sew the faces, close the shell into a solid, check it, weigh it.
+    Returns (solid, volume, None) or (None, 0.0, why)."""
+    sewing.Perform()
+    shell = sewing.SewedShape()
+    if shell.IsNull():
+        return None, 0.0, "the faces did not sew together"
+
+    solid = None
+    explorer = TopExp_Explorer(shell, TopAbs_ShapeEnum.TopAbs_SHELL)
+    if explorer.More():
+        maker = BRepBuilderAPI_MakeSolid(TopoDS.Shell_s(explorer.Current()))
+        if maker.IsDone():
+            solid = maker.Solid()
+    if solid is None or solid.IsNull():
+        return None, 0.0, "the sewn faces did not make a closed shell"
+    if not BRepCheck_Analyzer(solid).IsValid():
+        return None, 0.0, "the solid built from them is not valid"
+
+    # The ITERATIVE integrator, not the plain call. A solid with B-spline walls
+    # measures 1.5% light through the default one - which sent every wrapped
+    # piece of the real board back to the facets, for a defect that was in the
+    # measurement and not in the geometry. With eps it agrees with the closed
+    # form to 2e-6.
+    props = GProp_GProps()
+    BRepGProp.VolumeProperties_s(solid, props, 1.0e-5, False, False)
+    made = props.Mass()
+    if made < 0:                            # sewn inside out
+        solid = TopoDS.Solid_s(solid.Reversed())
+        made = -made
+    return solid, made, None
+
+
+def _expected_volume(volume: float, strip: _Strip, z_top: float, z_bottom: float,
+                     rho: float) -> float:
+    """What the piece SHOULD weigh once bent, which is not what it weighed flat.
+
+        #
+    The map multiplies volume by r/rho - material at a bigger radius than the
+    neutral one is stretched, material inside it is compressed - so a layer
+    above the core gains and one below loses, and only a stack symmetric about
+    the neutral axis comes out unchanged. Integrated over a prism that is
+    exactly `r at mid-thickness over rho`.
+        #
+    Measured on the real board's stiffener zone: 0.937 for the top coverlay,
+    1.000 for the dielectric at the core, 1.063 for the bottom coverlay -
+    symmetric about the middle, which is the bend being isometric. Checking
+    for the flat volume instead rejected every layer but the middle one.
+    """
+    return volume * abs(strip.axis_z - (z_top + z_bottom) / 2.0) / rho
+
+
 def _map_strip(flat: TopoDS_Shape, strip: _Strip,
                why: list[str] | None = None) -> TopoDS_Shape | None:
     """The bent strip, built by wrapping its outline onto the cylinder.
@@ -327,25 +383,10 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
     a 2D spline: the SURFACE stays an exact cylinder either way, and only the
     curve trimming it is approximated, to well under a micron.
     """
-    from OCP.BRepAdaptor import BRepAdaptor_Curve
-    from OCP.BRepBuilderAPI import (
-        BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeFace,
-        BRepBuilderAPI_MakeSolid, BRepBuilderAPI_MakeWire, BRepBuilderAPI_Sewing,
-    )
-    from OCP.BRepCheck import BRepCheck_Analyzer
-    from OCP.BRepFill import BRepFill
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Sewing
     from OCP.BRepGProp import BRepGProp
-    from OCP.BRepLib import BRepLib
     from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
     from OCP.GProp import GProp_GProps
-    from OCP.Geom import Geom_CylindricalSurface
-    from OCP.Geom2d import Geom2d_Ellipse, Geom2d_Line, Geom2d_TrimmedCurve
-    from OCP.Geom2dAPI import Geom2dAPI_PointsToBSpline
-    from OCP.GeomAbs import GeomAbs_CurveType
-    from OCP.TColgp import TColgp_Array1OfPnt2d
-    from OCP.TopAbs import TopAbs_Orientation
-    from OCP.TopoDS import TopoDS_Vertex
-    from OCP.gp import gp_Ax3, gp_Ax22d, gp_Dir2d, gp_Pnt2d, gp_Vec2d
 
     def give_up(reason: str) -> None:
         """Say which step refused, so a board that facets can be diagnosed."""
@@ -432,46 +473,11 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
         for wall in walls:
             sewing.Add(wall)
 
-    sewing.Perform()
-    shell = sewing.SewedShape()
-    if shell.IsNull():
-        return give_up("the faces did not sew together")
+    solid, made, reason = _sewn_solid(sewing)
+    if solid is None:
+        return give_up(reason)
 
-    solid = None
-    explorer = TopExp_Explorer(shell, TopAbs_ShapeEnum.TopAbs_SHELL)
-    if explorer.More():
-        maker = BRepBuilderAPI_MakeSolid(TopoDS.Shell_s(explorer.Current()))
-        if maker.IsDone():
-            solid = maker.Solid()
-    if solid is None or solid.IsNull():
-        return give_up("the sewn faces did not make a closed shell")
-    if not BRepCheck_Analyzer(solid).IsValid():
-        return give_up("the solid built from them is not valid")
-
-    # The ITERATIVE integrator, not the plain call. A solid with B-spline walls
-    # measures 1.5% light through the default one - which sent every wrapped
-    # piece of the real board back to the facets, for a defect that was in the
-    # measurement and not in the geometry. With eps it agrees with the closed
-    # form to 2e-6.
-    BRepGProp.VolumeProperties_s(solid, props, 1.0e-5, False, False)
-    made = props.Mass()
-    if made < 0:                            # sewn inside out
-        solid = TopoDS.Solid_s(solid.Reversed())
-        made = -made
-
-    # What the piece SHOULD weigh once bent, which is not what it weighed flat.
-    #
-    # The map multiplies volume by r/rho - material at a bigger radius than the
-    # neutral one is stretched, material inside it is compressed - so a layer
-    # above the core gains and one below loses, and only a stack symmetric about
-    # the neutral axis comes out unchanged. Integrated over a prism that is
-    # exactly `r at mid-thickness over rho`.
-    #
-    # Measured on the real board's stiffener zone: 0.937 for the top coverlay,
-    # 1.000 for the dielectric at the core, 1.063 for the bottom coverlay -
-    # symmetric about the middle, which is the bend being isometric. Checking
-    # for the flat volume instead rejected every layer but the middle one.
-    expected = volume * abs(strip.axis_z - (z_top + z_bottom) / 2.0) / rho
+    expected = _expected_volume(volume, strip, z_top, z_bottom, rho)
     if expected <= 0 or abs(made - expected) > MAP_VOLUME_TOLERANCE * expected:
         return give_up(f"it came out weighing {made:.6f} where the bend should "
                        f"make it {expected:.6f}")
