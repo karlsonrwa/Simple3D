@@ -21,7 +21,7 @@ one settled.
 | Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
 | `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
-| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 74 (2026-09-02): Step 0, Plans A, B and C; each row says what it left. Next: D (SKILL; the export half checked headless by `tools/skill_export.py`, the menu half by the user), then E |
+| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 77 (2026-09-03): Step 0, Plans A, B, C and D - all five monoliths split; each row says what it left. Next: E (format_version 9), then F4 and G |
 | The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd`; `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
 
 Three tools grew out of this project and now have repositories of their own.
