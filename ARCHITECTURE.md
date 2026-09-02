@@ -64,7 +64,8 @@ the keys that differ from the default.
 | `stepbuilder/bend.py` | 2412 | 71 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `_Region`/`_Strip`/`FoldPlan`, `plan_fold`, cutting the outline into pieces, the three strip constructions (revolve / wrap / facets), fuse |
 | `stepbuilder/contour.py` | 267 | 7 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
-| `stepbuilder/gui.py` | 1623 | 58 | one `tk.Tk` subclass: widget layout, window placement across monitors, silk-layer panel, config load/migrate/save, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring |
+| `stepbuilder/gui.py` | 1578 | 58 | one `tk.Tk` subclass: widget layout, window placement across monitors, silk-layer panel, config load/migrate/save, worker bridge (queue drain, crash detection, cancel), freeze/thaw, log colouring |
+| `stepbuilder/settings.py` | 82 | 3 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`. Round 72, plan C1 |
 | `stepbuilder/__main__.py` | 376 | 4 | two argparse parsers (prefilled GUI, headless CLI), the crash log under `pythonw` |
 | `stepbuilder/worker.py` | 204 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, batch rule for the full-board file, per-job isolation, progress slicing |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
@@ -72,8 +73,9 @@ the keys that differ from the default.
 | `tools/` | ~850 | — | four mechanical SKILL checks (`skill_checks.py`, `check_arity.py`), the docs audit, a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
-Counts for `core.py`, `bend.py`, `contour.py`, `errors.py` and `intermediate.py`
-are as of round 72 (after plans A1 and A2); the other rows are as of round 70. The defs column counts
+Counts for `core.py`, `bend.py`, `contour.py`, `errors.py`, `intermediate.py`,
+`gui.py` and `settings.py` are as of round 72 (after plans A1, A2 and C1); the
+other rows are as of round 70. The defs column counts
 every `def` and `class` line, nested ones included.
 
 ### 2.2 Dependencies
@@ -95,6 +97,7 @@ graph TD
         MAIN -->|headless CLI| CORE[core.py]
         GUI --> WORKER[worker.py]
         GUI --> COLORS[colors.py]
+        GUI --> SETTINGS[settings.py]
         GUI -.->|"DEFAULT_* constants"| BEND[bend.py]
         GUI -.->|"resolve_jobs, output_stem<br/>(re-exported from intermediate)"| CORE
         WORKER -->|"multiprocessing.Process"| CORE

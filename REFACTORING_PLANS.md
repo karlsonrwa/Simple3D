@@ -223,7 +223,7 @@ stepbuilder/
 
 | # | move | tests before | done when |
 |---|---|---|---|
-| C1 | `settings.py` with `merge_config` and `read_config_file` moved verbatim; `gui` imports them | `test_config_merge.py`, `test_gui.py` [3], [4], [4b] | unchanged |
+| C1 | `settings.py` with `merge_config` and `read_config_file` moved verbatim; `gui` imports them | `test_config_merge.py`, `test_gui.py` [3], [4], [4b] | unchanged — **done, round 72**: plus `local_config_path`; `settings.py` imports neither tkinter nor core (asserted); the window keeps `_merge_config` as an alias and thin wrappers for the two methods; a 24-scenario load/save snapshot (eight settings files × none / edited / launched-from-Allegro) is byte-identical before and after |
 | C2 | the key table: `_load_config`/`_save_config` iterate `GUI_KEYS` instead of naming each key twice; migrations as functions | `test_gui.py` [6], [7], [7b], [7d]; `test_geom.py` [3], [7] | adding a setting is one table row |
 | C3 | `winplace.py` | `test_geom.py` all | unchanged |
 | C4 | `widgets/layers_panel.py` | `test_gui.py` layer cases; the round-15/16 behaviours (wheel grab, per-side greying, All/None on live sides) need explicit assertions first — add them | unchanged |

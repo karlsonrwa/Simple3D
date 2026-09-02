@@ -88,8 +88,8 @@ if flat not in readme:
 
 # ---- shipped files listed -------------------------------------------------
 for f in ("makeVariant3dIntermediates.il", "simple3d.il", "simple3d_config.json",
-          "core.py", "contour.py", "errors.py", "intermediate.py", "gui.py",
-          "colors.py", "bend.py",
+          "core.py", "contour.py", "errors.py", "intermediate.py", "settings.py",
+          "gui.py", "colors.py", "bend.py",
           "__main__.py"):
     if f not in readme:
         note("file not in layout listing", f)

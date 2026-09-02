@@ -22,6 +22,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import core
+from . import settings
 from .worker import BuildSettings, run_jobs
 from .bend import DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
 from .core import DEFAULT_FLAT_HEIGHT
@@ -106,21 +107,9 @@ NOTE_PREFIXES = ("note",)
 __all__ = ["StepBuilderApp", "BuildSettings"]
 
 
-def _merge_config(base: dict, over: dict) -> dict:
-    """*base* with *over* laid on top, key by key, nested dicts merged.
-
-    Anything that is not a dict is REPLACED whole - a list from the local file
-    wins entirely, which is the only reading that lets it shorten one. Presence
-    of the key decides, never its truthiness: false is a setting, and a test
-    like `if value:` would drop exactly the overrides that switch things off.
-    """
-    out = dict(base)
-    for key, value in (over or {}).items():
-        if isinstance(value, dict) and isinstance(out.get(key), dict):
-            out[key] = _merge_config(out[key], value)
-        else:
-            out[key] = value
-    return out
+# The merge lives in settings.py since round 72 (plan C1); this name stays
+# because tests/test_config_merge.py imports it from here.
+_merge_config = settings.merge_config
 
 
 class StepBuilderApp(tk.Tk):
@@ -1320,48 +1309,14 @@ class StepBuilderApp(tk.Tk):
 
     @property
     def local_config_path(self) -> Path:
-        """simple3d_config.json -> simple3d_config.local.json, beside it.
-
-        The tracked file holds the shipped defaults; this one holds whatever
-        this installation does differently, and it is the ONLY one this window
-        writes. That is what keeps an update from either conflicting with your
-        model folders or overwriting them - and keeps your absolute paths, and
-        the position of your window, out of every commit.
-        """
-        return self.config_path.with_name(
-            self.config_path.stem + ".local" + self.config_path.suffix)
+        """The local file beside the tracked one - settings.local_config_path."""
+        return settings.local_config_path(self.config_path)
 
     def _read_config_file(self, path: Path | None = None,
                           missing_ok: bool = False) -> tuple[dict, str | None]:
-        """(document, problem). *problem* is None only when the file read cleanly.
-
-        The distinction matters more than it looks: treating "could not read" as
-        "empty" is what let a save write a document containing nothing but the
-        "gui" section, destroying the silkscreen layer lists and the Allegro
-        settings alongside it. Nothing may be written unless the existing file
-        was understood first.
-
-        missing_ok is for the LOCAL file: not having one is the ordinary state
-        of a fresh clone, not a problem to report and certainly not a reason to
-        refuse to write one.
-
-        Read as utf-8-sig, so a file an editor saved with a BOM still parses -
-        that alone is enough to make json.loads fail on otherwise valid JSON.
-        """
-        path = path or self.config_path
-        if not path.exists():
-            return {}, None if missing_ok else f"settings file not found: {path}"
-        try:
-            text = path.read_text(encoding="utf-8-sig")
-        except OSError as exc:
-            return {}, f"cannot read {path}: {exc}"
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError as exc:
-            return {}, f"{path.name} is not valid JSON: {exc}"
-        if not isinstance(data, dict):
-            return {}, f"{path.name} does not hold a JSON object"
-        return data, None
+        """(document, problem) - settings.read_config_file, defaulting to the
+        tracked file. Why "problem" is never treated as "empty" is said there."""
+        return settings.read_config_file(path or self.config_path, missing_ok)
 
     def _load_config(self) -> None:
         base, self._config_problem = self._read_config_file()
