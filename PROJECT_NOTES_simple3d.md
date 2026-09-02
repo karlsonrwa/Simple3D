@@ -21,7 +21,7 @@ one settled.
 | Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
 | `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
-| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 72 (2026-09-02): Step 0, A1–A2, C1–C2, B1–B6, B7; each row says what it left. Next: A3–A8, then B5's five extractions, C3–C6, then D |
+| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 73 (2026-09-02): Step 0, all of Plan A, C1–C2, B1–B7 (B5's extractions excepted); each row says what it left. Next: B5's five extractions, C3–C6, then D |
 | The golden corpus | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 cases; `--check` after every refactoring step. `tests/_support.py` is the one preamble every suite imports (round 71) |
 
 Three tools grew out of this project and now have repositories of their own.
@@ -35,9 +35,11 @@ Nothing here depends on them, and no copy of their code belongs in this tree:
 
 Three pieces ship: `makeVariant3dIntermediates.il` (reads Allegro, writes JSON),
 `simple3d.il` (menu item + launcher), `stepbuilder/` (Python + OpenCASCADE,
-writes the STEP — since round 72 `core.py` plus `contour.py`, `errors.py`,
-`intermediate.py`, `settings.py` and the `bend/` package; `ARCHITECTURE.md`
-has the file table). Plus `simple3d_config.json`, the shipped defaults, and the
+writes the STEP — since round 73 `core.py` is the sequence of a build's
+stages and `contour.py`, `errors.py`, `intermediate.py`, `settings.py`,
+`stackup.py`, `board.py`, `legend.py`, `models.py`, `stepdoc.py`, `build.py`,
+`reporting.py` and the `bend/` package hold the rest; `ARCHITECTURE.md` has
+the file table). Plus `simple3d_config.json`, the shipped defaults, and the
 gitignored `simple3d_config.local.json` beside it, which is the only one the
 window writes; both halves read the pair merged. **No absolute path is left in
 any tracked file** (round 59): where the tool is installed comes from the
@@ -2947,6 +2949,74 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-02 (round 73) — Plan A complete: core.py is a sequence of stages
+
+The same day again, after round 72's write-up: A3–A10, 9 commits, each
+one plan step, each closed by `tests/run_all.py` green, `golden.py --check`
+with no difference and, since this round, a dry run on a scratch copy of the
+package pyflaked BEFORE a suite run was spent on it. Nothing a STEP file
+contains changed.
+
+### What was done
+
+- **A3** `stackup.py` (the stackup arithmetic, no OCC) and `reporting.py`
+  (`LogFn`, `ProgressFn`, the no-ops - every stage module needs them and none
+  may import core for them).
+- **A4** `board.py` (the board body, `_rim_faces`; `_face_from_wires` to
+  `contour.py`), then `layer_solids` - THE zones×layers walk, once, for the
+  fused board and the inspect build alike.
+- **A5** `legend.py` (the silkscreen half; the docs audit now reads
+  `DEFAULT_FLAT_HEIGHT` from there).
+- **A6** `models.py` (`StepFileIndex`, `component_transform`, the XCAF label
+  helpers, `_sanitize`) and `ModelCache.labels_for`, the read-once block of the
+  component loop as a method that says "missing" / "unreadable" once per
+  file. The loop in `generate` is placement only.
+- **A7** `stepdoc.py`: `StepDocument` (app, doc, both tools, the named root)
+  and `write(path, minimize_size)`, with the writer setting that halves the
+  file set where it has to be.
+- **A8** `build.py`: `BuildOptions`, the nineteen options once; `from_settings`
+  for the window, `from_args` for the CLI; `generate(options=...)` or the old
+  keywords. The meaning of each option moved out of `generate`'s docstring.
+- **A9** `generate` → `_prepare_stackups` (→ `_Stack`), `_plan_fold`,
+  `_build_board`, `_build_legend`, `_place_components`, `StepDocument.write`;
+  every segment body verbatim, each stage unpacking the names it reads at its
+  top. `generate` is 90 lines with its docstring, down from 646.
+  `test_modes.py` [6] asserts the progress values never go backwards (they
+  were asserted nowhere) and calls two stages alone.
+- **A10** `board_mode` validated against `build.BOARD_MODES` (an unknown mode
+  used to fall through to the plain solid, silently); the whole-board batch
+  rule is `intermediate.batch_jobs`, called by the worker and by the CLI's new
+  `--no-full-board`; `test_variant_path.py` [8] tests it by behaviour.
+
+`core.py`: 724 lines, was 2587 in round 70. `python tests/run_all.py`:
+**25/25 in 186 s**.
+
+### What to remember
+
+- **A dry run on a copy has to be rooted at the copy.** `stepbuilder` has no
+  `__init__.py`, so it is a namespace package: with both the repository and
+  the copy on `sys.path`, `stepbuilder.core` resolves to whichever portion is
+  FIRST - and `tests/_support.py` puts the repository first. The A4b "matches
+  the golden record on a dry copy" check had measured the working tree. Since
+  A6 the dry checks pin `sys.path = [copy] + everything-not-Simple3D` and
+  assert `core.__file__` is under the copy; since A9 the copy carries `tests/`
+  and `demo/` too, so its own `_support` roots the paths and a copied suite
+  runs against the copy.
+- **Dry-run, pyflakes, then the suite.** pyflakes on the copy caught
+  `_open_wire_detail` missing from `legend.py`'s imports (A5) - the same error
+  path A1 lost - before anything ran; and A9's generated preamble put an
+  unused `thickness = stack.thickness` into the legend stage because the word
+  appeared in a string literal. Both cost seconds instead of a 3-minute run.
+- **Read one `sed` range at a time.** Two ranges printed back to back read as
+  one file, and I "found" `--dated-name` carrying `--fold-neutral`'s help text.
+  The fix I wrote for it failed its own assertion, which is how I learned the
+  bug did not exist. A replacement that asserts its match is a check on the
+  reading, not only on the writing.
+- **`generate`'s five stages take `(data, stack, fold, options, document, …)`**
+  and return what the next needs; the `_Stack` dataclass is what the stackup
+  stage settles. A9 changed no line inside the segments, so the round-26 to
+  round-67 reasoning in their comments still reads in place.
 
 ## Update 2026-09-02 (round 72) — the first moves: contour, the intermediate, settings, the bend package
 

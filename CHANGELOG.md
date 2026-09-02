@@ -11,6 +11,26 @@ to use the tool.
 
 ---
 
+- **2026-09-02** — **`--no-full-board`, and a mode that is not a mode is an
+  error.** The headless `--batch` can now leave the whole-board file out, the
+  way the window's *Build the full-board file too* checkbox always could -
+  one rule for both. A `board_mode` that is not `solid`, `layers` or
+  `inspect` is refused with a message; it used to build a plain solid
+  without a word. Under the hood `core.py` finished coming apart: the board,
+  the legend, the models, the assembly document and the build's options are
+  modules of their own and `generate` is the sequence that calls them -
+  every step closed by the full suite and the golden corpus, so nothing a
+  STEP file contains has changed.
+  / **`--no-full-board`, и режим, которого нет, — ошибка.** Консольный
+  `--batch` теперь умеет не собирать файл всей платы — так, как галочка
+  *Build the full-board file too* в окне умела всегда; правило одно на
+  обоих. `board_mode`, отличный от `solid`, `layers` и `inspect`, отвергается
+  с сообщением; раньше он молча собирал обычное тело. Внутри `core.py`
+  разобран до конца: плата, шелкография, модели, документ сборки и
+  параметры сборки — отдельные модули, а `generate` — последовательность их
+  вызовов; каждый шаг закрыт полным набором тестов и золотым корпусом, так
+  что содержимое STEP-файлов не изменилось.
+
 - **2026-09-02** — **The Python half is in pieces, deliberately.** The two
   large files behind the window — `core.py` and `bend.py` — have started to
   come apart along the lines `REFACTORING_PLANS.md` drew: the contour
