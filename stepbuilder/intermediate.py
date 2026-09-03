@@ -174,11 +174,16 @@ class Intermediate:
         if "pcb" not in data:
             raise StepBuilderError("JSON is missing the 'pcb' object.")
         pcb = data["pcb"]
-        for key in ("thickness", "edges", "color"):
+        for key in ("edges", "color"):
             if key not in pcb:
                 raise StepBuilderError(f"JSON is missing 'pcb.{key}'.")
-        if "board" not in pcb["thickness"]:
-            raise StepBuilderError("JSON is missing 'pcb.thickness.board'.")
+        # pcb.thickness is optional since format_version 9 (round 79, E2) - a
+        # file without it must carry stackups to measure it from.
+        if "thickness" in pcb:
+            if "board" not in pcb["thickness"]:
+                raise StepBuilderError("JSON is missing 'pcb.thickness.board'.")
+        elif not data.get("stackups"):
+            raise StepBuilderError("JSON is missing 'pcb.thickness' and carries no stackups to measure it from.")
 
     def silkscreen_layers(self) -> dict[str, dict[str, int]]:
         """{"top": {layer: polygon count}, "bottom": {...}} for this intermediate.

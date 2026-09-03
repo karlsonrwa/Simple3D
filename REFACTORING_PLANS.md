@@ -323,7 +323,7 @@ format problems; they need one coordinated change in both halves.
 | # | change | back-compat | tests |
 |---|---|---|---|
 | E1 | writer emits `"components": { "<refdes>": {…}, … }` and stops writing components at the top level; `format_version: 9` | reader: if `"components"` is present use it, else walk the top level minus `_reserved` (v1–v8 files) | `test_embedded.py` [6] both shapes; a v8 fixture kept in `tests/fixtures/` — **done, round 79**: one more member of D8's list (`{}` when no component has a STEP mapping, which used to be the `'unbound` corner), `format_version` 9, the version comment and the RESERVED NOTE say what the tuple is now for; `Intermediate.components` returns the nested dict when there is one, the RESERVED walk otherwise, and `"components"` joined RESERVED so a v9 file can never be walked as a refdes. `tests/fixtures/demo_v8.json` / `demo_v9.json` are the demo board both ways; `test_embedded` [7] reads both to the same placements and builds both to the same STEP; `test_emit` [5] follows the writer. Headless: every board in `input/` exports as v9 with no stray top-level key, and the STEP built from the v9 file equals the one from the v8 record to the entity (`my_test_board2`, `flex3-a0`); the corpus drifted on all seven as expected and was re-recorded; STEP golden unchanged; 27/27 |
-| E2 | `pcb.thickness` becomes optional in v9; the reader computes it from `stackups["Primary"]` (kept layers) when absent; `calculateBoardThickness` retired | v8 files carry it; the reader prefers the stackup when both exist and they disagree by > 1 µm, and says so | `test_plain_modes.py`, `test_nomask.py` [5] |
+| E2 | `pcb.thickness` becomes optional in v9; the reader computes it from `stackups["Primary"]` (kept layers) when absent; `calculateBoardThickness` retired | v8 files carry it; the reader prefers the stackup when both exist and they disagree by > 1 µm, and says so | `test_plain_modes.py`, `test_nomask.py` [5] — **done, round 79**: `s3dBoardThickness` answers nil when no stackup is the board (a rigid-flex design with no PRIMARY), `makePcb` then writes no `thickness` object, and `calculateBoardThickness` - the `SOLDERMASK` name gate over the combined `nil 'all` view - is gone. The reader: `stackup.board_stackup` (Primary, else the first listed) and `stackup.thickness_parts` (above / span / below the conductors, the exporter's own rule); `core.board_thickness_parts` measures when the file has none (a note names the stackup and the number), checks when it has one and lets the stackup win by more than a micron (a warning names both numbers - an intermediate exported before round 76 carried the combined view's number on a rigid-flex board); `Intermediate.validate` wants stackups when there is no `pcb.thickness`. `test_plain_modes` [3b] (absent, disagreeing, agreeing), `test_nomask` [6] (the mask leaves a measured thickness too), `test_emit` (a `pcb` with no thickness parses). Headless: `flex-b2` exports with no `pcb.thickness` and builds to the same STEP as its v8 record (note: measured from `STIFFENER1`, 0.490 mm); the v8 file's 0.265 mm loses to the stackup with the warning; `flex3-a0` and `my_test_board2` unchanged. The corpus drifted on the two no-PRIMARY boards and was re-recorded; STEP golden unchanged; 27/27 |
 | E3 | `intermediate.RESERVED` (was `core._reserved` until round 72) deleted once E1 has shipped a release | — | — |
 
 Order: after Plan A2 (the `Intermediate` class is where the compatibility lives)
@@ -381,9 +381,9 @@ D1–D5 (SKILL discipline, user verification after D2 and D4) → D6–D8 → E 
 Each arrow is a green run of `tests/run_all.py` plus `tools/golden.py --check`
 — and, since round 72, `tools/python_names.py` before the run.
 
-**Where this stands after round 77:** Step 0 and Plans A (A1–A10), B (B1–B7),
-C (C1–C6) and D (D1–D8) are done; every SKILL step was closed headless by
-`tools/skill_export.py --check` (round 75), and what remains for the user's
-live session is the menu item and the launch. Next in line: E (format_version
-9; E2 retires `calculateBoardThickness` and `pcb.thickness` with it), then F4
-and G.
+**Where this stands after round 79:** Step 0 and Plans A (A1–A10), B (B1–B7),
+C (C1–C6), D (D1–D8) and E1–E2 (format_version 9) are done; every SKILL step
+was closed headless by `tools/skill_export.py --check` (round 75), and what
+remains for the user's live session is the menu item and the launch. E3
+(deleting `RESERVED`) waits for a release that has shipped v9. Next in line:
+F4 and G.

@@ -16,13 +16,21 @@ to use the tool.
   beside the board's metadata, so a reader no longer needs a list of which
   keys are *not* components. Every older file still builds. The one thing
   to know: a file written by this release needs this release's Python - an
-  older `stepbuilder` would read one component named `components`.
+  older `stepbuilder` would read one component named `components`. Also
+  with 9, `pcb.thickness` is written only when one stackup is the board;
+  otherwise the build measures it from the stackups and says so, and when
+  a file's number disagrees with its stackup the stackup wins, with a
+  warning naming both.
   / **`format_version` 9: компоненты под одним ключом.** Промежуточный файл
   теперь держит все компоненты под ключом `"components"`, а не рядом с
   метаданными платы, так что читателю больше не нужен список ключей,
   которые *не* компоненты. Все старые файлы по-прежнему собираются. Одно
   надо знать: файлу этого релиза нужен Python этого релиза — старый
-  `stepbuilder` прочитал бы один компонент по имени `components`.
+  `stepbuilder` прочитал бы один компонент по имени `components`. Ещё в
+  9: `pcb.thickness` пишется только когда какой-то стек и есть плата;
+  иначе сборка измеряет толщину по стекам и говорит об этом, а если число
+  в файле расходится со стеком, побеждает стек — с предупреждением,
+  называющим оба числа.
 
 - **2026-09-03** — **Cyrillic in a name no longer crashes the build; a right-click
   menu; a plain warning about non-ASCII paths.** Allegro writes text in the

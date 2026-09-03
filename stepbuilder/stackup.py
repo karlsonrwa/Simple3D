@@ -83,6 +83,33 @@ def _is_conductor(layer: dict) -> bool:
     return str(layer.get("type") or "").upper() in ("CONDUCTOR", "PLANE")
 
 
+def board_stackup(stackups: dict) -> tuple[str, dict] | None:
+    """The stackup that is THE board: the one called Primary (any case), else
+    the first one the file lists. None when there are none."""
+    for name, stackup in stackups.items():
+        if str(name).upper() == "PRIMARY" and isinstance(stackup, dict):
+            return str(name), stackup
+    for name, stackup in stackups.items():
+        if isinstance(stackup, dict):
+            return str(name), stackup
+    return None
+
+
+def thickness_parts(stackup: dict) -> dict | None:
+    """pcb.thickness measured from one stackup's layers, by position: what is
+    above the first conductor, the conductor span, what is below - the rule
+    the exporter's s3dBoardThickness applies (round 79, E2). None when the
+    stackup has no conductor."""
+    layers = [lay for lay in (stackup.get("layers") or []) if isinstance(lay, dict)]
+    idx = [i for i, lay in enumerate(layers) if _is_conductor(lay)]
+    if not idx:
+        return None
+    thick = lambda part: sum(float(lay.get("thickness") or 0.0) for lay in part)
+    return {"soldermask_top": thick(layers[:idx[0]]),
+            "board": thick(layers[idx[0]:idx[-1] + 1]),
+            "soldermask_bottom": thick(layers[idx[-1] + 1:])}
+
+
 def align_stackups(stackups: dict, log: LogFn = _noop_log) -> dict:
     """Put every stackup on ONE z datum, by the conductor layers they share.
 

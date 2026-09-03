@@ -64,7 +64,8 @@ from .reporting import (  # noqa: F401 - re-exported
 # as core.restack and friends.
 from .stackup import (  # noqa: F401 - re-exported
     SOLDERMASK_MARKER, _is_conductor, _is_soldermask, align_stackups,
-    drop_soldermask, restack, stackup_levels, zone_levels,
+    board_stackup, drop_soldermask, restack, stackup_levels, thickness_parts,
+    zone_levels,
 )
 # The intermediate is read once per file (round 72, plan A2); the probes
 # and the naming rule moved with it. Re-exported: the window, the worker and
@@ -115,6 +116,35 @@ def total_board_thickness(thickness: dict) -> float:
     )
 
 
+def board_thickness_parts(data: dict, log: LogFn) -> dict:
+    """{soldermask_top, board, soldermask_bottom}: `pcb.thickness` when the file
+    has it and the stackups agree, the stackups otherwise.
+
+    `pcb.thickness` is optional since format_version 9 (round 79, E2): a
+    rigid-flex design with no Primary stackup writes none. What is missing
+    is measured from the stackup that is the board (Primary, else the first);
+    what is present is checked against it, and the stackup wins when the two
+    disagree by more than a micron - an intermediate written before round 76
+    carried the combined view's number on a rigid-flex board.
+    """
+    written = (data.get("pcb") or {}).get("thickness")
+    chosen = board_stackup(data.get("stackups") or {})
+    measured = thickness_parts(chosen[1]) if chosen else None
+    if not isinstance(written, dict):
+        if measured is None:
+            raise StepBuilderError("JSON has no pcb.thickness and no stackup to measure it from.")
+        log(f"note: pcb.thickness is not in the file; measured from stackup "
+            f"{chosen[0]}: {total_board_thickness(measured):.3f} mm")
+        return measured
+    if measured is not None and abs(total_board_thickness(written) - total_board_thickness(measured)) > 1e-3:
+        log(f"warning: pcb.thickness says {total_board_thickness(written):.3f} mm and stackup "
+            f"{chosen[0]} says {total_board_thickness(measured):.3f} mm; using the stackup "
+            f"(an intermediate exported before round 76 carried the combined view's "
+            f"number on a rigid-flex board)")
+        return measured
+    return written
+
+
 # --------------------------------------------------------------------------- #
 # the stages of a build (round 73, plan A9)
 # --------------------------------------------------------------------------- #
@@ -140,12 +170,13 @@ def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
     board_mode = options.board_mode
     ignore_soldermask = options.ignore_soldermask
 
+    parts = board_thickness_parts(data, log)
     if ignore_soldermask:
         # The plain-board path keeps its masks in pcb.thickness rather than as
         # stackup layers, so it is the same decision expressed twice.
-        thickness = float(data["pcb"]["thickness"]["board"])
+        thickness = float(parts["board"])
     else:
-        thickness = total_board_thickness(data["pcb"]["thickness"])
+        thickness = total_board_thickness(parts)
 
     # Multi-stackup: a rigid-flex board is several zones of different
     # thickness. An empty or absent list means an ordinary board and every

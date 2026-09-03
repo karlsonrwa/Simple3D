@@ -91,5 +91,24 @@ for nm,ig,want in [("p_with",False,1.096),("p_without",True,1.036)]:
     v=volume(read_step(OUT/f"{nm}.step"))
     check(f"{'без' if ig else 'с'} маской: толщина {want}", abs(v-100*want)<0.01, f"{v/100:.4f}")
 
+print("\n[6] format_version 9 без pcb.thickness: маска уходит из толщины, измеренной по стеку")
+# Раунд 79, план E2: толщина берётся из стека по положению слоёв, и
+# ignore_soldermask действует на неё так же, как на записанную.
+d3={"format":"simple3d","format_version":9,"name":"plain9",
+    "pcb":{"color":base["pcb"]["color"],"edges":[rect(0,0,10,10)]},
+    "stackups":{"Primary":{"thickness":1.096,"layers":[
+        {"name":"SOLDERMASK_TOP","type":"MASK","thickness":0.03,"z_top":0.03,"z_bottom":0.0,"negative":True,"function":"SOLDER_MASK","shapes":None},
+        {"name":"TOP","type":"CONDUCTOR","thickness":0.035,"z_top":0.0,"z_bottom":-0.035,"negative":False,"function":"CONDUCTOR","shapes":None},
+        {"name":None,"type":"DIELECTRIC","thickness":0.966,"z_top":-0.035,"z_bottom":-1.001,"negative":False,"function":None,"shapes":None},
+        {"name":"BOTTOM","type":"CONDUCTOR","thickness":0.035,"z_top":-1.001,"z_bottom":-1.036,"negative":False,"function":"CONDUCTOR","shapes":None},
+        {"name":"SOLDERMASK_BOTTOM","type":"MASK","thickness":0.03,"z_top":-1.036,"z_bottom":-1.066,"negative":True,"function":"SOLDER_MASK","shapes":None}]}},
+    "components":{}}
+f3=OUT/"plain9.json"; f3.write_text(json.dumps(d3))
+for nm,ig,want in [("p9_with",False,1.096),("p9_without",True,1.036)]:
+    core.generate(step_dir=ROOT/"demo/step_files",json_file=f3,output_dir=OUT,
+                  output_name=nm,ignore_soldermask=ig,log=lambda m:None)
+    v=volume(read_step(OUT/f"{nm}.step"))
+    check(f"v9 {'без' if ig else 'с'} маской: толщина {want}", abs(v-100*want)<0.01, f"{v/100:.4f}")
+
 print("\nРЕЗУЛЬТАТ:", "ВСЁ ПРОЙДЕНО" if not fails else f"{len(fails)} ОШИБОК: {fails}")
 sys.exit(0 if not fails else 1)

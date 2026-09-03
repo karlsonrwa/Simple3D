@@ -52,6 +52,33 @@ check("same volume", abs(v3-v)<0.02, f"{v3:.3f} vs {v:.3f}")
 check("log mentions faces coloured", any("coloured" in m or "colored" in m for m in lg3),
       str([m for m in lg3 if "face" in m]))
 
+print("\n[3b] format_version 9: pcb.thickness may be absent, and the stackup wins a disagreement")
+# Round 79, plan E2. Without pcb.thickness the reader measures the board from
+# its stackup by position - the exporter's own rule - and says so; with a
+# pcb.thickness that disagrees with the stackup by more than a micron the
+# stackup wins, with a warning (an intermediate exported before round 76
+# carried the combined view's number on a rigid-flex board).
+def build9(name, mode, thickness):
+    d={"format":"simple3d","format_version":9,"name":name,
+       "pcb":{"color":base["pcb"]["color"],"edges":[rect(0,0,20,10)]},
+       "stackups":{"Primary":{"thickness":1.104,"layers":mk(PRIMARY)}},"components":{}}
+    if thickness is not None:
+        d["pcb"]["thickness"]=thickness
+    jf=OUT/f"{name}.json"; jf.write_text(json.dumps(d))
+    logs=[]
+    core.generate(step_dir=ROOT/"demo/step_files",json_file=jf,output_dir=OUT,
+                  output_name=name,board_mode=mode,log=logs.append)
+    s=read_step(OUT/f"{name}.step")
+    return volume(s),logs
+v9,lg9=build9("p_nothick","solid",None)
+check("no pcb.thickness: the solid is 1.104 thick, measured from the stackup", abs(v9-20*10*1.104)<0.01, f"{v9:.3f}")
+check("and the log says so", any(m.startswith("note:") and "measured from stackup Primary" in m for m in lg9), str(lg9[:3]))
+v9b,lg9b=build9("p_wrongthick","solid",{"soldermask_top":0.0,"board":0.5,"soldermask_bottom":0.0})
+check("a pcb.thickness that disagrees with the stackup loses to it", abs(v9b-20*10*1.104)<0.01, f"{v9b:.3f}")
+check("with a warning that names both numbers", any(m.startswith("warning:") and "0.500" in m and "1.104" in m for m in lg9b), str(lg9b[:3]))
+v9c,lg9c=build9("p_samethick","solid",{"soldermask_top":0.025,"board":1.054,"soldermask_bottom":0.025})
+check("one that agrees is used without a word", abs(v9c-20*10*1.104)<0.01 and not [m for m in lg9c if "pcb.thickness" in m], str(lg9c[:3]))
+
 print("\n[4] an OLD json with no stackups says so instead of silently doing nothing")
 n4,v4,bb4,lg4=build("p_old","inspect",with_stackups=False)
 check("falls back to one solid", n4==1, str(n4))

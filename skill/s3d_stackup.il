@@ -8,61 +8,6 @@
 ;=====================================================================
 
 
-procedure( calculateBoardThickness()
-    ; FIX (simple3d): SILKSCREEN_* and PASTEMASK_* are ALSO layerType "MASK"
-    ; (verified on a real board), so the original
-    ;     if name == "SOLDERMASK_TOP" then top else bottom
-    ; put silkscreen into the bottom mask and, using plain "=", let each later
-    ; MASK layer overwrite the previous one. Now: only SOLDERMASK layers count,
-    ; classified top/bottom by cross-section position relative to the outermost
-    ; conductor (so a renamed mask still lands correctly). Dielectric pseudo-
-    ; layers have name = nil, hence the guard.
-    ;
-    ; NOTE (simple3d): this sums a SINGLE stackup. Multi-stackup / rigid-flex
-    ; designs (more than one stackup zone) are NOT supported - the whole board
-    ; is exported with this one averaged thickness. See the README limitation.
-    let( ( stackup padToPadThickness topSoldermaskThickness bottomSoldermaskThickness
-           topCondPos nm thk )
-        stackup = axlXSectionGet( nil 'all )
-        padToPadThickness = 0.0
-        topSoldermaskThickness = 0.0
-        bottomSoldermaskThickness = 0.0
-        topCondPos = nil
-
-        ; first conductor/plane from the top gives the reference position
-        foreach( layer stackup
-            case( layer->layerType
-                ( ( "CONDUCTOR" "PLANE" )
-                    unless( topCondPos  topCondPos = layer->position )
-                )
-                ( t nil )
-            )
-        )
-
-        foreach( layer stackup
-            thk = layer->thickness
-            unless( thk  thk = 0.0 )
-            case( layer->layerType
-                ( ( "CONDUCTOR" "DIELECTRIC" "PLANE" )
-                    padToPadThickness = padToPadThickness + thk
-                )
-                ( ( "MASK" )
-                    nm = if( layer->name then upperCase( layer->name ) else "" )
-                    when( substring( nm 1 10 ) == "SOLDERMASK"
-                        if( topCondPos && layer->position && (layer->position < topCondPos) then
-                            topSoldermaskThickness = topSoldermaskThickness + thk
-                        else
-                            bottomSoldermaskThickness = bottomSoldermaskThickness + thk
-                        )
-                    )
-                )
-                ( t nil )
-            )
-        )
-        list( topSoldermaskThickness padToPadThickness bottomSoldermaskThickness )
-    )
-)
-
 ;=====================================================================
 ;  (top core bottom) of the board for pcb.thickness - requirement #1, one rule
 ;
@@ -81,8 +26,10 @@ procedure( calculateBoardThickness()
 ;  On every plain board of the corpus the three numbers are exactly what
 ;  calculateBoardThickness gave; on a rigid-flex design with a PRIMARY they
 ;  are that stackup's own numbers instead of the combined view's. A design
-;  whose named stackups hold no PRIMARY keeps calculateBoardThickness: there
-;  is no one stackup that is "the board".
+;  whose named stackups hold no PRIMARY has no one stackup that is "the
+;  board": nil, and the file carries no pcb.thickness - the reader measures
+;  one from the stackups (round 79, E2; calculateBoardThickness, the name
+;  gate over the combined view, is gone).
 ;=====================================================================
 procedure( s3dBoardThickness()
     let( ( names query all layers span ( above 0.0 ) ( core 0.0 ) ( below 0.0 ) ( i 0 ) )
@@ -103,7 +50,7 @@ procedure( s3dBoardThickness()
         layers = reverse( layers )
         span = s3dConductorSpan( layers )
         if( (query == 'none) || !span then
-            calculateBoardThickness()
+            nil
         else
             foreach( layer layers
                 cond(

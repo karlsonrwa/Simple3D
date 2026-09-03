@@ -2975,9 +2975,28 @@ build of the new file against the old one.
   v9 file equals the v8 build to the entity. Suite 26/27 in 209 s
   with the docs audit red for the README's version line this write-up
   changes, and green with it; STEP golden unchanged.
+- **E2** `pcb.thickness` optional. The writer: `s3dBoardThickness` answers
+  nil when no stackup is the board (a rigid-flex design with no PRIMARY),
+  `makePcb` then writes no `thickness` object, and `calculateBoardThickness`
+  - the `SOLDERMASK` name gate over the combined `nil 'all` view, round 2's
+  rule - is gone. The reader measures what is missing from the stackup that
+  is the board (Primary, else the first listed) by the exporter's own
+  position rule and says so; what is present it checks, and the stackup
+  wins a disagreement of more than a micron with a warning naming both
+  numbers. Headless: `flex-b2` exports with no `pcb.thickness` and builds to
+  the same STEP as its v8 record (measured from `STIFFENER1`, 0.490 mm); the
+  v8 file's 0.265 mm - the combined view's number - loses to the stackup
+  with the warning. Corpus re-recorded (two boards drifted); 27/27 in 210 s;
+  STEP golden unchanged. E3 waits for a shipped release.
 
 ### What to remember
 
+- **A reader that measures can also check.** Once the reader could compute
+  the thickness from the stackups for a file without one, comparing it with
+  a file that has one cost nothing - and the first v8 rigid-flex file it met
+  (`flex-b2`, 0.265 mm from the combined view against 0.490 mm from its
+  first stackup) showed the old number for what it was. The zoned build
+  never used it, which is why nobody noticed; the warning now says.
 - **"Only ever added" ends here, and the docs say so where it matters.** The
   README's sentence that an older intermediate never needs re-exporting was
   true and stays; the new sentence beside it says the reverse is not - a v9

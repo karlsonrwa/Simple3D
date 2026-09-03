@@ -202,13 +202,20 @@ procedure( makePcb( thicknesses edges cuts color )
         when( cuts
             arrays = append( arrays car( cuts ) )
         )
+        ; "thickness" is optional since format_version 9 (round 79, E2): nil on
+        ; a rigid-flex design with no PRIMARY stackup, and the reader measures
+        ; it from the stackups instead.
         strcat(
             "\"pcb\": {\n"
-            "\t\"thickness\": {\n"
-            "\t\t\"soldermask_top\": " sprintf( nil "%f" car( thicknesses ) ) ",\n"
-            "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
-            "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
-            "\t},\n"
+            if( thicknesses then
+                strcat(
+                    "\t\"thickness\": {\n"
+                    "\t\t\"soldermask_top\": " sprintf( nil "%f" car( thicknesses ) ) ",\n"
+                    "\t\t\"board\": " sprintf( nil "%f" cadr( thicknesses ) ) ",\n"
+                    "\t\t\"soldermask_bottom\": " sprintf( nil "%f" caddr( thicknesses ) ) "\n"
+                    "\t},\n" )
+            else
+                "" )
             s3dAddIndent( colorJson )
             ",\n"
             "\t\"edges\": [\n"
@@ -445,7 +452,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0
         s3dMakeDirs( dir )
 
         ; calculate pcb thickness - by position, from the board's own stackup
-        ; (round 76, D5); see s3dBoardThickness.
+        ; (round 76, D5); nil when no stackup is the board (round 79, E2).
         thicknesses = s3dBoardThickness()
 
         ; make pcb contour

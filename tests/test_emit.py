@@ -130,8 +130,10 @@ def makePcb(thicknesses, edges, cuts, color):
     arrays = ["[\n" + s3dAddIndent(",\n".join(edges)) + "\n]"]
     if cuts:
         arrays += cuts
-    return ('"pcb": {\n\t"thickness": {\n'
-            '\t\t"soldermask_top": %f,\n\t\t"board": %f,\n\t\t"soldermask_bottom": %f\n\t},\n' % thicknesses
+    # "thickness" is optional since v9 (round 79, E2): nil when no stackup is the board
+    thick = ('\t"thickness": {\n\t\t"soldermask_top": %f,\n\t\t"board": %f,\n\t\t"soldermask_bottom": %f\n\t},\n' % thicknesses
+             if thicknesses else "")
+    return ('"pcb": {\n' + thick
             + s3dAddIndent('"color": {\n\t"r": %f,\n\t"g": %f,\n\t"b": %f\n}' % color)
             + ',\n\t"edges": [\n' + s3dAddIndent(",\n".join(arrays), 2) + "\n\t]\n}")
 
@@ -180,6 +182,10 @@ for comps in (False, True):
                       and (("silkscreen" in got) == silk)
                       and keys[-1] == ("silkscreen" if silk else "components"),
                       str(keys))
+
+got = json.loads("{" + makePcb(None, [SEG], None, (0.0, 0.4, 0.0)) + "}")
+check("a pcb with no thickness (v9, no stackup is the board) still parses, thickness absent",
+      "thickness" not in got["pcb"] and got["pcb"]["edges"])
 
 print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
