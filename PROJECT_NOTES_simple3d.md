@@ -2979,8 +2979,14 @@ golden and - where SKILL moved - the corpus; a docs commit after.
 - **F3** `run_all.py` prints a failing job's own FAIL lines and then its last
   twelve lines - a traceback whole - instead of grepping for "error";
   exercised on a copy with a job made to fail.
+- **F2** (a sixth commit) `tests/skill_transliterations.py`: the 12 Python
+  copies of SKILL procedures that six suites carried, cut verbatim into one
+  module, each under a `# mirrors skill/<part>.il: <procedure>` line; the
+  suites import what they used to define and passed unchanged. Three of
+  the plan's names (`s3dBendsJson`, `s3dLayerIsNegative`, `s3dSpanAcross`)
+  never had a copy - those suites test the Python side's own functions.
 
-`tests/run_all.py`: 27/27 in 203 s.
+`tests/run_all.py`: 27/27 in 203 s after the five, 27/27 in 190 s after F2.
 
 ### What to remember
 
