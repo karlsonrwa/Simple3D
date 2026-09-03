@@ -11,6 +11,17 @@ to use the tool.
 
 ---
 
+- **2026-09-03** — **Ctrl+C / Ctrl+V work in the window's fields on a Russian
+  keyboard layout.** Tk binds the shortcuts to the Latin letters, so under
+  any non-Latin layout the same keys did nothing in every path field and
+  the STEP-folders box. The fields now go by the physical key: Ctrl+C,
+  Ctrl+V, Ctrl+X and Ctrl+A act whatever the layout, once each.
+  / **Ctrl+C / Ctrl+V в полях окна работают в русской раскладке.** Tk
+  привязывает сочетания к латинским буквам, поэтому в любой нелатинской
+  раскладке те же клавиши ничего не делали ни в полях путей, ни в списке
+  папок STEP. Теперь поля смотрят на физическую клавишу: Ctrl+C, Ctrl+V,
+  Ctrl+X и Ctrl+A срабатывают в любой раскладке, по одному разу.
+
 - **2026-09-03** — **A variant naming components the board does not have says so.**
   A `Variants.lst` comes from the schematic and the board from Allegro; when
   a variant lists a reference designator that no symbol on the board carries,

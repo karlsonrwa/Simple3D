@@ -108,6 +108,35 @@ __all__ = ["StepBuilderApp", "BuildSettings"]
 _merge_config = settings.merge_config
 
 
+# ---- Ctrl+C / Ctrl+V on a keyboard layout that is not Latin (round 83) ---- #
+# Tk binds <Control-c> to the KEYSYM "c". Under a Russian - any non-Latin -
+# layout the same key produces Cyrillic_es, the binding does not match, and
+# the shortcut does nothing: what users on Russian Windows see in every path
+# field. The virtual-key code (event.keycode) names the PHYSICAL key whatever
+# the layout - 67 is the C key, 86 the V key - so the handler goes by that.
+# When the keysym is not the Latin letter of the key, Tk's own binding has
+# not fired and the virtual event it would have fired is generated here; on
+# a Latin layout the keysym IS that letter, Tk's binding runs, and this
+# declines - or every paste would happen twice. A key that typed a printable
+# character (AltGr on some layouts is Ctrl+Alt) is not a shortcut either.
+LAYOUT_BLIND_KEYS = {67: "<<Copy>>", 86: "<<Paste>>", 88: "<<Cut>>", 65: "<<SelectAll>>"}
+
+
+def layout_blind_shortcut(event):
+    """Ctrl+C/V/X/A by physical key; "break" when it acted, None to let Tk on."""
+    keycode = getattr(event, "keycode", None)
+    action = LAYOUT_BLIND_KEYS.get(keycode)
+    if action is None:
+        return None
+    if str(getattr(event, "keysym", "")).lower() == chr(keycode).lower():
+        return None                       # a Latin layout: Tk's own binding handles it
+    char = getattr(event, "char", "") or ""
+    if char.isprintable() and char.strip():
+        return None                       # the key typed a character, not a control
+    event.widget.event_generate(action)
+    return "break"
+
+
 class StepBuilderApp(tk.Tk):
     def __init__(self, config_path: Path | None = None) -> None:
         super().__init__()
@@ -626,8 +655,11 @@ class StepBuilderApp(tk.Tk):
     def _attach_edit_menu(self, widget) -> None:
         """Right-click: Cut / Copy / Paste / Select all. Tk's Entry and Text
         know the keyboard shortcuts but offer no menu of their own on Windows,
-        and a path is the one thing everyone pastes."""
+        and a path is the one thing everyone pastes. The same four by Ctrl+key
+        on a keyboard layout that is not Latin, where Tk's own shortcuts do
+        not fire (round 83; see layout_blind_shortcut)."""
         widget.bind("<Button-3>", lambda event, w=widget: self._show_edit_menu(event, w))
+        widget.bind("<Control-KeyPress>", layout_blind_shortcut)
 
     def _edit_menu(self, widget) -> tk.Menu:
         """The menu for *widget*, built fresh: it is four entries, and a menu

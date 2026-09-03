@@ -396,6 +396,64 @@ app._show_edit_menu(_Click(), field)
 app._busy = False
 check("no menu while a build runs", True)   # reached: _show_edit_menu returned without a popup
 
+print("\n[7h] Ctrl+C / Ctrl+V on a Russian keyboard layout (round 83)")
+# Tk binds <Control-c> to the keysym "c"; the C key under a Cyrillic layout
+# gives Cyrillic_es and nothing fires. The handler goes by the virtual-key
+# code, which names the physical key whatever the layout, and declines on a
+# Latin one, where Tk's own binding has already run - or a paste would happen
+# twice. Fake events here: the real layout cannot be switched in a test.
+from stepbuilder.gui import layout_blind_shortcut
+
+
+class _Key:
+    def __init__(self, widget, keycode, keysym, char=""):
+        self.widget, self.keycode, self.keysym, self.char = widget, keycode, keysym, char
+
+
+fired = []
+
+
+class _Probe:
+    def event_generate(self, name):
+        fired.append(name)
+
+
+check("Cyrillic layout, the V key: paste",
+      layout_blind_shortcut(_Key(_Probe(), 86, "Cyrillic_ve", "\x16")) == "break" and fired == ["<<Paste>>"], str(fired))
+fired.clear()
+check("Latin layout, the V key: declined, Tk's own binding pastes",
+      layout_blind_shortcut(_Key(_Probe(), 86, "v", "\x16")) is None and fired == [])
+check("...upper case too", layout_blind_shortcut(_Key(_Probe(), 86, "V", "\x16")) is None)
+check("an older Tk that reports ?? for the keysym still pastes",
+      layout_blind_shortcut(_Key(_Probe(), 86, "??", "\x16")) == "break")
+fired.clear()
+check("C, X, A by key",
+      [layout_blind_shortcut(_Key(_Probe(), k, "Cyrillic_x", "\x03")) for k in (67, 88, 65)] == ["break"] * 3
+      and fired == ["<<Copy>>", "<<Cut>>", "<<SelectAll>>"], str(fired))
+fired.clear()
+check("a key that is no shortcut is left alone",
+      layout_blind_shortcut(_Key(_Probe(), 66, "Cyrillic_i", "\x02")) is None and fired == [])
+check("AltGr typing a character is not a shortcut",
+      layout_blind_shortcut(_Key(_Probe(), 67, "ccedilla", "\u00e7")) is None and fired == [])
+check("every path Entry and the STEP-folders box carry the binding",
+      all(any("Control" in seq for seq in w.bind()) for w in entries)
+      and any("Control" in seq for seq in app._step_text.bind()), str(entries[0].bind()))
+# and for real, into a field - the clipboard is the real one, set and put back
+before_clip = None
+try:
+    before_clip = app.clipboard_get()
+except tk.TclError:
+    pass
+app.clipboard_clear()
+app.clipboard_append("D:/layout/blind")
+field.delete(0, "end")
+layout_blind_shortcut(_Key(field, 86, "Cyrillic_ve", "\x16"))
+app.update()
+check("Ctrl+V under a Cyrillic layout pastes into the field", target.get() == "D:/layout/blind", target.get())
+app.clipboard_clear()
+if before_clip:
+    app.clipboard_append(before_clip)
+
 print("\n[8] snapshot is complete and frozen")
 snap = app._snapshot()
 # Names, not a count: a bare number says "16 != 15" when a field is added and

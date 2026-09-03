@@ -2952,6 +2952,41 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-09-03 (round 83) — Ctrl+C / Ctrl+V on a Russian keyboard layout
+
+Users on Russian Windows: the shortcuts do nothing in the window's fields.
+Tk's Entry and Text bind `<Control-c>`, `<Control-v>` to the KEYSYM - the
+Latin letter - and under a Cyrillic layout the C key produces `Cyrillic_es`
+(older Tk: `??`), so no binding matches and the key is swallowed by the
+class's `<Control-KeyPress> {# nothing}`. The right-click menu of round 78
+already worked; the keyboard did not.
+
+`stepbuilder/gui.py`: `layout_blind_shortcut(event)`, bound to
+`<Control-KeyPress>` on every widget `_attach_edit_menu` touches - the path
+Entries and the STEP-folders Text. It goes by `event.keycode`, the Windows
+virtual-key code, which names the physical key whatever the layout (67 C,
+86 V, 88 X, 65 A), and generates the virtual event Tk would have: `<<Copy>>`,
+`<<Paste>>`, `<<Cut>>`, `<<SelectAll>>`. Two refusals keep it honest: when the
+keysym IS the Latin letter of that key, Tk's own binding has already run
+and the handler declines - or every paste would happen twice; and when the
+key typed a printable character (AltGr is Ctrl+Alt on some layouts) it is
+not a shortcut. The widget binding runs before the class binding and
+returns "break", so the class's no-op never sees the key.
+
+`test_gui` [7h]: fake events through the handler - Cyrillic keysym pastes,
+Latin declines (both cases), `??` pastes, C/X/A route, a non-shortcut key
+and an AltGr character are left alone, every path field carries the
+binding, and one real `<<Paste>>` into the output field with the clipboard
+set and put back. The real layout cannot be switched in a test; the
+decision is what is pinned. `tests/run_all.py`: 27/27 in 183 s.
+
+### What to remember
+
+- **A keyboard shortcut bound to a letter is bound to a layout.** The
+  physical key is `keycode`; the letter is `keysym`; on a machine with two
+  layouts they agree only half the time. Anything that binds
+  `<Control-letter>` in Tk has this bug on every non-Latin keyboard.
+
 ## Update 2026-09-03 (round 82) — a variant naming components the board does not have
 
 The user's next question, with a probe file dropped into `input/`

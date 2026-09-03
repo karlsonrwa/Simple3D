@@ -29,7 +29,8 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   the first one holding the file wins, so a project folder above the shared
   library overrides individual models. Subfolders are searched too. **Add...**
   appends; reorder in the text itself. Right-click any path field for Cut /
-  Copy / Paste / Select all. A folder with characters outside ASCII (Cyrillic)
+  Copy / Paste / Select all; Ctrl+C / Ctrl+V / Ctrl+X / Ctrl+A work in any
+  keyboard layout. A folder with characters outside ASCII (Cyrillic)
   is named at the top of the log: the build reads it, Allegro's own half may
   not - if a model comes out missing, start there.
 - **JSON file** — the intermediate (filled in for you); a folder builds every
@@ -160,7 +161,8 @@ builds it.
   сверху вниз: побеждает первая, где есть нужный файл, поэтому проектная папка
   выше общей библиотеки перекрывает отдельные модели. Вложенные подпапки ищутся
   сами. **Add...** дописывает папку в конец, порядок правится прямо в тексте.
-  Правая кнопка в любом поле пути — Cut / Copy / Paste / Select all. Папка с
+  Правая кнопка в любом поле пути — Cut / Copy / Paste / Select all; Ctrl+C /
+  Ctrl+V / Ctrl+X / Ctrl+A работают в любой раскладке. Папка с
   символами вне ASCII (кириллица) называется в начале журнала: сборка её
   читает, половина Allegro — не всегда; если модель пропала, начинайте с
   этого.
