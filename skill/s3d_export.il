@@ -313,7 +313,8 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; is printed on, which is how a zone says it carries no legend; 9 puts
         ; every component under one "components" object instead of beside the
         ; metadata (round 79, plan E1), so a reader of v9 need not know which
-        ; keys are NOT components.
+        ; keys are NOT components. A v9 file may also carry an optional
+        ; top-level "warnings" list (2026-09-03): lines for the window's log.
         ; All of them are optional to a reader - an older file simply has no
         ; layers to choose from, nothing to say about embedded models, an empty
         ; zone list, which means "ordinary single-stackup board", and no bends,
@@ -368,6 +369,19 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
             else
                 "\"components\": {}"
             ) ) )
+
+        ; Optional (2026-09-03): what the export had to say about THIS file -
+        ; a variant naming components the board does not have, so far. The
+        ; window's log repeats these, because the console line has scrolled
+        ; away by the time the model is looked at. Reserved on the Python
+        ; side like every other top-level key; absent when there is nothing
+        ; to say, so an export with nothing to say is unchanged.
+        when( g_state['warnings]
+            members = append( members list(
+                strcat( "\"warnings\": [\n"
+                        s3dAddIndent( buildString( mapcar( 's3dJsonQuote reverse( g_state['warnings] ) ) ",\n" ) )
+                        "\n]" ) ) )
+        )
 
         ; write to file
         outFile = fileName
@@ -445,11 +459,15 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
         ; session) and the second export described the FIRST board, with
         ; nothing to say so - and the silkscreen warnings. Per FILE: the
         ; sequence that numbers no-refdes mechanicals, which
-        ; create3dIntermediateFormat restarts.
+        ; create3dIntermediateFormat restarts - and, since 2026-09-03, the
+        ; 'warnings the file carries for the window's log (a variant naming
+        ; components the board does not have), reset before each export list
+        ; is built.
         state = makeTable( "s3dExportState" nil )
         state['shapes] = nil
         state['bendLines] = nil
         state['silkWarnings] = nil
+        state['warnings] = nil
         state['mechSeq] = 0
 
         ; create dir (recursively - createDir makes only one level at a time,
@@ -551,7 +569,8 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
                     ; all - which is how mechanical components went missing.
                     ; The list now comes from the design and the variant table
                     ; only removes from it. See s3dSymbolsToExport.
-                    symbols = s3dSymbolsToExport( variantSymbolList variant )
+                    state['warnings] = nil
+                    symbols = s3dSymbolsToExport( variantSymbolList variant state )
 
                     variantName = lowerCase( strcat( dsnName "_" variant ) )
                     fileName = lowerCase( strcat( dir "/" variantName ".json" ) )
@@ -565,7 +584,8 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
                 ; <design>_<variant>.json; the window tells it apart by the
                 ; "full_board" marker rather than by guessing from the name.
                 when( S3D_ExportFullBoard
-                    symbols = s3dSymbolsToExport( nil nil )
+                    state['warnings] = nil
+                    symbols = s3dSymbolsToExport( nil nil state )
                     variantName = lowerCase( dsnName )
                     fileName = strcat( dir "/" variantName ".json" )
                     create3dIntermediateFormat( thicknesses edgeCuts pcbColor
@@ -599,7 +619,8 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
 
             ; Same routine as the variant path, with no variant table: every
             ; symbol that has a refdes and is not marked NO_STEP_EXPORT.
-            symbols = s3dSymbolsToExport( nil nil )
+            state['warnings] = nil
+            symbols = s3dSymbolsToExport( nil nil state )
 
             variantName = lowerCase( dsnName )
             fileName = strcat( dir "/" variantName ".json" )

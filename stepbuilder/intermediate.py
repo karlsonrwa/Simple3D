@@ -40,7 +40,7 @@ FORMAT_MARKER = "simple3d"
 # exporter adds in future.
 RESERVED = ("name", "pcb", "format", "format_version", "silkscreen",
             "embedded_models", "zones", "stackups", "bends", "full_board",
-            "components")
+            "components", "warnings")
 
 
 # What Allegro's SKILL writes when a name is not ASCII: the bytes it holds,
@@ -165,6 +165,15 @@ class Intermediate:
     def metadata(self) -> dict:
         """The reserved keys this file carries, and their values."""
         return {k: v for k, v in self.data.items() if k in RESERVED}
+
+    @property
+    def warnings(self) -> list[str]:
+        """What the exporter had to say about this file - a variant naming
+        components the board does not have, so far. Optional (2026-09-03);
+        the build logs each line so the window shows what the Allegro
+        console said and scrolled away."""
+        found = self.data.get("warnings")
+        return [str(m) for m in found] if isinstance(found, list) else []
 
     def validate(self) -> None:
         """The fields a build cannot default; their absence is an error."""

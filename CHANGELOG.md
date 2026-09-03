@@ -11,6 +11,26 @@ to use the tool.
 
 ---
 
+- **2026-09-03** — **A variant naming components the board does not have says so.**
+  A `Variants.lst` comes from the schematic and the board from Allegro; when
+  a variant lists a reference designator that no symbol on the board carries,
+  the two describe different revisions - and the export used to say nothing,
+  because `variant list covers 1 of 48` counts from the board's side only.
+  Now each variant reports the ones it lists and the board lacks, by name, in
+  the Allegro console, and the line travels in the intermediate (an optional
+  `"warnings"` list) so the 3D window's log repeats it when the model is
+  built. A file whose listed components are *all* absent is still refused as
+  another project's.
+  / **Вариант, называющий компоненты, которых нет на плате, теперь говорит
+  об этом.** `Variants.lst` приходит из схемы, плата - из Allegro; если в
+  варианте есть обозначение, которого нет ни у одного символа на плате, это
+  разные ревизии - а экспорт молчал: строка `variant list covers 1 of 48`
+  считает только со стороны платы. Теперь каждый вариант называет те свои
+  обозначения, которых на плате нет, в консоли Allegro, и та же строка едет
+  в промежуточном файле (необязательный список `"warnings"`), чтобы окно
+  повторило её в своём логе при сборке. Файл, где отсутствуют *все*
+  перечисленные компоненты, по-прежнему отвергается как чужой.
+
 - **2026-09-03** — **A variant that installs nothing exports the bare board.**
   Setting every part to *not installed* in the schematic's variant gives a
   `Variants.lst` whose variant has no base list at all. The export used to

@@ -724,6 +724,12 @@ def generate(
     if inter is None:
         inter = Intermediate.read(json_file)
     inter.validate()
+    # The exporter's own lines about this file (a variant naming components
+    # the board does not have), repeated here because the Allegro console has
+    # scrolled away by the time the model is looked at (2026-09-03). The
+    # silkscreen's warnings are logged where the legend is built.
+    for message in inter.warnings:
+        log(f"warning: {message}")
     data = inter.data
 
     pcb_name = data["name"]

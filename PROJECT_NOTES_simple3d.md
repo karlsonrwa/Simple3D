@@ -2952,6 +2952,68 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-09-03 (round 82) — a variant naming components the board does not have
+
+The user's next question, with a probe file dropped into `input/`
+(`Variants.LST`, Capture's real shape: the base list on one line inside its
+own parentheses, blank lines around the blocks): what happens when the list
+names refdes the board does not carry? Nothing did. Headless on
+`variants_test-b0.brd`: `variant list covers 1 of 48 placed component(s)` -
+one of the six listed is placed - and not a word about the five.
+
+### What was wrong
+
+`s3dVariantFit` counts from the board's side (how many placed components the
+list covers) and refuses only the file that covers none. `s3dSymbolsToExport`
+walks the board's symbols, so a listed refdes with no symbol is never met and
+never counted. Both are right about what they measure; nobody measured the
+other direction.
+
+### What was done
+
+- `s3dSymbolsToExport( list variant @optional state )`: a listed refdes met
+  on the board turns its table entry from `t` to `'placed`; what is still `t`
+  after the loop is named, sorted, ten at most - `s3dWarn` in the console,
+  and consed onto `state['warnings]`.
+- `create3dIntermediateFormat` writes `state['warnings]` as an optional
+  top-level `"warnings"` list - absent when empty, so every export with
+  nothing to say is byte-identical (corpus unchanged on 7 boards). Reset
+  before each export list is built, so a file does not inherit the last
+  one's.
+- Python: `"warnings"` in `RESERVED`, `Intermediate.warnings`, and
+  `core.generate` logs each line as `warning: ...` right after validation, so
+  the window and the CLI show what the console said and scrolled away.
+- Tests: the `not_placed` mirror; `test_variant_path` [12] gains Capture's
+  real shape byte for byte (the six refdes, and the stray newline token the
+  round-52 memo describes), [13] the mirror, the SKILL greps, the reader in
+  both file shapes, and a `generate()` on `demo_v9.json` with a warning
+  planted - the log repeats it. [8]'s regex admits the state argument.
+
+Same board and file, after - the console:
+
+    variant BOM lists 5 component(s) that are not on this board: VT2, VT3, VT4, X1, X2
+
+and `variants_test-b0_bom.json` carries the line under `"warnings"`.
+`tests/run_all.py`: 27/27 in 192 s.
+
+### The probe file and the corpus
+
+`tools/skill_export.py` copies a `Variants.lst` beside any board it exports -
+by design, so a board can be recorded with its own. With one file in `input/`
+beside seven boards every board would export as variants and the record could
+not be compared, so this round's corpus check ran on copies of the boards in
+a scratch folder without it (`no difference`, 7 boards). While
+`input/Variants.LST` stays where it is, `--check` and `--record` are not
+usable as they are.
+
+### What to remember
+
+- **A coverage number has a side.** "Covers 1 of 48" is the board's view of
+  the list; the list's view of the board was never computed, and the five
+  names that would have answered the user's question were in a table the
+  loop had already built. When a check counts matches, ask what it does with
+  the non-matches on each side.
+
 ## Update 2026-09-03 (round 81) — a variant that installs nothing; the locked Variants.lst; the meter at 20%
 
 One report, three defects, one commit. The user sometimes wants the bare

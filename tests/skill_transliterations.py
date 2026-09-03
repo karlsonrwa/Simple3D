@@ -255,6 +255,16 @@ def parse_variants(text):
     return table
 
 
+# mirrors skill/s3d_variants.il: s3dSymbolsToExport's tail - the listed refdes the board does not have
+def not_placed(variant_refdes, board_refdes):
+    """The refdes a variant names that no symbol on the board carries, by
+    name: what the export warns about per variant since 2026-09-03. The
+    stray tokens are dropped the way s3dIsRefdesToken drops them."""
+    on_board = {r.upper() for r in board_refdes}
+    listed = {r.upper() for r in variant_refdes if is_refdes_token(r)}
+    return sorted(r for r in listed if r not in on_board)
+
+
 # mirrors SKILL's tconc structure, destructive as the real one (skill/s3d_export.il uses it for the cutout list)
 class Tconc:
     """SKILL's tconc structure - (list . last-cell). car() is the list."""

@@ -20,7 +20,7 @@ separators, a name with no folder at all.
 """
 import re, sys
 
-from skill_transliterations import (Tconc, alternate_line, exported, is_refdes_token,
+from skill_transliterations import (Tconc, alternate_line, exported, is_refdes_token, not_placed,
                                     parse_variants, s3d_design_folder, s3d_variant_file_path,
                                     tconc, variant_fit)
 
@@ -275,7 +275,7 @@ print("\n[8] the whole board, written beside the variants")
 # present, guarded, marked, and named so it cannot collide with a variant.
 check("the full board is written with NO variant table, so only NO_STEP_EXPORT applies",
       re.search(r"when\(\s*S3D_ExportFullBoard[\s\S]{0,200}?"
-                r"s3dSymbolsToExport\(\s*nil\s+nil\s*\)", src))
+                r"s3dSymbolsToExport\(\s*nil\s+nil(\s+state)?\s*\)", src))
 check("under the config switch",
       re.search(r'when\(\s*s3dJsonHas\(\s*settings\s+"exportFullBoard"\s*\)', src))
 check("whose default is restored before every read, not left from the last board",
@@ -474,6 +474,10 @@ NORMAL = ('(\n\t("V1"\n\t\t(base\n\t\t\tC1 C2 \n\t\t\tR1 \n\t\t)\n'
 STUB = '(\n\t("dummy"\n\t\t(base\n\t\t)\n\t)\n)\n'
 ALT_ONLY = '(\n\t("V2"\n\t\t(C43 VALUE="12pF" TOL="1" )\n\t)\n)\n'
 BOTH = '(\n\t("V1"\n\t\t(base\n\t\t\tC1 C2 \n\t\t)\n\t)\n\t("BOM"\n\n\t)\n)\n'
+# Capture's real shape, byte for byte from the user's probe file: the base
+# list on one line inside its own parentheses, blank lines around the blocks.
+CAPTURE = ('(\r\n\t("BOM"\r\n\r\n\t\t(base\r\n\t\t\t(VT1 VT2 VT3 VT4 X1 X2 )\r\n\t\t)\r\n'
+           '\r\n\t)\r\n\r\n\r\n)\r\n')
 
 
 def refdes_of(table, name):
@@ -494,11 +498,55 @@ got = parse_variants(BOTH)
 check("a full variant and an empty one in one file are both found",
       set(got) == {"V1", "BOM"} and refdes_of(got, "V1") == ["C1", "C2"] and refdes_of(got, "BOM") == [],
       got)
+got = parse_variants(CAPTURE)
+check("Capture's own shape: the six refdes, in order",
+      refdes_of(got, "BOM") == ["VT1", "VT2", "VT3", "VT4", "X1", "X2"], got)
+check("...and the stray newline token the memo describes, which is why the filter exists",
+      "\n" in got["BOM"], got)
 check("the SKILL parser has the same branch, ahead of its case",
       re.search(r'when\(\s*\(state == "awaitStartCondition"\)\s*&&[\s\S]{0,200}?'
                 r'pcreMatchp\(\s*propertyStart line\s*\)\s*\)\s*\n\s*symbols = list\(\)', src))
 check("and closes the file it opened - it stayed locked until Allegro exited",
       re.search(r"close\(\s*inPort\s*\)\s*\n\s*list\(\s*variantTable alternateParts\s*\)", src))
+
+print("\n[13] a variant naming components that are not on the board")
+# The list comes from the schematic and the board from Allegro; a refdes in
+# one and not the other is a revision mismatch. The export used to say
+# nothing: "covers 1 of 48" counts from the board's side only. Now each
+# variant says which of its refdes the board does not have - in the console,
+# and in the file, so the window's log repeats it (2026-09-03; the user's
+# probe listed VT1-VT4, X1, X2 on variants_test-b0, where one is placed).
+check("the ones the board lacks, by name, case-blind, stray tokens dropped",
+      not_placed(["X2", "VT1", "vt3", "\n"], ["x2", "R1"]) == ["VT1", "VT3"])
+check("nothing to say when every one is placed", not_placed(["R1"], ["R1", "R2"]) == [])
+check("a board with no refdes at all lacks them all", not_placed(["R1"], []) == ["R1"])
+check("the export marks a listed refdes it meets",
+      re.search(r"installed\[\s*upperCase\(\s*refdes\s*\)\s*\]\s*=\s*'placed", src))
+check("...and reports what stayed unmet, per variant, to the console and the file",
+      re.search(r"lists %d component\(s\) that are not on this board", src)
+      and re.search(r"g_state\['warnings\]\s*=\s*cons\(\s*message", src))
+check("the writer puts them in the file as \"warnings\"", re.search(r'"\\"warnings\\": \[', src))
+check("reset before every export list is built, so a file does not inherit the last one's",
+      len(re.findall(r"state\['warnings\]\s*=\s*nil", src)) >= 4)
+from stepbuilder.intermediate import RESERVED
+check("the reader reserves the key", "warnings" in RESERVED)
+v9 = Intermediate("x.json", {"format": "simple3d", "format_version": 9, "name": "n",
+                             "components": {"R1": {}}, "warnings": ["a"]})
+check("...reads it back", v9.warnings == ["a"] and v9.components == {"R1": {}})
+v8 = Intermediate("x.json", {"format": "simple3d", "format_version": 8, "name": "n", "R1": {}, "warnings": ["a"]})
+check("and does not walk it as a component in the flat shape", v8.components == {"R1": {}} and v8.warnings == ["a"])
+check("absent: an empty list, not a fault", Intermediate("x.json", {"name": "n"}).warnings == [])
+# through generate(), the way the window and the CLI build
+import json
+from stepbuilder import core
+fx = json.loads((ROOT / "tests/fixtures/demo_v9.json").read_text(encoding="utf-8"))
+fx["warnings"] = ["variant BOM lists 2 component(s) that are not on this board: VT1, VT2"]
+wf = OUT / "warned_v9.json"
+wf.write_text(json.dumps(fx), encoding="utf-8")
+lines = []
+core.generate(step_dir=ROOT / "demo/step_files", json_file=wf, output_dir=OUT, log=lines.append)
+check("the window's log repeats it, prefixed as a warning",
+      any(l == "warning: " + fx["warnings"][0] for l in lines), lines[:6])
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

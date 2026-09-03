@@ -64,14 +64,14 @@ the keys that differ from the default.
 | `skill/s3d_util.il` | 211 | 9 | console messages, folders beside the board, indentation, the subclass sweep |
 | `skill/s3d_json.il` | 421 | 18 | `s3dJsonQuote`, the JSON reader, the config pair (shipped + local) |
 | `skill/s3d_props.il` | 293 | 7 | `NO_STEP_EXPORT` / `ALWAYS_STEP_EXPORT`, embedded models, what has a STEP model |
-| `skill/s3d_variants.il` | 512 | 7 | `Variants.lst` (the upstream parser), which symbols a variant exports |
+| `skill/s3d_variants.il` | 558 | 7 | `Variants.lst` (the upstream parser), which symbols a variant exports |
 | `skill/s3d_geometry.il` | 473 | 10 | segments, arcs, circles, slots, the board contour, pin holes |
 | `skill/s3d_stackup.il` | 604 | 13 | board thickness, stackups, zones, per-layer shapes |
 | `skill/s3d_bends.il` | 236 | 8 | bend lines and bend areas |
 | `skill/s3d_silk.il` | 733 | 15 | the silkscreen: config, collection, clipping, the streamed writer |
-| `skill/s3d_export.il` | 609 | 4 | `symbolReturn3DElements`, `makePcb`, the JSON writer, `makeVariant3dIntermediates` |
+| `skill/s3d_export.il` | 630 | 4 | `symbolReturn3DElements`, `makePcb`, the JSON writer, `makeVariant3dIntermediates` |
 | `simple3d.il` | 922 | 17 | settings from config, install-folder resolution, loads `makeVariant3dIntermediates.il` when it has not been loaded (so one `load()` is enough), `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, Python pre-flight, the launcher |
-| `stepbuilder/core.py` | 719 | 12 | the build as a sequence: `_prepare_stackups` → `_Stack`, `_plan_fold`, `_build_board`, `_build_legend`, `_place_components`, then `generate()` (90 lines with its docstring) that calls them in order and writes; `BuildResult`, `total_board_thickness`; and the re-exports that keep every `core.<name>` a caller ever used |
+| `stepbuilder/core.py` | 762 | 12 | the build as a sequence: `_prepare_stackups` → `_Stack`, `_plan_fold`, `_build_board`, `_build_legend`, `_place_components`, then `generate()` (90 lines with its docstring) that calls them in order and writes; `BuildResult`, `total_board_thickness`; and the re-exports that keep every `core.<name>` a caller ever used |
 | `stepbuilder/build.py` | 173 | 3 | `BuildOptions`: the nineteen options of one build as one frozen dataclass, with the meaning of each; `from_settings` (the window's snapshot) and `from_args` (the CLI). Round 73, plan A8 |
 | `stepbuilder/defaults.py` | 25 | 0 | the three default numbers the window shows before a config is read; no imports, so the window's side (settings, gui, build, the worker's module level) imports no OpenCASCADE. Round 80, G5 |
 | `stepbuilder/stepdoc.py` | 89 | 6 | `StepDocument`: the XCAF app/doc, shape and colour tools, the root assembly, `set_name`, `set_color`, and `write(path, minimize_size)` with the one writer setting that halves the file, set after the writer is constructed. Round 73, plan A7 |
@@ -80,7 +80,7 @@ the keys that differ from the default.
 | `stepbuilder/board.py` | 633 | 14 | the board body: `make_board_geometry` (a plain board and the zone paths), `layer_solids` (THE zones×layers walk: `_layer_region` turns a drawn shape into material or an opening, each layer extruded at its own height, cutouts per layer when asked), `make_board_layer_parts` + `fuse_keeping_faces` (the inspect and layer-coloured builds), `_stackup_board` + `fuse_and_unify`, `_zone_solid`, `board_cutouts` (repeats dropped), `has_solid`, `_rim_faces`. Round 73, plan A4 |
 | `stepbuilder/stackup.py` | 223 | 8 | the stackup arithmetic, no OCC: `restack`, `drop_soldermask`, `align_stackups`, `stackup_levels`, `zone_levels`, the soldermask / conductor matchers. Round 73, plan A3 |
 | `stepbuilder/reporting.py` | 29 | 2 | `LogFn`, `ProgressFn` and the two no-ops — every stage module needs them and none may import core for them. Round 73 |
-| `stepbuilder/intermediate.py` | 277 | 18 | `Intermediate` (one parse: `is_simple3d`, `is_full_board`, `components`, `metadata`, `validate`, `silkscreen_layers`), `RESERVED`, `resolve_jobs` (+ the path-shaped `resolve_json_jobs`), `batch_jobs` (the whole-board rule, for the window and the CLI alike), the old probe names as thin wrappers, `output_stem` / `dated_output_name`. Rounds 72–73, plans A2, A10 |
+| `stepbuilder/intermediate.py` | 353 | 18 | `Intermediate` (one parse: `is_simple3d`, `is_full_board`, `components`, `metadata`, `warnings`, `validate`, `silkscreen_layers`), `RESERVED`, `resolve_jobs` (+ the path-shaped `resolve_json_jobs`), `batch_jobs` (the whole-board rule, for the window and the CLI alike), the old probe names as thin wrappers, `output_stem` / `dated_output_name`. Rounds 72–73, plans A2, A10 |
 | `stepbuilder/bend/__init__.py` | 86 | 0 | the module docstring (what a bend is and how the fold is built) and the re-exports that keep `from stepbuilder.bend import X` working - the public names, the `DEFAULT_*`, and the underscored ones the tests import; nothing is defined here |
 | `stepbuilder/bend/constants.py` | 102 | 1 | `EPS`, `MIN_ANGLE`, `DEFAULT_*`, `LogFn` — each number with its reason; plan B7 brings the rest here |
 | `stepbuilder/bend/info.py` | 187 | 9 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `bend_from_dict`, `bends_from_json` |
@@ -295,6 +295,7 @@ flowchart TD
 {
   "format": "simple3d", "format_version": 9, "name": "<design>[_<variant>]",
   "full_board": true,                       optional, only ever true
+  "warnings": [ "..." ],                    optional (2026-09-03): the exporter's lines for the window's log - a variant naming components the board lacks
   "embedded_models": ["X.step", …],          v4+
   "stackups": { "<name>": {                  v6+; "Primary" on a plain board
       "thickness": 1.104,

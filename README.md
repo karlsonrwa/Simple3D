@@ -337,7 +337,11 @@ list at all — is exported as the **bare board**: the outline, the silkscreen
 and the symbols that have no refdes, with a warning in the console saying so
 (a stub `"dummy"` file left from another project looks the same, and the
 warning is for that case). The ordinary case prints its coverage: `variant
-list covers 47 of 51 placed component(s)`.
+list covers 47 of 51 placed component(s)`. A refdes the list names that is
+**not placed** on the board is reported per variant — `variant BOM lists 4
+component(s) that are not on this board: VT1, VT2, VT3, VT4` — in the console
+and again in the window's log: the list then describes a different revision
+of the board than the one open.
 
 A variant may also override properties on individual components, as a block
 after its base list. Those components **are** installed in that variant — they
@@ -954,6 +958,10 @@ Allegro, — и больше нигде; если файла там нет, ко
 без обозначения, с предупреждением в консоли (заглушка `"dummy"` от другого
 проекта выглядит так же, предупреждение как раз про неё). В обычном случае
 печатается покрытие: `variant list covers 47 of 51 placed component(s)`.
+Обозначение из списка, которого **нет на плате**, называется по каждому
+варианту — `variant BOM lists 4 component(s) that are not on this board:
+VT1, VT2, VT3, VT4` — в консоли и ещё раз в логе окна: список тогда описывает
+другую ревизию платы, не ту, что открыта.
 
 Вариант может ещё и переопределять свойства отдельных компонентов блоком после
 базового списка. Такие компоненты в этом варианте **установлены**, просто

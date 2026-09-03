@@ -166,9 +166,12 @@ procedure( s3dVariantFit( g_variantSymbolList t_path )
 ; there is no variant table). Returns dbids, not names: iterating the design
 ; already has the symbol in hand, so nothing has to be looked up again by
 ; refdes - which is one less way for a symbol to go missing.
-procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
-    let( ( out installed refdes label ( nNoExport 0 ) ( nNotInVariant 0 )
-           ( nUntracked 0 ) ( nAlways 0 ) )
+; g_state, when given, receives what this variant had to say about itself
+; in its 'warnings slot (2026-09-03) - the writer puts those lines in the
+; file, and the window's log repeats them.
+procedure( s3dSymbolsToExport( g_variantSymbolList t_variant @optional ( g_state nil ) )
+    let( ( out installed refdes label key missing shown message ( n 0 ) ( nMissing 0 )
+           ( nNoExport 0 ) ( nNotInVariant 0 ) ( nUntracked 0 ) ( nAlways 0 ) )
         out = tconc( nil nil )
         ; Only what THIS variant installs is needed now. The union over all
         ; variants (s3dVariantKnownRefdes) is still built, once, by
@@ -184,6 +187,13 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
 
         foreach( sym axlDBGetDesign()->symbols
             refdes = sym->refdes
+            ; Met on the board: the entry turns from t to 'placed, so what is
+            ; still t after the loop is a refdes the variant names and the
+            ; board does not have (2026-09-03). Both are truthy, so the tests
+            ; below read as before.
+            when( refdes && installed[upperCase( refdes )]
+                installed[upperCase( refdes )] = 'placed
+            )
             ; Admit a symbol that has a refdes (a placed component) OR one that
             ; carries a STEP model but no refdes (a mechanical part, e.g. a
             ; CR2032 holder). Short-circuit keeps the extra axlStepGet probe off
@@ -251,6 +261,42 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant )
                         tconc( out sym )
                     )
                 )
+            )
+        )
+
+        ; The variant names components the board does not have. The list
+        ; comes from the schematic and the board from Allegro, and a refdes
+        ; in one and not the other is a revision mismatch worth a line - the
+        ; export used to say nothing, and the coverage line ("covers 1 of
+        ; 48") counts from the board's side only. Said in the console, in
+        ; its warning colour, and handed to the file so the window's log
+        ; repeats it (2026-09-03; found with a list of six, one placed).
+        missing = nil
+        foreach( key installed
+            when( eq( installed[key] t )  missing = cons( key missing ) )
+        )
+        when( missing
+            missing = sort( missing 'alphalessp )
+            nMissing = length( missing )
+            ; the first ten by name; a list of hundreds is its own message
+            shown = nil
+            n = 0
+            foreach( key missing
+                when( n < 10
+                    shown = cons( key shown )
+                    n = n + 1
+                )
+            )
+            message = sprintf( nil "variant %s lists %d component(s) that are not on this board: %s%s"
+                               t_variant nMissing
+                               buildString( reverse( shown ) ", " )
+                               if( nMissing > 10 then
+                                   sprintf( nil " and %d more" difference( nMissing 10 ) )
+                               else
+                                   "" ) )
+            s3dWarn( strcat( "Simple 3D: " message ) )
+            when( g_state
+                g_state['warnings] = cons( message g_state['warnings] )
             )
         )
 
