@@ -86,7 +86,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .legend import DEFAULT_FLAT_HEIGHT
+from .defaults import DEFAULT_FLAT_HEIGHT
 
 # How the board body is built - the three values `board_mode` can take. The
 # settings file stores them, the window pairs them with its labels, the CLI

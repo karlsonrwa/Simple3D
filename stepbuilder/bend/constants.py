@@ -21,7 +21,7 @@ MIN_ANGLE = 0.5
 # Degrees of arc per rigid slice, for the bends that cannot be built exactly.
 # 7.5 puts twelve facets in a 90 deg bend and the facet chords 0.2% of the
 # radius inside the true surface.
-DEFAULT_SLICE_ANGLE = 7.5
+from ..defaults import DEFAULT_SLICE_ANGLE  # noqa: E402, F401 - the number lives in defaults.py (G5)
 
 # The point of the board that stays in the XY plane. The ORIGIN by convention:
 # Allegro's own "Anchor 3D View" never writes its point to the database (24.1),
@@ -31,7 +31,7 @@ DEFAULT_ANCHOR = (0.0, 0.0)
 
 # Where the neutral axis sits in the stack, as a fraction of the thickness from
 # the inner surface. 0.5 is the middle, which is right for a symmetric flex.
-DEFAULT_NEUTRAL_FACTOR = 0.5
+from ..defaults import DEFAULT_NEUTRAL_FACTOR  # noqa: E402, F401
 
 # Numerical slack for "is this point on that side of the line".
 EPS = 1.0e-7

@@ -11,6 +11,15 @@ import json, shutil, sys
 
 from stepbuilder.gui import StepBuilderApp, RIM_CUSTOM, RIM_SAME, RIM_CREAM
 
+print("[0b] the window imports no OpenCASCADE")
+# Round 80, plan G5: settings, gui, build and the worker's module level read
+# their three default numbers from defaults.py; OCP (about 1.2 s to import)
+# is loaded by the child process that builds, not by the window. Checked
+# here, before anything else in this suite imports core.
+check("no OCP module loaded by importing stepbuilder.gui",
+      not [m for m in sys.modules if m == "OCP" or m.startswith("OCP.")],
+      str([m for m in sys.modules if m.startswith("OCP")][:3]))
+
 TMP = OUT / "cfgtest"
 TMP.mkdir(exist_ok=True)
 cfg = TMP / "simple3d_config.json"

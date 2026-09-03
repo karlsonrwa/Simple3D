@@ -23,9 +23,9 @@ import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import core
-from .intermediate import path_notes
 from .build import BuildOptions
+from .errors import StepBuilderError
+from .intermediate import batch_jobs, output_stem, path_notes, resolve_jobs
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ def run_jobs(settings: BuildSettings, channel) -> None:
     """
     try:
         _run(settings, channel)
-    except core.StepBuilderError as exc:
+    except StepBuilderError as exc:
         channel.put(("error", str(exc)))
     except Exception:
         channel.put(("error", traceback.format_exc()))
@@ -78,7 +78,11 @@ def run_jobs(settings: BuildSettings, channel) -> None:
 
 def _run(settings: BuildSettings, channel) -> None:
     field = Path(settings.json_file)
-    jobs, ignored = core.resolve_jobs(field)     # parsed once, built below
+    # core - and with it OpenCASCADE - is imported here, in the child process,
+    # not at the module level the window imports (round 80, G5).
+    from . import core
+
+    jobs, ignored = resolve_jobs(field)     # parsed once, built below
 
     for j in ignored:
         channel.put(("log", f"Ignoring non-Simple-3D json: {j.name}"))
@@ -96,11 +100,11 @@ def _run(settings: BuildSettings, channel) -> None:
                       "File -> Export -> Simple 3D.")
         else:
             detail = f"Path does not exist: {field}"
-        raise core.StepBuilderError(f"No JSON file to build.\n{detail}")
+        raise StepBuilderError(f"No JSON file to build.\n{detail}")
 
     # The whole-board file: one rule, in intermediate.batch_jobs, for this
     # checkbox and the CLI's --no-full-board alike.
-    jobs = core.batch_jobs(jobs, settings.build_full_board,
+    jobs = batch_jobs(jobs, settings.build_full_board,
                            lambda m: channel.put(("log", m)))
 
     # Said before the first build, so it is at the top of the log (round 78).
@@ -134,7 +138,7 @@ def _run(settings: BuildSettings, channel) -> None:
         # the CLI, which counts failures and carries on.
         try:
             # One rule, in core, for the CLI and here alike - see output_stem.
-            output_name = core.output_stem(
+            output_name = output_stem(
                 jf, settings.output_dir, brd_name=settings.brd_name,
                 several=len(jobs) > 1, dated=settings.dated_name)
             result = core.generate(
@@ -143,7 +147,7 @@ def _run(settings: BuildSettings, channel) -> None:
                 log=lambda m: channel.put(("log", m)),
                 progress=progress,
             )
-        except core.StepBuilderError as exc:
+        except StepBuilderError as exc:
             failures.append(f"{jf.name}: {exc}")
             channel.put(("log", f"error ({jf.name}): {exc}"))
             continue

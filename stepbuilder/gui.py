@@ -16,14 +16,13 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import core
 from . import settings
 from . import winplace
 from .widgets.layers_panel import LayersPanel
 from .worker import BuildSettings
 from .worker_bridge import WorkerBridge
-from .bend import DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
-from .core import DEFAULT_FLAT_HEIGHT
+from .defaults import DEFAULT_FLAT_HEIGHT, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
+from .intermediate import resolve_jobs, resolve_json_jobs
 from .colors import (
     BOARD_THEMES,
     CREAM_DIELECTRIC,
@@ -718,7 +717,7 @@ class StepBuilderApp(tk.Tk):
         field = self.json_file.get().strip()
         found: dict[str, dict[str, int]] = {}
         if field:
-            jobs, _ = core.resolve_jobs(Path(field))
+            jobs, _ = resolve_jobs(Path(field))
             # Several variants build in one press, so the list is their union:
             # a layer present in any of them is a layer you can switch off.
             for job in jobs:
@@ -791,7 +790,7 @@ class StepBuilderApp(tk.Tk):
 
         This method only fills the visible fields and logs what is queued. The
         actual job list is resolved from the JSON field when Generate is
-        pressed (core.resolve_json_jobs), so there is no hidden queue that can
+        pressed (intermediate.resolve_json_jobs), so there is no hidden queue that can
         go stale if the user browses to a different file afterwards.
 
         json_dir: a folder of variant JSONs -> all are built on Generate.
@@ -814,7 +813,7 @@ class StepBuilderApp(tk.Tk):
             self.json_file.set(self._show_path(json_file))
         elif json_dir:
             folder = Path(json_dir)
-            jobs, ignored = core.resolve_json_jobs(folder)
+            jobs, ignored = resolve_json_jobs(folder)
             if ignored:
                 self.after(200, lambda: self._append_log(
                     f"Ignored {len(ignored)} non-Simple-3D .json file(s): " +

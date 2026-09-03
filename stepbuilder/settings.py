@@ -32,9 +32,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .bend import DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
 from .colors import DEFAULT_LAYER_COLORS, DEFAULT_SILK, DEFAULT_THEME, parse_hex
-from .core import DEFAULT_FLAT_HEIGHT
+from .defaults import DEFAULT_FLAT_HEIGHT, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
 
 # Every user-facing setting lives in ONE file, simple3d_config.json, shared with
 # the SKILL side - which is why it sits next to the package rather than in the

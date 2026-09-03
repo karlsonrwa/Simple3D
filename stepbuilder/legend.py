@@ -47,7 +47,9 @@ DEFAULT_SILK_THICKNESS = 0.025
 # resolves depth per pixel, which is what happens with a legend lying exactly on
 # the board. 1 um is invisible at board scale; raise it (0.005-0.01) if a
 # particular viewer's depth buffer still cannot separate them.
-DEFAULT_FLAT_HEIGHT = 0.001
+# The number lives in defaults.py (round 80, G5), re-exported here for the
+# callers that always read it from the legend.
+from .defaults import DEFAULT_FLAT_HEIGHT  # noqa: E402, F401
 
 
 # How a polygon's vertex list is read. Allegro gives (x, y, signed_radius) per

@@ -23,7 +23,7 @@ gui_py = "\n".join(p.read_text(encoding="utf-8") for p in
                    [ROOT / "stepbuilder/gui.py",
                     *sorted((ROOT / "stepbuilder/widgets").glob("*.py"))])
 # The flat-legend default lives in legend.py since round 73 (plan A5).
-legend_py = (ROOT / "stepbuilder/legend.py").read_text(encoding="utf-8")
+defaults_py = (ROOT / "stepbuilder/defaults.py").read_text(encoding="utf-8")
 cfg = json.loads((ROOT / "simple3d_config.json").read_text(encoding="utf-8"))
 
 issues = []
@@ -94,7 +94,7 @@ for label in ("symbols_top", "symbols_bot", "silkscreen_top", "silkscreen_bot"):
 thick = cfg["settings"]["silkscreenThickness"]
 if str(thick) not in readme:
     note("default", f"silkscreenThickness {thick} not in README")
-flat = re.search(r"DEFAULT_FLAT_HEIGHT\s*=\s*([\d.]+)", legend_py).group(1)
+flat = re.search(r"DEFAULT_FLAT_HEIGHT\s*=\s*([\d.]+)", defaults_py).group(1)
 if flat not in readme:
     note("default", f"DEFAULT_FLAT_HEIGHT {flat} not in README")
 
@@ -102,7 +102,7 @@ if flat not in readme:
 for f in ("makeVariant3dIntermediates.il", "simple3d.il", "skill/", "simple3d_config.json",
           "core.py", "contour.py", "errors.py", "intermediate.py", "settings.py",
           "stackup.py", "reporting.py", "board.py", "legend.py", "models.py",
-          "stepdoc.py", "build.py", "winplace.py", "worker_bridge.py",
+          "stepdoc.py", "build.py", "winplace.py", "worker_bridge.py", "defaults.py",
           "gui.py", "colors.py", "bend/", "widgets/",
           "__main__.py"):
     if f not in readme:

@@ -596,6 +596,7 @@ stepbuilder/
   models.py      component models: the folder index, one read per model, the placement transform
   stepdoc.py     the assembly document and the STEP writer
   build.py       the options of one build, in one place, for the window and the CLI alike
+  defaults.py    the three default numbers the window shows before a config is read
   winplace.py    where the window opens: remembered across runs, multi-monitor aware
   reporting.py   the log and progress callbacks every module reports through
   bend/          folding a flex board along its bend areas (a package since round 72)
@@ -1209,6 +1210,7 @@ stepbuilder/
   models.py      модели компонентов: индекс папок, одно чтение на модель, преобразование установки
   stepdoc.py     документ сборки и запись STEP
   build.py       параметры одной сборки в одном месте, для окна и консоли одинаково
+  defaults.py    три числа по умолчанию, которые окно показывает до чтения настроек
   winplace.py    где открывается окно: запоминается между запусками, знает о нескольких мониторах
   reporting.py   колбэки лога и прогресса, через которые отчитываются все модули
   bend/          сгибание гибкой платы по областям сгиба (с раунда 72 — пакет)
