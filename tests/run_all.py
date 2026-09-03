@@ -22,6 +22,9 @@ TOOLS = ROOT / "tools"
 TESTS = ROOT / "tests"
 
 # (label, script, heavy?) - heavy means it builds real geometry with OCCT
+# How much of a failing job's output is shown after its FAIL lines.
+TAIL_LINES = 12
+
 JOBS = [
     ("SKILL: parens, strings, calls, leaks",     TOOLS / "skill_checks.py", False),
     ("SKILL: call arity",                       TOOLS / "check_arity.py", False),
@@ -73,10 +76,19 @@ def main(argv: list[str]) -> int:
         print(f"{label:{width}}  {'pass' if ok else 'FAIL'}  {time.time() - t0:5.1f}s")
         if not ok:
             failed.append(label)
-            # only the failing detail, so a green run stays one screen
-            for line in (done.stdout + done.stderr).splitlines():
-                if "FAIL" in line or "Error" in line or "error" in line:
-                    print(f"    {line.strip()}")
+            # The job's own FAIL lines, then the tail of what it printed - a
+            # traceback is at the end, whole. A green run stays one screen;
+            # a red one no longer depends on the word "error" appearing in
+            # the line that matters (round 80, F3).
+            lines = (done.stdout + done.stderr).splitlines()
+            fail_lines = [l for l in lines if l.lstrip().startswith(("  FAIL", "FAIL"))]
+            for line in fail_lines[:20]:
+                print(f"    {line.strip()}")
+            tail = [l for l in lines[-TAIL_LINES:] if l.strip() and l not in fail_lines]
+            if tail:
+                print(f"    --- last {len(tail)} line(s) of {script.name} ---")
+                for line in tail:
+                    print(f"    {line.rstrip()}")
 
     print()
     print(f"{len(jobs) - len(failed)}/{len(jobs)} passed in {time.time() - started:.0f}s"
