@@ -101,7 +101,7 @@ the keys that differ from the default.
 | `stepbuilder/worker.py` | 176 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, `intermediate.batch_jobs` for the full-board file, per-job isolation, progress slicing; the build's options go through `BuildOptions.from_settings` since A8 |
 | `stepbuilder/worker_bridge.py` | 143 | 9 | `WorkerBridge`: the window's half of the child process - `start`, `drain_once` (queue to five callbacks), `check_alive` (a death is a crash unless `cancelled`), `cancel`, `close`; `crash_advice(code)` is the text. No tkinter. Round 74, plan C5 |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
-| `tests/` (27 files) | ~5000 | — | 22 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
+| `tests/` (28 files) | ~5200 | — | 22 suites + `run_all.py` + `_support.py` + `skill_transliterations.py` (the Python copies of SKILL procedures the suites test against, round 80) + `fixtures/` |
 | `tools/` | ~1100 | — | five mechanical SKILL checks (`skill_checks.py` — parens, strings, calls, prog locals, undeclared assignments since round 76 — and `check_arity.py`, both over `skill_lex.py`'s comment/string/group handling since round 80), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), the SKILL exporter run headless and its own golden corpus (`skill_export.py`, round 75), a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
