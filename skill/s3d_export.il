@@ -421,12 +421,17 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
     )
 )
 
-procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor list( 0.0 0.4 0.0) ) ( configFile nil ) )
+procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configFile nil ) )
     let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName state )
         ; The list used to go on: a second `thicknesses`, and `elements placement
         ; outFile outPort pcb lines` - names this procedure never touches. They
         ; were create3dIntermediateFormat's, reaching its let through SKILL's
         ; dynamic scope; since round 75 (D2) it declares them itself.
+
+        ; The colour is a placeholder - the window overrides it from the config -
+        ; so nil, which the menu command passes, means the default (round 80, G4);
+        ; a console call may still hand one in.
+        unless( pcbColor  pcbColor = list( 0.0 0.4 0.0 ) )
 
         ; get design and design name
         dsnName = axlCurrentDesign()

@@ -599,7 +599,10 @@ procedure( s3dExportCommand()
         ; Variants.lst present it writes one JSON per variant.
         s3dMeterStep( 20 "Reading the board..." )
         printf( "Simple 3D: writing intermediate JSON...\n" )
-        makeVariant3dIntermediates( cadDir list( 0.0 0.4 0.0 )
+        ; nil for the colour: the JSON's colour is a placeholder the window
+        ; overrides from the config, so the exporter's own default serves
+        ; (round 80, G4; this used to pass a green of its own).
+        makeVariant3dIntermediates( cadDir nil
                                     if( (S3D_ConfigFile != "") then S3D_ConfigFile else nil ) )
 
         ; --- can Python actually start? -------------------------------

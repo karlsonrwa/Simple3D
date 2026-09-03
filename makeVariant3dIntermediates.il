@@ -19,7 +19,7 @@
 ;  so a single  load("<folder>/simple3d.il")  is enough.
 ;
 ;  USAGE (unchanged)
-;    makeVariant3dIntermediates( outputDir [ pcbColor ] [ configFile ] )
+;    makeVariant3dIntermediates( outputDir [ pcbColor | nil ] [ configFile ] )
 ;
 ;  Where the parts are, in order: S3D_ExporterDir when the session set it
 ;  before loading (the headless runner and the tests do), else the folder this
