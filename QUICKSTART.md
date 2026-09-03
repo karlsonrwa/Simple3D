@@ -99,7 +99,9 @@ builds it.
   is in every variant. **`ALWAYS_STEP_EXPORT`** is the way back in: a part
   carrying it stays in every variant even when the list omits it, which is what
   a wire-solder pad needs. Simple 3D creates that property in the board; you
-  attach it through Edit → Properties.
+  attach it through Edit → Properties. A variant with every part set to *not
+  installed* gives the **bare board** — that is how one is asked for; there is
+  no checkbox.
 - **The silkscreen is the same in every variant** — one bare board is
   manufactured for all of them.
 
@@ -230,7 +232,9 @@ builds it.
   поэтому он есть во всех вариантах. **`ALWAYS_STEP_EXPORT`** — путь обратно:
   деталь с этим свойством остаётся во всех вариантах, даже если список её не
   перечисляет, — то, что нужно площадке под пайку провода. Свойство заводится в
-  плате самим Simple 3D, а вешается штатно, через Edit → Properties.
+  плате самим Simple 3D, а вешается штатно, через Edit → Properties. Вариант,
+  где все детали помечены *not installed*, даёт **голую плату** — так она и
+  заказывается, отдельной галочки нет.
 - **Шелкография одинакова во всех вариантах** — текстолит производится один раз
   под все сборки.
 

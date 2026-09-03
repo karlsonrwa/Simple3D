@@ -330,11 +330,14 @@ queued folder builds it.
 Allegro keeps it, and nowhere else; the console names the path it tried when
 there is nothing there. With one present, the export writes **one JSON per
 variant**, named `<design>_<variant>`, and the window builds every one of them.
-Two kinds of wrong file are refused rather than exported quietly: a **stub**
-(one variant, usually `"dummy"`, with an empty list — it would install nothing)
-and **another project's file** (plenty of refdes, none of them on this board).
-The ordinary case prints its coverage: `variant list covers 47 of 51 placed
-component(s)`.
+**Another project's file** (plenty of refdes, none of them on this board) is
+refused rather than exported quietly. A variant that **installs nothing** —
+every part set to *not installed* in the schematic, so Capture writes no base
+list at all — is exported as the **bare board**: the outline, the silkscreen
+and the symbols that have no refdes, with a warning in the console saying so
+(a stub `"dummy"` file left from another project looks the same, and the
+warning is for that case). The ordinary case prints its coverage: `variant
+list covers 47 of 51 placed component(s)`.
 
 A variant may also override properties on individual components, as a block
 after its base list. Those components **are** installed in that variant — they
@@ -943,10 +946,13 @@ BOOLEAN и дальше не вмешивается: на что вешать �
 `Variants.lst` читается **из папки, где лежит `.brd`** — там, где его держит
 Allegro, — и больше нигде; если файла там нет, консоль называет проверенный
 путь. Когда файл есть, пишется **по одному JSON на вариант** с именем
-`<плата>_<вариант>`, и окно собирает каждый. Два вида неподходящего файла
-отвергаются, а не экспортируются молча: **заглушка** (один вариант, обычно
-`"dummy"`, с пустым списком — он не установил бы ничего) и **файл от другого
-проекта** (обозначений много, но ни одного с этой платы). В обычном случае
+`<плата>_<вариант>`, и окно собирает каждый. **Файл от другого проекта**
+(обозначений много, но ни одного с этой платы) отвергается, а не
+экспортируется молча. Вариант, в котором **ничего не установлено** — в схеме
+все детали помечены *not installed*, и Capture не пишет базовый список
+вовсе, — экспортируется как **голая плата**: контур, шелкография и символы
+без обозначения, с предупреждением в консоли (заглушка `"dummy"` от другого
+проекта выглядит так же, предупреждение как раз про неё). В обычном случае
 печатается покрытие: `variant list covers 47 of 51 placed component(s)`.
 
 Вариант может ещё и переопределять свойства отдельных компонентов блоком после

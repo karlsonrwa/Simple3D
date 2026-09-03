@@ -101,7 +101,9 @@ procedure( s3dIsMechanical( o_sym )
 ;
 ; Returns t to go on, and raises for the foreign file: a board exported under
 ; another project's variant names is worse than no export at all, because
-; nothing downstream can tell.
+; nothing downstream can tell. The stub is no longer refused (2026-09-03):
+; a variant that installs nothing is also the deliberate bare-board export,
+; and the file cannot say which - so it is named, loudly, and written.
 procedure( s3dVariantFit( g_variantSymbolList t_path )
     prog( ( known nKnown nBoard onBoard refdes examples )
         known = s3dVariantKnownRefdes( g_variantSymbolList )
@@ -122,15 +124,22 @@ procedure( s3dVariantFit( g_variantSymbolList t_path )
             )
         )
 
+        ; A warning, not an error, since 2026-09-03: a variant that installs
+        ; nothing is how the schematic asks for the BARE BOARD - every part set
+        ; to "not installed" in Capture's variant - and that export is wanted.
+        ; It is also what a stub Variants.lst (one empty "dummy" variant,
+        ; copied from project to project) produces, and nothing in the file
+        ; tells the two apart; so this says exactly what is about to be
+        ; written, in the console's warning colour, and goes on. The foreign
+        ; file below stays an error: it carries the evidence.
         when( nKnown == 0
-            error( strcat(
-                sprintf( nil "Simple 3D: %s names variants but lists no components.\n" t_path )
-                "Every variant would install nothing, so the export would be a\n"
-                "bare board carrying only the symbols that have no refdes. That\n"
-                "is what a stub Variants.lst - one empty \"dummy\" variant -\n"
-                "produces; several projects carry one by accident.\n"
-                "Replace it with this board's own Variants.lst, or delete it to\n"
-                "export everything once, without variants.\n" ) )
+            s3dWarn( sprintf( nil "Simple 3D: %s installs no components - every variant in it is the bare board." t_path ) )
+            printf( "Simple 3D: the variant file(s) will hold the outline, the silkscreen and the\n" )
+            printf( "  symbols that have no refdes, and nothing else. That is right when every\n" )
+            printf( "  part was set to not installed in the schematic. If this is a stub\n" )
+            printf( "  Variants.lst (one empty \"dummy\" variant) left from another project,\n" )
+            printf( "  delete it to export every component.\n" )
+            return( t )
         )
 
         when( (nBoard > 0) && (onBoard == 0)
@@ -328,6 +337,29 @@ procedure( gdsysGetVariantInfo()
 
             while( gets( line inPort )
 
+                ; A variant with no (base block. Capture writes none when the
+                ; variant installs nothing - every part set to "not installed"
+                ; in the schematic, which is how a user asks for the bare board
+                ; (2026-09-03):
+                ;     (
+                ;         ("BOM"
+                ;
+                ;         )
+                ;     )
+                ; The machine used to wait for "(base" for the rest of the file,
+                ; so the variant was never registered, the table came out empty
+                ; and the export refused the file as another project's. The
+                ; variant closing - or an alternate-part block opening - before
+                ; any (base means the base list is over before it began: an empty
+                ; list, and the line itself is then read by the state that knows
+                ; it. The (base line is excluded because propertyStart matches
+                ; it too.
+                when( (state == "awaitStartCondition") && (strcmp( line "\t\t(base\n" ) != 0) &&
+                      ((strcmp( line "\t)\n" ) == 0) || pcreMatchp( propertyStart line ))
+                    symbols = list()
+                    state = "awaitEndCondition"
+                )
+
                 case( state
                     (
                         "findVariant"
@@ -466,6 +498,11 @@ procedure( gdsysGetVariantInfo()
                     )
                 )
             )
+            ; Never closed until 2026-09-03: Allegro kept Variants.lst open,
+            ; one handle per export, until it exited - and the file could not
+            ; be deleted or replaced while the session lived ("permission
+            ; denied", seen headless with deleteFile after one export).
+            close( inPort )
             list( variantTable alternateParts )
         else
             error( "Can not read from file ... " )

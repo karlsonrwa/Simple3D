@@ -480,8 +480,10 @@ procedure( s3dOpenTrigger( g_arg )
 ;  that would otherwise work.
 ;
 ;  SKILL has no unwind-protect, so a hard error inside the export would leave
-;  the form on screen. s3dMeterOn therefore destroys any stale meter before
-;  creating its own, which clears one away at the next export.
+;  the form on screen. Since 2026-09-03 the export call is wrapped in errset
+;  and the command takes the meter down itself when it fails; for anything
+;  else, s3dMeterOn destroys any stale meter before creating its own, which
+;  clears one away at the next export.
 ;=====================================================================
 
 procedure( s3dMeterOn( t_text )
@@ -602,8 +604,17 @@ procedure( s3dExportCommand()
         ; nil for the colour: the JSON's colour is a placeholder the window
         ; overrides from the config, so the exporter's own default serves
         ; (round 80, G4; this used to pass a green of its own).
-        makeVariant3dIntermediates( cadDir nil
-                                    if( (S3D_ConfigFile != "") then S3D_ConfigFile else nil ) )
+        ; errset with t prints the error. A failed export takes the meter down
+        ; and says so; it used to leave the form at 20% for the user to read as
+        ; a hang (2026-09-03, seen with a Variants.lst the parser refused).
+        unless( errset( makeVariant3dIntermediates( cadDir nil
+                                                    if( (S3D_ConfigFile != "") then S3D_ConfigFile else nil ) )
+                        t )
+            s3dMeterOff()
+            printf( "Simple 3D: the export stopped on the error above; the 3D window was not opened.\n" )
+            s3dErr( "Simple 3D: export failed - see the console." )
+            return( nil )
+        )
 
         ; --- can Python actually start? -------------------------------
         ; Done AFTER the JSON exists, so a broken Python install still leaves the

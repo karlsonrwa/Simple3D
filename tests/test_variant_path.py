@@ -21,7 +21,8 @@ separators, a name with no folder at all.
 import re, sys
 
 from skill_transliterations import (Tconc, alternate_line, exported, is_refdes_token,
-                                    s3d_design_folder, s3d_variant_file_path, tconc, variant_fit)
+                                    parse_variants, s3d_design_folder, s3d_variant_file_path,
+                                    tconc, variant_fit)
 
 
 print("\n[1] the folder, cut off the drawing path")
@@ -78,9 +79,12 @@ print("\n[5] does the variant table describe THIS board? (s3dVariantFit)")
 #   - a stub: one variant, usually "dummy", with an empty base list;
 #   - another project's file: plenty of refdes, none of them on this board.
 # Both were found on the user's own disk, the stub copied into five projects.
+# Since 2026-09-03 the first is named and WRITTEN rather than refused: a
+# variant that installs nothing is also how the schematic asks for the bare
+# board (every part set to not installed), and the file cannot say which.
 
 
-check("a stub variant list is refused",
+check("a list that installs nothing is named as such",
       variant_fit([], ["C1", "R1"]) == "installs nothing")
 check("another project's list is refused",
       variant_fit(["C41", "R77"], ["C1", "R1"]) == "not this board")
@@ -93,8 +97,14 @@ check("a board with no refdes at all is not refused",
 
 check("the exporter asks the question before the variant loop",
       re.search(r"s3dVariantFit\(\s*variantSymbolList\s+variantFile\s*\)", src))
-check("both bad files stop the export rather than exporting something wrong",
-      len(re.findall(r"error\(\s*strcat\(", src)) >= 2)
+empty_branch = re.search(r"when\(\s*nKnown == 0[\s\S]*?return\(\s*t\s*\)", src)
+check("...and goes on to the export with a warning, not an error",
+      empty_branch and "s3dWarn(" in empty_branch.group(0) and "error(" not in empty_branch.group(0),
+      empty_branch and empty_branch.group(0)[:80])
+check("the foreign file still stops the export rather than exporting something wrong",
+      re.search(r"onBoard == 0\)[\s\S]{0,40}?error\(\s*strcat\(", src))
+check("a file with no variant shape at all stops it too",
+      re.search(r"variantCount == 0[\s\S]{0,40}?error\(\s*strcat\(", src))
 
 print("\n[6] who obeys the variant list, and who is outside it")
 # The rule, settled by the user on 2026-08-03: a refdes is what makes a part
@@ -451,6 +461,44 @@ notes = path_notes(["D:/lib", "D:/Плата №1/библиотека"], "D:/П
 check("one line per path with such characters, naming it",
       len(notes) == 2 and "библиотека" in notes[0] and "STEP folder" in notes[0] and "JSON" in notes[1], str(notes))
 check("a warning, so the window colours it", all(n.startswith("warning:") for n in notes))
+
+print("\n[12] a variant with no (base block: every part set to not installed")
+# Capture writes no (base block when a variant installs nothing - the user's
+# way of asking for the bare board (2026-09-03). The parser waited for "(base"
+# for the rest of the file, registered no variant, and the export refused the
+# file as another project's. Now the variant closing - or an alternate-part
+# block opening - with no base seen is an empty base list.
+EMPTY = '(\r\n\t("BOM"\r\n\r\n\t)\r\n\r\n\r\n)\r\n'        # verbatim, as the user made it
+NORMAL = ('(\n\t("V1"\n\t\t(base\n\t\t\tC1 C2 \n\t\t\tR1 \n\t\t)\n'
+          '\t\t(C43 VALUE="12pF" TOL="1" )\n\t)\n)\n')
+STUB = '(\n\t("dummy"\n\t\t(base\n\t\t)\n\t)\n)\n'
+ALT_ONLY = '(\n\t("V2"\n\t\t(C43 VALUE="12pF" TOL="1" )\n\t)\n)\n'
+BOTH = '(\n\t("V1"\n\t\t(base\n\t\t\tC1 C2 \n\t\t)\n\t)\n\t("BOM"\n\n\t)\n)\n'
+
+
+def refdes_of(table, name):
+    return [t for t in table[name] if is_refdes_token(t)]
+
+
+got = parse_variants(EMPTY)
+check("the user's file parses to one variant", list(got) == ["BOM"], got)
+check("...that installs nothing", refdes_of(got, "BOM") == [])
+got = parse_variants(NORMAL)
+check("a normal file still parses: the base parts and the alternate",
+      refdes_of(got, "V1") == ["C1", "C2", "R1", "C43"], got)
+check("the stub with an empty base list parses as it did",
+      parse_variants(STUB) == {"dummy": []}, parse_variants(STUB))
+check("an alternate part with no base list before it is installed on its own",
+      refdes_of(parse_variants(ALT_ONLY), "V2") == ["C43"], parse_variants(ALT_ONLY))
+got = parse_variants(BOTH)
+check("a full variant and an empty one in one file are both found",
+      set(got) == {"V1", "BOM"} and refdes_of(got, "V1") == ["C1", "C2"] and refdes_of(got, "BOM") == [],
+      got)
+check("the SKILL parser has the same branch, ahead of its case",
+      re.search(r'when\(\s*\(state == "awaitStartCondition"\)\s*&&[\s\S]{0,200}?'
+                r'pcreMatchp\(\s*propertyStart line\s*\)\s*\)\s*\n\s*symbols = list\(\)', src))
+check("and closes the file it opened - it stayed locked until Allegro exited",
+      re.search(r"close\(\s*inPort\s*\)\s*\n\s*list\(\s*variantTable alternateParts\s*\)", src))
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

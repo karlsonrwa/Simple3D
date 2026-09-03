@@ -11,6 +11,32 @@ to use the tool.
 
 ---
 
+- **2026-09-03** — **A variant that installs nothing exports the bare board.**
+  Setting every part to *not installed* in the schematic's variant gives a
+  `Variants.lst` whose variant has no base list at all. The export used to
+  wait for one, register no variant, and refuse the file as another
+  project's - with the progress form left standing at 20 %. Now that
+  variant is written as the bare board (the outline, the silkscreen and the
+  symbols that have no reference designator), with a warning in the console
+  saying so - a stub `"dummy"` file produces the same shape, and the file
+  cannot tell the two apart. A file naming another project's components is
+  still refused. Two more things from the same report: the menu command
+  takes the progress form down when the export fails, and says so; and
+  `Variants.lst` is closed after reading - it used to stay open until
+  Allegro exited, so it could not be deleted or replaced during the session.
+  / **Вариант, в котором ничего не установлено, экспортирует голую плату.**
+  Если в варианте схемы все детали помечены *not installed*, в `Variants.lst`
+  у варианта нет базового списка вовсе. Экспорт ждал его, вариант не
+  регистрировал и отвергал файл как чужой - а индикатор прогресса оставался
+  на 20 %. Теперь такой вариант пишется как голая плата (контур, шелкография
+  и символы без позиционного обозначения) с предупреждением в консоли:
+  заглушка `"dummy"` даёт файл той же формы, и различить их по файлу нельзя.
+  Файл с обозначениями другого проекта по-прежнему отвергается. Ещё два
+  исправления из того же сообщения: при ошибке экспорта команда меню убирает
+  индикатор и говорит об этом; `Variants.lst` закрывается после чтения -
+  раньше он оставался открытым до выхода из Allegro, и удалить или заменить
+  его во время сеанса было нельзя.
+
 - **2026-09-03** — **The window opens sooner.** It used to load OpenCASCADE
   before drawing anything, for three default numbers that live in a small
   file of their own now; the geometry kernel is loaded by the build's child

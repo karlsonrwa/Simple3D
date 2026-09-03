@@ -492,7 +492,7 @@ into `makeVariant3dIntermediates.il` in round 4 and no longer exists):
 | 5 | minimise size / reuse | done; surfacecurve.mode=0 (~49% smaller) + one shared part per model |
 | 6 | MFRPN in json | **DISABLED in round 8** — property attachment proved unreliable in practice. Every branch is commented out, not deleted, in both `.il` files and all three `.py` files, marked `MFRPN DISABLED (kept for future)`. Nothing writes or reads `mfr_pn` now. |
 | 7 | silkscreen export (user, 2026-07-22) | **done and confirmed on the user's boards** (rounds 10–12). `format_version: 2`; polygons carry Allegro's own area and the reader resolves the vertex-radius reading against it (settled: axis / positive-sits-left / first-radius-closes). Solid or flat, per side, White/Black, clipped to outline−cutouts. Flat faces are unioned; solid ones deliberately are not. |
-| 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11; **extended in round 19 and confirmed live 2026-07-24** to mechanical symbols that carry a STEP model (`PKGDEF_STEP_FILE`) but have **no refdes** — they were silently dropped by the refdes gate before, now they export (`axlStepGet` on a mechanical instance returns the mapping; no `sym->definition` fallback needed). Export list comes from the design and the variant table only subtracts — but since **round 52** it subtracts on the refdes alone: a symbol with a refdes that the variant does not install is dropped even if it is mechanical, and only a symbol with NO refdes is outside the variant system. `NO_STEP_EXPORT` excludes outright and is logged by refdes — **confirmed live 2026-07-24: `axlDBGetProperties` sees the property and marked symbols are excluded.** |
+| 8 | mechanical symbols + `NO_STEP_EXPORT` (user, 2026-07-23) | done in round 11; **extended in round 19 and confirmed live 2026-07-24** to mechanical symbols that carry a STEP model (`PKGDEF_STEP_FILE`) but have **no refdes** — they were silently dropped by the refdes gate before, now they export (`axlStepGet` on a mechanical instance returns the mapping; no `sym->definition` fallback needed). Export list comes from the design and the variant table only subtracts — but since **round 52** it subtracts on the refdes alone: a symbol with a refdes that the variant does not install is dropped even if it is mechanical, and only a symbol with NO refdes is outside the variant system. `NO_STEP_EXPORT` excludes outright and is logged by refdes — **confirmed live 2026-07-24: `axlDBGetProperties` sees the property and marked symbols are excluded.** Since round 81 a variant that installs nothing (Capture writes no `(base` block then) exports the bare board with a warning instead of being refused as a stub. |
 | 10 | silkscreen layers chosen in the GUI (user, 2026-07-23) | done in rounds 14-17; `format_version: 3`. Every polygon carries its layer, the panel offers what the JSON contains, exclusions are persisted, a side switched off greys its layers. Zero-width objects reported by layer and position. Console colored by severity via `axlUIWPrint` — no green severity exists. |
 | 11 | multi-stackup + bent flex (user, 2026-07-25) | **multi-stackup done in round 26**; `format_version: 5`. Zones read from the design with their own outline and stackup thickness, fused into one board, components placed on their own zone's surface, zones aligned on the shared conductor core. Fixed two live defects on the way (see round 26). **Bends deliberately NOT done** — the data is available but folding is a separate effort of comparable size to the whole tool, and the bend parameters live in an undocumented `IDX_BEND_TYPE_INFO` property. Board is exported flat. |
 | 9 | one settings file (user, 2026-07-22) | done in round 10h. `simple3d_config.json` holds every user setting, read by both halves; only `S3D_ScriptDir` stays in SKILL source, for bootstrap. Rounds 12–13 fixed two ways the GUI could damage it. |
@@ -2951,6 +2951,86 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-03 (round 81) — a variant that installs nothing; the locked Variants.lst; the meter at 20%
+
+One report, three defects, one commit. The user sometimes wants the bare
+board and asks for it the way Capture allows: a variant with every part set
+to "not installed". The file that comes out is
+
+```
+(
+	("BOM"
+
+	)
+
+
+)
+```
+
+- no `(base` block at all. Reproduced headless on `input/my_test_board2.brd`
+with that file beside a copy (`allegro -nograph`; the probe's `.scr` writes a
+marker file after each step, and the first version of it hung Allegro on a
+string broken by a real newline - the heredoc had eaten the `\n`; see
+[[edits-with-backslashes-need-the-editor]] in memory).
+
+### What was wrong
+
+1. **The parser never registered the variant.** `gdsysGetVariantInfo` waits in
+   `awaitStartCondition` for `\t\t(base\n` and nothing else; with no base
+   block it waited to the end of the file, the table came out empty, and
+   `makeVariant3dIntermediates` refused it with "no matching variants ...
+   likely belongs to a different project". Now the variant closing (`\t)\n`)
+   or an alternate-part block opening in that state means an empty base
+   list, and the line is then read by `awaitEndCondition`, which knows it.
+   The `(base` line is excluded explicitly - `propertyStart` (`^\t\t\(`)
+   matches it too.
+2. **`s3dVariantFit` refused a list that installs nothing** as a stub. It is
+   a stub's shape exactly, and nothing in the file tells the deliberate case
+   from the accidental one, so it is a warning now (`s3dWarn`, in the
+   console's colour, plus four lines saying what the file will hold) and the
+   export goes on. The foreign file - refdes, none on this board - is still
+   an error: that one carries evidence.
+3. **The meter stayed at 20%.** `s3dExportCommand` called the exporter bare;
+   an `error()` inside it aborted the command past `s3dMeterOff`, and the
+   form sat there, which reads as a hang. The call is `errset( ... t )` now:
+   the error prints, the meter comes down, one red line says the export
+   failed and the window was not opened.
+4. **`Variants.lst` stayed locked until Allegro exited.** The parser's
+   `infile` was never `close`d - one handle per export, for as long as the
+   session lived. Headless: `deleteFile` after one export said "permission
+   denied"; after the fix it returns `t`. The Python window never opens the
+   file (only `tools/skill_export.py` copies it), so the lock the user saw
+   with the window open was Allegro's.
+
+### What came out
+
+Same board, same file, after: `1 variant(s) parsed`, the warning, then
+`my_test_board2_bom.json` (`"components": {}`, 80 silkscreen polygons) and
+`my_test_board2.json` (the full board, 19 components); `python -m
+stepbuilder` built the bare board from the first (board + 80 silk solids,
+2.5 MB). The rule of 2026-08-03 stands: a symbol with no refdes is outside
+the variant system and is in that bare board too; `NO_STEP_EXPORT` takes it
+out.
+
+`tests/skill_transliterations.py`: `parse_variants`, the state machine's
+transitions mirrored (not the property values, not the multi-line branch);
+`test_variant_path` [5] now says the empty list is a warning and the
+foreign file an error, [12] parses the user's file, a normal one, the stub,
+an alternate-only variant and a two-variant file, and greps the SKILL for
+the branch and the `close`. `tests/run_all.py`: 27/27 in 202 s; the SKILL
+corpus unchanged (no board in `input/` has a Variants.lst - the variant path
+has no corpus coverage, and this round's proof is the probe).
+
+### What to remember
+
+- **A file handle nobody closes is a lock somebody hits.** `infile` without
+  `close` in a session that lives for days; the symptom arrives as "cannot
+  delete the file", with nothing to connect it to the cause.
+- **"Belongs to a different project" was a guess dressed as a diagnosis.**
+  Zero variants parsed said nothing about whose file it was. The message
+  now says what was observed, and the foreign-file verdict is left to the
+  check that has the evidence.
 
 ## Update 2026-09-03 (round 80) — the small ones: G5, G3, G4, G2, F3
 

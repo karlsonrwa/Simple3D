@@ -210,6 +210,51 @@ def is_refdes_token(tok):                            # s3dIsRefdesToken
     return isinstance(tok, str) and bool(re.search(r"[A-Za-z0-9]", tok))
 
 
+# mirrors skill/s3d_variants.il: gdsysGetVariantInfo's states - which lines open, fill and close a variant
+def parse_variants(text):
+    """{variant: [token, ...]}, walking the lines the way the parser's state
+    machine does: a line with one quoted name opens a variant, "\t\t(base"
+    starts its list, "\t\t)" ends the list, "\t)" closes the variant, and a
+    "\t\t(REFDES ..." block between the two is an alternate part (installed).
+    Since 2026-09-03 a variant that closes - or whose first block is an
+    alternate part - before any "(base" has an empty base list: Capture
+    writes no base block when the variant installs nothing.
+
+    The tokens are the parser's own (a stray "\n" included - the SKILL
+    filters with s3dIsRefdesToken at use, and so should a caller). Not
+    mirrored: the property values, and the multi-line property branch
+    (awaitMoreProperties) - a property block is fed on one line here. Line
+    ends are normalised the way gets() does in text mode.
+    """
+    table, state, current, symbols = {}, "findVariant", None, []
+    for line in text.replace("\r\n", "\n").splitlines(keepends=True):
+        if (state == "awaitStartCondition" and line != "\t\t(base\n"
+                and (line == "\t)\n" or line.startswith("\t\t("))):
+            symbols, state = [], "awaitEndCondition"
+        if state == "findVariant":
+            parts = line.split('"')                     # parseString( line "\"" )
+            if len(parts) == 3:
+                current, state = parts[1], "awaitStartCondition"
+        elif state == "awaitStartCondition":
+            if line == "\t\t(base\n":
+                symbols, state = [], "appendSymbols"
+        elif state == "appendSymbols":
+            if line == "\t\t)\n":
+                state = "awaitEndCondition"
+            else:
+                symbols += [t for t in line.split(" ") if t]   # parseString: spaces only
+        elif state == "awaitEndCondition":
+            if line == "\t)\n":
+                table[current] = ["".join(c for c in t if c not in STRIP)
+                                  for t in symbols if t != ")"]
+                state = "findVariant"
+            elif line.startswith("\t\t("):                 # propertyStart
+                refdes, ends = alternate_line(line)
+                if refdes is not None and ends:
+                    symbols.append(refdes)
+    return table
+
+
 # mirrors SKILL's tconc structure, destructive as the real one (skill/s3d_export.il uses it for the cutout list)
 class Tconc:
     """SKILL's tconc structure - (list . last-cell). car() is the list."""

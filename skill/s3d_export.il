@@ -495,8 +495,10 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
                 ; so count its keys by iterating. If a Variants.lst is present
                 ; but yields zero variants for THIS board, the foreach below
                 ; runs zero times, no JSON is written, yet "Export complete!"
-                ; still prints. That usually means the Variants.lst in the
-                ; working folder belongs to a DIFFERENT project. Surface it.
+                ; still prints. Surface it. Since 2026-09-03 a variant with no
+                ; (base block parses too, so zero here means nothing in the
+                ; file has the shape of a variant at all; a foreign file is
+                ; s3dVariantFit's diagnosis, with the evidence.
                 variantCount = 0
                 foreach( variant variantSymbolList
                     variantCount = variantCount + 1
@@ -505,11 +507,12 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
                         variantCount variantFile )
                 when( variantCount == 0
                     error( strcat(
-                        "Simple 3D: a Variants.lst was found but no matching "
-                        "variants were parsed for this board.\n"
-                        "The file likely belongs to a different project. "
-                        "Delete or replace the Variants.lst in the design "
-                        "folder, or remove it to export all components.\n" ) )
+                        "Simple 3D: a Variants.lst was found but nothing in it "
+                        "parses as a variant.\n"
+                        "A variant starts with its quoted name on a line of its "
+                        "own, as Capture writes it. Replace the file with this "
+                        "board's own Variants.lst, or delete it to export every "
+                        "component.\n" ) )
                 )
 
                 ; Does the table describe THIS board? A file that parses but
