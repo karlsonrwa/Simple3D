@@ -20,27 +20,8 @@ separators, a name with no folder at all.
 """
 import re, sys
 
-
-def s3d_design_folder(full):
-    """The SKILL loop, character for character."""
-    if not isinstance(full, str):
-        return ""
-    cut = 0
-    for i, ch in enumerate(full, start=1):      # SKILL's substring is 1-based
-        if ch in "/\\":
-            cut = i
-    if cut == 0:
-        return ""
-    return "/" if cut == 1 else full[:cut - 1]
-
-
-def s3d_variant_file_path(full):
-    folder = s3d_design_folder(full)
-    if folder == "":
-        return "Variants.lst"
-    if folder[-1] in "/\\":
-        return folder + "Variants.lst"
-    return folder + "/Variants.lst"
+from skill_transliterations import (Tconc, alternate_line, exported, is_refdes_token,
+                                    s3d_design_folder, s3d_variant_file_path, tconc, variant_fit)
 
 
 print("\n[1] the folder, cut off the drawing path")
@@ -99,18 +80,6 @@ print("\n[5] does the variant table describe THIS board? (s3dVariantFit)")
 # Both were found on the user's own disk, the stub copied into five projects.
 
 
-def variant_fit(known, board):
-    """The SKILL decision, in the same three branches."""
-    known = {r.upper() for r in known}
-    board = [r.upper() for r in board]
-    covered = sum(1 for r in board if r in known)
-    if not known:
-        return "installs nothing"
-    if board and covered == 0:
-        return "not this board"
-    return f"{covered} of {len(board)}"
-
-
 check("a stub variant list is refused",
       variant_fit([], ["C1", "R1"]) == "installs nothing")
 check("another project's list is refused",
@@ -135,16 +104,6 @@ print("\n[6] who obeys the variant list, and who is outside it")
 # on the other's case: "the list IS the export list" lost mechanical parts;
 # "subtract only what is not mechanical" kept a MECHANICAL-class MOLEX housing
 # (A1/A2/A4 on variants_test-b0) in variants that do not install it.
-
-
-def exported(*, refdes, installed, has_table=True, no_step_export=False,
-             always_export=False, variant="ALL"):
-    """s3dSymbolsToExport's cond, for one symbol."""
-    if no_step_export:
-        return False
-    if has_table and variant and refdes and not installed and not always_export:
-        return False
-    return True
 
 
 R3 = dict(refdes="R3")
@@ -285,32 +244,12 @@ print("\n[7] a variant that overrides properties on some components")
 # the first PROPERTY token instead ("VALUE=12pF"), which is the bug fixed on
 # 2026-07-22 and pinned here on the real line from the user's own file.
 ALT = '\t\t(C43 VALUE="12pF" JEDEC_TYPE="CAPC100X50X55L25N" TOL="1" )\n'
-STRIP = '"\t+\\()'                                   # the parser's own char class
-
-
-def alternate_line(line):
-    """The parser's awaitEndCondition branch: (refdes, ends_on_this_line)."""
-    tokens = line.split(" ")                         # parseString, space-separated
-    if len(tokens) <= 1:
-        return None, False
-    refdes = "".join(c for c in tokens[0] if c not in STRIP)
-    properties = " ".join(tokens[1:])
-    chunks = properties.replace('" ', "\\").split("\\")
-    return refdes, chunks[-1] == ")\n"
-
-
 refdes, ends = alternate_line(ALT)
 check("the refdes is what reaches the symbol list", refdes == "C43", refdes)
 check("not the first property", refdes != 'VALUE="12pF"')
 check("and the block is seen to end on its own line", ends)
 check("a continued block is not mistaken for a finished one",
       not alternate_line('\t\t(C43 VALUE="12pF" JEDEC_TYPE="CAPC\n')[1])
-
-# The tokens the parser leaves behind: a bare "\n" from a line that ended in
-# " )", which can never match a refdes but did land in the counts.
-def is_refdes_token(tok):                            # s3dIsRefdesToken
-    return isinstance(tok, str) and bool(re.search(r"[A-Za-z0-9]", tok))
-
 
 check("a stray newline token is not a refdes", not is_refdes_token("\n"))
 check("nor an empty one", not is_refdes_token(""))
@@ -426,22 +365,6 @@ print("\n[9] the cutout list is copied per export, not shared")
 # one after it carried one more copy. Found on 8231-a2 (2026-08-11), where the
 # whole-board file had the two slot holes twice and OCC answered a coincident
 # pair of prisms with an empty result: no board body in the STEP, no error.
-
-
-class Tconc:
-    """SKILL's tconc structure - (list . last-cell). car() is the list."""
-
-    def __init__(self, first):
-        self.items = [first]
-
-    def car(self):
-        return self.items
-
-
-def tconc(structure, item):
-    """Destructive, exactly as SKILL's is."""
-    structure.items.append(item)
-    return structure
 
 
 def one_export(edge_cuts, holes, share):

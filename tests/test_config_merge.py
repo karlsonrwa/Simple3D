@@ -12,20 +12,7 @@ transliterated here and both are run over the same cases.
 import json, re, sys
 
 from stepbuilder.gui import _merge_config
-
-
-def skill_merge(base, over):
-    """s3dJsonMerge, in Python.
-
-    Objects merge; anything else is replaced whole. Presence of the key
-    decides, never truthiness - false is a setting, not an absence.
-    """
-    if not isinstance(over, dict) or not isinstance(base, dict):
-        return over
-    out = dict(base)
-    for key, value in over.items():
-        out[key] = skill_merge(base[key], value) if key in base else value
-    return out
+from skill_transliterations import skill_merge
 
 
 print("\n[1] the two implementations agree")

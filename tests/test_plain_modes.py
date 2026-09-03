@@ -5,6 +5,8 @@ from _support import ROOT, out_dir, fails, check, rect, volume, read_step, count
 
 """Body stitching must work on an ORDINARY single-stackup board too."""
 import json, sys
+
+from skill_transliterations import in_body
 from stepbuilder import core
 OUT = out_dir("plainmodes")
 # a plain 2-layer board, exactly what axlXSectionGet(nil 'all) would give
@@ -86,10 +88,6 @@ check("warns, naming the mode and the fix",
       any(m.startswith("warning:") and "re-export" in m for m in lg4), str(lg4[:4]))
 
 print(chr(10) + "[5] silkscreen and paste never enter the body")
-# what the SKILL filter keeps, transliterated
-def in_body(nm, fn):
-    probe = (nm or "").upper() + " " + (fn or "").upper()
-    return not ("SILK" in probe or "PASTE" in probe)
 FULL = [("SILKSCREEN_TOP","SILKSCREEN"),("PASTEMASK_TOP","SOLDER_PASTE"),
         ("SOLDERMASK_TOP","SOLDER_MASK"),("TOP","CONDUCTOR"),("","DIELECTRIC"),
         ("BOTTOM","CONDUCTOR"),("SOLDERMASK_BOTTOM","SOLDER_MASK"),

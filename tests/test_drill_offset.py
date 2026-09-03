@@ -25,38 +25,13 @@ edit cannot quietly go back to pin->xy in one branch and not the other.
 """
 import math
 import re
+
+from skill_transliterations import s3dDrillXY
 import sys
 
 
 def close(a, b, tol=1e-9):
     return abs(a[0] - b[0]) < tol and abs(a[1] - b[1]) < tol
-
-
-# --------------------------------------------------------------------------- #
-# the transliteration
-# --------------------------------------------------------------------------- #
-
-def rotateXY(origin, xy, angle):
-    rad = math.radians(angle)
-    dx = xy[0] - origin[0]
-    dy = xy[1] - origin[1]
-    return [origin[0] + dx * math.cos(rad) - dy * math.sin(rad),
-            origin[1] + dx * math.sin(rad) + dy * math.cos(rad)]
-
-
-def s3dDrillXY(pin_xy, pin_rotation, drill_offset):
-    """pin->xy, pin->rotation, padstack->drillOffset."""
-    dx = dy = 0.0
-    if drill_offset is not None:
-        if isinstance(drill_offset[0], (int, float)):
-            dx = drill_offset[0]
-        if isinstance(drill_offset[1], (int, float)):
-            dy = drill_offset[1]
-    if not isinstance(pin_rotation, (int, float)):
-        pin_rotation = 0.0
-    if dx == 0.0 and dy == 0.0:
-        return pin_xy
-    return rotateXY(pin_xy, [pin_xy[0] + dx, pin_xy[1] + dy], pin_rotation)
 
 
 PAD = [2.19, 0.375]

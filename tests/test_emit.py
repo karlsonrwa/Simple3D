@@ -22,52 +22,12 @@ quoted %s - the guard that keeps a sixth site from appearing.
 """
 import json
 import re
+
+from skill_transliterations import (create3dIntermediateFormat, header, makePcb, placement,
+                                    silk_poly, silk_warnings)
 import sys
 
 IL = exporter_source()
-
-
-def s3dJsonQuote(value):
-    """test_quote.py's transliteration, minus the control-character branch
-    that suite covers on its own."""
-    if not isinstance(value, str):
-        return "null"
-    out = '"'
-    for c in value:
-        out += {'"': '\\"', '\\': '\\\\', '\t': '\\t', '\n': '\\n', '\r': '\\r'}.get(c, c)
-    return out + '"'
-
-
-# ---- the fragments, as the SKILL writes them ------------------------------ #
-
-def placement(refDes, stepFileName, zoneName):
-    """symbolReturn3DElements' block: the key, step_name and zone."""
-    return (s3dJsonQuote(refDes) + ': {\n'
-            '\t"step_mapping": {\n'
-            '\t\t"step_name": ' + s3dJsonQuote(stepFileName) + ',\n'
-            '\t\t"rotation_x": 0.000000,\n'
-            '\t\t"offset_z": 0.000000\n'
-            '\t},\n'
-            '\t"zone": ' + s3dJsonQuote(zoneName) + ',\n'
-            '\t"x": 1.000000\n'
-            '}')
-
-
-def silk_poly(layer):
-    """s3dWriteSilkPolys' per-polygon object, the layer line as written."""
-    return '\t\t\t{\n\t\t\t\t"layer": %s,\n\t\t\t\t"vertices": [\n[0.0, 0.0]\n\t\t\t\t]\n\t\t\t}' % s3dJsonQuote(layer)
-
-
-def silk_warnings(messages):
-    """s3dWriteSilkscreen's warnings array."""
-    return '\t\t"warnings": [\n' + ',\n'.join('\t\t\t' + s3dJsonQuote(m) for m in messages) + '\n\t\t]'
-
-
-def header(variantName, models):
-    """create3dIntermediateFormat's header with s3dEmbeddedModelsJson's list."""
-    return ('"format": "simple3d",\n"format_version": 9,\n'
-            '"name": ' + s3dJsonQuote(variantName) + ',\n'
-            '"embedded_models": [' + ', '.join(s3dJsonQuote(m) for m in models) + ']')
 
 
 AWKWARD = ['R"1', 'C\\1', 'D:\\lib\\part "A".step', 'zone "flex"\\2', 'a\ttab', 'plain']
@@ -119,41 +79,6 @@ print("\n[5] the body: members joined once, every combination of what a board ha
 # top-level members are strings without commas, ONE join puts the commas in,
 # the re-indent prefixes every line with a tab, and the silkscreen - streamed
 # after the body - is what decides whether the last member gets a comma.
-
-
-def s3dAddIndent(text, levels=1):
-    pad = "\t" * levels
-    return "\n".join(pad + line for line in text.split("\n") if line != "")
-
-
-def makePcb(thicknesses, edges, cuts, color):
-    arrays = ["[\n" + s3dAddIndent(",\n".join(edges)) + "\n]"]
-    if cuts:
-        arrays += cuts
-    # "thickness" is optional since v9 (round 79, E2): nil when no stackup is the board
-    thick = ('\t"thickness": {\n\t\t"soldermask_top": %f,\n\t\t"board": %f,\n\t\t"soldermask_bottom": %f\n\t},\n' % thicknesses
-             if thicknesses else "")
-    return ('"pcb": {\n' + thick
-            + s3dAddIndent('"color": {\n\t"r": %f,\n\t"g": %f,\n\t"b": %f\n}' % color)
-            + ',\n\t"edges": [\n' + s3dAddIndent(",\n".join(arrays), 2) + "\n\t]\n}")
-
-
-def create3dIntermediateFormat(variantName, full_board, edges, cuts, placements, silk):
-    members = ['"format": "simple3d"', '"format_version": 9', '"name": ' + s3dJsonQuote(variantName)]
-    if full_board:
-        members.append('"full_board": true')
-    members += ['"embedded_models": []', '"stackups": {\n}', '"zones": []', '"bends": []']
-    members.append(makePcb((0.025, 1.054, 0.025), edges, cuts, (0.0, 0.4, 0.0)))
-    # v9: one "components" object, {} when there is none (round 79, E1)
-    members.append('"components": {\n' + s3dAddIndent(",\n".join(placements)) + "\n}" if placements
-                   else '"components": {}')
-    body = ",\n".join(members)
-    if silk:
-        body += ","
-    out = "{\n" + "".join("\t" + line + "\n" for line in body.split("\n") if line != "")
-    if silk:
-        out += '\t"silkscreen": {\n\t\t"thickness": 0.025,\n\t\t"top": [\n\t\t],\n\t\t"bottom": [\n\t\t]\n\t}\n'
-    return out + "}\n"
 
 
 SEG = '{ "type": "segment", "start": [0.0, 0.0], "end": [10.0, 0.0] }'

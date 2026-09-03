@@ -10,36 +10,7 @@ escapes, which is exactly what this is testing (round 14a lesson).
 """
 import json, sys
 
-
-def s3dJsonQuote(value):
-    if not isinstance(value, str):
-        return "null"
-    out = '"'
-    for c in value:
-        if c == '"':
-            out += '\\"'
-        elif c == '\\':
-            out += '\\\\'
-        elif c == '\t':
-            out += '\\t'
-        elif c == '\n':
-            out += '\\n'
-        elif c == '\r':
-            out += '\\r'
-        elif _is_other_control(c):
-            # SKILL has no verified way to turn a character into its code here,
-            # so \u00XX cannot be built; the character is replaced instead. The
-            # point of the branch is that the FILE still parses.
-            out += ' '
-        else:
-            out += c
-    return out + '"'
-
-
-def _is_other_control(c):
-    """The SKILL side's [\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f], as a predicate."""
-    n = ord(c)
-    return 0x01 <= n <= 0x1f and c not in "\t\n\r"
+from skill_transliterations import s3dJsonQuote
 
 
 print("\n[1] real layer / stackup / zone names")
