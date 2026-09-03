@@ -50,9 +50,13 @@ STEP but knows nothing about Allegro. Everything the export decides in Allegro
 is in the file, so the model can be rebuilt — differently — without touching
 the board again.
 
-The exporter writes `format_version: 8`. Every earlier version still builds —
+The exporter writes `format_version: 9`. Every earlier version still builds —
 each version only ever *added* something optional — so an intermediate you kept
-from an older release does not have to be re-exported to be used.
+from an older release does not have to be re-exported to be used. The other
+way round is new with 9: it keeps the components under one `"components"`
+key instead of beside the metadata, so a file this release writes needs this
+release's Python (an older `stepbuilder` would see one component named
+`components`).
 
 Allegro's own progress form is on screen from the moment you press Export,
 because all of the above happens before any window of ours appears. The only
@@ -657,9 +661,13 @@ SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE �
 ничего не знает про Allegro. Всё, что экспорт выяснил в Allegro, лежит в файле —
 поэтому модель можно пересобрать иначе, не открывая плату заново.
 
-Экспорт пишет `format_version: 8`. Все предыдущие версии по-прежнему
+Экспорт пишет `format_version: 9`. Все предыдущие версии по-прежнему
 собираются — каждая версия только *добавляла* необязательное, — так что
 интермедиат, оставшийся от старого релиза, переэкспортировать не обязательно.
+Обратное с версией 9 стало новостью: компоненты лежат под одним ключом
+`"components"`, а не рядом с метаданными, поэтому файлу этого релиза нужен
+Python этого релиза (старый `stepbuilder` увидел бы один компонент по имени
+`components`).
 
 Штатный индикатор Allegro на экране с момента нажатия Export: всё перечисленное
 происходит до того, как появится наше окно. Единственный временный файл — лог

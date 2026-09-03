@@ -11,6 +11,19 @@ to use the tool.
 
 ---
 
+- **2026-09-03** — **`format_version` 9: the components under one key.** The
+  intermediate now keeps every component under `"components"` instead of
+  beside the board's metadata, so a reader no longer needs a list of which
+  keys are *not* components. Every older file still builds. The one thing
+  to know: a file written by this release needs this release's Python - an
+  older `stepbuilder` would read one component named `components`.
+  / **`format_version` 9: компоненты под одним ключом.** Промежуточный файл
+  теперь держит все компоненты под ключом `"components"`, а не рядом с
+  метаданными платы, так что читателю больше не нужен список ключей,
+  которые *не* компоненты. Все старые файлы по-прежнему собираются. Одно
+  надо знать: файлу этого релиза нужен Python этого релиза — старый
+  `stepbuilder` прочитал бы один компонент по имени `components`.
+
 - **2026-09-03** — **Cyrillic in a name no longer crashes the build; a right-click
   menu; a plain warning about non-ASCII paths.** Allegro writes text in the
   Windows code page, so a board, a model file or a layer named in Cyrillic

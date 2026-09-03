@@ -65,7 +65,7 @@ def silk_warnings(messages):
 
 def header(variantName, models):
     """create3dIntermediateFormat's header with s3dEmbeddedModelsJson's list."""
-    return ('"format": "simple3d",\n"format_version": 8,\n'
+    return ('"format": "simple3d",\n"format_version": 9,\n'
             '"name": ' + s3dJsonQuote(variantName) + ',\n'
             '"embedded_models": [' + ', '.join(s3dJsonQuote(m) for m in models) + ']')
 
@@ -137,12 +137,14 @@ def makePcb(thicknesses, edges, cuts, color):
 
 
 def create3dIntermediateFormat(variantName, full_board, edges, cuts, placements, silk):
-    members = ['"format": "simple3d"', '"format_version": 8', '"name": ' + s3dJsonQuote(variantName)]
+    members = ['"format": "simple3d"', '"format_version": 9', '"name": ' + s3dJsonQuote(variantName)]
     if full_board:
         members.append('"full_board": true')
     members += ['"embedded_models": []', '"stackups": {\n}', '"zones": []', '"bends": []']
     members.append(makePcb((0.025, 1.054, 0.025), edges, cuts, (0.0, 0.4, 0.0)))
-    members += placements
+    # v9: one "components" object, {} when there is none (round 79, E1)
+    members.append('"components": {\n' + s3dAddIndent(",\n".join(placements)) + "\n}" if placements
+                   else '"components": {}')
     body = ",\n".join(members)
     if silk:
         body += ","
@@ -173,9 +175,10 @@ for comps in (False, True):
                       and (("full_board" in got) == full)
                       and got["pcb"]["thickness"]["board"] == 1.054
                       and len(got["pcb"]["edges"]) == (2 if cuts else 1)
-                      and (("R1" in got and "MECH1" in got) == comps)
+                      and (("R1" in got["components"] and "MECH1" in got["components"]) == comps)
+                      and len(got["components"]) == (2 if comps else 0)
                       and (("silkscreen" in got) == silk)
-                      and keys[-1] == ("silkscreen" if silk else ("MECH1" if comps else "pcb")),
+                      and keys[-1] == ("silkscreen" if silk else "components"),
                       str(keys))
 
 print()

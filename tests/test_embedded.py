@@ -68,5 +68,31 @@ check("no component named embedded_models",
       not [m for m in logs7 if "embedded_models" in m], str(logs7[:4]))
 check("component count unchanged", res7.components_placed == 1, str(res7.components_placed))
 
+print("\n[7] format_version 9 keeps the components under one key; v8 beside the metadata")
+# Round 79, plan E1. The same demo board as two fixtures: tests/fixtures/
+# demo_v8.json (components at the top level, the shape every release wrote)
+# and demo_v9.json (a "components" object). Both must read to the same
+# placements and build to the same STEP.
+from stepbuilder.intermediate import RESERVED, Intermediate
+v8 = Intermediate.read(ROOT / "tests/fixtures/demo_v8.json")
+v9 = Intermediate.read(ROOT / "tests/fixtures/demo_v9.json")
+check("the v9 fixture has no component beside the metadata",
+      all(k in RESERVED for k in v9.data) and "components" in v9.data, str(list(v9.data)))
+check("the two read to the same components", v8.components == v9.components and v9.components,
+      str(list(v9.components)))
+check("\"components\" is reserved, so a v9 file is never walked as if it were a refdes",
+      "components" not in v8.components and "components" in RESERVED)
+res8, logs8 = [], []
+for tag, fx in (("v8", "demo_v8.json"), ("v9", "demo_v9.json")):
+    r = core.generate(step_dir=ROOT / "demo/step_files", json_file=ROOT / "tests/fixtures" / fx,
+                      output_dir=OUT, output_name=f"shape_{tag}", log=logs8.append)
+    res8.append(r)
+check("both shapes place the same components",
+      res8[0].components_placed == res8[1].components_placed == 1, str([r.components_placed for r in res8]))
+from _support import read_step, volume, entity_count
+s8, s9 = OUT / "shape_v8.step", OUT / "shape_v9.step"
+check("and the same STEP", abs(volume(read_step(s8)) - volume(read_step(s9))) < 1e-9
+      and entity_count(s8) == entity_count(s9))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

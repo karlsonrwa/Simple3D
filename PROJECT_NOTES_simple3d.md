@@ -2952,6 +2952,38 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-09-03 (round 79) — Plan E: format_version 9
+
+The first format change since round 70's review, and the first one that is
+not purely additive: a v9 file is misread by a reader older than it. Two
+steps, two commits, each closed by the suite, the STEP golden, the SKILL
+corpus (re-recorded, since every file changes by design) and a headless
+build of the new file against the old one.
+
+### What was done
+
+- **E1** the components under one `"components"` key. The writer: one more
+  member of D8's list, `{}` when no component has a STEP mapping (which
+  used to be the `'unbound` corner). The reader: `Intermediate.components`
+  returns the nested dict when there is one and walks the top level minus
+  `RESERVED` otherwise, so every v1-v8 file reads as before; `"components"`
+  joined `RESERVED` so a v9 file can never be walked as a refdes.
+  `tests/fixtures/demo_v8.json` / `demo_v9.json` are the demo board both
+  ways, and `test_embedded` [7] reads them to the same placements and builds
+  them to the same STEP. Headless, every board in `input/` exports as v9 with
+  no stray top-level key, and `my_test_board2` (19 components) built from the
+  v9 file equals the v8 build to the entity. Suite 26/27 in 209 s
+  with the docs audit red for the README's version line this write-up
+  changes, and green with it; STEP golden unchanged.
+
+### What to remember
+
+- **"Only ever added" ends here, and the docs say so where it matters.** The
+  README's sentence that an older intermediate never needs re-exporting was
+  true and stays; the new sentence beside it says the reverse is not - a v9
+  file needs this release's Python. A format change that is honest about its
+  one incompatibility is cheaper than one that pretends to have none.
+
 ## Update 2026-09-03 (round 78) — three questions from the user, answered by measuring
 
 The user asked, after Plan D: has the STEP build become slower with all the

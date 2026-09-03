@@ -303,18 +303,21 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; a per-component "zone", for multi-stackup and rigid-flex boards; 6
         ; gives every stackup layer its own extent and shapes; 7 adds "bends";
         ; 8 gives every stackup a "silkscreen" object saying which of its sides
-        ; is printed on, which is how a zone says it carries no legend.
+        ; is printed on, which is how a zone says it carries no legend; 9 puts
+        ; every component under one "components" object instead of beside the
+        ; metadata (round 79, plan E1), so a reader of v9 need not know which
+        ; keys are NOT components.
         ; All of them are optional to a reader - an older file simply has no
         ; layers to choose from, nothing to say about embedded models, an empty
         ; zone list, which means "ordinary single-stackup board", and no bends,
         ; which means a board that is exported flat.
         ;
         ; NOTE: every top-level key added here must also be listed in the RESERVED
-        ; tuple of stepbuilder/intermediate.py, or the reader walks it as if it
-        ; were a component.
+        ; tuple of stepbuilder/intermediate.py: that is how a v1-v8 file, whose
+        ; components sit beside the metadata, is still read.
         members = list(
             "\"format\": \"simple3d\""
-            "\"format_version\": 8"
+            "\"format_version\": 9"
             strcat( "\"name\": " s3dJsonQuote( variantName ) )
         )
         ; Optional, and only ever true: the whole board, variants ignored.
@@ -346,14 +349,18 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
                        pcbColor )
         members = append( members list( pcb ) )
 
-        ; the step model placements, one member each
-        ; FIX (simple3d): guard the unbound case. If no component has a STEP
-        ; mapping, stepModelPlacements is still the 'unbound marker and car()
-        ; on it faults. That used to be an odd corner; with silkscreen a bare
-        ; board is a legitimate thing to export, so it has to work.
-        when( boundp( 'stepModelPlacements )
-            members = append( members car( stepModelPlacements ) )
-        )
+        ; the step model placements, under one "components" object (v9) - {}
+        ; when no component has a STEP mapping, which is a legitimate export
+        ; (a bare board with its silkscreen) and used to fault on the 'unbound
+        ; marker (FIX, simple3d).
+        members = append( members list(
+            if( boundp( 'stepModelPlacements ) then
+                strcat( "\"components\": {\n"
+                        s3dAddIndent( buildString( car( stepModelPlacements ) ",\n" ) )
+                        "\n}" )
+            else
+                "\"components\": {}"
+            ) ) )
 
         ; write to file
         outFile = fileName

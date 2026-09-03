@@ -9,9 +9,11 @@ on a 2.7 MB intermediate that is not free. `Intermediate` parses once and
 answers all of them. The module-level functions of the old names remain, as
 thin wrappers, for a caller that holds a path and wants one answer.
 
-`RESERVED` is the one list of top-level keys that are not components. The
-exporter's NOTE beside its header (makeVariant3dIntermediates.il) points
-here: a key added there and not here is walked as if it were a refdes.
+`RESERVED` is the one list of top-level keys that are not components - what
+reads a v1-v8 file, whose components sit beside the metadata; since
+format_version 9 they are under one "components" key. The exporter's NOTE
+beside its header (skill/s3d_export.il) points here: a key added there and
+not here is walked as if it were a refdes by the older files' rule.
 
 The naming rule (`output_stem`, `dated_output_name`) lives here too, because
 it is about what is built from one intermediate and both the window and the
@@ -37,7 +39,8 @@ FORMAT_MARKER = "simple3d"
 # would be walked as if it were a component - and so must every key the
 # exporter adds in future.
 RESERVED = ("name", "pcb", "format", "format_version", "silkscreen",
-            "embedded_models", "zones", "stackups", "bends", "full_board")
+            "embedded_models", "zones", "stackups", "bends", "full_board",
+            "components")
 
 
 # What Allegro's SKILL writes when a name is not ASCII: the bytes it holds,
@@ -150,7 +153,12 @@ class Intermediate:
 
     @property
     def components(self) -> dict:
-        """Everything that is not a reserved key: refdes -> placement."""
+        """refdes -> placement. A format_version 9 file carries them under one
+        "components" object (round 79, E1); a v1-v8 file has them beside the
+        metadata, and there everything not in RESERVED is one."""
+        nested = self.data.get("components")
+        if isinstance(nested, dict):
+            return dict(nested)
         return {k: v for k, v in self.data.items() if k not in RESERVED}
 
     @property

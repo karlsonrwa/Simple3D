@@ -554,8 +554,9 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
         return groups[side]
 
     # ---- components ------------------------------------------------------ #
-    # Anything not reserved is a refdes; the reserved keys are the one list
-    # in intermediate.RESERVED, which the exporter's NOTE points at.
+    # A v9 file has them under "components"; in a v1-v8 file anything not
+    # reserved is a refdes (intermediate.RESERVED). Intermediate.components
+    # knows both shapes.
     components = inter.components
     result = BuildResult(
         output=output_dir / f"{json_stem}.step",

@@ -28,7 +28,7 @@ Allegro PCB Editor (SKILL, one global namespace, loads once per session)
                                   silk, export - which read the database and write
                                   <design>[_<variant>].json
         │
-        │   the intermediate JSON  ("format": "simple3d", format_version 8)
+        │   the intermediate JSON  ("format": "simple3d", format_version 9)
         ▼
 Python 3.10+ / cadquery-ocp  (package stepbuilder, runs OUTSIDE Allegro)
   __main__.py   entry: window / --gui prefilled window / headless CLI, one parser
@@ -287,11 +287,11 @@ flowchart TD
 | `load("…/tools/probes/probe_*.il")` | in Allegro, by hand | read-only diagnostics; `probe_variants.il` calls into the exporter |
 | `load("…/tools/s3d_userprop_test.il")` | in Allegro, by hand | the one file that writes to a design |
 
-### 3.2 The intermediate (format_version 8), as the reader sees it
+### 3.2 The intermediate (format_version 9), as the reader sees it
 
 ```
 {
-  "format": "simple3d", "format_version": 8, "name": "<design>[_<variant>]",
+  "format": "simple3d", "format_version": 9, "name": "<design>[_<variant>]",
   "full_board": true,                       optional, only ever true
   "embedded_models": ["X.step", …],          v4+
   "stackups": { "<name>": {                  v6+; "Primary" on a plain board
@@ -303,18 +303,21 @@ flowchart TD
   "bends": [ {name, line:{start,end}, inner_radius, width, info:"TYPE=…"} … ],   v7+
   "pcb": { "thickness": {soldermask_top, board, soldermask_bottom},
            "color": {r,g,b}, "edges": [ outline, cutout, cutout, … ] },
-  "<refdes or NAME_MECHn>": { step_mapping:{step_name, rotation_xyz, offset_xyz},
-                              zone, is_mirrored, x, y, angle },   one per component
+  "components": { "<refdes or NAME_MECHn>": { step_mapping:{step_name, rotation_xyz, offset_xyz},
+                                               zone, is_mirrored, x, y, angle }, … },   v9; {} when none
   "silkscreen": { thickness, warnings:[…], top:[poly…], bottom:[poly…] }   v2+
 }
 ```
 
 `prim` is `{"type": "segment"|"arc"|"circle", …}`; a silk `poly` is
 `{layer, area, vertices:[[x,y,r]…], holes:[…]}`. Two facts about this shape
-matter structurally: **components share the top level with the metadata**, so
-`intermediate.RESERVED` must name every metadata key or the reader walks it as
-a component (the SKILL writer carries a NOTE pointing at that tuple); and every
-version only ever *added* an optional key, which is why a v2 file still builds.
+matter structurally: until v8 **components shared the top level with the
+metadata**, so `intermediate.RESERVED` names every metadata key and that is how
+a v1–v8 file is still read (the SKILL writer carries a NOTE pointing at that
+tuple); since v9 (round 79, E1) they sit under one `components` key, and
+`Intermediate.components` takes either shape. Every version only ever *added*
+an optional key, which is why a v2 file still builds - and v9 is the first a
+reader older than it would misread, as one component called `components`.
 
 ---
 
