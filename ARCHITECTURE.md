@@ -73,6 +73,7 @@ the keys that differ from the default.
 | `simple3d.il` | 908 | 17 | settings from config, install-folder resolution, loads `makeVariant3dIntermediates.il` when it has not been loaded (so one `load()` is enough), `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, Python pre-flight, the launcher |
 | `stepbuilder/core.py` | 719 | 12 | the build as a sequence: `_prepare_stackups` → `_Stack`, `_plan_fold`, `_build_board`, `_build_legend`, `_place_components`, then `generate()` (90 lines with its docstring) that calls them in order and writes; `BuildResult`, `total_board_thickness`; and the re-exports that keep every `core.<name>` a caller ever used |
 | `stepbuilder/build.py` | 173 | 3 | `BuildOptions`: the nineteen options of one build as one frozen dataclass, with the meaning of each; `from_settings` (the window's snapshot) and `from_args` (the CLI). Round 73, plan A8 |
+| `stepbuilder/defaults.py` | 25 | 0 | the three default numbers the window shows before a config is read; no imports, so the window's side (settings, gui, build, the worker's module level) imports no OpenCASCADE. Round 80, G5 |
 | `stepbuilder/stepdoc.py` | 89 | 6 | `StepDocument`: the XCAF app/doc, shape and colour tools, the root assembly, `set_name`, `set_color`, and `write(path, minimize_size)` with the one writer setting that halves the file, set after the writer is constructed. Round 73, plan A7 |
 | `stepbuilder/models.py` | 359 | 14 | component models: `StepFileIndex` (an ordered search path over the model folders, case-folded as the last resort), `ModelCache` (each distinct STEP read once into the document; `labels_for` says "missing" or "unreadable" once per file), `component_transform`, `_report_embedded_only`, `_sanitize`. Round 73, plan A6 |
 | `stepbuilder/legend.py` | 544 | 13 | the silkscreen legend: the arc conventions and `_pick_convention` (settled by the board's own areas), `_wire_from_vertices`, `_silk_face`, `build_silkscreen`, `_merge_coplanar`, `clip_silk_to_zones`, `DEFAULT_FLAT_HEIGHT` / `DEFAULT_SILK_THICKNESS`. Round 73, plan A5 |
@@ -101,7 +102,7 @@ the keys that differ from the default.
 | `stepbuilder/worker_bridge.py` | 143 | 9 | `WorkerBridge`: the window's half of the child process - `start`, `drain_once` (queue to five callbacks), `check_alive` (a death is a crash unless `cancelled`), `cancel`, `close`; `crash_advice(code)` is the text. No tkinter. Round 74, plan C5 |
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
 | `tests/` (27 files) | ~5000 | — | 22 suites + `run_all.py` + `_support.py` + `fixtures/`; several suites are transliterations of SKILL procedures |
-| `tools/` | ~1100 | — | five mechanical SKILL checks (`skill_checks.py` — parens, strings, calls, prog locals, undeclared assignments since round 76 — and `check_arity.py`), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), the SKILL exporter run headless and its own golden corpus (`skill_export.py`, round 75), a hand test that writes a property, 11 read-only Allegro probes |
+| `tools/` | ~1100 | — | five mechanical SKILL checks (`skill_checks.py` — parens, strings, calls, prog locals, undeclared assignments since round 76 — and `check_arity.py`, both over `skill_lex.py`'s comment/string/group handling since round 80), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), the SKILL exporter run headless and its own golden corpus (`skill_export.py`, round 75), a hand test that writes a property, 11 read-only Allegro probes |
 | `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
 
 Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
@@ -132,6 +133,7 @@ graph TD
         BRIDGE --> WORKER[worker.py]
         GUI --> COLORS[colors.py]
         GUI --> SETTINGS[settings.py]
+        SETTINGS --> DEFAULTS[defaults.py]
         GUI --> WINPLACE[winplace.py]
         GUI --> LAYERS[widgets/layers_panel.py]
         GUI -.->|"DEFAULT_* constants"| BEND[bend/]

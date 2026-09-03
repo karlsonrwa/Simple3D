@@ -11,6 +11,17 @@ to use the tool.
 
 ---
 
+- **2026-09-03** — **The window opens sooner.** It used to load OpenCASCADE
+  before drawing anything, for three default numbers that live in a small
+  file of their own now; the geometry kernel is loaded by the build's child
+  process only. Importing the window went from 1.53 s to 0.25 s on the
+  development machine. Nothing else changes.
+  / **Окно открывается быстрее.** Раньше оно загружало OpenCASCADE до
+  того, как что-то нарисовать, ради трёх чисел по умолчанию, которые теперь
+  лежат в своём маленьком файле; геометрическое ядро загружает только
+  дочерний процесс сборки. Импорт окна на машине разработки: было 1.53 с,
+  стало 0.25 с. Больше ничего не меняется.
+
 - **2026-09-03** — **`format_version` 9: the components under one key.** The
   intermediate now keeps every component under `"components"` instead of
   beside the board's metadata, so a reader no longer needs a list of which

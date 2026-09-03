@@ -2952,6 +2952,43 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-09-03 (round 80) — the small ones: G5, G3, G4, G2, F3
+
+Five plan rows, five commits, each closed by the suite (27/27), the STEP
+golden and - where SKILL moved - the corpus; a docs commit after.
+
+### What was done
+
+- **G5, and further than its row.** `stepbuilder/defaults.py` holds the
+  three default numbers; `legend.py` and `bend/constants.py` re-export them.
+  With that, the window's side stopped importing OpenCASCADE altogether:
+  `settings.py` and `build.py` read `defaults`, `gui.py` takes
+  `resolve_jobs`/`resolve_json_jobs` from `intermediate` instead of `core`,
+  and `worker.py` imports `core` inside the child's `_run` - the module the
+  window imports for `BuildSettings` no longer drags the kernel in.
+  `import stepbuilder.gui`: 1.53 s → 0.25 s. `test_gui` [0b] asserts no
+  `OCP*` in `sys.modules` after importing the window, placed before any other
+  import of the suite; the docs audit reads `DEFAULT_FLAT_HEIGHT` from its
+  new home.
+- **G3** `seam_gap`, `double_claimed` public; the fold suite imports them so.
+- **G4** the menu command passes `nil` for the colour, the exporter defaults
+  it (the JSON's colour is a placeholder the window overrides); corpus
+  unchanged.
+- **G2** `tools/skill_lex.py`: the comment stripper, string blanker, `clean`
+  and the balanced-group walk once; both checkers import them.
+- **F3** `run_all.py` prints a failing job's own FAIL lines and then its last
+  twelve lines - a traceback whole - instead of grepping for "error";
+  exercised on a copy with a job made to fail.
+
+`tests/run_all.py`: 27/27 in 203 s.
+
+### What to remember
+
+- **A number's home decides what a module imports.** Three floats sitting
+  beside the code that uses them cost the window 1.2 s of OpenCASCADE at
+  every start, for two years; nobody measured, because the window "just
+  took a moment". `-X importtime` names the cost in one line.
+
 ## Update 2026-09-03 (round 79) — Plan E: format_version 9
 
 The first format change since round 70's review, and the first one that is

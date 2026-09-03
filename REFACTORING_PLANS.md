@@ -337,7 +337,7 @@ and Plan D4/D8 (the writer is data-driven by then).
 |---|---|---|
 | F1 | Step 0.2: `tests/_support.py` | every suite imports `check`, `volume`, `read_step`, `rect`, `ROOT`, `OUT` — **done, round 71** |
 | F2 | `tests/skill_transliterations.py`: the Python copies of `s3dJsonQuote`, `s3dDrillXY`, `s3dDesignFolder`/`s3dVariantFilePath`, the variant rule, `tconc`, `s3dBendsJson`, `s3dLayerInBody`, `s3dLayerIsNegative`, `skill_merge`, `s3dSpanAcross` in one module, each with a `# mirrors makeVariant3dIntermediates.il:<procedure>` line | the SKILL side has one executable specification file |
-| F3 | `run_all.py`: exit code decides pass/fail (it already does); stop grepping stdout for `error`/`Error`, print the tail of a failing job instead | a test whose message contains "error" is not noise |
+| F3 | `run_all.py`: exit code decides pass/fail (it already does); stop grepping stdout for `error`/`Error`, print the tail of a failing job instead | a test whose message contains "error" is not noise — **done, round 80**: a failing job's own `FAIL` lines, then the last 12 lines it printed (a traceback whole), and nothing for a green one; exercised on a copy with a job made to fail |
 | F4 | optional: pytest. Each script's `print("\n[n] …")` blocks become functions; `run_all` stays as the entry so the documented command does not change | `python -m pytest tests -q` and `python tests/run_all.py` agree |
 | F5 | `tools/python_names.py`: pyflakes over the package, tests and tools, failing on undefined names / references before assignment / redefinitions; the fourth mechanical check in `run_all` — **done, round 72**, after two moves each left a name behind (`_open_wire_detail` in core's error path, `MIN_ANGLE` inside `_map_strip`, the second swallowed by the wrap's `except` and reported by the fold suite a full run later). Run it after every move, before the suite |
 
@@ -348,10 +348,10 @@ and Plan D4/D8 (the writer is data-driven by then).
 | # | change | where |
 |---|---|---|
 | G1 | soften "Nothing temporary is written next to your board" to what round 43 says: the pre-flight log is written and deleted (done in round 70) | README, CHANGELOG 2026-07-27 entry left as history |
-| G2 | `tools/skill_lex.py` shared by `skill_checks.py` and `check_arity.py` | tools |
-| G3 | `_seam_gap`, `_double_claimed` promoted to the plan's public `check()` so a test can call them without the underscore | bend |
-| G4 | `s3dExportCommand` stops passing `list(0.0 0.4 0.0)`; `makeVariant3dIntermediates` keeps the optional argument for the CLI-from-console use | simple3d.il |
-| G5 | `DEFAULT_FLAT_HEIGHT`, `DEFAULT_NEUTRAL_FACTOR`, `DEFAULT_SLICE_ANGLE` into a light `defaults.py` (re-exported where they are), so `settings.py` stops importing OCP for three numbers (found in C2) | core, bend, settings |
+| G2 | `tools/skill_lex.py` shared by `skill_checks.py` and `check_arity.py` | tools — **done, round 80**: `strip_line_comment`, `strip_comments`, `strip_strings`, `clean`, `balanced_end` once; both checkers import them (their own folder is `sys.path[0]` when run as scripts, the rule `tests/_support.py` relies on) |
+| G3 | `_seam_gap`, `_double_claimed` promoted to the plan's public `check()` so a test can call them without the underscore | bend — **done, round 80** as `seam_gap` and `double_claimed` (the plan's `check()` keeps calling them; the fold suite imports them by the public names) |
+| G4 | `s3dExportCommand` stops passing `list(0.0 0.4 0.0)`; `makeVariant3dIntermediates` keeps the optional argument for the CLI-from-console use | simple3d.il — **done, round 80**: the menu command passes `nil`, the exporter defaults it to the same green (the JSON's colour is a placeholder the window overrides from the config); corpus unchanged |
+| G5 | `DEFAULT_FLAT_HEIGHT`, `DEFAULT_NEUTRAL_FACTOR`, `DEFAULT_SLICE_ANGLE` into a light `defaults.py` (re-exported where they are), so `settings.py` stops importing OCP for three numbers (found in C2) | core, bend, settings — **done, round 80**, and further than the row: `gui.py` takes `resolve_jobs`/`resolve_json_jobs` from `intermediate`, `build.py` its default from `defaults`, and `worker.py` imports `core` inside the child's `_run` — so the WINDOW imports no OpenCASCADE at all. `import stepbuilder.gui`: 1.53 s before, 0.25 s after, on this machine. `test_gui` [0b] holds the line (no `OCP*` in `sys.modules` after importing the window); the docs audit reads the number from `defaults.py` |
 
 ---
 
@@ -384,6 +384,7 @@ Each arrow is a green run of `tests/run_all.py` plus `tools/golden.py --check`
 **Where this stands after round 79:** Step 0 and Plans A (A1–A10), B (B1–B7),
 C (C1–C6), D (D1–D8) and E1–E2 (format_version 9) are done; every SKILL step
 was closed headless by `tools/skill_export.py --check` (round 75), and what
-remains for the user's live session is the menu item and the launch. E3
-(deleting `RESERVED`) waits for a release that has shipped v9. Next in line:
-F4 and G.
+remains for the user's live session is the menu item and the launch. Round 80
+added G2–G5 and F3. E3 (deleting `RESERVED`) waits for a release that has
+shipped v9. Left: F2 (the transliterations in one module) and the optional F4
+(pytest).
