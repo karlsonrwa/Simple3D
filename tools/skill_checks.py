@@ -26,6 +26,8 @@ names inside them do not count.
 import re, sys
 from pathlib import Path
 
+from skill_lex import balanced_end, strip_line_comment, strip_strings  # noqa: E402 - tools/ is on sys.path when run from here
+
 FILES = [
     str(_ROOT / "makeVariant3dIntermediates.il"),
     str(_ROOT / "simple3d.il"),
@@ -50,26 +52,6 @@ PROJECT_RE = re.compile(r"^(s3d|make|add|symbolReturn|gdsys|create3d|calculateBo
 BUILTIN_ALLOW = {"makeTable", "makeVector", "makeString", "makeInstance",
                  "makeSymbol", "makeList"}
 
-def strip_line_comment(line):
-    """Remove a ; comment, respecting string literals on that line."""
-    out, in_str, esc = [], False, False
-    for ch in line:
-        if in_str:
-            out.append(ch)
-            if esc:
-                esc = False
-            elif ch == "\\":
-                esc = True
-            elif ch == '"':
-                in_str = False
-        else:
-            if ch == ";":
-                break
-            if ch == '"':
-                in_str = True
-            out.append(ch)
-    return "".join(out)
-
 def check_broken_strings(path, text):
     """Flag a " that opens on one line and does not close on the same line."""
     problems = []
@@ -85,10 +67,6 @@ def check_broken_strings(path, text):
         if in_str:
             problems.append((n, line.rstrip()))
     return problems
-
-def strip_strings(code):
-    """Replace "..." literals with spaces, keeping length-ish neutrality."""
-    return re.sub(r'"(\\.|[^"\\])*"', '""', code)
 
 def check_prog_locals(text, nostr):
     """Flag `prog( ( a (b nil) c )` - an init form in a prog's local list.
@@ -149,20 +127,6 @@ BINDER_RE = re.compile(rf"\b(?:foreach|for|forall|setof|exists)\(\s*(?:(?:mapcar
 SCOPE_RE = re.compile(r"\b(?:let|prog|letseq|lambda)\(\s*\(")
 PROC_RE = re.compile(rf"\bprocedure\(\s*({IDENT})\s*\(")
 GLOBAL_PREFIX = "S3D_"          # the project's declared session globals
-
-
-def balanced_end(src, i):
-    """Index just past the group that opens at src[i] == '('."""
-    depth = 0
-    while i < len(src):
-        if src[i] == "(":
-            depth += 1
-        elif src[i] == ")":
-            depth -= 1
-            if depth == 0:
-                return i + 1
-        i += 1
-    return len(src)
 
 
 def names_in_list(group):

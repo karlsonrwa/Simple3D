@@ -23,6 +23,8 @@ positional count falls outside [required, maximum].
 import re, sys
 from pathlib import Path
 
+from skill_lex import clean  # noqa: E402,F401 - the shared lexer (round 80, G2)
+
 FILES = [str(_ROOT / "makeVariant3dIntermediates.il"),
          str(_ROOT / "simple3d.il"),
          # the exporter's nine parts (round 76, D6)
@@ -34,27 +36,6 @@ PROBES = sorted(str(p) for p in (_ROOT / "tools" / "probes").glob("*.il"))
 # Standalone .il helpers directly under tools/ are loaded by hand in a live
 # Allegro session too, so they get the same treatment as the probes.
 PROBES += sorted(str(p) for p in (_ROOT / "tools").glob("*.il"))
-
-
-def strip_line_comment(line):
-    out, in_str, esc = [], False, False
-    for ch in line:
-        if in_str:
-            out.append(ch)
-            if esc: esc = False
-            elif ch == "\\": esc = True
-            elif ch == '"': in_str = False
-        else:
-            if ch == ";": break
-            if ch == '"': in_str = True
-            out.append(ch)
-    return "".join(out)
-
-
-def clean(path):
-    text = Path(path).read_text(encoding="utf-8", errors="replace")
-    text = "\n".join(strip_line_comment(l) for l in text.splitlines())
-    return re.sub(r'"(\\.|[^"\\])*"', '""', text)
 
 
 def split_top_level(s):
