@@ -392,17 +392,17 @@ print("\n[7b2] no piece of the board is ever claimed twice")
 # at once, the held panel was folded by a bend it has nothing to do with, and the
 # folded body weighed 114.7% of the flat one. Regions are pieces of the outline
 # now, so every point belongs to exactly one, whatever shape the board is.
-from stepbuilder.bend import _double_claimed
+from stepbuilder.bend import double_claimed
 
 check("a plain single bend claims nothing twice",
-      _double_claimed(plan, outline) == 0.0, _double_claimed(plan, outline))
+      double_claimed(plan, outline) == 0.0, double_claimed(plan, outline))
 check("nor does a Z fold, where the bends are parallel",
-      _double_claimed(plan2, outline) == 0.0, _double_claimed(plan2, outline))
+      double_claimed(plan2, outline) == 0.0, double_claimed(plan2, outline))
 check("nor two arms in opposite directions",
-      _double_claimed(plan_arms, tall) == 0.0, _double_claimed(plan_arms, tall))
+      double_claimed(plan_arms, tall) == 0.0, double_claimed(plan_arms, tall))
 check("nor a corner in one arm",
-      _double_claimed(plan_ell, ell_arm) == 0.0,
-      _double_claimed(plan_ell, ell_arm))
+      double_claimed(plan_ell, ell_arm) == 0.0,
+      double_claimed(plan_ell, ell_arm))
 
 
 # The shape that used to break it. Two of Cadence's own bends: XA leaves the
@@ -415,8 +415,8 @@ cross_b = Bend(name="XB", start=(35.95, 132.428), end=(25.95, 132.428),
 wide_board = [(-40, -60), (160, -60), (160, 190), (-40, 190)]
 plan_cross = plan_fold([cross_a, cross_b], wide_board, 0.0, -T, anchor=(0.0, 0.0))
 check("two arms at right angles claim nothing in common",
-      _double_claimed(plan_cross, wide_board) == 0.0,
-      _double_claimed(plan_cross, wide_board))
+      double_claimed(plan_cross, wide_board) == 0.0,
+      double_claimed(plan_cross, wide_board))
 check("and the middle, where the anchor is, is still held",
       plan_cross.region_at(0.0, 0.0) == "held", plan_cross.region_at(0.0, 0.0))
 check("neither arm is folded by the other's bend",
@@ -486,7 +486,7 @@ print("\n[7c1] a board drawn far from the origin still gets its bends")
 # (140, 90) - 163 mm along the bend line against a 102 mm half-span - so that
 # bend was built out of nothing at all and the arm came out flat, with no
 # warning: an empty cut looks exactly like a shape that is not in that region.
-from stepbuilder.bend import _seam_gap
+from stepbuilder.bend import seam_gap
 
 far_bend = Bend(name="F", start=(1035.6, 985.6), end=(1049.7, 999.5),
                 angle=90.0, radius=R)
@@ -502,8 +502,8 @@ check("and the folded board keeps its material",
 check("the fold actually happened - it is not still flat",
       bbox(far_folded)[5] - bbox(far_folded)[2] > T * 2,
       (bbox(far_folded)[2], bbox(far_folded)[5]))
-check("and it joins up", _seam_gap(plan_far_origin) < 1e-6,
-      _seam_gap(plan_far_origin))
+check("and it joins up", seam_gap(plan_far_origin) < 1e-6,
+      seam_gap(plan_far_origin))
 
 print("\n[7c2] a rounded edge stays round through the cut")
 
@@ -623,13 +623,13 @@ print("\n[7d] the fold joins up - every seam, every shape")
 # by 23.8 mm and floated off on its own. Volume was still right, no region was
 # claimed twice, and every other check still passed - a fold can be continuous
 # or not, and only this asks.
-from stepbuilder.bend import _seam_gap
+from stepbuilder.bend import seam_gap
 
 for name, p in (("one bend", plan), ("a Z fold", plan2), ("two arms", plan_arms),
                 ("a corner in one arm", plan_ell),
                 ("arms at right angles", plan_cross),
                 ("a ring", ring_zero)):
-    check(f"the fold joins up: {name}", _seam_gap(p) < 1e-6, _seam_gap(p))
+    check(f"the fold joins up: {name}", seam_gap(p) < 1e-6, seam_gap(p))
 
 # And the shape that broke it: a big held piece reaching past a narrow arm's
 # bend on both sides, so its extent says nothing about which side it is on.
@@ -640,7 +640,7 @@ narrow = Bend(name="N", start=(55.0, 80.0), end=(70.0, 80.0), angle=180.0,
 plan_narrow = plan_fold([narrow], wide_hold, 0.0, -T, anchor=(5.0, 5.0))
 check("a wide board with a narrow arm folds where it should",
       plan_narrow.region_at(5.0, 5.0) == "held", plan_narrow.region_at(5.0, 5.0))
-check("and joins up", _seam_gap(plan_narrow) < 1e-6, _seam_gap(plan_narrow))
+check("and joins up", seam_gap(plan_narrow) < 1e-6, seam_gap(plan_narrow))
 
 print("\n[8] where a component ends up")
 

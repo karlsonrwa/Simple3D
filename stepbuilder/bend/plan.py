@@ -619,7 +619,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # could not do - a quarter of Cadence's demo board used to be claimed twice
     # and built twice. Cheap next to the fold itself, and silence here would
     # mean a plausible wrong model handed back with nothing said.
-    doubled = _double_claimed(plan, outline)
+    doubled = double_claimed(plan, outline)
     if doubled > DOUBLE_CLAIM_WARN:
         plan.notes.append(
             f"  warning: {doubled * 100:.0f}% of this board is claimed by more "
@@ -633,7 +633,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # off the board - 23.8 mm of daylight on Cadence's demo board - and the
     # model still builds and still measures the right volume, so nothing else
     # here would have caught it.
-    gap = _seam_gap(plan)
+    gap = seam_gap(plan)
     if gap > SEAM_WARN:
         plan.notes.append(
             f"  warning: the fold does not join up - a seam comes apart by "
@@ -648,8 +648,8 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     return plan
 
 
-def _seam_gap(plan: FoldPlan) -> float:
-    """The worst distance by which the fold fails to join up, in mm.
+def seam_gap(plan: FoldPlan) -> float:
+    """Public since round 80 (G3): a test measures a plan by it. The worst distance by which the fold fails to join up, in mm.
 
     Every strip meets a piece along each of its two long edges. Placed by the
     strip and placed by that piece, a point on the shared edge must land in the
@@ -685,9 +685,9 @@ def _seam_gap(plan: FoldPlan) -> float:
     return worst
 
 
-def _double_claimed(plan: FoldPlan, outline: list[tuple[float, float]],
+def double_claimed(plan: FoldPlan, outline: list[tuple[float, float]],
                     step: float = CLAIM_GRID) -> float:
-    """Fraction of the board area that more than one fold region claims.
+    """Public since round 80 (G3). Fraction of the board area that more than one fold region claims.
 
     Sampled on a grid rather than computed exactly: the answer is wanted as a
     warning threshold, and the regions are half-plane intersections whose exact

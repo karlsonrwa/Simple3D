@@ -80,7 +80,7 @@ from .strip_revolve import (  # noqa: F401 - re-exported
 from .strip_wrap import MAP_VOLUME_TOLERANCE, _map_strip  # noqa: F401
 from .apply import _fuse_all, apply_plan  # noqa: F401
 from .plan import (  # noqa: F401 - re-exported
-    FoldPlan, _anchor_point, _anchor_signs, _double_claimed, _overlap_note,
-    _seam_gap, plan_fold, plan_from_json,
+    FoldPlan, _anchor_point, _anchor_signs, double_claimed, _overlap_note,
+    seam_gap, plan_fold, plan_from_json,
 )
 
