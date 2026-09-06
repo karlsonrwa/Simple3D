@@ -87,16 +87,20 @@ for comps in (False, True):
     for cuts in (False, True):
         for silk in (False, True):
             for full in (False, True):
+              for pads in (False, True):
                 text = create3dIntermediateFormat("board", full, [SEG, SEG], [CUT] if cuts else None,
                                                   [placement("R1", "r.step", None), placement("MECH1", "m.step", "FLEX")] if comps else [],
-                                                  silk)
-                label = f"components={comps} cutouts={cuts} silk={silk} full_board={full}"
+                                                  silk, pads)
+                label = f"components={comps} cutouts={cuts} silk={silk} full_board={full} pads={pads}"
                 try:
                     got = json.loads(text)
                 except ValueError as exc:
                     check(label, False, f"does not parse: {exc}")
                     continue
                 keys = list(got)
+                # v10: the pads sit between the components and the silkscreen,
+                # so the last key is the silkscreen, else the pads, else the
+                # components - and every combination of the three parses.
                 check(label,
                       keys[:3] == ["format", "format_version", "name"]
                       and (("full_board" in got) == full)
@@ -105,7 +109,10 @@ for comps in (False, True):
                       and (("R1" in got["components"] and "MECH1" in got["components"]) == comps)
                       and len(got["components"]) == (2 if comps else 0)
                       and (("silkscreen" in got) == silk)
-                      and keys[-1] == ("silkscreen" if silk else "components"),
+                      and (("pads" in got) == pads)
+                      and (not pads or (list(got["pads"]) == ["padstacks", "pins"]
+                                        and got["pads"]["pins"][0][4] == "P1"))
+                      and keys[-1] == ("silkscreen" if silk else "pads" if pads else "components"),
                       str(keys))
 
 got = json.loads("{" + makePcb(None, [SEG], None, (0.0, 0.4, 0.0)) + "}")

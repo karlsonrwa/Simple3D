@@ -1,0 +1,3086 @@
+{
+ "_comment": "A sample of Cadence's demo board (Cadence_Demo.brd, Allegro 25.1): one pin per figure kind / mirror / span / drill / turn, its padstack's outer-layer pads as the exporter wrote them (format_version 10), and the bounding box of the pad polygon Allegro itself reports for that pin on ETCH/TOP and ETCH/BOTTOM (axlPolyFromDB with ?layer, probe_pads_poly.il). The flex pins (span INNER1) have no oracle box: the probe asked only the two outer layers. Zones and stackups are the board's own, so the flex pins land on the FLEXI1 stackup.",
+ "stackups": {
+  "PRIMARY": {
+   "thickness": 1.4016,
+   "silkscreen": {
+    "top": true,
+    "bottom": true
+   },
+   "layers": [
+    {
+     "name": "SOLDERMASK_TOP",
+     "type": "MASK",
+     "thickness": 0.02,
+     "z_top": 0.02,
+     "z_bottom": 0.0,
+     "negative": true,
+     "function": "SOLDER_MASK",
+     "shapes": null
+    },
+    {
+     "name": "TOP",
+     "type": "CONDUCTOR",
+     "thickness": 0.035,
+     "z_top": 0.0,
+     "z_bottom": -0.035,
+     "negative": false,
+     "function": "CONDUCTOR",
+     "shapes": null
+    },
+    {
+     "name": "",
+     "type": "DIELECTRIC",
+     "thickness": 0.2,
+     "z_top": -0.035,
+     "z_bottom": -0.235,
+     "negative": false,
+     "function": "DIELECTRIC",
+     "shapes": null
+    },
+    {
+     "name": "GND",
+     "type": "PLANE",
+     "thickness": 0.035,
+     "z_top": -0.235,
+     "z_bottom": -0.27,
+     "negative": false,
+     "function": "PLANE",
+     "shapes": null
+    },
+    {
+     "name": "",
+     "type": "DIELECTRIC",
+     "thickness": 0.2,
+     "z_top": -0.27,
+     "z_bottom": -0.47,
+     "negative": false,
+     "function": "DIELECTRIC",
+     "shapes": null
+    },
+    {
+     "name": "",
+     "type": "DIELECTRIC",
+     "thickness": 0.0508,
+     "z_top": -0.47,
+     "z_bottom": -0.5208,
+     "negative": false,
+     "function": "DIELECTRIC",
+     "shapes": null
+    },
+    {
+     "name": "INNER1",
+     "type": "CONDUCTOR",
+     "thickness": 0.035,
+     "z_top": -0.5208,
+     "z_bottom": -0.5558,
+     "negative": false,
+     "function": "CONDUCTOR",
+     "shapes": null
+    },
+    {
+     "name": "",
+     "type": "DIELECTRIC",
+     "thickness": 0.25,
+     "z_top": -0.5558,
+     "z_bottom": -0.8058,
+     "negative": false,
+     "function": "DIELECTRIC",
+     "shapes": null
+    },
+    {
+     "name": "INNER2",
+     "type": "CONDUCTOR",
+     "thickness": 0.035,
+     "z_top": -0.8058,
+     "z_bottom": -0.8408,
+     "negative": false,
+     "function": "CONDUCTOR",
+     "shapes": null
+    },
+    {
+     "name": "",
+     "type": "DIELECTRIC",
+     "thickness": 0.0508,
+     "z_top": -0.8408,
+     "z_bottom": -0.8916,
+     "negative": false,
+     "function": "DIELECTRIC",
+     "shapes": null
+    },
+    {
+     "name": "",
+     "type": "DIELECTRIC",
+     "thickness": 0.2,
+     "z_top": -0.8916,
+     "z_bottom": -1.0916,
+     "negative": false,
+     "function": "DIELECTRIC",
+     "shapes": null
+    },
+    {
+     "name": "POWER",
+     "type": "PLANE",
+     "thickness": 0.035,
+     "z_top": -1.0916,
+     "z_bottom": -1.1266,
+     "negative": false,
+     "function": "PLANE",
+     "shapes": null
+    },
+    {
+     "name": "",
+     "type": "DIELECTRIC",
+     "thickness": 0.2,
+     "z_top": -1.1266,
+     "z_bottom": -1.3266,
+     "negative": false,
+     "function": "DIELECTRIC",
+     "shapes": null
+    },
+    {
+     "name": "BOTTOM",
+     "type": "CONDUCTOR",
+     "thickness": 0.035,
+     "z_top": -1.3266,
+     "z_bottom": -1.3616,
+     "negative": false,
+     "function": "CONDUCTOR",
+     "shapes": null
+    },
+    {
+     "name": "SOLDERMASK_BOTTOM",
+     "type": "MASK",
+     "thickness": 0.02,
+     "z_top": -1.3616,
+     "z_bottom": -1.3816,
+     "negative": true,
+     "function": "SOLDER_MASK",
+     "shapes": null
+    }
+   ]
+  },
+  "FLEXI_STIFFENER": {
+   "thickness": 0.8022,
+   "silkscreen": {
+    "top": false,
+    "bottom": false
+   },
+   "layers": [
+    {
+     "name": "STIFFNER_INNER1",
+     "type": "MASK",
+     "thickness": 0.2032,
+     "z_top": 0.254,
+     "z_bottom": 0.0508,
+     "negative": false,
+     "function": "DIELECTRIC_PREPREG",
+     "shapes": null
+    },
+    {
+     "name": "COVERLAY_INNER1",
+     "type": "MASK",
+     "thickness": 0.0254,
+     "z_top": 0.0508,
+     "z_bottom": 0.0254,
+     "negative": true,
+     "function": "DIELECTRIC_COVERLAY",
+     "shapes": null
+    },
+    {
+     "name": "ADHESIVE_INNER1",
+     "type": "MASK",
+     "thickness": 0.0254,
+     "z_top": 0.0254,
+     "z_bottom": -0.0,
+     "negative": false,
+     "function": "DIELECTRIC_ADHESIVE",
+     "shapes": null
+    },
+    {
+     "name": "INNER1",
+     "type": "CONDUCTOR",
+     "thickness": 0.035,
+     "z_top": 0.0,
+     "z_bottom": -0.035,
+     "negative": false,
+     "function": "CONDUCTOR",
+     "shapes": null
+    },
+    {
+     "name": "",
+     "type": "DIELECTRIC",
+     "thickness": 0.25,
+     "z_top": -0.035,
+     "z_bottom": -0.285,
+     "negative": false,
+     "function": "DIELECTRIC",
+     "shapes": null
+    },
+    {
+     "name": "INNER2",
+     "type": "CONDUCTOR",
+     "thickness": 0.035,
+     "z_top": -0.285,
+     "z_bottom": -0.32,
+     "negative": false,
+     "function": "CONDUCTOR",
+     "shapes": null
+    },
+    {
+     "name": "EPOXY_INNER2",
+     "type": "MASK",
+     "thickness": 0.025,
+     "z_top": -0.32,
+     "z_bottom": -0.345,
+     "negative": false,
+     "function": "DIELECTRIC_ADHESIVE",
+     "shapes": null
+    },
+    {
+     "name": "STIFFNER_INNER2",
+     "type": "MASK",
+     "thickness": 0.2032,
+     "z_top": -0.345,
+     "z_bottom": -0.5482,
+     "negative": false,
+     "function": "DIELECTRIC_PREPREG",
+     "shapes": null
+    }
+   ]
+  },
+  "LCD_STIFFENER": {
+   "thickness": 0.574,
+   "silkscreen": {
+    "top": false,
+    "bottom": false
+   },
+   "layers": [
+    {
+     "name": "STIFFNER_INNER1",
+     "type": "MASK",
+     "thickness": 0.2032,
+     "z_top": 0.2032,
+     "z_bottom": 0.0,
+     "negative": false,
+     "function": "DIELECTRIC_PREPREG",
+     "shapes": null
+    },
+    {
+     "name": "INNER1",
+     "type": "CONDUCTOR",
+     "thickness": 0.035,
+     "z_top": 0.0,
+     "z_bottom": -0.035,
+     "negative": false,
+     "function": "CONDUCTOR",
+     "shapes": null
+    },
+    {
+     "name": "",
+     "type": "DIELECTRIC",
+     "thickness": 0.25,
+     "z_top": -0.035,
+     "z_bottom": -0.285,
+     "negative": false,
+     "function": "DIELECTRIC",
+     "shapes": null
+    },
+    {
+     "name": "INNER2",
+     "type": "CONDUCTOR",
+     "thickness": 0.035,
+     "z_top": -0.285,
+     "z_bottom": -0.32,
+     "negative": false,
+     "function": "CONDUCTOR",
+     "shapes": null
+    },
+    {
+     "name": "ADHESIVE_INNER2",
+     "type": "MASK",
+     "thickness": 0.0254,
+     "z_top": -0.32,
+     "z_bottom": -0.3454,
+     "negative": false,
+     "function": "DIELECTRIC_ADHESIVE",
+     "shapes": null
+    },
+    {
+     "name": "COVERLAY_INNER2",
+     "type": "MASK",
+     "thickness": 0.0254,
+     "z_top": -0.3454,
+     "z_bottom": -0.3708,
+     "negative": true,
+     "function": "DIELECTRIC_COVERLAY",
+     "shapes": null
+    }
+   ]
+  }
+ },
+ "zones": [
+  {
+   "name": "MAIN_PCB",
+   "stackup": "PRIMARY",
+   "contour": [
+    {
+     "type": "segment",
+     "start": [
+      -3.175,
+      -4.445
+     ],
+     "end": [
+      -3.81,
+      -3.81
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -3.81,
+      -3.81
+     ],
+     "end": [
+      -3.81,
+      0.635
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -3.81,
+      0.635
+     ],
+     "end": [
+      -24.765,
+      0.635
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -24.765,
+      0.635
+     ],
+     "end": [
+      -25.4,
+      1.27
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -25.4,
+      1.27
+     ],
+     "end": [
+      -25.4,
+      104.14
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -25.4,
+      104.14
+     ],
+     "end": [
+      -24.765,
+      104.775
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -24.765,
+      104.775
+     ],
+     "end": [
+      -3.81,
+      104.775
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -3.81,
+      104.775
+     ],
+     "end": [
+      -3.81,
+      110.72
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -3.81,
+      110.72
+     ],
+     "end": [
+      -3.175,
+      111.355
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -3.175,
+      111.355
+     ],
+     "end": [
+      99.695,
+      111.355
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      99.695,
+      111.355
+     ],
+     "end": [
+      100.33,
+      110.79
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      100.33,
+      110.79
+     ],
+     "end": [
+      100.33,
+      -3.81
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      100.33,
+      -3.81
+     ],
+     "end": [
+      99.695,
+      -4.445
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      99.695,
+      -4.445
+     ],
+     "end": [
+      -3.175,
+      -4.445
+     ]
+    }
+   ]
+  },
+  {
+   "name": "FLEXI_STIFFENER",
+   "stackup": "FLEXI_STIFFENER",
+   "contour": [
+    {
+     "type": "segment",
+     "start": [
+      113.25,
+      12.95
+     ],
+     "end": [
+      113.25,
+      25.15
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      113.25,
+      25.15
+     ],
+     "end": [
+      133.65,
+      25.15
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      133.65,
+      25.15
+     ],
+     "end": [
+      133.65,
+      12.95
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      133.65,
+      12.95
+     ],
+     "end": [
+      113.25,
+      12.95
+     ]
+    }
+   ]
+  },
+  {
+   "name": "LCD_FLEXI_STIFFENER",
+   "stackup": "LCD_STIFFENER",
+   "contour": [
+    {
+     "type": "segment",
+     "start": [
+      -10.9,
+      153.5
+     ],
+     "end": [
+      -10.9,
+      181.55
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      -10.9,
+      181.55
+     ],
+     "end": [
+      73.3,
+      181.55
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      73.3,
+      181.55
+     ],
+     "end": [
+      73.3,
+      153.5
+     ]
+    },
+    {
+     "type": "segment",
+     "start": [
+      73.3,
+      153.5
+     ],
+     "end": [
+      -10.9,
+      153.5
+     ]
+    }
+   ]
+  }
+ ],
+ "padstacks": {
+  "B305_200": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "OBLONG_X",
+     "bbox": [
+      [
+       -1.525,
+       -1.0
+      ],
+      [
+       1.525,
+       1.0
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.525,
+        1.0
+       ],
+       "end": [
+        -0.525,
+        1.0
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        -0.525,
+        0.0
+       ],
+       "radius": 1.0,
+       "alpha": 90.0,
+       "beta": 270.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.525,
+        -1.0
+       ],
+       "end": [
+        0.525,
+        -1.0
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        0.525,
+        0.0
+       ],
+       "radius": 1.0,
+       "alpha": 270.0,
+       "beta": 90.0,
+       "ccw": true
+      }
+     ]
+    }
+   }
+  },
+  "C100MC200KC200": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.5,
+       -0.5
+      ],
+      [
+       0.5,
+       0.5
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.5
+      }
+     ]
+    }
+   }
+  },
+  "C128H85MC133T125_163_31Y164": {
+   "usage": "Through_pin",
+   "drill": [
+    {
+     "type": "circle",
+     "x": 0.0,
+     "y": 0.0,
+     "radius": 0.425
+    }
+   ],
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.64,
+       -0.64
+      ],
+      [
+       0.64,
+       0.64
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.64
+      }
+     ]
+    },
+    "ETCH/INNER1": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.64,
+       -0.64
+      ],
+      [
+       0.64,
+       0.64
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.64
+      }
+     ]
+    },
+    "ETCH/INNER2": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.64,
+       -0.64
+      ],
+      [
+       0.64,
+       0.64
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.64
+      }
+     ]
+    },
+    "ETCH/BOTTOM": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.64,
+       -0.64
+      ],
+      [
+       0.64,
+       0.64
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.64
+      }
+     ]
+    }
+   }
+  },
+  "C45": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.225,
+       -0.225
+      ],
+      [
+       0.225,
+       0.225
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.225
+      }
+     ]
+    }
+   }
+  },
+  "CIR_1_1_NP": {
+   "usage": "Through",
+   "drill": [
+    {
+     "type": "circle",
+     "x": 0.0,
+     "y": 0.0,
+     "radius": 0.55
+    }
+   ],
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.15,
+       -0.15
+      ],
+      [
+       0.15,
+       0.15
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.15
+      }
+     ]
+    },
+    "ETCH/INNER1": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.15,
+       -0.15
+      ],
+      [
+       0.15,
+       0.15
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.15
+      }
+     ]
+    },
+    "ETCH/INNER2": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.15,
+       -0.15
+      ],
+      [
+       0.15,
+       0.15
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.15
+      }
+     ]
+    },
+    "ETCH/BOTTOM": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.15,
+       -0.15
+      ],
+      [
+       0.15,
+       0.15
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.15
+      }
+     ]
+    }
+   }
+  },
+  "LTUMODULEPAD": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "SQUARE",
+     "bbox": [
+      [
+       -0.318,
+       -0.318
+      ],
+      [
+       0.317,
+       0.317
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.3175,
+        0.3175
+       ],
+       "end": [
+        -0.3175,
+        0.3175
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.3175,
+        0.3175
+       ],
+       "end": [
+        -0.3175,
+        -0.3175
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.3175,
+        -0.3175
+       ],
+       "end": [
+        0.3175,
+        -0.3175
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.3175,
+        -0.3175
+       ],
+       "end": [
+        0.3175,
+        0.3175
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "LTUMODULEPAD1": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "SHAPE",
+     "bbox": [
+      [
+       -0.318,
+       -0.318
+      ],
+      [
+       0.318,
+       0.318
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.0,
+        -0.318
+       ],
+       "end": [
+        -0.318,
+        0.0
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.318,
+        0.0
+       ],
+       "end": [
+        -0.318,
+        0.318
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.318,
+        0.318
+       ],
+       "end": [
+        0.318,
+        0.318
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.318,
+        0.318
+       ],
+       "end": [
+        0.318,
+        -0.318
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.318,
+        -0.318
+       ],
+       "end": [
+        0.0,
+        -0.318
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "PAD125": {
+   "usage": "Through",
+   "drill": [
+    {
+     "type": "circle",
+     "x": 0.0,
+     "y": 0.0,
+     "radius": 1.5875
+    }
+   ],
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.318,
+       -0.318
+      ],
+      [
+       0.317,
+       0.317
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.3175
+      }
+     ]
+    },
+    "ETCH/INNER1": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.318,
+       -0.318
+      ],
+      [
+       0.317,
+       0.317
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.3175
+      }
+     ]
+    },
+    "ETCH/INNER2": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.318,
+       -0.318
+      ],
+      [
+       0.317,
+       0.317
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.3175
+      }
+     ]
+    },
+    "ETCH/BOTTOM": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.318,
+       -0.318
+      ],
+      [
+       0.317,
+       0.317
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.3175
+      }
+     ]
+    }
+   }
+  },
+  "PAD35CIR25D": {
+   "usage": "Through",
+   "drill": [
+    {
+     "type": "circle",
+     "x": 0.0,
+     "y": 0.0,
+     "radius": 0.4
+    }
+   ],
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "OBLONG_X",
+     "bbox": [
+      [
+       -1.0,
+       -0.5
+      ],
+      [
+       1.0,
+       0.5
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.5,
+        0.5
+       ],
+       "end": [
+        -0.5,
+        0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        -0.5,
+        0.0
+       ],
+       "radius": 0.5,
+       "alpha": 90.0,
+       "beta": 270.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.5,
+        -0.5
+       ],
+       "end": [
+        0.5,
+        -0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        0.5,
+        0.0
+       ],
+       "radius": 0.5,
+       "alpha": 270.0,
+       "beta": 90.0,
+       "ccw": true
+      }
+     ]
+    },
+    "ETCH/INNER1": {
+     "figure": "OBLONG_X",
+     "bbox": [
+      [
+       -1.0,
+       -0.5
+      ],
+      [
+       1.0,
+       0.5
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.5,
+        0.5
+       ],
+       "end": [
+        -0.5,
+        0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        -0.5,
+        0.0
+       ],
+       "radius": 0.5,
+       "alpha": 90.0,
+       "beta": 270.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.5,
+        -0.5
+       ],
+       "end": [
+        0.5,
+        -0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        0.5,
+        0.0
+       ],
+       "radius": 0.5,
+       "alpha": 270.0,
+       "beta": 90.0,
+       "ccw": true
+      }
+     ]
+    },
+    "ETCH/INNER2": {
+     "figure": "OBLONG_X",
+     "bbox": [
+      [
+       -1.0,
+       -0.5
+      ],
+      [
+       1.0,
+       0.5
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.5,
+        0.5
+       ],
+       "end": [
+        -0.5,
+        0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        -0.5,
+        0.0
+       ],
+       "radius": 0.5,
+       "alpha": 90.0,
+       "beta": 270.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.5,
+        -0.5
+       ],
+       "end": [
+        0.5,
+        -0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        0.5,
+        0.0
+       ],
+       "radius": 0.5,
+       "alpha": 270.0,
+       "beta": 90.0,
+       "ccw": true
+      }
+     ]
+    },
+    "ETCH/BOTTOM": {
+     "figure": "OBLONG_X",
+     "bbox": [
+      [
+       -1.0,
+       -0.5
+      ],
+      [
+       1.0,
+       0.5
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.5,
+        0.5
+       ],
+       "end": [
+        -0.5,
+        0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        -0.5,
+        0.0
+       ],
+       "radius": 0.5,
+       "alpha": 90.0,
+       "beta": 270.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.5,
+        -0.5
+       ],
+       "end": [
+        0.5,
+        -0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        0.5,
+        0.0
+       ],
+       "radius": 0.5,
+       "alpha": 270.0,
+       "beta": 90.0,
+       "ccw": true
+      }
+     ]
+    }
+   }
+  },
+  "R80_30": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "RECTANGLE",
+     "bbox": [
+      [
+       -0.4,
+       -0.15
+      ],
+      [
+       0.4,
+       0.15
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.4,
+        0.15
+       ],
+       "end": [
+        -0.4,
+        0.15
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.4,
+        0.15
+       ],
+       "end": [
+        -0.4,
+        -0.15
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.4,
+        -0.15
+       ],
+       "end": [
+        0.4,
+        -0.15
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.4,
+        -0.15
+       ],
+       "end": [
+        0.4,
+        0.15
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "S320": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "RECTANGLE",
+     "bbox": [
+      [
+       -1.6,
+       -1.6
+      ],
+      [
+       1.6,
+       1.6
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        1.6,
+        1.6
+       ],
+       "end": [
+        -1.6,
+        1.6
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -1.6,
+        1.6
+       ],
+       "end": [
+        -1.6,
+        -1.6
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -1.6,
+        -1.6
+       ],
+       "end": [
+        1.6,
+        -1.6
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        1.6,
+        -1.6
+       ],
+       "end": [
+        1.6,
+        1.6
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "SLOT_1X2": {
+   "usage": "Slot",
+   "drill": [
+    {
+     "type": "arc",
+     "center": [
+      0.0,
+      0.5
+     ],
+     "radius": 0.5,
+     "alpha": 0.0,
+     "beta": 180.0,
+     "ccw": false
+    },
+    {
+     "type": "segment",
+     "start": [
+      -0.5,
+      0.5
+     ],
+     "end": [
+      -0.5,
+      -0.5
+     ]
+    },
+    {
+     "type": "arc",
+     "center": [
+      0.0,
+      -0.5
+     ],
+     "radius": 0.5,
+     "alpha": 180.0,
+     "beta": 0.0,
+     "ccw": true
+    },
+    {
+     "type": "segment",
+     "start": [
+      0.5,
+      -0.5
+     ],
+     "end": [
+      0.5,
+      0.5
+     ]
+    }
+   ],
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "OBLONG_Y",
+     "bbox": [
+      [
+       -1.0,
+       -1.5
+      ],
+      [
+       1.0,
+       1.5
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "arc",
+       "center": [
+        0.0,
+        0.5
+       ],
+       "radius": 1.0,
+       "alpha": 0.0,
+       "beta": 180.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        -1.0,
+        0.5
+       ],
+       "end": [
+        -1.0,
+        -0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        0.0,
+        -0.5
+       ],
+       "radius": 1.0,
+       "alpha": 180.0,
+       "beta": 0.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        1.0,
+        -0.5
+       ],
+       "end": [
+        1.0,
+        0.5
+       ]
+      }
+     ]
+    },
+    "ETCH/INNER1": {
+     "figure": "OBLONG_Y",
+     "bbox": [
+      [
+       -1.0,
+       -1.5
+      ],
+      [
+       1.0,
+       1.5
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "arc",
+       "center": [
+        0.0,
+        0.5
+       ],
+       "radius": 1.0,
+       "alpha": 0.0,
+       "beta": 180.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        -1.0,
+        0.5
+       ],
+       "end": [
+        -1.0,
+        -0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        0.0,
+        -0.5
+       ],
+       "radius": 1.0,
+       "alpha": 180.0,
+       "beta": 0.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        1.0,
+        -0.5
+       ],
+       "end": [
+        1.0,
+        0.5
+       ]
+      }
+     ]
+    },
+    "ETCH/INNER2": {
+     "figure": "OBLONG_Y",
+     "bbox": [
+      [
+       -1.0,
+       -1.5
+      ],
+      [
+       1.0,
+       1.5
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "arc",
+       "center": [
+        0.0,
+        0.5
+       ],
+       "radius": 1.0,
+       "alpha": 0.0,
+       "beta": 180.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        -1.0,
+        0.5
+       ],
+       "end": [
+        -1.0,
+        -0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        0.0,
+        -0.5
+       ],
+       "radius": 1.0,
+       "alpha": 180.0,
+       "beta": 0.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        1.0,
+        -0.5
+       ],
+       "end": [
+        1.0,
+        0.5
+       ]
+      }
+     ]
+    },
+    "ETCH/BOTTOM": {
+     "figure": "OBLONG_Y",
+     "bbox": [
+      [
+       -1.0,
+       -1.5
+      ],
+      [
+       1.0,
+       1.5
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "arc",
+       "center": [
+        0.0,
+        0.5
+       ],
+       "radius": 1.0,
+       "alpha": 0.0,
+       "beta": 180.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        -1.0,
+        0.5
+       ],
+       "end": [
+        -1.0,
+        -0.5
+       ]
+      },
+      {
+       "type": "arc",
+       "center": [
+        0.0,
+        -0.5
+       ],
+       "radius": 1.0,
+       "alpha": 180.0,
+       "beta": 0.0,
+       "ccw": true
+      },
+      {
+       "type": "segment",
+       "start": [
+        1.0,
+        -0.5
+       ],
+       "end": [
+        1.0,
+        0.5
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "SQ128H85MC133T125_163_31Y164": {
+   "usage": "Through_pin",
+   "drill": [
+    {
+     "type": "circle",
+     "x": 0.0,
+     "y": 0.0,
+     "radius": 0.425
+    }
+   ],
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "SQUARE",
+     "bbox": [
+      [
+       -0.64,
+       -0.64
+      ],
+      [
+       0.64,
+       0.64
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.64,
+        0.64
+       ],
+       "end": [
+        -0.64,
+        0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.64,
+        0.64
+       ],
+       "end": [
+        -0.64,
+        -0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.64,
+        -0.64
+       ],
+       "end": [
+        0.64,
+        -0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.64,
+        -0.64
+       ],
+       "end": [
+        0.64,
+        0.64
+       ]
+      }
+     ]
+    },
+    "ETCH/INNER1": {
+     "figure": "SQUARE",
+     "bbox": [
+      [
+       -0.64,
+       -0.64
+      ],
+      [
+       0.64,
+       0.64
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.64,
+        0.64
+       ],
+       "end": [
+        -0.64,
+        0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.64,
+        0.64
+       ],
+       "end": [
+        -0.64,
+        -0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.64,
+        -0.64
+       ],
+       "end": [
+        0.64,
+        -0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.64,
+        -0.64
+       ],
+       "end": [
+        0.64,
+        0.64
+       ]
+      }
+     ]
+    },
+    "ETCH/INNER2": {
+     "figure": "SQUARE",
+     "bbox": [
+      [
+       -0.64,
+       -0.64
+      ],
+      [
+       0.64,
+       0.64
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.64,
+        0.64
+       ],
+       "end": [
+        -0.64,
+        0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.64,
+        0.64
+       ],
+       "end": [
+        -0.64,
+        -0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.64,
+        -0.64
+       ],
+       "end": [
+        0.64,
+        -0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.64,
+        -0.64
+       ],
+       "end": [
+        0.64,
+        0.64
+       ]
+      }
+     ]
+    },
+    "ETCH/BOTTOM": {
+     "figure": "SQUARE",
+     "bbox": [
+      [
+       -0.64,
+       -0.64
+      ],
+      [
+       0.64,
+       0.64
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.64,
+        0.64
+       ],
+       "end": [
+        -0.64,
+        0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.64,
+        0.64
+       ],
+       "end": [
+        -0.64,
+        -0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.64,
+        -0.64
+       ],
+       "end": [
+        0.64,
+        -0.64
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.64,
+        -0.64
+       ],
+       "end": [
+        0.64,
+        0.64
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "S_RCT_1-40_X_0-95": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "RECTANGLE",
+     "bbox": [
+      [
+       -0.7,
+       -0.475
+      ],
+      [
+       0.7,
+       0.475
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.7,
+        0.475
+       ],
+       "end": [
+        -0.7,
+        0.475
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.7,
+        0.475
+       ],
+       "end": [
+        -0.7,
+        -0.475
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.7,
+        -0.475
+       ],
+       "end": [
+        0.7,
+        -0.475
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.7,
+        -0.475
+       ],
+       "end": [
+        0.7,
+        0.475
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "S_RCT_1-80_X_1-25": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "RECTANGLE",
+     "bbox": [
+      [
+       -0.9,
+       -0.625
+      ],
+      [
+       0.9,
+       0.625
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.9,
+        0.625
+       ],
+       "end": [
+        -0.9,
+        0.625
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.9,
+        0.625
+       ],
+       "end": [
+        -0.9,
+        -0.625
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.9,
+        -0.625
+       ],
+       "end": [
+        0.9,
+        -0.625
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.9,
+        -0.625
+       ],
+       "end": [
+        0.9,
+        0.625
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "S_RCT_3-00_X_2-10": {
+   "usage": "Smd",
+   "drill": null,
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "RECTANGLE",
+     "bbox": [
+      [
+       -1.5,
+       -1.05
+      ],
+      [
+       1.5,
+       1.05
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        1.5,
+        1.05
+       ],
+       "end": [
+        -1.5,
+        1.05
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -1.5,
+        1.05
+       ],
+       "end": [
+        -1.5,
+        -1.05
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -1.5,
+        -1.05
+       ],
+       "end": [
+        1.5,
+        -1.05
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        1.5,
+        -1.05
+       ],
+       "end": [
+        1.5,
+        1.05
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "TH2_3C2_9C": {
+   "usage": "Through_pin",
+   "drill": [
+    {
+     "type": "circle",
+     "x": 0.0,
+     "y": 0.0,
+     "radius": 1.15
+    }
+   ],
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -1.45,
+       -1.45
+      ],
+      [
+       1.45,
+       1.45
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 1.45
+      }
+     ]
+    },
+    "ETCH/INNER1": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -1.45,
+       -1.45
+      ],
+      [
+       1.45,
+       1.45
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 1.45
+      }
+     ]
+    },
+    "ETCH/INNER2": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -1.45,
+       -1.45
+      ],
+      [
+       1.45,
+       1.45
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 1.45
+      }
+     ]
+    },
+    "ETCH/BOTTOM": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -1.45,
+       -1.45
+      ],
+      [
+       1.45,
+       1.45
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 1.45
+      }
+     ]
+    }
+   }
+  },
+  "TSQR1-60D0-95PNP": {
+   "usage": "Through",
+   "drill": [
+    {
+     "type": "circle",
+     "x": 0.0,
+     "y": 0.0,
+     "radius": 0.475
+    }
+   ],
+   "pads": {
+    "ETCH/TOP": {
+     "figure": "SQUARE",
+     "bbox": [
+      [
+       -0.8,
+       -0.8
+      ],
+      [
+       0.8,
+       0.8
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.8,
+        0.8
+       ],
+       "end": [
+        -0.8,
+        0.8
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.8,
+        0.8
+       ],
+       "end": [
+        -0.8,
+        -0.8
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.8,
+        -0.8
+       ],
+       "end": [
+        0.8,
+        -0.8
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.8,
+        -0.8
+       ],
+       "end": [
+        0.8,
+        0.8
+       ]
+      }
+     ]
+    },
+    "ETCH/INNER1": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.8,
+       -0.8
+      ],
+      [
+       0.8,
+       0.8
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.8
+      }
+     ]
+    },
+    "ETCH/INNER2": {
+     "figure": "CIRCLE",
+     "bbox": [
+      [
+       -0.8,
+       -0.8
+      ],
+      [
+       0.8,
+       0.8
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "circle",
+       "x": 0.0,
+       "y": 0.0,
+       "radius": 0.8
+      }
+     ]
+    },
+    "ETCH/BOTTOM": {
+     "figure": "SQUARE",
+     "bbox": [
+      [
+       -0.8,
+       -0.8
+      ],
+      [
+       0.8,
+       0.8
+      ]
+     ],
+     "offset": [
+      0.0,
+      0.0
+     ],
+     "inside": 0.0,
+     "outline": [
+      {
+       "type": "segment",
+       "start": [
+        0.8,
+        0.8
+       ],
+       "end": [
+        -0.8,
+        0.8
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.8,
+        0.8
+       ],
+       "end": [
+        -0.8,
+        -0.8
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        -0.8,
+        -0.8
+       ],
+       "end": [
+        0.8,
+        -0.8
+       ]
+      },
+      {
+       "type": "segment",
+       "start": [
+        0.8,
+        -0.8
+       ],
+       "end": [
+        0.8,
+        0.8
+       ]
+      }
+     ]
+    }
+   }
+  }
+ },
+ "pins": [
+  {
+   "row": [
+    0.0,
+    106.0,
+    0.0,
+    false,
+    "PAD125",
+    "ETCH/TOP",
+    "ETCH/BOTTOM"
+   ],
+   "oracle": {
+    "top": [
+     -0.318,
+     105.682,
+     0.318,
+     106.318
+    ],
+    "bottom": [
+     -0.318,
+     105.682,
+     0.318,
+     106.318
+    ]
+   }
+  },
+  {
+   "row": [
+    97.55,
+    67.37,
+    90.0,
+    false,
+    "TH2_3C2_9C",
+    "ETCH/TOP",
+    "ETCH/BOTTOM"
+   ],
+   "oracle": {
+    "top": [
+     96.1,
+     65.92,
+     99.0,
+     68.82
+    ],
+    "bottom": [
+     96.1,
+     65.92,
+     99.0,
+     68.82
+    ]
+   }
+  },
+  {
+   "row": [
+    40.005,
+    29.845,
+    270.0,
+    false,
+    "S320",
+    "ETCH/TOP",
+    "ETCH/TOP"
+   ],
+   "oracle": {
+    "top": [
+     38.405,
+     28.245,
+     41.605,
+     31.445
+    ]
+   }
+  },
+  {
+   "row": [
+    42.48,
+    31.595,
+    180.0,
+    false,
+    "R80_30",
+    "ETCH/TOP",
+    "ETCH/TOP"
+   ],
+   "oracle": {
+    "top": [
+     42.08,
+     31.445,
+     42.88,
+     31.745
+    ]
+   }
+  },
+  {
+   "row": [
+    42.6,
+    34.35,
+    180.0,
+    true,
+    "S_RCT_1-80_X_1-25",
+    "ETCH/BOTTOM",
+    "ETCH/BOTTOM"
+   ],
+   "oracle": {
+    "bottom": [
+     41.7,
+     33.725,
+     43.5,
+     34.975
+    ]
+   }
+  },
+  {
+   "row": [
+    24.9,
+    28.4,
+    180.0,
+    false,
+    "TSQR1-60D0-95PNP",
+    "ETCH/TOP",
+    "ETCH/BOTTOM"
+   ],
+   "oracle": {
+    "top": [
+     24.1,
+     27.6,
+     25.7,
+     29.2
+    ],
+    "bottom": [
+     24.1,
+     27.6,
+     25.7,
+     29.2
+    ]
+   }
+  },
+  {
+   "row": [
+    41.35,
+    35.95,
+    0.0,
+    false,
+    "C45",
+    "ETCH/TOP",
+    "ETCH/TOP"
+   ],
+   "oracle": {
+    "top": [
+     41.125,
+     35.725,
+     41.575,
+     36.175
+    ]
+   }
+  },
+  {
+   "row": [
+    51.405,
+    81.788,
+    0.0,
+    false,
+    "B305_200",
+    "ETCH/TOP",
+    "ETCH/TOP"
+   ],
+   "oracle": {
+    "top": [
+     49.88,
+     80.788,
+     52.93,
+     82.788
+    ]
+   }
+  },
+  {
+   "row": [
+    67.056,
+    80.386,
+    180.0,
+    false,
+    "PAD35CIR25D",
+    "ETCH/TOP",
+    "ETCH/BOTTOM"
+   ],
+   "oracle": {
+    "top": [
+     66.056,
+     79.886,
+     68.056,
+     80.886
+    ],
+    "bottom": [
+     66.056,
+     79.886,
+     68.056,
+     80.886
+    ]
+   }
+  },
+  {
+   "row": [
+    19.6,
+    48.55,
+    270.0,
+    false,
+    "C100MC200KC200",
+    "ETCH/TOP",
+    "ETCH/TOP"
+   ],
+   "oracle": {
+    "top": [
+     19.1,
+     48.05,
+     20.1,
+     49.05
+    ]
+   }
+  },
+  {
+   "row": [
+    59.436,
+    59.182,
+    270.0,
+    false,
+    "LTUMODULEPAD1",
+    "ETCH/TOP",
+    "ETCH/TOP"
+   ],
+   "oracle": {
+    "top": [
+     59.118,
+     58.864,
+     59.754,
+     59.5
+    ]
+   }
+  },
+  {
+   "row": [
+    60.706,
+    59.182,
+    0.0,
+    false,
+    "LTUMODULEPAD",
+    "ETCH/TOP",
+    "ETCH/TOP"
+   ],
+   "oracle": {
+    "top": [
+     60.3885,
+     58.8645,
+     61.0235,
+     59.4995
+    ]
+   }
+  },
+  {
+   "row": [
+    38.116,
+    24.892,
+    270.0,
+    true,
+    "S_RCT_1-40_X_0-95",
+    "ETCH/BOTTOM",
+    "ETCH/BOTTOM"
+   ],
+   "oracle": {
+    "bottom": [
+     37.641,
+     24.192,
+     38.591,
+     25.592
+    ]
+   }
+  },
+  {
+   "row": [
+    75.0,
+    97.55,
+    90.0,
+    true,
+    "CIR_1_1_NP",
+    "ETCH/BOTTOM",
+    "ETCH/TOP"
+   ],
+   "oracle": {
+    "top": [
+     74.85,
+     97.4,
+     75.15,
+     97.7
+    ],
+    "bottom": [
+     74.85,
+     97.4,
+     75.15,
+     97.7
+    ]
+   }
+  },
+  {
+   "row": [
+    130.4,
+    17.0,
+    90.0,
+    false,
+    "S_RCT_3-00_X_2-10",
+    "ETCH/INNER1",
+    "ETCH/INNER1"
+   ],
+   "oracle": {}
+  },
+  {
+   "row": [
+    94.275,
+    23.1,
+    270.0,
+    false,
+    "SLOT_1X2",
+    "ETCH/TOP",
+    "ETCH/BOTTOM"
+   ],
+   "oracle": {
+    "top": [
+     92.775,
+     22.1,
+     95.775,
+     24.1
+    ],
+    "bottom": [
+     92.775,
+     22.1,
+     95.775,
+     24.1
+    ]
+   }
+  },
+  {
+   "row": [
+    35.7,
+    173.06,
+    0.0,
+    true,
+    "C128H85MC133T125_163_31Y164",
+    "ETCH/INNER1",
+    "ETCH/INNER2"
+   ],
+   "oracle": {}
+  },
+  {
+   "row": [
+    67.7,
+    175.6,
+    0.0,
+    true,
+    "SQ128H85MC133T125_163_31Y164",
+    "ETCH/INNER1",
+    "ETCH/INNER2"
+   ],
+   "oracle": {}
+  }
+ ]
+}

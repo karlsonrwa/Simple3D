@@ -53,18 +53,23 @@ S3D_SilkDefaultThickness = 0.025
 ;---------------------------------------------------------------------
 
 ; Read the config file and return
-;   list( l_topLayers l_bottomLayers f_thickness g_clip s_endCap g_export )
+;   list( l_topLayers l_bottomLayers f_thickness g_clip s_endCap g_export g_pads )
 ; Any missing piece falls back to the built-in default, and a file that cannot
 ; be read or parsed degrades to all defaults with a message - a broken config
 ; must never cost the user the whole export.
+;
+; g_pads (settings.exportPads, round 85) is not a silkscreen setting; it
+; rides along because this is the one read of the config pair per export
+; and the copper pads are collected right after the legend.
 procedure( s3dSilkConfig( @optional ( t_file nil ) )
-    let( ( cfg silk settings top bottom thickness clip endCap doExport )
+    let( ( cfg silk settings top bottom thickness clip endCap doExport doPads )
         top = S3D_SilkDefaultTop
         bottom = S3D_SilkDefaultBottom
         thickness = S3D_SilkDefaultThickness
         clip = t
         endCap = 'ROUND
         doExport = t
+        doPads = t
 
         ; The two settings that live in GLOBALS get their defaults back here,
         ; with the locals above and before anything is read - these files load
@@ -99,6 +104,9 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
                 )
                 when( s3dJsonHas( settings "exportSilkscreen" )
                     doExport = s3dJsonGet( settings "exportSilkscreen" )
+                )
+                when( s3dJsonHas( settings "exportPads" )
+                    doPads = s3dJsonGet( settings "exportPads" )
                 )
 
                 ; Which stackup layers are drawn as openings. Read here rather
@@ -138,7 +146,7 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
         else
             printf( "Simple 3D: no silkscreen config at %s; using built-in defaults.\n" t_file )
         )
-        list( top bottom thickness clip endCap doExport )
+        list( top bottom thickness clip endCap doExport doPads )
     )
 )
 

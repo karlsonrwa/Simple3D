@@ -95,8 +95,8 @@ def makePcb(thicknesses, edges, cuts, color):
             + ',\n\t"edges": [\n' + s3dAddIndent(",\n".join(arrays), 2) + "\n\t]\n}")
 
 
-def create3dIntermediateFormat(variantName, full_board, edges, cuts, placements, silk):
-    members = ['"format": "simple3d"', '"format_version": 9', '"name": ' + s3dJsonQuote(variantName)]
+def create3dIntermediateFormat(variantName, full_board, edges, cuts, placements, silk, pads=False):
+    members = ['"format": "simple3d"', '"format_version": 10', '"name": ' + s3dJsonQuote(variantName)]
     if full_board:
         members.append('"full_board": true')
     members += ['"embedded_models": []', '"stackups": {\n}', '"zones": []', '"bends": []']
@@ -105,9 +105,16 @@ def create3dIntermediateFormat(variantName, full_board, edges, cuts, placements,
     members.append('"components": {\n' + s3dAddIndent(",\n".join(placements)) + "\n}" if placements
                    else '"components": {}')
     body = ",\n".join(members)
-    if silk:
+    if silk or pads:
         body += ","
     out = "{\n" + "".join("\t" + line + "\n" for line in body.split("\n") if line != "")
+    # v10 (round 85): the pads are streamed before the silkscreen and told
+    # whether it follows - s3dWritePads
+    if pads:
+        out += ('\t"pads": {\n\t\t"padstacks": {\n\t\t\t"P1": {\n\t\t\t\t"usage": "Smd",\n'
+                '\t\t\t\t"drill": null,\n\t\t\t\t"pads": {}\n\t\t\t}\n\t\t},\n'
+                '\t\t"pins": [\n\t\t\t[1.0, 2.0, 0.0, false, "P1", "ETCH/TOP", "ETCH/TOP"]\n\t\t]\n')
+        out += "\t},\n" if silk else "\t}\n"
     if silk:
         out += '\t"silkscreen": {\n\t\t"thickness": 0.025,\n\t\t"top": [\n\t\t],\n\t\t"bottom": [\n\t\t]\n\t}\n'
     return out + "}\n"

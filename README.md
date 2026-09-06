@@ -50,7 +50,8 @@ STEP but knows nothing about Allegro. Everything the export decides in Allegro
 is in the file, so the model can be rebuilt — differently — without touching
 the board again.
 
-The exporter writes `format_version: 9`. Every earlier version still builds —
+The exporter writes `format_version: 10` (10 adds the optional `pads` object
+the *Copper pads* are drawn from). Every earlier version still builds —
 each version only ever *added* something optional — so an intermediate you kept
 from an older release does not have to be re-exported to be used. The other
 way round is new with 9: it keeps the components under one `"components"`
@@ -105,7 +106,7 @@ the tool expects — the two `.il` files, `simple3d_config.json` and the
 d:\Projects\OrCAD\Scripts\Simple3D\
 ├── makeVariant3dIntermediates.il     SKILL exporter (reads the board)
 ├── simple3d.il                       menu item + launcher; loads the exporter
-├── skill\                            the exporter's nine parts (s3d_*.il)
+├── skill\                            the exporter's ten parts (s3d_*.il)
 ├── simple3d_config.json              all settings, both halves read it
 └── stepbuilder\                      the Python package
 ```
@@ -130,7 +131,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 ```
 
 `File → Export → Simple 3D` appears. One line: `simple3d.il` loads the exporter
-itself (`makeVariant3dIntermediates.il`, which loads its nine parts from
+itself (`makeVariant3dIntermediates.il`, which loads its ten parts from
 `skill\`). The older pair of `load()` lines, the exporter first, keeps working.
 
 **Nothing in the shipped files needs editing to match your machine** — and that
@@ -177,6 +178,7 @@ Most controls say what they do. These are the ones worth knowing about:
 | **Make surface** | The legend as surfaces rather than thin solids: about a quarter of its file size. The ink then has no thickness and cannot be used in boolean work. |
 | **Silkscreen layers** | A tick per layer *found in this JSON*, with its polygon count. Untick and press Generate again — no re-export needed. |
 | **Fold flex bends** | Fold along the bend areas. Off exports the board flat. Does nothing on a board without them. |
+| **Copper pads (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces a micron above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Needs a JSON written with `format_version` 10; an older one says so in the log and draws none. Vias are not drawn. See *Copper pads*. |
 | **Compact STEP** | Drops parametric surface curves — roughly half the file, identical geometry. |
 | **Build the full-board file too** | With a folder queued, whether the batch also builds `<board>.json` — the whole board, variants ignored (`settings.exportFullBoard` is what writes it). A file you point at directly is always built: choosing it is choice enough. |
 | **Generate** / **Cancel** | While a build runs every other control is greyed out — a snapshot of the settings has already been taken, so changing them mid-build would only look as if it did something — and this button becomes **Cancel**. Cancelling kills the build outright, which is the only thing that works on a boolean that has been inside OCCT for a minute; the file being written at that moment may be left incomplete, and the log says so. |
@@ -228,8 +230,10 @@ The keys worth setting by hand — the rest mirror controls in the window:
 | | `foldAnchor` | The point that stays in the XY plane, `[x, y]`. **`[0, 0]` by convention** — see *Folding*. `"auto"` holds the largest piece instead. |
 | | `foldNeutral` | Where the neutral axis sits, as a fraction of thickness (default `0.5`). **Set it to `0` on a board whose bend areas touch** — see *Folding*. |
 | | `foldSliceAngle` | Arc per slice for a bend that has to be faceted (default `7.5`). Bends built as true cylinders ignore it. |
+| | `copperPads` | The *Copper pads* checkbox: the pads' copper on the outer faces, as surfaces. Off by default. See *Copper pads*. |
 | | `exportFullBoard` | With a `Variants.lst` present, also write `<design>.json` — the whole board with variants ignored (`NO_STEP_EXPORT` still applies). See *What gets exported*. |
-| `settings` | `negativeLayers` | Stackup layers whose drawn shapes are **openings** rather than material, matched as a case-insensitive substring. Coverlay, soldermask and pastemask are drawn that way by convention; stiffener, adhesive and epoxy are the opposite. Add a layer here if its bodies come out inverted — and **take one out** if a board draws it as material: Allegro's 3D Canvas guide says a coverlay is read as negative and that *"coverlays specified as positive shapes are not rendered in 3D canvas"*, so such a board exists and Allegro's own 3D just omits the layer. The log names the layer when its openings leave nothing of it in a zone. Decided at export time, so changing this needs a re-export. |
+| `settings` | `exportPads` | Whether the export **collects** the pads into the intermediate at all (on by default). Whether they are *drawn* is the checkbox, per build. Off saves the collection on a board where they are never wanted. |
+| | `negativeLayers` | Stackup layers whose drawn shapes are **openings** rather than material, matched as a case-insensitive substring. Coverlay, soldermask and pastemask are drawn that way by convention; stiffener, adhesive and epoxy are the opposite. Add a layer here if its bodies come out inverted — and **take one out** if a board draws it as material: Allegro's 3D Canvas guide says a coverlay is read as negative and that *"coverlays specified as positive shapes are not rendered in 3D canvas"*, so such a board exists and Allegro's own 3D just omits the layer. The log names the layer when its openings leave nothing of it in a zone. Decided at export time, so changing this needs a re-export. |
 | `silkscreen` | `top` / `bottom` | Which Allegro layers are **collected** — see *Silkscreen*. |
 
 The rest of `gui` mirrors the window and is written back when it closes —
@@ -377,6 +381,10 @@ as they are to Windows itself. An exact match is always preferred.
 ├── PCB_<board>             one solid at the finished thickness
 ├── silkscreen_top_<board>  printed legend, top   (only if enabled and present)
 ├── silkscreen_bot_<board>  printed legend, bottom
+├── pads_top_<board>        copper pads, top      (only with Copper pads ticked)
+│   ├── pad_S_RCT_1-00_X_0-95_TOP   one face per pad figure, named after the padstack and layer
+│   └── pad_S_RCT_1-00_X_0-95_TOP   the same face instanced again, per pin
+├── pads_bot_<board>        copper pads, bottom (a mirrored figure carries an m: pad_…_TOPm)
 ├── symbols_top_<board>     top-side components
 │   ├── cap_D8x10mm         part, named after its STEP file, placed in situ
 │   └── cap_D8x10mm         the same part instanced again if the model repeats
@@ -392,6 +400,9 @@ as they are to Windows itself. An exact match is always preferred.
   board's part or group silently substitute another's.
 * Each **silkscreen side is its own part**, so it can be hidden or recolored
   without touching the board.
+* The **copper pads are two groups**, top and bottom, of instances of shared
+  faces — one face per (padstack, layer, mirrored), named after them — so they
+  can be hidden as a whole and cost a placement per pin.
 
 ## Silkscreen
 
@@ -445,6 +456,50 @@ thin overlapping prisms costs solver time and makes the file *larger* (measured
 at 154%) while buying nothing visible. So a solid legend is a compound of
 separate solids: correct to look at, export and render, but not one manifold
 solid if you mean to do boolean work on the ink.
+
+## Copper pads
+
+Off by default; tick **Copper pads (as surfaces)** for a model that reads as a
+board with its pads rather than as a green slab. The copper of every pin's pad
+is drawn on the two outer faces as a surface in the copper colour of
+`layerColors`, a `silkscreenFlatHeight` above the mask — exactly the way a flat
+legend sits on it. That is the whole construction: **nothing is cut into the
+board.** A window per pad cut through the mask and a body per pad set into it
+would be a boolean over thousands of prisms — minutes of solver time on a dense
+board and a real chance of an empty result — for a picture that cannot tell a
+flush pad from a face one micron above it.
+
+**One face per figure, instanced per pin.** A padstack's pad is built once —
+per layer, and once more mirrored for the pins on the underside — and every pin
+that uses it is an instance of that face with its own position and rotation,
+the way ten identical resistors share one model. So a pad costs a placement in
+the file, not a face: measured on Cadence's demo board, 2982 pads on 85
+figures for 2.1 MB — the same faces written one by one come to 5.9 MB — and
+five seconds more on a three-minute build. Which
+face a pin reaches is decided by its **own layer span** against the outer
+copper of its zone — a surface pin on `INNER1` in a flex zone whose outer copper
+*is* `INNER1` draws on that zone's top face, a through pin spanning the flex
+core draws on both flex faces, and a pin that reaches no outer face of its zone
+draws nothing and is counted in the log. A mirrored pin's figure is mirrored
+before it is turned, and a mirrored through pin wears its padstack's stack
+backwards, as Allegro places it.
+
+**The outline is Allegro's own.** For every pad on an etch layer the exporter
+walks the path the padstack holds for it — a circle, an oblong, a rounded or
+chamfered rectangle, an octagon or a *Shape* pad all carry one — and writes it
+in the same segment / arc / circle vocabulary as the board outline, so no
+figure kind is interpreted anywhere. A through pad keeps its drill hole, as an
+annular ring; a donut its inside diameter; a mounting hole whose nominal pad is
+smaller than its drill draws nothing, quietly. Every placed pad on three real
+boards was checked against the polygon Allegro itself reports for that pin
+(`axlPolyFromDB` with `?layer`): same face, same bounding box, mirrored and
+turned pins included.
+
+Needs an intermediate written with `format_version` 10 (`settings.exportPads`,
+on by default, is what collects them); an older file says so in the log and
+draws none. **Vias are not drawn** — they are tented under the mask on nearly
+every board — and the pads are a picture: surfaces without thickness that take
+part in no boolean.
 
 ## Multi-stackup and rigid-flex
 
@@ -568,6 +623,14 @@ inside them.
 and its cutouts, not the drill holes. Legend is not printed over holes anyway,
 so this shows only if the artwork deliberately runs a line across one.
 
+**Copper pads are a picture, not copper.** They are surfaces floating a micron
+above the mask, in the mask's own plane rather than in a window cut through it;
+they have no thickness and take part in no boolean. Only what the pins carry is
+drawn — vias are not, and a pin whose span reaches no outer face of its zone
+(a part mounted on an inner layer of a rigid zone) draws nothing and is counted
+in the log. A legend printed over a pad — a design-rule violation in Allegro —
+lands in the same plane as a flat legend and may flicker there.
+
 ## Command line (without Allegro)
 
 ```
@@ -587,14 +650,14 @@ they would collide), `--no-silkscreen`, `--no-silk-top`, `--no-silk-bottom`,
 `--flat-silkscreen`, `--silk-flat-height MM`,
 `--silk-layer-off LAYER` (repeatable), `--silk-color White|Black`,
 `--ignore-soldermask`, `--flat` (do not fold), `--fold-anchor X,Y|auto`,
-`--fold-neutral K`, `--fold-slice-angle DEG`,
+`--fold-neutral K`, `--fold-slice-angle DEG`, `--copper-pads`,
 `--board-mode {solid,layers,inspect}`, `--no-minimize`, `--legacy-color`,
 `--quiet`. Exit code 0 on success, 1 on error.
 
 ## What is where
 
 ```
-makeVariant3dIntermediates.il   loads the exporter: its nine parts under skill/
+makeVariant3dIntermediates.il   loads the exporter: its ten parts under skill/
 skill/s3d_*.il                  the exporter itself - reads the Allegro database, writes the JSON
 simple3d.il                     the menu item, the launcher, the pre-flight check
 simple3d_config.json            every setting, read by both halves
@@ -607,6 +670,7 @@ stepbuilder/
   stackup.py     the stackup arithmetic: z from thickness, masks out, stackups on one datum, zone faces
   board.py       the board body: outline, zones, layers, cutouts, the rim faces
   legend.py      the silkscreen legend, and the arc convention settled by the board's own areas
+  pads.py        the copper pads: which face a pin reaches, its figure as one shared face, placed per pin
   models.py      component models: the folder index, one read per model, the placement transform
   stepdoc.py     the assembly document and the STEP writer
   build.py       the options of one build, in one place, for the window and the CLI alike
@@ -620,7 +684,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 22 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), read-only probes
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 23 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), read-only probes and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -676,7 +740,8 @@ SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE �
 ничего не знает про Allegro. Всё, что экспорт выяснил в Allegro, лежит в файле —
 поэтому модель можно пересобрать иначе, не открывая плату заново.
 
-Экспорт пишет `format_version: 9`. Все предыдущие версии по-прежнему
+Экспорт пишет `format_version: 10` (10 добавил необязательный объект `pads`,
+из которого рисуется *медь площадок*). Все предыдущие версии по-прежнему
 собираются — каждая версия только *добавляла* необязательное, — так что
 интермедиат, оставшийся от старого релиза, переэкспортировать не обязательно.
 Обратное с версией 9 стало новостью: компоненты лежат под одним ключом
@@ -731,7 +796,7 @@ Chocolatey, причём в системный PATH, который идёт *р
 d:\Projects\OrCAD\Scripts\Simple3D\
 ├── makeVariant3dIntermediates.il     SKILL-экспортёр (читает плату)
 ├── simple3d.il                       пункт меню + запуск; загружает экспортёр
-├── skill\                            девять частей экспортёра (s3d_*.il)
+├── skill\                            десять частей экспортёра (s3d_*.il)
 ├── simple3d_config.json              все настройки, читают обе половины
 └── stepbuilder\                      пакет Python
 ```
@@ -757,7 +822,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 
 Появится `File → Export → Simple 3D`. Одной строки достаточно: `simple3d.il`
 сам загружает экспортёр (`makeVariant3dIntermediates.il`, который загружает
-свои девять частей из `skill\`). Прежняя пара строк `load()`, сначала
+свои десять частей из `skill\`). Прежняя пара строк `load()`, сначала
 экспортёр, тоже работает.
 
 **Ничего в поставляемых файлах править под свою машину не нужно** — и это
@@ -805,6 +870,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **Make surface** | Легенда поверхностями, а не тонкими телами: примерно четверть её объёма в файле. Толщины у краски тогда нет, и в булевых операциях она не участвует. |
 | **Silkscreen layers** | Галочка на каждый слой, *найденный в этом JSON*, с числом полигонов. Снимите и нажмите Generate снова — повторный экспорт не нужен. |
 | **Fold flex bends** | Сгибать по областям сгиба. Выключено — плата экспортируется плоской. На плате без сгибов ничего не меняет. |
+| **Copper pads (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на микрон над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Нужен JSON с `format_version` 10; старый скажет об этом в логе и ничего не нарисует. Переходные отверстия не рисуются. См. *Медь площадок*. |
 | **Compact STEP** | Убирает параметрические кривые на поверхностях — примерно вдвое меньший файл при той же геометрии. |
 | **Build the full-board file too** | Когда в очереди папка — собирать ли вместе с вариантами `<плата>.json`, всю плату без учёта вариантов (пишет его `settings.exportFullBoard`). Файл, выбранный напрямую, собирается всегда: выбор и есть выбор. |
 | **Generate** / **Cancel** | Пока идёт сборка, остальные элементы погашены — настройки уже сняты снимком, и правка на ходу лишь выглядела бы действием, — а кнопка становится **Cancel**. Отмена убивает сборку немедленно: с булевой операцией, которая уже минуту внутри OCCT, иначе не выйдет. Файл, который писался в этот момент, может остаться недописанным — лог об этом говорит. |
@@ -855,8 +921,10 @@ JSON — ничего не записывается до конца сессии
 | | `foldAnchor` | Точка, остающаяся в плоскости XY, `[x, y]`. **По соглашению `[0, 0]`** — см. *Сгибание*. `"auto"` держит самый большой кусок. |
 | | `foldNeutral` | Положение нейтральной оси как доля толщины (по умолчанию `0.5`). **Поставьте `0`, если области сгиба на плате соприкасаются** — см. *Сгибание*. |
 | | `foldSliceAngle` | Угол дольки для сгиба, который пришлось гранить (по умолчанию `7.5`). Сгибы, построенные истинными цилиндрами, его игнорируют. |
+| | `copperPads` | Галочка *Copper pads*: медь площадок на наружных гранях, поверхностями. По умолчанию выключено. См. *Медь площадок*. |
 | | `exportFullBoard` | Когда есть `Variants.lst`, писать ещё и `<плата>.json` — всю плату без учёта вариантов (`NO_STEP_EXPORT` продолжает действовать). См. *Что попадает в экспорт*. |
-| `settings` | `negativeLayers` | Слои стека, чьи нарисованные фигуры — **окна**, а не материал; сравнение по подстроке без учёта регистра. Покрытие, маска и паста рисуются так по соглашению; стиффенер, клей и эпоксид — наоборот. Добавьте слой сюда, если его тела получаются инвертированными, — и **уберите**, если на плате он нарисован материалом: руководство по 3D Canvas говорит, что коверлей читается как негатив и что *«coverlays specified as positive shapes are not rendered in 3D canvas»*, то есть такие платы бывают и сам Allegro тогда слой просто не рисует. Лог называет слой, когда его окна не оставляют от него ничего в зоне. Решается при экспорте, поэтому смена требует переэкспорта. |
+| `settings` | `exportPads` | **Собирать** ли площадки в интермедиат вообще (по умолчанию да). *Рисовать* ли их — галочка, решается на каждой сборке. Выключение экономит сбор на плате, где они не нужны никогда. |
+| | `negativeLayers` | Слои стека, чьи нарисованные фигуры — **окна**, а не материал; сравнение по подстроке без учёта регистра. Покрытие, маска и паста рисуются так по соглашению; стиффенер, клей и эпоксид — наоборот. Добавьте слой сюда, если его тела получаются инвертированными, — и **уберите**, если на плате он нарисован материалом: руководство по 3D Canvas говорит, что коверлей читается как негатив и что *«coverlays specified as positive shapes are not rendered in 3D canvas»*, то есть такие платы бывают и сам Allegro тогда слой просто не рисует. Лог называет слой, когда его окна не оставляют от него ничего в зоне. Решается при экспорте, поэтому смена требует переэкспорта. |
 | `silkscreen` | `top` / `bottom` | Какие слои Allegro **собираются** — см. *Шелкография*. |
 
 Остальное в `gui` повторяет окно и записывается при его закрытии — `zDatum`,
@@ -1003,6 +1071,10 @@ Allegro, где его набирают руками, а файл на диск�
 ├── PCB_<плата>             одно тело итоговой толщины
 ├── silkscreen_top_<плата>  шелкография сверху (если включена и есть)
 ├── silkscreen_bot_<плата>  шелкография снизу
+├── pads_top_<плата>        медь площадок сверху  (только с галочкой Copper pads)
+│   ├── pad_S_RCT_1-00_X_0-95_TOP   одна грань на фигуру площадки, по имени падстека и слоя
+│   └── pad_S_RCT_1-00_X_0-95_TOP   та же грань ещё раз, на каждый вывод
+├── pads_bot_<плата>        медь площадок снизу (зеркальная фигура несёт m: pad_…_TOPm)
 ├── symbols_top_<плата>     компоненты верхней стороны
 │   ├── cap_D8x10mm         деталь с именем своего STEP-файла, на месте
 │   └── cap_D8x10mm         та же деталь ещё раз, если модель повторяется
@@ -1018,6 +1090,9 @@ Allegro, где его набирают руками, а файл на диск�
   или группе одной платы подменить другую.
 * **Каждая сторона шелкографии — отдельная деталь**, её можно скрыть или
   перекрасить, не трогая плату.
+* **Медь площадок — две группы**, верх и низ, из вхождений общих граней: одна
+  грань на (падстек, слой, зеркало), названная по ним, — так их можно скрыть
+  целиком, а каждый вывод стоит одного размещения.
 
 ## Шелкография
 
@@ -1073,6 +1148,52 @@ Allegro, где его набирают руками, а файл на диск�
 это набор отдельных тел: смотреть, экспортировать и рендерить правильно, но это
 не одно многообразное тело, если вы собираетесь делать булевы операции с самой
 краской.
+
+## Медь площадок
+
+По умолчанию выключено; поставьте **Copper pads (as surfaces)**, чтобы модель
+читалась как плата с площадками, а не как зелёная пластина. Медь площадки
+каждого вывода рисуется на двух наружных гранях поверхностью цвета меди из
+`layerColors`, на `silkscreenFlatHeight` над маской — ровно так, как на ней
+лежит плоская легенда. В этом вся конструкция: **в плату ничего не
+вырезается.** Окно на каждую площадку сквозь маску и тело в нём — это булева
+операция над тысячами призм: минуты решателя на плотной плате и реальный шанс
+пустого результата ради картинки, которая не отличит площадку заподлицо от
+грани на микрон выше.
+
+**Одна грань на фигуру, вхождение на каждый вывод.** Площадка падстека
+строится один раз — на слой, и ещё раз зеркально для выводов на обратной
+стороне, — а каждый вывод, который её использует, — вхождение этой грани со
+своим положением и поворотом, как десять одинаковых резисторов делят одну
+модель. Поэтому площадка стоит в файле как размещение, а не как грань: на
+демо-плате Cadence 2982 площадки на 85 фигурах обошлись в 2.1 МБ — те же
+грани, записанные по одной, дали бы 5.9 МБ — и в пять секунд сверх трёхминутной
+сборки. Какой грани достигает вывод,
+решает его **собственный диапазон слоёв** против наружной меди его зоны: SMD-
+вывод на `INNER1` в гибкой зоне, где наружная медь и есть `INNER1`, рисуется на
+верхней грани этой зоны, сквозной вывод через ядро флекса — на обеих его
+гранях, а вывод, не достигающий наружной грани своей зоны, не рисуется и
+считается в логе. Фигура зеркального вывода зеркалится до поворота, а
+зеркальный сквозной вывод носит стек своего падстека задом наперёд — как его
+ставит Allegro.
+
+**Контур — собственный контур Allegro.** Для каждой площадки на слое меди
+экспорт обходит путь, который хранит для неё падстек, — круг, овал,
+скруглённый или фасочный прямоугольник, восьмиугольник и *Shape*-площадка
+несут его все, — и пишет его тем же словарём отрезок / дуга / окружность, что
+и контур платы, так что ни один вид фигуры нигде не интерпретируется. Сквозная
+площадка сохраняет своё отверстие — кольцом; донат — внутренний диаметр;
+крепёжное отверстие с номинальной площадкой меньше сверла не рисует ничего и
+не жалуется. Каждая поставленная площадка на трёх реальных платах сверена с
+полигоном, который сам Allegro сообщает для этого вывода (`axlPolyFromDB` с
+`?layer`): та же грань, тот же габарит, зеркальные и повёрнутые выводы
+включительно.
+
+Нужен интермедиат с `format_version` 10 (собирает их `settings.exportPads`,
+по умолчанию включённый); старый файл скажет об этом в логе и ничего не
+нарисует. **Переходные отверстия не рисуются** — почти на любой плате они
+закрыты маской, — а площадки остаются картинкой: поверхности без толщины,
+не участвующие в булевых операциях.
 
 ## Мультистэкап и rigid-flex
 
@@ -1196,6 +1317,14 @@ Allegro построена при `k = 0`. На плате с запасом р�
 вырезам, но не по сверловке. Легенду поверх отверстий всё равно не печатают,
 так что это заметно, только если линия проведена через отверстие намеренно.
 
+**Медь площадок — картинка, а не медь.** Это поверхности на микрон над маской,
+в плоскости самой маски, а не в вырезанном в ней окне; толщины у них нет, и в
+булевых операциях они не участвуют. Рисуется только то, что несут выводы:
+переходные отверстия — нет, а вывод, чей диапазон слоёв не достигает наружной
+грани своей зоны (деталь на внутреннем слое жёсткой зоны), не рисуется и
+считается в логе. Легенда поверх площадки — в Allegro это нарушение правил —
+попадает в одну плоскость с плоской легендой и может там мерцать.
+
 ## Командная строка (без Allegro)
 
 ```
@@ -1215,14 +1344,14 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # все вариа
 `--no-silk-top`, `--no-silk-bottom`, `--flat-silkscreen`, `--silk-flat-height MM`,
 `--silk-layer-off LAYER` (можно повторять), `--silk-color White|Black`,
 `--ignore-soldermask`, `--flat` (не сгибать), `--fold-anchor X,Y|auto`,
-`--fold-neutral K`, `--fold-slice-angle DEG`,
+`--fold-neutral K`, `--fold-slice-angle DEG`, `--copper-pads`,
 `--board-mode {solid,layers,inspect}`, `--no-minimize`, `--legacy-color`,
 `--quiet`. Код возврата 0 при успехе, 1 при ошибке.
 
 ## Что где лежит
 
 ```
-makeVariant3dIntermediates.il   загружает экспортёр: его девять частей из skill/
+makeVariant3dIntermediates.il   загружает экспортёр: его десять частей из skill/
 skill/s3d_*.il                  сам экспортёр — читает базу Allegro, пишет JSON
 simple3d.il                     пункт меню, запуск, предполётная проверка
 simple3d_config.json            все настройки, читают обе половины
@@ -1235,6 +1364,7 @@ stepbuilder/
   stackup.py     арифметика стека: z из толщин, маски долой, стеки на одном уровне, грани зон
   board.py       тело платы: контур, зоны, слои, вырезы, грани торца
   legend.py      шелкография, и соглашение о дугах, установленное по площадям самой платы
+  pads.py        медь площадок: какой грани достигает вывод, его фигура одной общей гранью, вхождение на каждый вывод
   models.py      модели компонентов: индекс папок, одно чтение на модель, преобразование установки
   stepdoc.py     документ сборки и запись STEP
   build.py       параметры одной сборки в одном месте, для окна и консоли одинаково
@@ -1248,7 +1378,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 22 набора тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), зонды
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 23 набора тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), зонды и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

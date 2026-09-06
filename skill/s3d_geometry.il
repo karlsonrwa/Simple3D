@@ -8,6 +8,19 @@
 ;=====================================================================
 
 
+; The two primitive strings, from their numbers. makeLine and makeArc read
+; those off a segment dbid; a padstack's pad outline (an axlPath, walked in
+; s3d_pads.il with the path accessors) has no dbid and supplies them itself.
+; One string builder each, so the two sources cannot drift apart (round 85).
+procedure( s3dSegmentPrimJson( xStart yStart xEnd yEnd )
+    strcat(
+        "{\n\t\"type\": \"segment\",\n"
+        "\t\"start\": [" sprintf( nil "%f" xStart ) ", " sprintf( nil "%f" yStart ) "],\n"
+        "\t\"end\": [" sprintf( nil "%f" xEnd ) ", " sprintf( nil "%f" yEnd ) "]\n"
+        "}"
+    )
+)
+
 procedure( makeLine( segment )
     let( ( extents xStart yStart xEnd yEnd element )
         extents = segment->startEnd
@@ -18,33 +31,16 @@ procedure( makeLine( segment )
         xEnd = caadr( extents )
         yEnd = cadadr( extents )
 
-        element = strcat(
-            "{\n\t\"type\": \"segment\",\n"
-            "\t\"start\": [" sprintf( nil "%f" xStart ) ", " sprintf( nil "%f" yStart ) "],\n"
-            "\t\"end\": [" sprintf( nil "%f" xEnd ) ", " sprintf( nil "%f" yEnd ) "]\n"
-            "}"
-        )
+        element = s3dSegmentPrimJson( xStart yStart xEnd yEnd )
     )
 )
 
-procedure( makeArc( segment )
-    let( ( xy xCenter yCenter radius extents xStart yStart xEnd yEnd cw ccw angle1 angle2 startAngle endAngle element )
-        xy = segment->xy
-        xCenter = car( xy )
-        yCenter = cadr( xy )
-
-        radius = segment->radius
-
-        extents = segment->startEnd
-
-        xStart = caar( extents )
-        yStart = cadar( extents )
-
-        xEnd = caadr( extents )
-        yEnd = cadadr( extents )
-
-        cw = segment->isClockwise
-
+; The arc primitive in the reading the Python side settled on (round 63):
+; alpha..beta bound the arc counter-clockwise, "ccw" says which end the
+; contour enters it by - so a clockwise arc is written from its END angle to
+; its START angle with ccw false.
+procedure( s3dArcPrimJson( xCenter yCenter radius xStart yStart xEnd yEnd cw )
+    let( ( ccw angle1 angle2 startAngle endAngle element )
         if(cw then
             ccw = "false"
         else
@@ -82,6 +78,28 @@ procedure( makeArc( segment )
             "\t\"ccw\": " ccw "\n"
             "}"
         )
+    )
+)
+
+procedure( makeArc( segment )
+    let( ( xy xCenter yCenter radius extents xStart yStart xEnd yEnd cw element )
+        xy = segment->xy
+        xCenter = car( xy )
+        yCenter = cadr( xy )
+
+        radius = segment->radius
+
+        extents = segment->startEnd
+
+        xStart = caar( extents )
+        yStart = cadar( extents )
+
+        xEnd = caadr( extents )
+        yEnd = cadadr( extents )
+
+        cw = segment->isClockwise
+
+        element = s3dArcPrimJson( xCenter yCenter radius xStart yStart xEnd yEnd cw )
     )
 )
 
@@ -153,13 +171,17 @@ procedure( s3dDrillXY( pin padstack )
     )
 )
 
+; The slot of a pin, where the pin's drill is. makeSlotAt does the work from
+; a point and a rotation, so the padstack library (s3d_pads.il) can draw the
+; same slot at the padstack's own origin, unrotated (round 85).
 procedure( makeSlot( pin padstack )
-    let( ( xy x y rotation drillSizeWidth drillSizeHeight slot radius xCenter yCenter xyCenter alpha beta ccw segment
-           tmp xStart yStart xEnd yEnd xyStart xyEnd )   ; declared, round 75 (D2)
-        ; get coordinates - the DRILL's, not the pad's
-        rotation = pin->rotation
+    ; get coordinates - the DRILL's, not the pad's
+    makeSlotAt( s3dDrillXY( pin padstack ) pin->rotation padstack )
+)
 
-        xy = s3dDrillXY( pin padstack )
+procedure( makeSlotAt( xy rotation padstack )
+    let( ( x y drillSizeWidth drillSizeHeight slot radius xCenter yCenter xyCenter alpha beta ccw segment
+           tmp xStart yStart xEnd yEnd xyStart xyEnd )   ; declared, round 75 (D2)
         x = xCoord( xy )
         y = yCoord( xy )
 

@@ -229,7 +229,7 @@ procedure( makePcb( thicknesses edges cuts color )
 ; in the JSON. An explicit argument rather than a global, because a global read
 ; at write time is the round-42 shape - it would describe whatever the previous
 ; call set if this one ever forgot to.
-procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName g_state @optional ( silk nil ) ( g_fullBoard nil ) )
+procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName g_state @optional ( silk nil ) ( g_fullBoard nil ) ( pads nil ) )
     let( ( ( stepModelPlacements 'unbound ) ( edges 'unbound ) ( cut 'unbound ) ( cuts 'unbound ) baseCut body
            placement members pcb outFile outPort lines )   ; declared here, not in the caller (round 75, D2)
         ; The export state, per FILE (round 77, D7; the caller made the table
@@ -314,18 +314,20 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; every component under one "components" object instead of beside the
         ; metadata (round 79, plan E1), so a reader of v9 need not know which
         ; keys are NOT components. A v9 file may also carry an optional
-        ; top-level "warnings" list (2026-09-03): lines for the window's log.
+        ; top-level "warnings" list (2026-09-03): lines for the window's log;
+        ; 10 adds the optional "pads" object (round 85): the padstack figures
+        ; and the pin placements the copper pads are drawn from.
         ; All of them are optional to a reader - an older file simply has no
         ; layers to choose from, nothing to say about embedded models, an empty
-        ; zone list, which means "ordinary single-stackup board", and no bends,
-        ; which means a board that is exported flat.
+        ; zone list, which means "ordinary single-stackup board", no bends,
+        ; which means a board that is exported flat, and no pads to draw.
         ;
         ; NOTE: every top-level key added here must also be listed in the RESERVED
         ; tuple of stepbuilder/intermediate.py: that is how a v1-v8 file, whose
         ; components sit beside the metadata, is still read.
         members = list(
             "\"format\": \"simple3d\""
-            "\"format_version\": 9"
+            "\"format_version\": 10"
             strcat( "\"name\": " s3dJsonQuote( variantName ) )
         )
         ; Optional, and only ever true: the whole board, variants ignored.
@@ -399,10 +401,10 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 
         ; One join decides the commas. The body is re-indented line by line
         ; below rather than written in one fprintf (which ran out of memory
-        ; on a large board); the silkscreen is streamed after it, so when
-        ; there is one the last member needs its comma too.
+        ; on a large board); the pads and the silkscreen are streamed after
+        ; it, so when either is there the last member needs its comma too.
         body = buildString( members ",\n" )
-        when( silk
+        when( silk || pads
             body = strcat( body "," )
         )
         lines = parseString( body "\n" )
@@ -415,7 +417,11 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         )
 
         ; Streamed straight to the port instead of being folded into the string
-        ; above - see s3dWriteSilkPolys for why.
+        ; above - see s3dWriteSilkPolys for why. The pads first, and they are
+        ; told whether the silkscreen follows, since that decides their comma.
+        when( pads
+            s3dWritePads( outPort pads silk )
+        )
         when( silk
             s3dWriteSilkscreen( outPort silk )
         )
@@ -436,7 +442,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 )
 
 procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configFile nil ) )
-    let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName state )
+    let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk silkConfig pads variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName state )
         ; The list used to go on: a second `thicknesses`, and `elements placement
         ; outFile outPort pcb lines` - names this procedure never touches. They
         ; were create3dIntermediateFormat's, reaching its let through SKILL's
@@ -494,10 +500,24 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
         ; the console said nothing at all. A swallowed error is worse than a
         ; loud one - the board still exports either way.
         silk = nil
-        unless( errset( silk = s3dMakeSilkscreen( s3dSilkConfig( configFile ) state ) t )
+        silkConfig = s3dSilkConfig( configFile )
+        unless( errset( silk = s3dMakeSilkscreen( silkConfig state ) t )
             s3dErr( "Simple 3D: silkscreen collection failed (message above)." )
             s3dErr( "Simple 3D: the board and its components are still exported; only the legend is missing." )
             silk = nil
+        )
+
+        ; The copper pads, once per design for the same reason as the legend
+        ; (round 85): the bare board carries every pad whatever a variant
+        ; installs. settings.exportPads switches the collection off; a fault
+        ; in it costs the pads and nothing else, loudly.
+        pads = nil
+        when( nth( 6 silkConfig )
+            unless( errset( pads = s3dCollectPads() t )
+                s3dErr( "Simple 3D: copper pad collection failed (message above)." )
+                s3dErr( "Simple 3D: the board is still exported; only the pads are missing." )
+                pads = nil
+            )
         )
 
         if( isFile( variantFile ) then
@@ -574,7 +594,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
 
                     variantName = lowerCase( strcat( dsnName "_" variant ) )
                     fileName = lowerCase( strcat( dir "/" variantName ".json" ) )
-                    create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName state silk )
+                    create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName state silk nil pads )
                 )
 
                 ; And the whole board, variants ignored, as one more file. Same
@@ -590,7 +610,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
                     fileName = strcat( dir "/" variantName ".json" )
                     create3dIntermediateFormat( thicknesses edgeCuts pcbColor
                                                 symbols variantName fileName
-                                                state silk t )
+                                                state silk t pads )
                     printf( "Simple 3D: plus the whole board (variants ignored) -> %s.json\n"
                             variantName )
                 )
@@ -624,7 +644,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
 
             variantName = lowerCase( dsnName )
             fileName = strcat( dir "/" variantName ".json" )
-            create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName state silk )
+            create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName state silk nil pads )
         )
     )
 )

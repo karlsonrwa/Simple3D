@@ -81,6 +81,8 @@ def _open_window(args: argparse.Namespace) -> int:
             app.silk_bottom.set(False)
         if args.flat_silkscreen:
             app.silk_flat.set(True)
+        if args.copper_pads:
+            app.copper_pads.set(True)
         app.prefill_jobs(
             json_dir=args.json_dir or None,
             json_file=args.gui_json_file or None,
@@ -247,6 +249,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--fold-neutral", type=float, metavar="K",
         help="where the neutral axis sits in the stack, as a fraction of "
              "thickness from the inner surface (default 0.5)",
+    )
+    parser.add_argument(
+        "--copper-pads", action="store_true",
+        help="draw the copper of every pin's pad on the outer faces, as "
+             "copper-coloured surfaces (needs a format_version 10 JSON)",
     )
     parser.add_argument(
         "--board-mode", choices=list(BOARD_MODES), default="solid",

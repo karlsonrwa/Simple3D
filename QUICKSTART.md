@@ -63,6 +63,10 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   piece lying over the **origin** — put whatever should stay flat there, or name
   another point in `gui.foldAnchor`. If the log says two bends claim the same
   material, set `gui.foldNeutral` to `0` (README, *The K factor*).
+- **Copper pads (as surfaces)** — the copper of every pin's pad on the outer
+  faces, as copper-coloured surfaces a micron above the mask. Off by default;
+  needs a JSON exported with this version (`format_version` 10). Vias are not
+  drawn (README, *Copper pads*).
 
 **Silk options**
 - **Top**/**Bottom** tickboxes, **White/Black** for the ink, and on its own line
@@ -197,6 +201,10 @@ builds it.
   плоским, или укажите другую точку в `gui.foldAnchor`. Если в логе написано,
   что два сгиба претендуют на один материал, поставьте `gui.foldNeutral` в `0`
   (README, *K-фактор*).
+- **Copper pads (as surfaces)** — медь площадок всех выводов на наружных
+  гранях, поверхностями цвета меди на микрон над маской. По умолчанию
+  выключено; нужен JSON, экспортированный этой версией (`format_version` 10).
+  Переходные отверстия не рисуются (README, *Медь площадок*).
 
 **Silk options**
 - Галочки **Top**/**Bottom**, цвет **White/Black**, отдельной строкой

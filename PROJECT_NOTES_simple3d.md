@@ -5,7 +5,13 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-06
+## READ THIS FIRST — state as of 2026-09-07
+
+**Branch `feature/copper-pads` (round 85, 2026-09-07) is where the copper
+pads live until the user has tried them**: a checkbox that draws every pin's
+pad on the outer faces as copper-coloured surfaces, from a `pads` library the
+exporter now writes (`format_version` 10). `main` is at round 84. Read round
+85 for the construction, the measurements and what is still unverified.
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -64,6 +70,12 @@ from, and `S3D_ScriptDir` is now `""` in source.
 - Mechanical components and `NO_STEP_EXPORT`, both by rule rather than by
   special case: the export list comes from the design and the variant table only
   subtracts from it.
+- **Copper pads** (round 85, branch `feature/copper-pads`), `format_version:
+  10`: the pad of every pin as a copper-coloured face a micron above the outer
+  face of its zone, one shared face per figure instanced per pin; the outline
+  is the padstack's own axlPath, the face is the pin's own layer span. Checked
+  against `axlPolyFromDB` per pin on three boards; not yet looked at by the
+  user in their CAD.
 
 ### Load-bearing decisions that look like they could be simplified, but cannot
 
@@ -2961,6 +2973,160 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-07 (round 85) — copper pads, as surfaces; branch `feature/copper-pads`
+
+The request: for some models the copper of the pads has to be visible -
+regular padstacks and *Shape* pads alike - with a checkbox in the window. The
+user's own proposal was to draw the pads IN the soldermask layer: windows cut
+through the mask and copper bodies set flush into them, in the copper colour
+of `layerColors`; and, as an afterthought, that copper drawn as a surface the
+way a flat legend is might be better still. It is, and that is what was built,
+on a branch as asked.
+
+### The construction, and why not the windows
+
+A pad is a **face** in the copper colour, lifted `silkscreenFlatHeight` (a
+micron) above the outer face of its zone - exactly where a flat legend sits.
+The board body is never touched: no window, no boolean. Cutting a window per
+pad through the mask and setting a prism into it is a boolean over thousands
+of prisms - on this codebase that is minutes of OCCT and, per round 61, a
+real chance of `IsDone()` with an empty result - and a picture cannot tell a
+flush pad from a face one micron above it. The user said this is for a
+picture only.
+
+**One face per figure, instanced per pin.** Built once per (padstack, layer,
+mirrored, side) and placed with `AddComponent(group, label, TopLoc_Location)`,
+the way `ModelCache` shares a component model. Measured on the demo board,
+pads only, no board: **2982 placements of 85 figures = 2.14 MB / 32 371
+entities instanced, against 5.90 MB / 131 359 entities as one compound of
+placed faces** - 2.75x. In the full build: 93.82 -> 96.16 MB (+2.5%),
+172.5 -> 177.9 s. On the small variants board: 129 pads, +179 kB, 2.0 s
+total. A mirrored pin gets a mirrored COPY of the face as a second part
+rather than a mirror in the instance transform: a negative-determinant
+placement is legal STEP that not every reader honours.
+
+### What the probes found (tools/probes/probe_pads.il, probe_pads_poly.il; tools/run_probe.py)
+
+Headless Allegro on three boards (demo 2720 pins / 66 padstacks; the user's
+variants_test-b0, 131 / 19; my_test_board-a0, 20 / 5). `pd->??` first, per
+[[skill-probe-dont-guess]]:
+
+- **Every pad kind exposes its exact outline as `pd->figure`, an axlPath** -
+  not only SHAPE. A CIRCLE is one start point and one arc closing on it, an
+  OBLONG two lines and two arcs, a ROUNDED_RECTANGLE eight pieces, a SHAPE
+  whatever was drawn (17 pieces on a U75_60R6 with two clockwise arcs). So the
+  exporter walks the path with `axlPathGetPathSegs` / `axlPathSegGetEndPoint`
+  / `axlPathSegGetArcCenter` / `axlPathSegGetArcClockwise` (the accessors
+  AllegroBaseStructure settled on) and interprets NO figure kind; `figureName`
+  travels beside the outline as a label. `axlPadFigureTypes()` on 25.1:
+  CIRCLE OCTAGON SQUARE RECTANGLE OBLONG_X OBLONG_Y SHAPE FLASH DONUT
+  ROUNDED_RECTANGLE CHAMFERED_RECTANGLE N_SIDED_POLY - only DONUT needs a
+  second fact (`inside`, the hole) and FLASH may have no path (bbox fallback).
+- **A closing arc must be a circle.** The path's arc piece ends where it
+  started; written as an arc of alpha == beta it would be nothing
+  ([[a-sub-quantum-arc-becomes-a-whole-circle]]), so `s3dPathContourJson`
+  emits the circle primitive when start and end coincide.
+- **The pin's own `->startEnd` decides the face, not the mirror flag.** On
+  the demo 48 of 2720 pins have no pad on ETCH/TOP or ETCH/BOTTOM at all: 20
+  surface pins on `INNER1` (the flex connector) and 28 through pins spanning
+  `INNER1..INNER2` (the LCD connector, mirrored). Those layers are the OUTER
+  copper of the FLEXI1 stackup, so the pads go on the flex zone's faces:
+  `pin_sides` takes the pin's zone (point in its contour), that zone's first
+  and last conductor by position, and the pin's span. A surface padstack (one
+  etch pad) goes where the span says whatever its pad's layer is called; a
+  through padstack is looked up by layer name, its etch list read backwards
+  for a mirrored pin (Allegro flips the padstack with the part - on these three
+  boards every through padstack has TOP == BOTTOM, so the reversal is
+  unobservable here and stays an assumption).
+- **Offsets are 0.0 on every pad of all three boards**, so whether
+  `pd->bBox` / the path include `pd->offset` could not be measured. Rather
+  than assume, `_settle_offset` decides per pad from the three facts the
+  exporter writes (bbox, offset, outline): the outline's box equals the
+  declared box -> in place; equals it once shifted by the offset -> shift;
+  neither -> keep and say so. Pinned in test_pads [2].
+- **The oracle**: `axlPolyFromDB(pin ?layer "ETCH/TOP"|"ETCH/BOTTOM"
+  ?padType 'REGULAR)` per pin, its bounding box and area. pads.py's placed
+  face agrees on **every placed pad of all three boards** - 2906 + 129 + 18
+  boxes within 2 um, mirrored and turned pins included (the 12 pins at
+  90.195 degrees too); the only "mismatches" are the 48 flex pins, where
+  the probe never asked ETCH/INNER1. A sample (18 pins, one per figure kind x
+  mirror x span x drill x quarter turn) is `tests/fixtures/pads_demo.json`
+  and test_pads [4] compares against it.
+
+### The exporter (skill/s3d_pads.il, part 10 of 10; format_version 10)
+
+`s3dCollectPads` walks `dsn->symbols -> sym->pins` exactly as
+`symbolReturnPinHoles` does (mechanical symbols included), collects the
+distinct padstack names, `axlLoadPadstack`s each once, sorted, and writes a
+LIBRARY: per padstack its usage, its drill as a contour at the padstack
+origin unrotated (`s3dHoleAtOrigin`, through the new `makeSlotAt` that
+`makeSlot` now wraps), and every REGULAR pad on an `ETCH/*` layer with figure,
+bbox, offset, inside and outline. Per pin one row:
+`[x, y, rotation, mirrored, padstack, start, end]`. Collected ONCE per design
+like the legend (the bare board carries every pad whatever a variant
+installs), streamed to the port before the silkscreen (`s3dWritePads` is told
+whether the legend follows, for its comma). `settings.exportPads` (default
+true) switches the collection off; a fault in it costs the pads only, loudly.
+Vias are not written.
+
+`makeLine` / `makeArc` now call `s3dSegmentPrimJson` / `s3dArcPrimJson`,
+which the path walker uses too - one string builder each. **Checked byte for
+byte**: the demo and variants intermediates re-exported with the new code are
+identical to the golden record apart from the `pads` block and the version
+(83 043 lines both), so the refactoring moved nothing. `skill_checks.py`,
+`check_arity.py` clean.
+
+**The SKILL golden corpus cannot be `--check`ed as the folder stands**: the
+`Variants.LST` the user dropped into `input/` for round 82 sits beside every
+board and `skill_export.py` copies it along, so six of the seven boards now
+refuse to export ("does not describe this board"). Pre-existing since that
+round; the exports here were made from copies in `build/skill-pads/_boards/`.
+Not touched: `input/` is the user's.
+
+### The Python side
+
+`stepbuilder/pads.py` (new): `pin_sides`, `pad_face` (outline -> face at the
+origin; donut hole; the drill cut with a boolean `Cut` rather than a hole wire,
+so a half-hole on an edge connector still cuts; `x -> -x` when mirrored; the
+oriented normal turned to face out of the board, +z on top and -z below, for
+a viewer that culls back faces), `_placement` (turn about the pin, move, then
+`fold.transform_at`), `_Zones`, `build_pads`, `PadsResult`. `core._build_pads`
+is the stage after the legend; `BuildResult.pads_*`; `BuildOptions.copper_pads`
+through `BuildSettings`, `GuiSettings` (`copperPads`, off), the checkbox
+"Copper pads (as surfaces)" in Board options, `--copper-pads`; `RESERVED` +=
+"pads". Groups `pads_top_<stem>` / `pads_bot_<stem>`, parts
+`pad_<padstack>_<layer>[m]`, copper from `layerColors`. A pad smaller than its
+drill (a mounting hole's nominal pad: 10 on the demo) is counted as "all
+hole" and said in the log, not warned about.
+
+`tests/test_pads.py` (the 23rd suite, in run_all): the side rule, every
+figure case by area, the offset rule, the mirror, the normals, the placement
+order, the oracle sample, and the build with the option on / off / on an
+older file - with the instancing pinned as "twice the pins, the same 4
+figures, and each extra placement under 1.5 kB". `test_emit` [5] now walks
+the pads dimension too (transliteration extended). `tools/golden.py --check`:
+7 cases unchanged (pads are off by default). `tests/run_all.py`: **28/28 in
+334 s** under Python 3.12 (the fold suite 242 s beside a browser and a build);
+`audit_docs`, `skill_checks`, `check_arity`, `python_names` clean.
+
+The variants board built with the pads was rendered through step2html and
+looked at in the browser: copper pads on both faces, the rings of the
+mounting holes, the bottom face visible from below - so the normal choice
+holds in at least that viewer.
+
+### Not verified
+
+- The user has not yet built a board with it in their own window or looked at
+  the STEP in their CAD; the bottom-face normal choice and the flat-legend
+  clearance are a rendering question only a viewer answers.
+- A mirrored through pin whose padstack has different TOP and BOTTOM pads
+  (none on three boards), and a pad with a non-zero `offset` (none) - both
+  handled by rule, neither measured.
+- Vias: deliberately out. If a board needs them, the same library serves:
+  a via is a placement with a padstack and a span, `axlDBGetDesign()->vias`
+  does not exist and they would come from a `VIA CLASS` sweep
+  (AllegroBaseStructure's `abWritePins` note).
 
 ## Update 2026-09-06 (round 84) — the corner of the flex that vanished, and the cutter that ate it
 

@@ -196,6 +196,10 @@ class StepBuilderApp(tk.Tk):
         self.fold_anchor: tuple[float, float] | str | None = None
         self.fold_neutral: float = DEFAULT_NEUTRAL_FACTOR
         self.fold_slice_angle: float = DEFAULT_SLICE_ANGLE
+        # The copper of every pin's pad, drawn on the outer faces as surfaces
+        # (round 85). Off by default: it is for a picture, and it costs a
+        # placement per pad in the file.
+        self.copper_pads = tk.BooleanVar(value=False)
 
         # Prefill state, set by prefill_jobs() when launched from Allegro.
         # Note: there is deliberately NO cached job list - jobs are resolved
@@ -355,6 +359,13 @@ class StepBuilderApp(tk.Tk):
         ttk.Checkbutton(opts, text="Fold flex bends",
                         variable=self.fold_bends).grid(
             row=5, column=0, columnspan=6, sticky="w", pady=(6, 0))
+
+        # The pads' copper on the two outer faces, as surfaces in the copper
+        # colour of the layer swatches. Needs an intermediate written with
+        # format_version 10; an older one says so in the log and draws none.
+        ttk.Checkbutton(opts, text="Copper pads (as surfaces)",
+                        variable=self.copper_pads).grid(
+            row=6, column=0, columnspan=6, sticky="w", pady=(6, 0))
 
         # --- silkscreen ---
         silk = ttk.LabelFrame(mid, text="Silk options", padding=8)
@@ -926,6 +937,7 @@ class StepBuilderApp(tk.Tk):
             fold_anchor=self.fold_anchor,
             fold_neutral=self.fold_neutral,
             fold_slice_angle=self.fold_slice_angle,
+            copper_pads=self.copper_pads.get(),
             brd_name=self._brd_name,
             dated_name=self._dated_name,
         )
@@ -1175,6 +1187,7 @@ class StepBuilderApp(tk.Tk):
         self.fold_anchor = s.fold_anchor
         self.fold_neutral = s.fold_neutral
         self.fold_slice_angle = s.fold_slice_angle
+        self.copper_pads.set(s.copper_pads)
         self._saved_geometry = s.window_geometry
         self._saved_state = s.window_state
 
@@ -1212,6 +1225,7 @@ class StepBuilderApp(tk.Tk):
             fold_anchor=self.fold_anchor,
             fold_neutral=self.fold_neutral,
             fold_slice_angle=self.fold_slice_angle,
+            copper_pads=self.copper_pads.get(),
             # The NON-maximized rect is stored even when closing maximized, so
             # un-maximizing later gives back a sane window.
             window_geometry=self._last_normal_geometry or self.geometry(),

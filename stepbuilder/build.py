@@ -79,6 +79,13 @@ fold_neutral:
 fold_slice_angle:
     Degrees of arc per slice for a bend that has to be faceted (default
     7.5). Only reached when neither exact construction applies.
+copper_pads:
+    Draw the copper of every pin's pad on the board's outer faces, as
+    copper-coloured surfaces a micron above the mask (format_version 10;
+    an older JSON says so in the log and draws none). One shared face per
+    figure, instanced per pin, so the file grows by a placement per pad
+    rather than by a body. Off by default: it is for a picture, and it is
+    only ever what the pins carry - vias are not drawn. See pads.py.
 """
 
 from __future__ import annotations
@@ -122,6 +129,7 @@ class BuildOptions:
     fold_anchor: tuple[float, float] | str | None = None
     fold_neutral: float | None = None
     fold_slice_angle: float | None = None
+    copper_pads: bool = False
 
     @classmethod
     def from_settings(cls, settings: BuildSettings, output_name: str | None) -> BuildOptions:
@@ -147,6 +155,7 @@ class BuildOptions:
             fold_anchor=settings.fold_anchor,
             fold_neutral=settings.fold_neutral,
             fold_slice_angle=settings.fold_slice_angle,
+            copper_pads=settings.copper_pads,
         )
 
     @classmethod
@@ -175,4 +184,5 @@ class BuildOptions:
             fold_anchor=fold_anchor,
             fold_neutral=args.fold_neutral,
             fold_slice_angle=args.fold_slice_angle,
+            copper_pads=args.copper_pads,
         )

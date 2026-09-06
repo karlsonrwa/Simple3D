@@ -60,6 +60,9 @@ from .legend import (  # noqa: F401 - re-exported
 from .reporting import (  # noqa: F401 - re-exported
     LogFn, ProgressFn, _noop_log, _noop_progress,
 )
+# The copper pads (round 85): surfaces on the outer faces, one shared face
+# per figure, instanced per pin.
+from .pads import PadsResult, build_pads
 # The stackup arithmetic (round 72, plan A3); re-exported, the tests call it
 # as core.restack and friends.
 from .stackup import (  # noqa: F401 - re-exported
@@ -97,6 +100,11 @@ class BuildResult:
     embedded_not_on_disk: list[str] = field(default_factory=list)
     silkscreen_solids: int = 0
     silkscreen_skipped: int = 0
+    # The copper pads (round 85): faces placed, distinct figures they share,
+    # and the pins that got none - see pads.PadsResult for the reasons.
+    pads_placed: int = 0
+    pads_figures: int = 0
+    pads_skipped: int = 0
     # MFRPN reporting DISABLED (property attachment unreliable); kept for future:
     # missing_mfr_pn: list[str] = field(default_factory=list)
 
@@ -554,6 +562,62 @@ def _build_legend(data: dict, stack: _Stack, fold, options: BuildOptions,
     return silk_built, silk_skipped
 
 
+def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
+                document: StepDocument, json_stem: str, log: LogFn) -> PadsResult | None:
+    """The copper pads into the document, when asked for (round 85): one
+    group per side, every pin an instance of its figure's shared face.
+    None when the option is off; an empty result when the file has none."""
+    if not options.copper_pads:
+        return None
+    if not isinstance(data.get("pads"), dict):
+        log("No pads in this JSON (re-export from Allegro, format_version 10, to include them)")
+        return PadsResult()
+
+    from .colors import DEFAULT_LAYER_COLORS
+
+    shape_tool = document.shape_tool
+    groups: dict[str, TDF_Label] = {}
+
+    # Named per board like every other top-level node, for the same reason:
+    # two boards in one CAD session must not share a "pads_top".
+    def group_for(side: str) -> TDF_Label:
+        if side not in groups:
+            grp = shape_tool.NewShape()
+            document.set_name(grp, f"{side}_{json_stem}")
+            shape_tool.AddComponent(document.root, grp, TopLoc_Location(gp_Trsf()))
+            groups[side] = grp
+        return groups[side]
+
+    palette = {**DEFAULT_LAYER_COLORS, **(options.layer_colors or {})}
+    rgb = palette.get("copper", DEFAULT_LAYER_COLORS["copper"])
+    log("Building the copper pads")
+    result = build_pads(
+        data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
+        board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
+        fold=fold, lift=abs(options.silk_flat_height), document=document,
+        group_for=group_for, rgb01=(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0),
+        srgb=options.srgb_color, json_stem=json_stem, log=log)
+
+    for note in result.notes:
+        log(f"warning: {note}")
+    log(f"Copper pads: {result.placed} placed on {result.pins} pin(s), "
+        f"{result.figures} distinct figure(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+    if result.no_outer_face:
+        log(f"  {result.no_outer_face} pin(s) reach no outer face of their zone "
+            f"(an inner layer): no copper drawn for them")
+    if result.all_hole:
+        log(f"  {result.all_hole} pad(s) are all hole - the drill is larger than the "
+            f"pad, as on a mounting hole - and draw nothing")
+    if result.no_padstack:
+        log(f"warning: {result.no_padstack} pin(s) name a padstack the file does not carry")
+    if result.unbuildable:
+        log(f"warning: {result.unbuildable} pad placement(s) could not be built (see above)")
+    if result.in_bend:
+        log(f"warning: {result.in_bend} pin(s) stand in a bend area - placed on the "
+            f"curve's tangent, but a pad there is a design rule violation")
+    return result
+
+
 def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOptions,
                       document: StepDocument, index: StepFileIndex, json_stem: str,
                       output_dir: Path, silk_built: int, silk_skipped: int,
@@ -746,9 +810,16 @@ def generate(
     silk_built, silk_skipped = _build_legend(data, stack, fold, options, document,
                                              json_stem, log)
 
+    phase(70, "Building the copper pads")
+    pads = _build_pads(data, stack, fold, options, document, json_stem, log)
+
     result = _place_components(inter, stack, fold, options, document, index,
                                json_stem, output_dir, silk_built, silk_skipped,
                                log, phase)
+    if pads is not None:
+        result.pads_placed = pads.placed
+        result.pads_figures = pads.figures
+        result.pads_skipped = pads.no_outer_face + pads.no_padstack + pads.unbuildable
 
     # ---- write ----------------------------------------------------------- #
     # FIX: the C++ version hardcoded a backslash separator, which produced a

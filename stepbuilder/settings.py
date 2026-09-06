@@ -150,6 +150,7 @@ class GuiSettings:
     fold_anchor: tuple[float, float] | str | None
     fold_neutral: float
     fold_slice_angle: float
+    copper_pads: bool
     window_geometry: str | None
     window_state: str
     json_file: str
@@ -286,6 +287,9 @@ GUI_KEYS: tuple[Key, ...] = (
     Key("foldAnchor", "fold_anchor", None, _load_anchor, _save_anchor),
     Key("foldNeutral", "fold_neutral", DEFAULT_NEUTRAL_FACTOR, _load_neutral),
     Key("foldSliceAngle", "fold_slice_angle", DEFAULT_SLICE_ANGLE, _load_slice_angle),
+    # The copper pads as surfaces on the outer faces (round 85). Off by
+    # default: a picture wants them, a mechanical check does not need them.
+    Key("copperPads", "copper_pads", False),
     # Where the window was, so the next run comes up in the same place - on the
     # same monitor, which is the point on a multi-screen desk.
     Key("windowGeometry", "window_geometry", None, _load_geometry),

@@ -100,11 +100,11 @@ def count_solids(shape) -> int:
 
 
 def exporter_source() -> str:
-    """The SKILL exporter as one text: its nine parts under skill/, in load
-    order (round 76, D6). The suites that read the source for a rule read this,
-    so the split moved no assertion."""
+    """The SKILL exporter as one text: its ten parts under skill/, in load
+    order (round 76, D6; the pads since round 85). The suites that read the
+    source for a rule read this, so the split moved no assertion."""
     parts = ("s3d_util", "s3d_json", "s3d_props", "s3d_variants", "s3d_geometry",
-             "s3d_stackup", "s3d_bends", "s3d_silk", "s3d_export")
+             "s3d_stackup", "s3d_bends", "s3d_silk", "s3d_pads", "s3d_export")
     return "\n".join((ROOT / "skill" / f"{p}.il").read_text(encoding="utf-8", errors="replace")
                      for p in parts)
 

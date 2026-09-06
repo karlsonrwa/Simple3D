@@ -1,8 +1,9 @@
 ;=====================================================================
 ;  makeVariant3dIntermediates.il - loads the Simple 3D exporter
 ;
-;  The exporter itself lives in nine parts under skill/ since round 76
-;  (plan D6), cut from this file with every procedure and comment as it was:
+;  The exporter itself lives in ten parts under skill/ - nine since round 76
+;  (plan D6), cut from this file with every procedure and comment as it was,
+;  and the copper pads since round 85:
 ;
 ;    skill/s3d_util.il       console messages, folders, the subclass sweep
 ;    skill/s3d_json.il       s3dJsonQuote, the JSON reader, the config pair
@@ -12,6 +13,7 @@
 ;    skill/s3d_stackup.il    board thickness, stackups, zones, layer shapes
 ;    skill/s3d_bends.il      bend lines and bend areas
 ;    skill/s3d_silk.il       the silkscreen: config, collection, clipping, writer
+;    skill/s3d_pads.il       the copper pads: padstack figures, pin placements, writer
 ;    skill/s3d_export.il     symbolReturn3DElements, makePcb, the JSON writer
 ;
 ;  This file stays, so an allegro.ilinit or a by-hand session that loads it
@@ -28,7 +30,7 @@
 ;=====================================================================
 
 S3D_ExporterParts = list( "s3d_util" "s3d_json" "s3d_props" "s3d_variants" "s3d_geometry"
-                          "s3d_stackup" "s3d_bends" "s3d_silk" "s3d_export" )
+                          "s3d_stackup" "s3d_bends" "s3d_silk" "s3d_pads" "s3d_export" )
 
 ; Captured at LOAD time, while the port reading this file still exists - the
 ; only moment SKILL can be asked. errset: piport / get_filename are core

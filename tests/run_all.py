@@ -40,6 +40,7 @@ JOBS = [
     ("board: duplicated cutouts",               TESTS / "test_dupcuts.py", True),
     ("board: folding flex bends",               TESTS / "test_bend.py", True),
     ("silkscreen",                              TESTS / "test_silk.py", True),
+    ("copper pads",                             TESTS / "test_pads.py", True),
     ("mechanical symbols",                      TESTS / "test_mech.py", True),
     ("embedded models cross-check",             TESTS / "test_embedded.py", True),
     ("STEP folder search path",                 TESTS / "test_index.py", True),
