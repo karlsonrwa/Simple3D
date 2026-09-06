@@ -36,6 +36,14 @@ def _cut_to_region(shape: TopoDS_Shape,
     it covers - what tells one arm from another. Its bounding box is tried
     FIRST, because it rejects outright and costs nothing: that is what makes
     folding a legend one glyph at a time affordable.
+
+    The boolean itself is made against the piece's CUTTER, not its exact
+    face: the same outline grown ten microns outward and exact at the seams
+    (pieces._cutters). The exact face shares every outline wall with the
+    layer being cut, and where a layer's own contour is only nearly that
+    wall - Allegro's zone contours carry hairline spikes and arcs a fraction
+    of a micron apart - the boolean can throw a whole corner of the piece
+    away. Round 84 measured exactly that on flex2-a0.
     """
     pbox = piece.face_box() if piece is not None else None
     if pbox is not None:
@@ -72,7 +80,7 @@ def _cut_to_region(shape: TopoDS_Shape,
         if not whole:
             zmin, zmax = box[2], box[5]
             prism = BRepPrimAPI_MakePrism(
-                piece.face, gp_Vec(0, 0, (zmax - zmin) + 2.0)).Shape()
+                piece.cutter_face(), gp_Vec(0, 0, (zmax - zmin) + 2.0)).Shape()
             lift = gp_Trsf()
             lift.SetTranslation(gp_Vec(0, 0, zmin - 1.0))
             prism = BRepBuilderAPI_Transform(prism, lift, True).Shape()

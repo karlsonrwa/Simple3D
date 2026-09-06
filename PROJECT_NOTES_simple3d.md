@@ -5,7 +5,7 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-03
+## READ THIS FIRST — state as of 2026-09-06
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -120,7 +120,17 @@ from, and `S3D_ScriptDir` is now `""` in source.
   that a real board no longer reaches. Both bends of flex-b2 wrap; all five of
   flex3-a0 do since round 41.
 
-### Seven traps that cost a round each — do not rediscover them
+### Eight traps that cost a round each — do not rediscover them
+
+- **A boolean cutter must never share a wall with the shape it cuts**
+  (round 84). Allegro's zone contours carry hairline spikes - arcs out and
+  back on circles 0.2 µm apart - that pass `BRepCheck_Analyzer`, and a layer
+  prismed from one has walls lying exactly on the cylinder of the outline's
+  arc. `Common` against the panel's exact face threw a whole corner of the
+  flex away, not a sliver, with nothing said. The pieces are cut with
+  `_cutters` now: the face grown `CUTTER_MARGIN` along the outline, exact at
+  the seams. Do not put the exact face back as the cutter, and do not reach
+  for `SetFuzzyValue` - 1e-5 happened to work and 1e-6 did not.
 
 - **A checker's own text is part of the input it reads back** (round 68).
   `s3dPreflight` ran `python -c "... ; print('S3D_OK')"` and scanned the captured
@@ -2951,6 +2961,128 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-06 (round 84) — the corner of the flex that vanished, and the cutter that ate it
+
+Reported with a picture: on a fresh export of flex2-a0 a small triangle is
+missing at the edge of the flex where the arm meets the round stiffener,
+"after the refactoring". The refactoring turned out to be innocent, and
+finding that out is most of what this round is.
+
+### Narrowing it down, by measurement
+
+- The fresh `flex2-a0.json` is byte-identical to the round-79 golden, and the
+  exporter as it was before Plan D (commit 4a61f13) and as it was on 4 August
+  (`build/known-good-round52`), both run headless on the same `.brd`, write
+  the same stackups, zones, bends and outline. Only `pcb.thickness` differs,
+  and the reader overrides it from the stackup either way. **Not the SKILL
+  side.**
+- The Python of 21 August (eff1079, the commit before round 70) builds the
+  same intermediate to the same solid: **184.728935 mm³** in both. **Not the
+  refactoring** - three days of moving code changed nothing in the geometry,
+  which is what the golden corpus was for.
+- The Python of 7 August (0a123b9, before the fold was rebuilt on pieces)
+  builds **184.757823**: 0.029 mm³ more, and per layer its folded volumes
+  change from the flat ones exactly in proportion to each layer's offset from
+  the neutral axis (base ±0, copper ±0.0053, coverlay ±0.0054, adhesive
+  ±0.0044) - a pure fold. So the loss came in with rounds 62-66.
+- `BRepAlgoAPI_Cut(old, new)` on the two board solids leaves three slivers,
+  0.0289 mm³ together, at folded (2.43, 11.67, -21.4). `FoldPlan.flat_frame`
+  takes that back to flat **(2.43, 41.46)**: the panel beyond BEND_6, a
+  quarter of a millimetre past the seam, in the FLEX stack.
+- The inspect build says which layers: COVERLAY_TOP, TOP, the base, BOTTOM
+  and COVERLAY_BOTTOM each lost the **same 0.1203 mm² footprint**; the two
+  ADHESIVE layers lost nothing. Those two are the only flex layers built from
+  a drawn shape of their own - whose arc is the outline's exact arc - rather
+  than from the zone's contour.
+- `_cut_to_region` on the flat coverlay, to the panel beyond BEND_6: exact
+  0.006012 mm³, returned **0.003005** - and the half that survives is the
+  RIGHT corner. The left one, a curved triangle between the left fillet, the
+  seam and the disc's underside, is gone entirely. That is the picture.
+
+### What the zone contour is
+
+The FLEX zone's contour, as Allegro writes it, arrives at the disc along the
+left fillet and then runs **out along the disc's own arc from 223.6° to
+210.2° and back to 217.9°** - on a circle whose centre is 0.2 µm from the
+first - before a 15 µm hair joins it to the disc's underside. A spike of zero
+width, 1.5 mm long, pointing out of the board. Prismed, the layer has two
+walls a fraction of a micron apart lying **exactly on the cylinder of the
+outline's disc arc** - which is the wall of the face the panel is cut with.
+`BRepAlgoAPI_Common` between that solid and that prism classifies the whole
+left corner as outside. `BRepCheck_Analyzer` calls the layer valid; nothing
+in the cut path warned; `SetFuzzyValue(1e-5)` happens to give the right
+answer and 1e-6 does not, which is not a fix anyone can explain.
+
+Before round 62 no such boolean existed: panels were the layer cut by
+half-plane slabs, and the outline was never a cutter. Round 66 then made the
+piece faces exact - the right thing - and thereby made every one of their
+outline walls coincide with the layers'.
+
+### The fix: a cutter must not share a wall with what it cuts
+
+`pieces._cutters`: each piece's face is grown `CUTTER_MARGIN` = 0.01 mm
+outward (`BRepOffsetAPI_MakeOffset`, arc joins) and every OTHER piece's
+exact face is subtracted back out. Along the outline the cutter now stands
+ten microns clear of anything a layer has; at the seams it is the
+neighbour's exact edge, so the pieces still tile the board with no gap and
+no overlap. `_Region` and `_Strip` carry it as `cutter` beside `face`;
+`_Piece.cutter_face()` hands it to `_cut_to_region`, and the exact `face`
+still answers every geometric question. Thirteen cutters on flex2-a0 cost
+0.09 s. A piece whose offset fails keeps its exact face, and the log says so.
+
+Why not the half-planes back: a panel's bounds are empty on purpose since
+round 62 - a half-plane cannot say which arm a point is on. Why not a fuzzy
+boolean: see above. Why not clean the spike out of the contour: the spike is
+one shape of the trouble, near-coincident walls are the class, and the
+adhesive layers on the same board show a clean contour is not something
+Allegro promises.
+
+Measured, same board, layers mode:
+
+| | board solid | FLEX coverlay | FLEX base | faces |
+|---|---|---|---|---|
+| 7 August | 184.757823 (+5 loose bodies) | 5.875368 | 23.523118 | 433 |
+| before this round | 184.728935 | 5.872361 | 23.511090 | 402 |
+| now | **184.757823** | **5.875368** | **23.523118** | 376 |
+
+All 37 layer parts of the inspect build agree with the 7 August ones to
+1e-5 mm³. `tools/golden.py --check`: no difference, 7 cases, entity counts
+included. `tests/run_all.py`: 26/27 in 207 s - the one not passing is the
+pyflakes name check, which has no pyflakes under the 3.14 that bare `python`
+is and says so; run under `%LOCALAPPDATA%\Programs\Python\Python312`, which
+has pyflakes 3.4.0, it found three re-imports in the new test section (the
+same OCP names imported again by later sections) and is clean since they
+were aliased. `tools/audit_docs.py`: no findings.
+
+`test_bend` [7c4]: the corner in miniature, the board's own numbers to the
+micron with the arm shortened - the six-primitive outline, the twelve-primitive
+zone contour with its spike, BEND_6 - and the property pinned is that the
+pieces of a layer sum to the layer (1e-6). Cut with the exact faces the same
+layer loses 0.003007 mm³, printed rather than checked: an OpenCASCADE that
+one day gets this boolean right should not fail the suite. A layer drawn on
+the outline itself is cut to exactly its own volume, so the margin gives
+nothing away either.
+
+### What to remember
+
+- **A boolean cutter must never share a wall with the shape it cuts.** Two
+  surfaces that are only nearly the same are where the classification goes
+  wrong, and the result is not a sliver but a whole region of the wrong
+  answer. Grow the cutter where the shape's boundary is, keep it exact where
+  the cut is meant to be.
+- **Allegro's zone contours carry hairlines** - arcs out and back on circles
+  microns apart. They pass `BRepCheck_Analyzer`. A layer built from them is
+  valid and still a trap for any boolean made against its walls.
+- **"After the refactoring" names when it was noticed, not when it broke.**
+  Three worktrees and one intermediate settled which commit changed the
+  geometry in twenty minutes; the reasoning that the refactoring must be
+  guilty would have gone through nine files for nothing. The exporter, the
+  refactoring and the fold were each cleared by a build, not an argument.
+- **Find the lost material with a boolean, then walk it back to the flat
+  board with `flat_frame`.** Old minus new, its centroid, the flat point, the
+  region: four numbers said which layer, which panel and which corner before
+  a line of code was read.
 
 ## Update 2026-09-03 (round 83) — Ctrl+C / Ctrl+V on a Russian keyboard layout
 

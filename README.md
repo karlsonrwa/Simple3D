@@ -491,6 +491,13 @@ origin**, or name another point in `gui.foldAnchor`. It decides the shape of the
 fold, not just where it sits: with the anchor in the middle, two tails swing off
 a held centre; at one end, the same two bends make a chain.
 
+Each layer is cut down to its piece with a boundary that runs ten microns
+outside the board outline and exactly along the bend seams. Allegro's zone
+contours carry hairlines - an arc out along a stiffener's edge and back on a
+circle a fraction of a micron off - and a cutter sharing that wall once cost
+a flex layer a whole corner (2026-09-06); the margin keeps the two apart
+without adding anything a layer does not already have.
+
 **The bend surfaces are true cylinders.** Where the board is the same shape all
 the way across a bend, the cross-section is revolved about the axis; otherwise
 the outline itself is carried onto the cylinder, which keeps the surfaces
@@ -1110,6 +1117,13 @@ Allegro есть та же идея (*Setup – Anchor 3D View*), но в 24.1 �
 начало координат** или назовите другую точку в `gui.foldAnchor`. Якорь решает
 форму сгиба, а не только положение: если он в середине, два хвоста отгибаются от
 удерживаемого центра; если с краю — те же два сгиба дают цепочку.
+
+Каждый слой вырезается под свой кусок границей, которая идёт на десять микрон
+снаружи контура платы и точно по швам сгибов. Контуры зон Allegro несут
+«волоски» — дугу вдоль края стиффенера и обратно по окружности, смещённой на
+долю микрона, — и резак, деливший с ними стенку, однажды стоил слою флекса
+целого угла (2026-09-06); отступ разводит их, ничего не добавляя к тому, что у
+слоя и так есть.
 
 **Поверхности сгибов — истинные цилиндры.** Там, где плата поперёк области сгиба
 одинакова, сечение вращается вокруг оси; иначе на цилиндр переносится сам

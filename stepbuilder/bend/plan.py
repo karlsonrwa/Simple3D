@@ -18,9 +18,9 @@ from OCP.gp import gp_Pnt, gp_Trsf
 
 from ..contour import clip_halfplane, contour_points, point_in_polygon, point_on_polygon, polygon_area
 from .apply import apply_plan
-from .constants import CLAIM_GRID, DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, DOUBLE_CLAIM_WARN, DRAWN_AREA_TOL_ABS, DRAWN_AREA_TOL_REL, EPS, FLAT_FRAME_MARGIN, LogFn, SEAM_TOL, SEAM_WARN, SLICE_OVERLAP_MIN, _noop_log
+from .constants import CLAIM_GRID, CUTTER_MARGIN, DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, DOUBLE_CLAIM_WARN, DRAWN_AREA_TOL_ABS, DRAWN_AREA_TOL_REL, EPS, FLAT_FRAME_MARGIN, LogFn, SEAM_TOL, SEAM_WARN, SLICE_OVERLAP_MIN, _noop_log
 from .info import Bend, bends_from_json
-from .pieces import _closest_point, _cut_into_pieces, _touching
+from .pieces import _closest_point, _cut_into_pieces, _cutters, _touching
 from .regions import _Region, _slice_trsf, _Strip
 
 
@@ -325,7 +325,7 @@ def _side_of(kept: list, parts: list, npanel: int, polys: list,
 
 def _walk(plan: FoldPlan, kept: list, strip_pieces: list, parts: list, polys: list,
           npanel: int, neighbours: list, held: int,
-          slice_angle: float) -> tuple[dict, dict]:
+          slice_angle: float, cutters: list) -> tuple[dict, dict]:
     """Walk out from the held piece, placing every piece it reaches.
 
     Every strip is reached from the side that is already placed, so a bend
@@ -337,7 +337,8 @@ def _walk(plan: FoldPlan, kept: list, strip_pieces: list, parts: list, polys: li
     simply inherits the angle the strip finished at.
 
     Returns (carried, labels): the transform and the label of every piece
-    reached, indexed like *parts* (panels first, then strips).
+    reached, indexed like *parts* (panels first, then strips). *cutters* is
+    indexed the same way - what each piece is cut with, from _cutters.
     """
     carried: dict[int, gp_Trsf] = {held: gp_Trsf()}
     labels = {held: "held"}
@@ -385,7 +386,7 @@ def _walk(plan: FoldPlan, kept: list, strip_pieces: list, parts: list, polys: li
                     label=f"{bend.name} slice {j + 1}/{steps}",
                     bounds=[(nx, ny, hinge - overlap, hinge + step + overlap)],
                     poly=strip_pieces[s][0][0], polys=strip_pieces[s][0],
-                    face=strip_pieces[s][1],
+                    face=strip_pieces[s][1], cutter=cutters[npanel + s],
                     trsf=_slice_trsf(base_trsf, nx, ny, lo, hinge, axis_z,
                                      sign * phi),
                     kind="slice"))
@@ -396,7 +397,7 @@ def _walk(plan: FoldPlan, kept: list, strip_pieces: list, parts: list, polys: li
             plan.strips.append(_Strip(
                 bend=bend, bounds=[(nx, ny, lo, hi)], normal=(nx, ny),
                 poly=strip_pieces[s][0][0], polys=strip_pieces[s][0],
-                face=strip_pieces[s][1],
+                face=strip_pieces[s][1], cutter=cutters[npanel + s],
                 lo=lo, hi=hi, axis_z=axis_z, turn=sign * theta,
                 carried=base_trsf, facets=facets))
             plan.regions.extend(facets)
@@ -563,6 +564,10 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     # side of a strip - and it is the largest fragment. Containment uses them
     # all, through _Region.holds.
     polys = [rs[0] for rs in rings]
+    # What each piece is cut WITH: its face grown along the outline and exact
+    # at the seams, so the cutter never shares a wall with a layer. The exact
+    # faces above still answer every geometric question about the pieces.
+    cutters = _cutters(parts, CUTTER_MARGIN, cut_log)
     neighbours = [[] for _ in parts]
     for a in range(len(parts)):
         for b in range(a + 1, len(parts)):
@@ -584,7 +589,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
 
     # -- walk out from the held piece ---------------------------------------- #
     carried, labels = _walk(plan, kept, strip_pieces, parts, polys, npanel,
-                            neighbours, held, slice_angle)
+                            neighbours, held, slice_angle, cutters)
     # In the order they were folded, which is outwards from the held piece.
     plan.bends = [strip.bend for strip in plan.strips]
 
@@ -608,7 +613,7 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
     for i, (rs, face) in enumerate(panels):
         plan.regions.append(_Region(
             label=labels[i], bounds=[], poly=rs[0], polys=rs, face=face,
-            trsf=carried[i], moved=(i != held)))
+            cutter=cutters[i], trsf=carried[i], moved=(i != held)))
 
     _neutral_ceiling(plan, ordered, chain, kept, marks, neutral_factor, outline,
                      outline_curves, stack_at, board_top_z, board_bottom_z)

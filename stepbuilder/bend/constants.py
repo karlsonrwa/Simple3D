@@ -79,6 +79,20 @@ SLIVER_RATIO = 0.01
 # board's radii.
 FACE_POLY_PER_CURVE = 12
 
+# _cutters: how far outside its own outline the face a piece is CUT WITH is
+# grown, in mm. The exact face shares every outline wall with the layer it
+# cuts, and a wall that is only NEARLY the same surface is where a boolean
+# goes wrong. On flex2-a0 (round 84) the FLEX zone's contour carries a
+# zero-width spike along the round stiffener's arc - two arcs out and back
+# on circles 0.2 um apart - lying exactly on the cutter's cylinder, and OCC
+# threw the whole corner of that panel away: 0.12 mm2 on five of the seven
+# flex layers, the visible notch the user reported. Grown by this much the
+# cutter meets nothing of the layer's own boundary; the seams stay exact
+# because the other pieces' faces are subtracted back. Ten microns is fifty
+# times the noise between Allegro's arcs and a fiftieth of any slot a board
+# can have.
+CUTTER_MARGIN = 0.01
+
 # _chain_at: how far a drawn bend area may differ from angle x inner radius
 # before the log says the design is telling us something - an absolute floor
 # and a relative one, whichever is larger.

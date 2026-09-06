@@ -11,6 +11,35 @@ to use the tool.
 
 ---
 
+- **2026-09-06** — **A flex layer no longer loses a corner where its zone
+  contour carries a hairline.** On flex2-a0 the FLEX zone's outline, as
+  Allegro writes it, runs out along the round stiffener's arc and back on a
+  circle 0.2 µm off it - a spike of zero width. Since 14 August every layer
+  is cut down to the panel it belongs to with a prism of that panel's exact
+  face, and where the spike lay on the prism's own cylinder the boolean
+  threw the whole corner of the panel beyond BEND_6 away: a 0.12 mm²
+  triangle on five of the seven flex layers, visible as a notch at the edge
+  of the flex. The cutter is now the panel's face grown ten microns along
+  the board outline and exact at the bend seams, so it never shares a wall
+  with a layer. Measured: every layer of that board folds to the volume it
+  had before 14 August, to 1e-5 mm³; the golden corpus and every other
+  board are unchanged. The exporter was not involved - the fresh
+  intermediate is identical to the one from before the refactoring.
+  / **Слой гибкой части больше не теряет угол там, где контур его зоны
+  несёт «волосок».** На flex2-a0 контур зоны FLEX, как его пишет Allegro,
+  уходит вдоль дуги круглого стиффенера и возвращается по окружности,
+  смещённой на 0.2 мкм, - шип нулевой ширины. С 14 августа каждый слой
+  вырезается под свою панель призмой точной грани этой панели, и там, где
+  шип лежал на цилиндре самой призмы, булева операция выбрасывала весь
+  угол панели за BEND_6: треугольник 0.12 мм² на пяти слоях из семи,
+  заметный как выемка на краю шлейфа. Теперь резак - грань панели,
+  раздутая на десять микрон вдоль контура платы и точная по швам сгибов,
+  так что он нигде не делит стенку со слоем. Измерено: каждый слой этой
+  платы складывается в тот же объём, что до 14 августа, с точностью
+  1e-5 мм³; golden-корпус и остальные платы не изменились. Экспортёр ни
+  при чём: свежий промежуточный файл совпадает с тем, что был до
+  рефакторинга.
+
 - **2026-09-03** — **Ctrl+C / Ctrl+V work in the window's fields on a Russian
   keyboard layout.** Tk binds the shortcuts to the Latin letters, so under
   any non-Latin layout the same keys did nothing in every path field and

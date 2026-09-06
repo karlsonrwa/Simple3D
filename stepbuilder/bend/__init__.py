@@ -59,8 +59,8 @@ from ..contour import (  # noqa: F401 - re-exported
 # and applied, the numbers. Nothing is defined here any more; the
 # names are re-exported here so `from stepbuilder.bend import X` holds.
 from .constants import (  # noqa: F401 - re-exported
-    DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, EPS, MIN_ANGLE,
-    LogFn, _noop_log,
+    CUTTER_MARGIN, DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE,
+    EPS, MIN_ANGLE, LogFn, _noop_log,
 )
 from .info import (  # noqa: F401 - re-exported
     Bend, bend_from_dict, bends_from_json, info_length, info_number,
@@ -70,8 +70,8 @@ from .regions import (  # noqa: F401 - re-exported
     _Piece, _Region, _Strip, _bbox, _extent, _is_empty, _slice_trsf,
 )
 from .pieces import (  # noqa: F401 - re-exported
-    _band_face, _closest_point, _cut_into_pieces, _face_poly, _faces_of,
-    _piece_face, _polygon_face, _touching,
+    _band_face, _closest_point, _cut_into_pieces, _cutters, _face_poly,
+    _faces_of, _grown, _piece_face, _polygon_face, _touching,
 )
 from .cut import _crosses, _cut_to_region, _plane_face, _slab  # noqa: F401
 from .strip_revolve import (  # noqa: F401 - re-exported

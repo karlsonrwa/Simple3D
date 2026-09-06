@@ -6,6 +6,8 @@ half-plane model that came before could not ask it - see the note below).
 So the outline is cut by the bend strips, the pieces that fall out ARE the
 panels, and everything else follows from how those pieces touch.
 `_cut_into_pieces` is the entry; the rest make, mend and read one face.
+`_cutters` then makes, from those faces, what each layer is actually cut
+WITH - the same faces grown along the outline and exact at the seams.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from OCP.gp import gp_Pnt
 
 from ..contour import build_contour, point_in_polygon
 from ..errors import StepBuilderError
-from .constants import BAND_REACH, FACE_POLY_PER_CURVE, LogFn, SLIVER_RATIO, _noop_log
+from .constants import BAND_REACH, CUTTER_MARGIN, FACE_POLY_PER_CURVE, LogFn, SLIVER_RATIO, _noop_log
 
 
 # --------------------------------------------------------------------------- #
@@ -312,3 +314,101 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list,
     if not panels:
         return None
     return panels, strips
+
+
+# --------------------------------------------------------------------------- #
+# what a layer is cut WITH
+# --------------------------------------------------------------------------- #
+
+def _grown(face, margin: float):
+    """*face* - or a compound of faces, a repaired pinch - with its boundary
+    pushed outward by *margin*. None when the offset cannot be made."""
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeOffset
+    from OCP.GeomAbs import GeomAbs_JoinType
+
+    grown = []
+    for f in _faces_of(face):
+        try:
+            offset = BRepOffsetAPI_MakeOffset(f, GeomAbs_JoinType.GeomAbs_Arc)
+            offset.Perform(margin)
+            if not offset.IsDone():
+                return None
+            exp = TopExp_Explorer(offset.Shape(), TopAbs_ShapeEnum.TopAbs_WIRE)
+            while exp.More():
+                maker = BRepBuilderAPI_MakeFace(TopoDS.Wire_s(exp.Current()), True)
+                if maker.IsDone():
+                    grown.append(maker.Face())
+                exp.Next()
+        except Exception:                     # OCC's Standard_Failure family
+            return None
+    if not grown:
+        return None
+    if len(grown) == 1:
+        return grown[0]
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for f in grown:
+        builder.Add(compound, f)
+    return compound
+
+
+def _cutters(faces: list, margin: float = CUTTER_MARGIN,
+             log: LogFn = _noop_log) -> list:
+    """What each piece is CUT WITH, one per face of *faces*, in order.
+
+    A piece's exact face shares every outline wall with the layer it is
+    about to cut, and a boolean between two walls that are only NEARLY the
+    same surface is where OCC goes wrong. Round 84, flex2-a0: the FLEX
+    zone's contour, as Allegro writes it, carries a zero-width spike along
+    the round stiffener's arc - two arcs out and back, on circles 0.2 um
+    apart - and that spike lies exactly on the cutter's cylinder. The
+    boolean threw the WHOLE corner of the panel beyond BEND_6 away: a
+    curved triangle of 0.12 mm2 on five of the seven flex layers, the notch
+    the user saw. The two adhesive layers, built from their own drawn shape
+    with the outline's exact arc, were untouched - which is what pointed at
+    the cutter rather than the fold.
+
+    So the cutter is the face grown by *margin* along its whole boundary,
+    with every OTHER piece's exact face subtracted back out. Along the
+    outline it now stands ten microns clear of anything the layer has; at
+    the seams it is the neighbour's exact edge, so the pieces still tile the
+    board without a gap or an overlap. Measured on every layer of that
+    board: the pieces sum to the flat layer's volume to 1e-6 mm3, where the
+    exact faces lost 0.029.
+
+    A piece whose offset cannot be made keeps its exact face, and the log
+    says so.
+    """
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+    from OCP.TopTools import TopTools_ListOfShape
+
+    out = []
+    exact = 0
+    for i, face in enumerate(faces):
+        grown = _grown(face, margin) if len(faces) > 1 else None
+        if grown is None:
+            out.append(face)
+            exact += len(faces) > 1
+            continue
+        arguments = TopTools_ListOfShape()
+        arguments.Append(grown)
+        tools = TopTools_ListOfShape()
+        for j, other in enumerate(faces):
+            if j != i:
+                tools.Append(other)
+        cut = BRepAlgoAPI_Cut()
+        cut.SetArguments(arguments)
+        cut.SetTools(tools)
+        cut.Build()
+        if not cut.IsDone() or not _faces_of(cut.Shape()):
+            out.append(face)
+            exact += 1
+            continue
+        out.append(cut.Shape())
+    if exact:
+        log(f"note: {exact} piece(s) of the board could not be given a grown "
+            f"cutter and are cut with their exact face; a layer whose contour "
+            f"only nearly follows the outline there may lose a corner")
+    return out

@@ -612,6 +612,117 @@ if back is not None:
     check("and lands back inside the stack, not out in space",
           -T - 1.0 <= home.Z() <= 1.0, home.Z())
 
+print("\n[7c4] a hairline in a layer's own contour does not cost the piece a corner")
+
+# Round 84, from the user's flex2-a0. The FLEX zone's contour, as Allegro
+# writes it, carries a zero-width SPIKE along the round stiffener's arc: the
+# first two arcs of `spiked_zone` run out along the disc from 223.6 to 210.2
+# degrees and back to 217.9 on a circle 0.2 um off the first, and the 15 um
+# third arc joins them to the disc's underside. A layer prismed from that
+# contour has two walls a fraction of a micron apart lying exactly on the
+# cylinder of the outline's own arc - which is the wall of the face the panel
+# beyond BEND_6 used to be cut with. OCC's Common threw the whole corner of
+# the panel away, 0.12 mm2 on five of the seven flex layers, and the user saw
+# a triangle missing at the edge of the flex. The numbers are the board's own
+# to the micron; only the arm is shortened.
+#
+# The cutter is now the piece's face grown CUTTER_MARGIN along the outline
+# and exact at the seams (pieces._cutters), so it never shares a wall with a
+# layer. The property pinned here: the pieces of a layer sum to the layer.
+from stepbuilder.bend import CUTTER_MARGIN, _bbox, _cut_to_region
+from stepbuilder.contour import build_contour
+# aliased: later sections import the same three names for themselves
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace as _MakeFace
+from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism as _MakePrism
+from OCP.gp import gp_Trsf, gp_Vec as _Vec
+
+
+def _seg(a, b):
+    return {"type": "segment", "start": list(a), "end": list(b)}
+
+
+def _arc(cx, cy, r, alpha, beta, ccw):
+    return {"type": "arc", "center": [cx, cy], "radius": r,
+            "alpha": alpha, "beta": beta, "ccw": ccw}
+
+
+fillet_l = _arc(-1.850002, 38.697521, 5.000002, 359.999762, 43.64084, True)
+disc = _arc(6.4, 46.565009, 6.399994, 316.359834, 223.640166, False)
+fillet_r = _arc(14.650002, 38.697521, 5.000002, 136.35916, 180.000238, True)
+spiked_outline = [_seg((3.15, 20.0), (3.15, 38.6975)), fillet_l, disc, fillet_r,
+                  _seg((9.65, 38.6975), (9.65, 20.0)), _seg((9.65, 20.0), (3.15, 20.0))]
+spiked_zone = [
+    _arc(6.399979, 46.565034, 6.399996, 210.171091, 223.640463, False),  # out along the disc
+    _arc(6.39986, 46.565214, 6.399983, 210.173017, 217.865959, True),    # and back, 0.2 um off
+    _arc(-2.589341, 39.554206, 5.000031, 37.896356, 38.062086, False),   # a 15 um hair
+    _arc(6.4, 46.56487, 6.39987, 217.992234, 270.0, True),               # the disc's underside
+    _arc(6.4, 46.564899, 6.399899, 270.0, 314.514455, True),
+    _arc(14.382757, 38.426509, 5.000014, 134.291524, 134.360402, False),
+    _arc(6.399788, 46.564751, 6.399965, 314.570551, 316.250105, True),
+    _arc(14.650013, 38.697562, 5.000013, 136.503856, 180.000716, True),  # the right fillet
+    _seg((9.65, 38.6975), (9.65, 20.0)), _seg((9.65, 20.0), (3.15, 20.0)),
+    _seg((3.15, 20.0), (3.15, 38.6975)), fillet_l,
+]
+bend6 = bend_from_dict({
+    "name": "BEND_6", "line": {"start": [0.0, 38.8], "end": [10.0, 38.8]},
+    "inner_radius": 2.0, "width": 4.5397,
+    "info": "TYPE=CircularBend, INNER_SIDE=BOTTOM, INNER_ANGLE=130.0000, "
+            "INNER_RADIUS=2.0000 MILLIMETERS, ORDER=0"})
+
+
+def _layer_from(contour):
+    """The board's top coverlay: 0.025 thick, on a 0.29 flex at the bottom of
+    a 0.815 board."""
+    face = _MakeFace(build_contour(contour, 0.0), True).Face()
+    solid = _MakePrism(face, _Vec(0, 0, -0.025)).Shape()
+    drop = gp_Trsf()
+    drop.SetTranslation(_Vec(0, 0, -0.525))
+    return BRepBuilderAPI_Transform(solid, drop, True).Shape()
+
+
+def _pieces_of(layer, pieces):
+    box = _bbox(layer)
+    total = 0.0
+    for p in pieces:
+        part = _cut_to_region(layer, p.bounds, box, p)
+        if part is not None:
+            total += volume(part)
+    return total
+
+
+spiked_layer = _layer_from(spiked_zone)
+spiked_plan = plan_fold([bend6], contour_points(spiked_outline), 0.0, -0.815,
+                        stack_at=lambda x, y: (-0.525, -0.815),
+                        outline_curves=spiked_outline)
+spiked_pieces = ([r for r in spiked_plan.regions if r.kind == "panel"]
+                 + list(spiked_plan.strips))
+check("the arm, the bend and the disc: three pieces",
+      len(spiked_pieces) == 3, [getattr(p, "label", "strip") for p in spiked_pieces])
+check("every piece is cut with a grown face, not its exact one",
+      all(p.cutter is not None and not p.cutter.IsSame(p.face) for p in spiked_pieces))
+check("the margin is a real number of microns",
+      0.001 <= CUTTER_MARGIN <= 0.05, CUTTER_MARGIN)
+whole = volume(spiked_layer)
+kept = _pieces_of(spiked_layer, spiked_pieces)
+check("the pieces of the spiked layer sum to the layer",
+      near(kept, whole, 1e-6), (kept, whole))
+# The same cut with the exact faces, for the record: this is the failure the
+# grown cutter exists for, and the number is the board's - 0.003007 mm3, the
+# whole corner of a 0.025 layer. Printed rather than checked: a future
+# OpenCASCADE that gets this boolean right is not a failure of this suite.
+import dataclasses as _dc
+exact_pieces = [_dc.replace(p, cutter=None) for p in spiked_pieces]
+print(f"        (cut with the exact faces the same layer loses "
+      f"{whole - _pieces_of(spiked_layer, exact_pieces):.6f} mm3 of {whole:.6f})")
+# A layer that follows the outline exactly - the other six on that board did -
+# is neither given nor robbed of anything by the margin.
+plain_layer = _layer_from(spiked_outline)
+check("a layer on the outline itself is cut to exactly its own volume",
+      near(_pieces_of(plain_layer, spiked_pieces), volume(plain_layer), 1e-6),
+      (_pieces_of(plain_layer, spiked_pieces), volume(plain_layer)))
+
+# --------------------------------------------------------------------------- #
 print("\n[7d] the fold joins up - every seam, every shape")
 
 # The invariant that actually showed on Cadence's demo board, and the one

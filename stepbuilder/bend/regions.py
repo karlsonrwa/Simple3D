@@ -29,10 +29,20 @@ class _Piece:
     the question "is this flat point mine".
 
     A mixin rather than a base dataclass so the two keep their own field
-    lists; the fields it reads (`face`, `_box`, `poly`, `polys`, `bounds`)
-    are declared by both. One implementation since round 72 (plan B1) - the
-    two copies had already drifted in their docstrings.
+    lists; the fields it reads (`face`, `cutter`, `_box`, `poly`, `polys`,
+    `bounds`) are declared by both. One implementation since round 72 (plan
+    B1) - the two copies had already drifted in their docstrings.
     """
+
+    def cutter_face(self):
+        """The face a shape is cut down to this piece with.
+
+        `face` is the piece exactly; `cutter` is that face grown a little
+        along the board's outline and exact at the seams (pieces._cutters),
+        so that the cutter never shares a wall with the layer it cuts. The
+        exact face is the fallback, for a plan that made no cutters.
+        """
+        return self.cutter if self.cutter is not None else self.face
 
     def face_box(self):
         """The piece's bounding box, worked out once.
@@ -80,6 +90,8 @@ class _Region(_Piece):
     # faces - see _piece_face. `poly` is the first and largest of them.
     polys: list | None = None
     face: object = None
+    # What a shape is cut with to become this piece - see _Piece.cutter_face.
+    cutter: object = None
     _box: object = None
 
 
@@ -104,6 +116,7 @@ class _Strip(_Piece):
     poly: list[tuple[float, float]] | None = None
     polys: list | None = None
     face: object = None
+    cutter: object = None
     _box: object = None
 
 
