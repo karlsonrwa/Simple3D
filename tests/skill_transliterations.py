@@ -96,7 +96,7 @@ def makePcb(thicknesses, edges, cuts, color):
 
 
 def create3dIntermediateFormat(variantName, full_board, edges, cuts, placements, silk, pads=False):
-    members = ['"format": "simple3d"', '"format_version": 11', '"name": ' + s3dJsonQuote(variantName)]
+    members = ['"format": "simple3d"', '"format_version": 12', '"name": ' + s3dJsonQuote(variantName)]
     if full_board:
         members.append('"full_board": true')
     members += ['"embedded_models": []', '"stackups": {\n}', '"zones": []', '"bends": []']
@@ -113,7 +113,8 @@ def create3dIntermediateFormat(variantName, full_board, edges, cuts, placements,
     if pads:
         out += ('\t"pads": {\n\t\t"padstacks": {\n\t\t\t"P1": {\n\t\t\t\t"usage": "Smd",\n'
                 '\t\t\t\t"drill": null,\n\t\t\t\t"pads": {}\n\t\t\t}\n\t\t},\n'
-                '\t\t"pins": [\n\t\t\t[1.0, 2.0, 0.0, false, "P1", "ETCH/TOP", "ETCH/TOP"]\n\t\t]\n')
+                '\t\t"pins": [\n\t\t\t[1.0, 2.0, 0.0, false, "P1", "ETCH/TOP", "ETCH/TOP", "pin"]\n\t\t],\n'
+                '\t\t"exposed": {\n\t\t\t"top": [\n\n\t\t\t],\n\t\t\t"bottom": [\n\n\t\t\t]\n\t\t}\n')
         out += "\t},\n" if silk else "\t}\n"
     if silk:
         out += '\t"silkscreen": {\n\t\t"thickness": 0.025,\n\t\t"top": [\n\t\t],\n\t\t"bottom": [\n\t\t]\n\t}\n'

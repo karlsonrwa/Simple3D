@@ -362,7 +362,7 @@ class StepBuilderApp(tk.Tk):
 
         # The pads' copper on the two outer faces, as surfaces in the copper
         # colour of the layer swatches. Needs an intermediate written with
-        # format_version 11 (10 draws the copper whole, unclipped to the mask
+        # format_version 12 (10 draws the copper whole, unclipped to the mask
         # openings); an older one says so in the log and draws none.
         ttk.Checkbutton(opts, text="Copper pads (as surfaces)",
                         variable=self.copper_pads).grid(

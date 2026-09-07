@@ -251,30 +251,80 @@ procedure( s3dPadstackJson( t_name )
 ; symbols, mechanical ones included - so a mounting hole with a pad is a pad.
 ; Padstack names are collected in a table and the library built once per
 ; name, sorted, so two exports of one board write the same file.
-procedure( s3dCollectPads()
-    let( ( dsn table names stacks pins ( n 0 ) ( nMissing 0 ) se rot one )
+; One pin or via as a row: [x, y, rotation, mirrored, padstack, start, end, kind].
+procedure( s3dPadRowJson( o_obj t_kind )
+    let( ( se rot )
+        se = nil
+        errset( se = o_obj->startEnd )
+        rot = o_obj->rotation
+        unless( numberp( rot )  rot = 0.0 )
+        sprintf( nil "[%f, %f, %f, %s, %s, %s, %s, %s]"
+                 xCoord( o_obj->xy ) yCoord( o_obj->xy ) rot
+                 if( o_obj->isMirrored then "true" else "false" )
+                 s3dJsonQuote( o_obj->name )
+                 s3dJsonQuote( when( se car( se ) ) )
+                 s3dJsonQuote( when( se cadr( se ) ) )
+                 s3dJsonQuote( t_kind ) )
+    )
+)
+
+; Every VIA CLASS subclass of the design, as "VIA CLASS/<sub>" - the layers
+; a one-pass via sweep needs visible at once. axlSubclasses is the
+; documented question; AllegroBaseStructure's dump settled that a sweep with
+; all of them on returns each via ONCE, where asking layer by layer returned
+; a through via on every layer it crosses (34 000 vias became 510 343).
+procedure( s3dViaLayers()
+    let( ( subs out )
+        subs = nil
+        errset( subs = axlSubclasses( "VIA CLASS" ) )
+        out = nil
+        foreach( sub subs
+            when( stringp( sub )
+                out = cons( strcat( "VIA CLASS/" sub ) out )
+            )
+        )
+        reverse( out )
+    )
+)
+
+; Every pin of every placed symbol, every via, and the padstacks they use;
+; and the copper the drawn mask openings expose (s3dCollectExposed).
+; -> list( l_padstackJsonStrings l_rowJsonStrings x_rows l_exposedTop l_exposedBottom )
+;    or nil when the design has no pins.
+;
+; The pins are walked the way symbolReturnPinHoles walks them - the design's
+; symbols, mechanical ones included - so a mounting hole with a pad is a pad.
+; The vias come from one sweep with every VIA CLASS subclass visible (format
+; 12); a tented via has no mask pad in its padstack and the reader draws
+; nothing for it, so a board that tents its vias pays one row per via and
+; no geometry. Padstack names are collected in a table and the library
+; built once per name, sorted, so two exports of one board write the same
+; file.
+procedure( s3dCollectPads( @optional ( l_maskTop nil ) ( l_maskBottom nil ) ( s_endCap 'ROUND ) )
+    let( ( dsn table names stacks rows ( n 0 ) ( nVias 0 ) ( nMissing 0 ) one vias exposedTop exposedBottom )
         dsn = axlDBGetDesign()
         table = makeTable( "s3dPadstackNames" nil )
-        pins = tconc( nil nil )
+        rows = tconc( nil nil )
         foreach( sym dsn->symbols
             foreach( pin sym->pins
                 when( stringp( pin->name ) && pin->xy
                     n = n + 1
                     table[pin->name] = t
-                    se = nil
-                    errset( se = pin->startEnd )
-                    rot = pin->rotation
-                    unless( numberp( rot )  rot = 0.0 )
-                    tconc( pins sprintf( nil "[%f, %f, %f, %s, %s, %s, %s]"
-                                         xCoord( pin->xy ) yCoord( pin->xy ) rot
-                                         if( pin->isMirrored then "true" else "false" )
-                                         s3dJsonQuote( pin->name )
-                                         s3dJsonQuote( when( se car( se ) ) )
-                                         s3dJsonQuote( when( se cadr( se ) ) ) ) )
+                    tconc( rows s3dPadRowJson( pin "pin" ) )
                 )
             )
         )
-        when( n > 0
+        vias = nil
+        errset( vias = s3dSelectVisibleOn( s3dViaLayers() list( "noall" "vias" )
+                                           "Simple 3D: no such layer: %s" ) )
+        foreach( v vias
+            when( stringp( v->name ) && v->xy
+                nVias = nVias + 1
+                table[v->name] = t
+                tconc( rows s3dPadRowJson( v "via" ) )
+            )
+        )
+        when( n + nVias > 0
             names = sort( table->? 'alphalessp )
             stacks = tconc( nil nil )
             foreach( name names
@@ -287,11 +337,173 @@ procedure( s3dCollectPads()
                     s3dWarn( sprintf( nil "Simple 3D: padstack %s could not be loaded; its pins get no copper." name ) )
                 )
             )
-            printf( "Simple 3D: copper pads - %d pin(s) on %d padstack(s)%s\n"
-                    n length( names )
+            printf( "Simple 3D: copper pads - %d pin(s) and %d via(s) on %d padstack(s)%s\n"
+                    n nVias length( names )
                     if( nMissing > 0 then sprintf( nil " (%d not loadable)" nMissing ) else "" ) )
-            list( cdr( car( stacks ) ) cdr( car( pins ) ) n )
+            exposedTop = nil
+            exposedBottom = nil
+            when( l_maskTop
+                exposedTop = s3dCollectExposed( l_maskTop "TOP" s_endCap )
+            )
+            when( l_maskBottom
+                exposedBottom = s3dCollectExposed( l_maskBottom "BOTTOM" s_endCap )
+            )
+            list( cdr( car( stacks ) ) cdr( car( rows ) ) n + nVias exposedTop exposedBottom )
         )
+    )
+)
+
+;---------------------------------------------------------------------
+;  The copper under the DRAWN mask openings (format_version 12)
+;
+;  A pin's or via's opening is in its padstack and the reader clips the pad
+;  to it. An opening drawn in the footprint or on the board - a line or a
+;  shape on PACKAGE GEOMETRY / BOARD GEOMETRY / SOLDERMASK_<side> - exposes
+;  whatever copper lies under it: a thermal pad drawn as a shape, a row of
+;  fingers, a test area, a pour. That copper is computed HERE, where the
+;  polygon engine is: every opening becomes polygons (s3dPolysFromDbid, the
+;  silkscreen's converter, so a line opening is the line widened with round
+;  caps), the copper on the side's outer ETCH layer inside the opening's
+;  box is selected and converted - a pour only through its window, which is
+;  what ?window is for - and axlPolyOperation AND keeps what is under the
+;  opening. Written in the silkscreen's vertex form so the reader builds it
+;  with the legend's own machinery, area-checked. Measured on the user's
+;  board: two shapes expose 1.03 and 1.01 mm2 of 1.18 and 1.16 mm2 openings,
+;  in well under a second each.
+;
+;  Where an opening lies over a pin's pad, that pad is written twice - once
+;  here, once through its padstack. The reader lifts the exposed copper a
+;  micron above the pads, so the two never fight.
+;---------------------------------------------------------------------
+
+; The copper objects on the side's outer copper whose box meets l_bbox, with
+; the design's visibility set to exactly that layer (and the PIN / VIA CLASS
+; subclass of the same side, so pins and vias are found by the box too).
+; The caller sets and restores the visibility ONCE per side - see
+; s3dCollectExposed - because toggling it per opening is what made the
+; silkscreen's per-layer sweep expensive.
+procedure( s3dSelectInBox( l_bbox )
+    let( ( elems )
+        axlClearSelSet()
+        elems = nil
+        when( l_bbox && car( l_bbox ) && cadr( l_bbox )
+            ; BOTH corners, always: given one or none, axlAddSelectBox asks
+            ; the user to pick - and there is no user in a headless session.
+            when( errset( axlAddSelectBox( list( car( l_bbox ) cadr( l_bbox ) ) ) t )
+                elems = axlGetSelSet()
+            )
+        )
+        axlClearSelSet()
+        elems
+    )
+)
+
+; The polygons of one copper object, for the AND: a pin or via's pad on the
+; side's etch layer, a shape only inside the window, a cline widened with
+; round caps, anything else whole.
+procedure( s3dCopperPolys( o_obj t_etch l_window s_endCap )
+    let( ( polys )
+        polys = nil
+        cond(
+            ( (o_obj->objType == "pin") || (o_obj->objType == "via")
+                errset( polys = axlPolyFromDB( o_obj ?layer t_etch ?padType 'REGULAR ) )
+            )
+            ( o_obj->objType == "shape"
+                errset( polys = axlPolyFromDB( o_obj ?window l_window ) )
+            )
+            ( t
+                errset( polys = s3dPolysFromDbid( o_obj s_endCap ) )
+            )
+        )
+        remd( nil polys )
+    )
+)
+
+; The copper the drawn openings of one side expose, grouped by the opening's
+; layer: ( (layer polys) ... ), the silkscreen's group form.
+procedure( s3dCollectExposed( l_layers t_side s_endCap )
+    let( ( elems openings key polys etch pinLayer viaLayer saveVis saveEnabled saveOn
+           found copper res groups order out ( nOpen 0 ) ( nOut 0 ) ( nBad 0 ) filter )
+        etch = strcat( "ETCH/" t_side )
+        pinLayer = strcat( "PIN/" t_side )
+        viaLayer = strcat( "VIA CLASS/" t_side )
+        groups = makeTable( "s3dExposedGroups" nil )
+        order = tconc( nil nil )
+
+        ; 1. the openings, as polygons, before any visibility is touched
+        elems = s3dSelectVisibleOn( l_layers list( "noall" "lines" "shapes" )
+                                    "Simple 3D: no such layer: %s" )
+        openings = nil
+        foreach( elem elems
+            key = nil
+            errset( key = elem->layer )
+            unless( stringp( key )  key = sprintf( nil "%L" key ) )
+            polys = nil
+            unless( errset( polys = s3dPolysFromDbid( elem s_endCap ) )
+                nBad = nBad + 1
+            )
+            foreach( poly polys
+                when( poly && !poly->isHole
+                    nOpen = nOpen + 1
+                    openings = cons( list( key poly ) openings )
+                )
+            )
+        )
+        openings = reverse( openings )
+
+        when( openings
+            ; 2. the copper, with the visibility set once for the whole side
+            saveVis     = axlVisibleGet()
+            saveEnabled = axlGetFindFilter( t )
+            saveOn      = axlGetFindFilter( nil )
+            filter = list( "noall" "clines" "shapes" "pins" "vias" )
+            axlVisibleDesign( nil )
+            axlVisibleLayer( etch t )
+            errset( axlVisibleLayer( pinLayer t ) )
+            errset( axlVisibleLayer( viaLayer t ) )
+            axlSetFindFilter( ?enabled filter ?onButtons filter )
+
+            foreach( entry openings
+                key = car( entry )
+                found = s3dSelectInBox( cadr( entry )->bBox )
+                copper = nil
+                foreach( o found
+                    copper = append( copper s3dCopperPolys( o etch cadr( entry )->bBox s_endCap ) )
+                )
+                when( copper
+                    res = nil
+                    errset( res = axlPolyOperation( list( cadr( entry ) ) copper 'AND ) )
+                    foreach( p remd( nil res )
+                        when( p && !p->isHole
+                            nOut = nOut + 1
+                            unless( groups[key]
+                                groups[key] = tconc( nil nil )
+                                tconc( order key )
+                            )
+                            tconc( groups[key] p )
+                        )
+                    )
+                )
+            )
+
+            errset( axlVisibleSet( saveVis ) )
+            when( saveEnabled || saveOn
+                errset( axlSetFindFilter( ?enabled saveEnabled
+                                          ?onButtons remove( "DYNTHEMALS" saveOn ) ) )
+            )
+        )
+
+        when( nBad > 0
+            s3dWarn( sprintf( nil "Simple 3D: %d mask opening(s) on the %s could not be converted and were skipped."
+                              nBad t_side ) )
+        )
+        printf( "Simple 3D: exposed copper %s - %d drawn opening(s), %d polygon(s) of copper under them\n"
+                t_side nOpen nOut )
+        out = tconc( nil nil )
+        foreach( key cdr( car( order ) )
+            tconc( out list( key cdr( car( groups[key] ) ) ) )
+        )
+        cdr( car( out ) )
     )
 )
 
@@ -301,9 +513,11 @@ procedure( s3dCollectPads()
 ; another member (the silkscreen) follows, and so whether the closing brace
 ; takes a comma.
 procedure( s3dWritePads( p_port l_pads g_more )
-    let( ( stacks pins ( first t ) )
+    let( ( stacks pins ( first t ) exposedTop exposedBottom )
         stacks = nth( 0 l_pads )
         pins = nth( 1 l_pads )
+        exposedTop = nth( 3 l_pads )
+        exposedBottom = nth( 4 l_pads )
         fprintf( p_port "\t\"pads\": {\n" )
         fprintf( p_port "\t\t\"padstacks\": {\n" )
         foreach( s stacks
@@ -319,7 +533,17 @@ procedure( s3dWritePads( p_port l_pads g_more )
             first = nil
             fprintf( p_port "\t\t\t%s" p )
         )
-        fprintf( p_port "\n\t\t]\n" )
+        fprintf( p_port "\n\t\t],\n" )
+        ; The copper under the drawn openings, in the silkscreen's polygon
+        ; form (format_version 12) - the legend's writer, the legend's reader.
+        fprintf( p_port "\t\t\"exposed\": {\n" )
+        fprintf( p_port "\t\t\t\"top\": [\n" )
+        s3dWriteSilkPolys( p_port exposedTop )
+        fprintf( p_port "\n\t\t\t],\n" )
+        fprintf( p_port "\t\t\t\"bottom\": [\n" )
+        s3dWriteSilkPolys( p_port exposedBottom )
+        fprintf( p_port "\n\t\t\t]\n" )
+        fprintf( p_port "\t\t}\n" )
         fprintf( p_port if( g_more then "\t},\n" else "\t}\n" ) )
     )
 )

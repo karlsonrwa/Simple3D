@@ -28,7 +28,7 @@ Allegro PCB Editor (SKILL, one global namespace, loads once per session)
                                   geometry, stackup, bends, silk, pads, export - which read
                                   the database and write <design>[_<variant>].json
         │
-        │   the intermediate JSON  ("format": "simple3d", format_version 11)
+        │   the intermediate JSON  ("format": "simple3d", format_version 12)
         ▼
 Python 3.10+ / cadquery-ocp  (package stepbuilder, runs OUTSIDE Allegro)
   __main__.py   entry: window / --gui prefilled window / headless CLI, one parser
@@ -48,7 +48,7 @@ deliberate and load-bearing — see PROJECT_NOTES rounds 10b, 14 and 27.
 
 Both halves read the same settings file pair: `simple3d_config.json` (tracked,
 shipped defaults) with `simple3d_config.local.json` (gitignored, this
-installation) merged over it key by key. SKILL reads `allegro`, `silkscreen`,
+installation) merged over it key by key. SKILL reads `allegro`, `silkscreen`, `soldermask`,
 `settings`; Python reads `gui`. The window writes only the local file, and only
 the keys that differ from the default.
 
@@ -69,7 +69,7 @@ the keys that differ from the default.
 | `skill/s3d_stackup.il` | 604 | 13 | board thickness, stackups, zones, per-layer shapes |
 | `skill/s3d_bends.il` | 236 | 8 | bend lines and bend areas |
 | `skill/s3d_silk.il` | 743 | 15 | the silkscreen: config (plus `settings.exportPads`, the one config read per export), collection, clipping, the streamed writer |
-| `skill/s3d_pads.il` | 300 | 9 | the copper pads (round 85): `s3dPathContourJson` (a pad's axlPath as the primitive vocabulary, a closing arc as a circle), `s3dPadFigureJson`, `s3dIsEtchCopper`, `s3dHoleAtOrigin` (the drill at the padstack origin, through `makeSlotAt`), `s3dPadstackJson`, `s3dCollectPads` (every pin of every placed symbol + the padstack library, sorted), `s3dWritePads` (streamed, told whether the silkscreen follows) |
+| `skill/s3d_pads.il` | 520 | 15 | the copper pads (round 85): `s3dPathContourJson` (a pad's axlPath as the primitive vocabulary, a closing arc as a circle), `s3dPadFigureJson`, `s3dIsPadCopperOrMask` (ETCH pads and SOLDERMASK openings alike), `s3dHoleAtOrigin` (the drill at the padstack origin, through `makeSlotAt`), `s3dPadstackJson`, `s3dPadRowJson`, `s3dViaLayers` (every VIA CLASS subclass, for the one-pass via sweep), `s3dCollectPads` (every pin of every placed symbol, every via, the padstack library sorted, and the exposed copper), `s3dSelectInBox` / `s3dCopperPolys` / `s3dCollectExposed` (the copper under the DRAWN openings: opening polygons, the copper in each one's box with the visibility set once per side, `axlPolyOperation AND`), `s3dWritePads` (streamed: padstacks, rows, `exposed` in the legend's form; told whether the silkscreen follows) |
 | `skill/s3d_export.il` | 630 | 4 | `symbolReturn3DElements`, `makePcb`, the JSON writer, `makeVariant3dIntermediates` |
 | `simple3d.il` | 922 | 17 | settings from config, install-folder resolution, loads `makeVariant3dIntermediates.il` when it has not been loaded (so one `load()` is enough), `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, Python pre-flight, the launcher |
 | `stepbuilder/core.py` | 762 | 12 | the build as a sequence: `_prepare_stackups` → `_Stack`, `_plan_fold`, `_build_board`, `_build_legend`, `_place_components`, then `generate()` (90 lines with its docstring) that calls them in order and writes; `BuildResult`, `total_board_thickness`; and the re-exports that keep every `core.<name>` a caller ever used |
@@ -78,7 +78,7 @@ the keys that differ from the default.
 | `stepbuilder/stepdoc.py` | 89 | 6 | `StepDocument`: the XCAF app/doc, shape and colour tools, the root assembly, `set_name`, `set_color`, and `write(path, minimize_size)` with the one writer setting that halves the file, set after the writer is constructed. Round 73, plan A7 |
 | `stepbuilder/models.py` | 359 | 14 | component models: `StepFileIndex` (an ordered search path over the model folders, case-folded as the last resort), `ModelCache` (each distinct STEP read once into the document; `labels_for` says "missing" or "unreadable" once per file), `component_transform`, `_report_embedded_only`, `_sanitize`. Round 73, plan A6 |
 | `stepbuilder/legend.py` | 544 | 13 | the silkscreen legend: the arc conventions and `_pick_convention` (settled by the board's own areas), `_wire_from_vertices`, `_silk_face`, `build_silkscreen`, `_merge_coplanar`, `clip_silk_to_zones`, `DEFAULT_FLAT_HEIGHT` / `DEFAULT_SILK_THICKNESS`. Round 73, plan A5 |
-| `stepbuilder/pads.py` | 560 | 27 | the copper pads (round 85): `pin_sides` (which outer face(s) of the pin's zone its span reaches, which pad - a surface padstack's one pad, a through padstack's by layer, backwards when mirrored - and which mask opening: `mask_pads`, `_mask_for`, `has_mask_data` for a v10 library), `_pad_wire` (the outline's pieces chained end to end, each arc through its two exact ends and the exported arc's midpoint - the centre is rounded to the design's resolution), `figure_face` (that wire as a face at the origin, the donut's hole; `_settle_offset` checks bbox + offset against the outline - the outline already stands at the offset, measured on the Dell board), `pad_face` (the copper figure, the drill cut out, clipped to the mask opening's figure - `BRepAlgoAPI_Common`, one per figure - mirrored x -> -x, the normals facing out; a face or a compound of faces), `_placement` (turn, move, fold), `_Zones` (point -> outer conductors + faces), `build_pads` (one shared face per (padstack, layer, mirrored, side), instanced per pin under `pads_top` / `pads_bot`), `PadsResult` |
+| `stepbuilder/pads.py` | 560 | 27 | the copper pads (round 85): `pin_sides` (which outer face(s) of the pin's zone its span reaches, which pad - a surface padstack's one pad, a through padstack's by layer, backwards when mirrored - and which mask opening: `mask_pads`, `_mask_for`, `has_mask_data` for a v10 library), `_pad_wire` (the outline's pieces chained end to end, each arc through its two exact ends and the exported arc's midpoint - the centre is rounded to the design's resolution), `figure_face` (that wire as a face at the origin, the donut's hole; `_settle_offset` checks bbox + offset against the outline - the outline already stands at the offset, measured on the Dell board), `pad_face` (the copper figure, the drill cut out, clipped to the mask opening's figure - `BRepAlgoAPI_Common`, one per figure - mirrored x -> -x, the normals facing out; a face or a compound of faces), `_placement` (turn, move, fold), `_Zones` (point -> outer conductors + faces), `build_pads` (one shared face per (padstack, layer, mirrored, side), instanced per pin and per via under `pads_top` / `pads_bot`; covered, hidden, all-hole and v10 files told apart), `build_exposed` (the copper under drawn openings through `legend.build_silkscreen`, flat, per zone level, a micron above the pads), `PadsResult` |
 | `stepbuilder/board.py` | 633 | 14 | the board body: `make_board_geometry` (a plain board and the zone paths), `layer_solids` (THE zones×layers walk: `_layer_region` turns a drawn shape into material or an opening, each layer extruded at its own height, cutouts per layer when asked), `make_board_layer_parts` + `fuse_keeping_faces` (the inspect and layer-coloured builds), `_stackup_board` + `fuse_and_unify`, `_zone_solid`, `board_cutouts` (repeats dropped), `has_solid`, `_rim_faces`. Round 73, plan A4 |
 | `stepbuilder/stackup.py` | 223 | 8 | the stackup arithmetic, no OCC: `restack`, `drop_soldermask`, `align_stackups`, `stackup_levels`, `zone_levels`, the soldermask / conductor matchers. Round 73, plan A3 |
 | `stepbuilder/reporting.py` | 29 | 2 | `LogFn`, `ProgressFn` and the two no-ops — every stage module needs them and none may import core for them. Round 73 |
@@ -105,7 +105,7 @@ the keys that differ from the default.
 | `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
 | `tests/` (29 files) | ~5600 | — | 23 suites + `run_all.py` + `_support.py` + `skill_transliterations.py` (the Python copies of SKILL procedures the suites test against, round 80) + `fixtures/` (`pads_demo.json`, round 85: a sample of the demo board's pins with the pad boxes Allegro reports) |
 | `tools/` | ~1100 | — | five mechanical SKILL checks (`skill_checks.py` — parens, strings, calls, prog locals, undeclared assignments since round 76 — and `check_arity.py`, both over `skill_lex.py`'s comment/string/group handling since round 80), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), the SKILL exporter run headless and its own golden corpus (`skill_export.py`, round 75), a hand test that writes a property, 11 read-only Allegro probes |
-| `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
+| `simple3d_config.json` | 86 | — | five sections: `allegro`, `gui`, `silkscreen`, `soldermask` (round 85, the drawn mask openings), `settings`; `_comment_*` keys as documentation |
 
 Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
 `gui.py`, `settings.py`, `stackup.py`, `reporting.py`, `board.py`, `legend.py`,
@@ -293,11 +293,11 @@ flowchart TD
 | `load("…/tools/probes/probe_*.il")` | in Allegro, by hand | read-only diagnostics; `probe_variants.il` calls into the exporter |
 | `load("…/tools/s3d_userprop_test.il")` | in Allegro, by hand | the one file that writes to a design |
 
-### 3.2 The intermediate (format_version 11), as the reader sees it
+### 3.2 The intermediate (format_version 12), as the reader sees it
 
 ```
 {
-  "format": "simple3d", "format_version": 11, "name": "<design>[_<variant>]",
+  "format": "simple3d", "format_version": 12, "name": "<design>[_<variant>]",
   "full_board": true,                       optional, only ever true
   "warnings": [ "..." ],                    optional (2026-09-03): the exporter's lines for the window's log - a variant naming components the board lacks
   "embedded_models": ["X.step", …],          v4+
@@ -315,7 +315,8 @@ flowchart TD
   "pads": { "padstacks": { "<name>": { usage, drill: null | [prim…] (at the padstack origin, unrotated),
                                        pads: { "ETCH/<layer>": {figure, bbox, offset, inside, outline:[prim…] | null},
                                                "PIN/SOLDERMASK_<side>": {…the same, the opening…} … } } … },   masks v11
-            "pins": [ [x, y, rotation, mirrored, "<padstack>", "<start layer>", "<end layer>"] … ] },   v10 (round 85), optional
+            "pins": [ [x, y, rotation, mirrored, "<padstack>", "<start layer>", "<end layer>", "pin"|"via"] … ],   v10 (round 85), the kind v12
+            "exposed": { top:[poly…], bottom:[poly…] } },   v12: the copper under the DRAWN mask openings, in the silk poly form
   "silkscreen": { thickness, warnings:[…], top:[poly…], bottom:[poly…] }   v2+
 }
 ```

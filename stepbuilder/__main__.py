@@ -254,7 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--copper-pads", action="store_true",
         help="draw the copper of every pin's pad on the outer faces, as "
              "copper-coloured surfaces clipped to their mask openings (needs a "
-             "format_version 11 JSON; 10 draws the copper whole)",
+             "format_version 12 JSON; 11 has no copper under drawn openings, 10 draws the pads whole)",
     )
     parser.add_argument(
         "--board-mode", choices=list(BOARD_MODES), default="solid",

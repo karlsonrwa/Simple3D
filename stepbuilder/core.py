@@ -61,8 +61,9 @@ from .reporting import (  # noqa: F401 - re-exported
     LogFn, ProgressFn, _noop_log, _noop_progress,
 )
 # The copper pads (round 85): surfaces on the outer faces, one shared face
-# per figure, instanced per pin.
-from .pads import PadsResult, build_pads
+# per figure, instanced per pin; and the copper under the drawn mask
+# openings, as flat faces like the legend.
+from .pads import PadsResult, build_exposed, build_pads
 # The stackup arithmetic (round 72, plan A3); re-exported, the tests call it
 # as core.restack and friends.
 from .stackup import (  # noqa: F401 - re-exported
@@ -570,7 +571,7 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
     if not options.copper_pads:
         return None
     if not isinstance(data.get("pads"), dict):
-        log("No pads in this JSON (re-export from Allegro, format_version 11, to include them)")
+        log("No pads in this JSON (re-export from Allegro, format_version 12, to include them)")
         return PadsResult()
 
     from .colors import DEFAULT_LAYER_COLORS
@@ -600,8 +601,30 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
 
     for note in result.notes:
         log(f"warning: {note}")
-    log(f"Copper pads: {result.placed} placed on {result.pins} pin(s), "
-        f"{result.figures} distinct figure(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+    log(f"Copper pads: {result.placed} placed on {result.pins} pin(s)"
+        + (f" (of them {result.vias} via(s), {result.via_placed} untented and drawn)" if result.vias else "")
+        + f", {result.figures} distinct figure(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+
+    # The copper under the drawn openings (format_version 12), one part per
+    # side like the legend, a micron above the pads.
+    exposed = build_exposed(
+        data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
+        board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
+        lift=2.0 * abs(options.silk_flat_height), log=log)
+    if not isinstance(data["pads"].get("exposed"), dict):
+        log("note: this JSON carries no copper under drawn mask openings (format_version "
+            "11 or older); re-export from Allegro for the openings drawn as shapes or lines")
+    for side, (compound, built, skipped) in exposed.items():
+        tag = "copper_top" if side == "top" else "copper_bot"
+        if compound is None:
+            continue
+        label = shape_tool.NewShape()
+        shape_tool.SetShape(label, _folded(fold, log, compound, fuse=False, note=False))
+        document.set_color(label, (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0), options.srgb_color)
+        document.set_name(label, f"{tag}_{json_stem}")
+        shape_tool.AddComponent(document.root, label, TopLoc_Location(gp_Trsf()))
+        log(f"Exposed copper under drawn openings, {side}: {built} polygon(s)"
+            + (f", {skipped} skipped" if skipped else ""))
     if result.no_outer_face:
         log(f"  {result.no_outer_face} pin(s) reach no outer face of their zone "
             f"(an inner layer): no copper drawn for them")

@@ -110,7 +110,8 @@ for comps in (False, True):
                       and len(got["components"]) == (2 if comps else 0)
                       and (("silkscreen" in got) == silk)
                       and (("pads" in got) == pads)
-                      and (not pads or (list(got["pads"]) == ["padstacks", "pins"]
+                      and (not pads or (list(got["pads"]) == ["padstacks", "pins", "exposed"]
+                                        and list(got["pads"]["exposed"]) == ["top", "bottom"]
                                         and got["pads"]["pins"][0][4] == "P1"))
                       and keys[-1] == ("silkscreen" if silk else "pads" if pads else "components"),
                       str(keys))

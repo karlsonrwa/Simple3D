@@ -319,7 +319,10 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; and the pin placements the copper pads are drawn from; 11 carries
         ; each padstack's SOLDERMASK pads in that library beside its ETCH
         ; pads, so the reader can clip the copper to its opening - a 10 file
-        ; has no openings and the reader draws the copper whole, and says so.
+        ; has no openings and the reader draws the copper whole, and says so;
+        ; 12 adds the vias as rows (an eighth element names the kind) and
+        ; "pads.exposed", the copper under the DRAWN mask openings, in the
+        ; silkscreen's polygon form.
         ; All of them are optional to a reader - an older file simply has no
         ; layers to choose from, nothing to say about embedded models, an empty
         ; zone list, which means "ordinary single-stackup board", no bends,
@@ -330,7 +333,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; components sit beside the metadata, is still read.
         members = list(
             "\"format\": \"simple3d\""
-            "\"format_version\": 11"
+            "\"format_version\": 12"
             strcat( "\"name\": " s3dJsonQuote( variantName ) )
         )
         ; Optional, and only ever true: the whole board, variants ignored.
@@ -516,7 +519,8 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
         ; in it costs the pads and nothing else, loudly.
         pads = nil
         when( nth( 6 silkConfig )
-            unless( errset( pads = s3dCollectPads() t )
+            unless( errset( pads = s3dCollectPads( nth( 7 silkConfig ) nth( 8 silkConfig )
+                                                   nth( 4 silkConfig ) ) t )
                 s3dErr( "Simple 3D: copper pad collection failed (message above)." )
                 s3dErr( "Simple 3D: the board is still exported; only the pads are missing." )
                 pads = nil

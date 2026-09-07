@@ -50,7 +50,7 @@ STEP but knows nothing about Allegro. Everything the export decides in Allegro
 is in the file, so the model can be rebuilt — differently — without touching
 the board again.
 
-The exporter writes `format_version: 11` (10 added the optional `pads` object
+The exporter writes `format_version: 12` (10 added the optional `pads` object
 the *Copper pads* are drawn from; 11 adds each padstack's mask openings to it,
 so a pad shows only what its opening exposes). Every earlier version still builds —
 each version only ever *added* something optional — so an intermediate you kept
@@ -236,6 +236,7 @@ The keys worth setting by hand — the rest mirror controls in the window:
 | `settings` | `exportPads` | Whether the export **collects** the pads into the intermediate at all (on by default). Whether they are *drawn* is the checkbox, per build. Off saves the collection on a board where they are never wanted. |
 | | `negativeLayers` | Stackup layers whose drawn shapes are **openings** rather than material, matched as a case-insensitive substring. Coverlay, soldermask and pastemask are drawn that way by convention; stiffener, adhesive and epoxy are the opposite. Add a layer here if its bodies come out inverted — and **take one out** if a board draws it as material: Allegro's 3D Canvas guide says a coverlay is read as negative and that *"coverlays specified as positive shapes are not rendered in 3D canvas"*, so such a board exists and Allegro's own 3D just omits the layer. The log names the layer when its openings leave nothing of it in a zone. Decided at export time, so changing this needs a re-export. |
 | `silkscreen` | `top` / `bottom` | Which Allegro layers are **collected** — see *Silkscreen*. |
+| `soldermask` | `top` / `bottom` | Which layers hold **drawn mask openings** — a line or a shape there exposes the copper under it, computed at export. `BOARD GEOMETRY` and `PACKAGE GEOMETRY / SOLDERMASK_*` by default; add `MANUFACTURING/SOLDERMASK_*` or a site layer if your footprints draw their openings there. See *Copper pads*. |
 
 The rest of `gui` mirrors the window and is written back when it closes —
 `zDatum`, `boardColor`, `boardEdge`, `boardEdgeCustom`, `silkscreenTop`,
@@ -386,6 +387,8 @@ as they are to Windows itself. An exact match is always preferred.
 │   ├── pad_S_RCT_1-00_X_0-95_TOP   one face per pad figure, named after the padstack and layer
 │   └── pad_S_RCT_1-00_X_0-95_TOP   the same face instanced again, per pin
 ├── pads_bot_<board>        copper pads, bottom (a mirrored figure carries an m: pad_…_TOPm)
+├── copper_top_<board>      copper under the drawn mask openings, top  (one part per side, like a flat legend)
+├── copper_bot_<board>      the same, bottom
 ├── symbols_top_<board>     top-side components
 │   ├── cap_D8x10mm         part, named after its STEP file, placed in situ
 │   └── cap_D8x10mm         the same part instanced again if the model repeats
@@ -507,15 +510,34 @@ settled once per figure: a *solder-mask-defined* pad, whose opening is smaller
 than its copper, shows the opening's shape; a copper-defined one shows its
 copper; a pad whose padstack has no opening on that side is under the mask and
 draws nothing, counted in the log. Measured on the Dell board: 621 of 12 146
-pins are mask-defined and 101 are covered. An opening drawn in the footprint
-as a shape or a line on a `SOLDERMASK` layer, rather than in the padstack, is
-not read yet — a pad opened only that way still draws nothing, and copper that
-is not a pad (a thermal pad, a finger) is not drawn at all.
+pins are mask-defined and 101 are covered.
 
-Needs an intermediate written with `format_version` 11 (`settings.exportPads`,
-on by default, is what collects them); a `format_version` 10 file carries no
-openings and draws the copper whole, an older one draws none — the log says
-which. **Vias are not drawn** — they are tented under the mask on nearly
+**Vias, the same way.** Every via is a row like a pin's, with its padstack in
+the library, so an untented via — one whose padstack has a mask opening —
+shows its ring, and a tented one draws nothing and costs a row in the JSON.
+Cadence's demo board tents none: 1242 vias, 2484 rings; the user's boards tent
+all of theirs.
+
+**Copper under openings drawn in the footprint or on the board.** A line or a
+shape on a `SOLDERMASK` layer (the `soldermask` section of the config lists
+which layers — `BOARD GEOMETRY` and `PACKAGE GEOMETRY` by default) exposes
+whatever copper lies under it: a thermal pad drawn as a shape, a row of
+fingers, a test area, a pour. The exporter computes that copper **in
+Allegro**: each opening becomes polygons (a line opening is the line widened
+with round caps, as the legend does it), the copper on that side's outer layer
+inside the opening's box is selected — pins and vias by their pads, a pour only
+through the opening's window — and `axlPolyOperation` keeps what is under the
+opening. The result travels in the legend's own polygon form, with Allegro's
+area beside each polygon, and is built the way a flat legend is: one
+copper-coloured part per side, `copper_top_<board>` / `copper_bot_<board>`,
+faces unioned, a micron above the pads so a pad that lies under a drawn opening
+as well is covered rather than fought. Measured on a small board: 53 drawn
+openings, two of them over copper, 1.03 and 1.01 mm² of it, under a second.
+
+Needs an intermediate written with `format_version` 12 (`settings.exportPads`,
+on by default, is what collects them); an 11 file has the pads and their
+openings but no vias and nothing under drawn openings, a 10 file draws the
+copper whole, an older one draws none — the log says which. **Vias are not drawn** — they are tented under the mask on nearly
 every board — and the pads are a picture: surfaces without thickness that take
 part in no boolean.
 
@@ -643,11 +665,13 @@ so this shows only if the artwork deliberately runs a line across one.
 
 **Copper pads are a picture, not copper.** They are surfaces floating a micron
 above the mask, in the mask's own plane rather than in a window cut through it;
-they have no thickness and take part in no boolean. Only what the pins carry is
-drawn — vias are not, and a pin whose span reaches no outer face of its zone
-(a part mounted on an inner layer of a rigid zone) draws nothing and is counted
-in the log. A legend printed over a pad — a design-rule violation in Allegro —
-lands in the same plane as a flat legend and may flicker there.
+they have no thickness and take part in no boolean. What is drawn is the pins'
+and vias' pads through their padstack openings and the copper under openings
+drawn on the `SOLDERMASK` layers; a pin whose span reaches no outer face of its
+zone (a part mounted on an inner layer of a rigid zone) draws nothing and is
+counted in the log, and a trace entering a pad's opening is not drawn inside
+it. A legend printed over a pad — a design-rule violation in Allegro — lands in
+the same plane as a flat legend and may flicker there.
 
 ## Command line (without Allegro)
 
@@ -758,7 +782,7 @@ SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE �
 ничего не знает про Allegro. Всё, что экспорт выяснил в Allegro, лежит в файле —
 поэтому модель можно пересобрать иначе, не открывая плату заново.
 
-Экспорт пишет `format_version: 11` (10 добавил необязательный объект `pads`,
+Экспорт пишет `format_version: 12` (10 добавил необязательный объект `pads`,
 из которого рисуется *медь площадок*; 11 добавил в него вскрытия маски каждого
 падстека, так что площадка показывает только то, что открыто). Все предыдущие версии по-прежнему
 собираются — каждая версия только *добавляла* необязательное, — так что
@@ -945,6 +969,7 @@ JSON — ничего не записывается до конца сессии
 | `settings` | `exportPads` | **Собирать** ли площадки в интермедиат вообще (по умолчанию да). *Рисовать* ли их — галочка, решается на каждой сборке. Выключение экономит сбор на плате, где они не нужны никогда. |
 | | `negativeLayers` | Слои стека, чьи нарисованные фигуры — **окна**, а не материал; сравнение по подстроке без учёта регистра. Покрытие, маска и паста рисуются так по соглашению; стиффенер, клей и эпоксид — наоборот. Добавьте слой сюда, если его тела получаются инвертированными, — и **уберите**, если на плате он нарисован материалом: руководство по 3D Canvas говорит, что коверлей читается как негатив и что *«coverlays specified as positive shapes are not rendered in 3D canvas»*, то есть такие платы бывают и сам Allegro тогда слой просто не рисует. Лог называет слой, когда его окна не оставляют от него ничего в зоне. Решается при экспорте, поэтому смена требует переэкспорта. |
 | `silkscreen` | `top` / `bottom` | Какие слои Allegro **собираются** — см. *Шелкография*. |
+| `soldermask` | `top` / `bottom` | На каких слоях лежат **нарисованные вскрытия маски** — линия или фигура там открывает медь под собой, считается при экспорте. По умолчанию `BOARD GEOMETRY` и `PACKAGE GEOMETRY / SOLDERMASK_*`; добавьте `MANUFACTURING/SOLDERMASK_*` или свой слой, если посадочные места рисуют вскрытия там. См. *Медь площадок*. |
 
 Остальное в `gui` повторяет окно и записывается при его закрытии — `zDatum`,
 `boardColor`, `boardEdge`, `boardEdgeCustom`, `silkscreenTop`,
@@ -1094,6 +1119,8 @@ Allegro, где его набирают руками, а файл на диск�
 │   ├── pad_S_RCT_1-00_X_0-95_TOP   одна грань на фигуру площадки, по имени падстека и слоя
 │   └── pad_S_RCT_1-00_X_0-95_TOP   та же грань ещё раз, на каждый вывод
 ├── pads_bot_<плата>        медь площадок снизу (зеркальная фигура несёт m: pad_…_TOPm)
+├── copper_top_<плата>      медь под нарисованными вскрытиями маски сверху (одна деталь на сторону, как плоская легенда)
+├── copper_bot_<плата>      то же снизу
 ├── symbols_top_<плата>     компоненты верхней стороны
 │   ├── cap_D8x10mm         деталь с именем своего STEP-файла, на месте
 │   └── cap_D8x10mm         та же деталь ещё раз, если модель повторяется
@@ -1218,16 +1245,34 @@ Allegro, где его набирают руками, а файл на диск�
 *mask-defined* площадка, у которой вскрытие меньше меди, показывает форму
 вскрытия; copper-defined — свою медь; площадка, у падстека которой нет
 вскрытия с этой стороны, закрыта маской и не рисуется, это считается в логе.
-Замер на плате Dell: 621 из 12146 выводов mask-defined и 101 закрыт. Вскрытие,
-нарисованное в посадочном месте фигурой или линией на слое `SOLDERMASK`, а не
-в падстеке, пока не читается: площадка, открытая только так, всё равно не
-рисуется, а медь, не являющаяся площадкой (термопад, ламель), не рисуется
-вовсе.
+Замер на плате Dell: 621 из 12146 выводов mask-defined и 101 закрыт.
 
-Нужен интермедиат с `format_version` 11 (собирает их `settings.exportPads`,
-по умолчанию включённый); файл `format_version` 10 не несёт вскрытий и
-рисует медь целиком, более старый не рисует ничего — лог говорит, что
-именно. **Переходные отверстия не рисуются** — почти на любой плате они
+**Переходные отверстия — так же.** Каждое переходное отверстие — строка, как
+у вывода, с его падстеком в библиотеке, так что незакрытое отверстие — у
+падстека которого есть вскрытие маски — показывает своё кольцо, а закрытое не
+рисуется и стоит одной строки в JSON. Демо-плата Cadence не закрывает ни
+одного: 1242 отверстия, 2484 кольца; на платах пользователя закрыты все.
+
+**Медь под вскрытиями, нарисованными в посадочном месте или на плате.** Линия
+или фигура на слое `SOLDERMASK` (какие слои — секция `soldermask` конфига;
+по умолчанию `BOARD GEOMETRY` и `PACKAGE GEOMETRY`) открывает медь, лежащую
+под ней: термопад, нарисованный фигурой, ряд ламелей, тестовую область,
+заливку. Экспорт считает эту медь **в Allegro**: каждое вскрытие становится
+полигонами (вскрытие-линия — линия, раздутая до ширины со скруглёнными
+концами, как в легенде), медь наружного слоя этой стороны в габарите вскрытия
+выбирается — выводы и отверстия своими площадками, заливка только через окно
+вскрытия — и `axlPolyOperation` оставляет то, что под вскрытием. Результат
+едет в форме полигонов легенды, с площадью от Allegro у каждого, и строится
+как плоская легенда: одна деталь цвета меди на сторону, `copper_top_<плата>` /
+`copper_bot_<плата>`, грани слиты, на микрон выше площадок, чтобы площадка,
+попавшая ещё и под нарисованное вскрытие, была накрыта, а не мерцала. Замер
+на небольшой плате: 53 нарисованных вскрытия, два над медью, 1.03 и 1.01 мм²,
+меньше секунды.
+
+Нужен интермедиат с `format_version` 12 (собирает их `settings.exportPads`,
+по умолчанию включённый); файл 11 несёт площадки и их вскрытия, но не
+переходные отверстия и не медь под нарисованными вскрытиями, файл 10 рисует
+медь целиком, более старый не рисует ничего — лог говорит, что именно. **Переходные отверстия не рисуются** — почти на любой плате они
 закрыты маской, — а площадки остаются картинкой: поверхности без толщины,
 не участвующие в булевых операциях.
 
@@ -1355,11 +1400,13 @@ Allegro построена при `k = 0`. На плате с запасом р�
 
 **Медь площадок — картинка, а не медь.** Это поверхности на микрон над маской,
 в плоскости самой маски, а не в вырезанном в ней окне; толщины у них нет, и в
-булевых операциях они не участвуют. Рисуется только то, что несут выводы:
-переходные отверстия — нет, а вывод, чей диапазон слоёв не достигает наружной
-грани своей зоны (деталь на внутреннем слое жёсткой зоны), не рисуется и
-считается в логе. Легенда поверх площадки — в Allegro это нарушение правил —
-попадает в одну плоскость с плоской легендой и может там мерцать.
+булевых операциях они не участвуют. Рисуются площадки выводов и переходных
+отверстий сквозь вскрытия их падстеков и медь под вскрытиями, нарисованными на
+слоях `SOLDERMASK`; вывод, чей диапазон слоёв не достигает наружной грани своей
+зоны (деталь на внутреннем слое жёсткой зоны), не рисуется и считается в логе,
+а дорожка, входящая во вскрытие площадки, внутри него не рисуется. Легенда
+поверх площадки — в Allegro это нарушение правил — попадает в одну плоскость с
+плоской легендой и может там мерцать.
 
 ## Командная строка (без Allegro)
 

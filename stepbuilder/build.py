@@ -82,11 +82,12 @@ fold_slice_angle:
 copper_pads:
     Draw the copper of every pin's pad on the board's outer faces, as
     copper-coloured surfaces a micron above the mask, clipped to the
-    padstack's mask opening (format_version 11; a 10 file draws the copper
+    padstack's mask opening, plus the untented vias and the copper under the
+    drawn mask openings (format_version 12; a 10 file draws the copper
     whole, an older JSON draws none, the log says which). One shared face per
     figure, instanced per pin, so the file grows by a placement per pad
-    rather than by a body. Off by default: it is for a picture, and it is
-    only ever what the pins carry - vias are not drawn. See pads.py.
+    rather than by a body; the copper under drawn openings is flat faces
+    like the legend. Off by default: it is for a picture. See pads.py.
 """
 
 from __future__ import annotations

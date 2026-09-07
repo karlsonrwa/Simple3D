@@ -3251,10 +3251,80 @@ footprint on a SOLDERMASK layer (51 lines + 2 shapes on my_test_board2) is
 not read - a pad opened only that way draws nothing - and copper that is
 not a pad is not drawn. That is part 2, still the user's call.
 
+### Part 2: the vias, and the copper under the DRAWN openings (format_version 12)
+
+The user confirmed part 1 in Inventor ("всё на месте") and asked for part 2.
+
+**Vias** are rows like pins (`s3dPadRowJson`, an eighth element names the
+kind), from one sweep with every `VIA CLASS/<sub>` subclass visible
+(`s3dViaLayers` over `axlSubclasses`, the idiom AllegroBaseStructure
+settled: each via once). The reader treats a via as a pin without a symbol:
+same padstack rules, and a tented via - no mask pad - is covered and draws
+nothing, so a board that tents pays a row per via and no geometry. The demo
+tents none: 1242 vias, 2484 rings, +1.7 MB; my_test_board2 has 209 vias,
+191 of them `TVE1H1` - an SMD padstack with no drill used as a via - all
+covered; variants_test-b0 65, all covered.
+
+**Drawn openings** (`s3dCollectExposed`): the objects on the `soldermask`
+config section's layers (`BOARD GEOMETRY` and `PACKAGE GEOMETRY /
+SOLDERMASK_<side>` by default) become polygons through the silkscreen's
+`s3dPolysFromDbid` (a line opening widened with round caps); then, with the
+visibility set ONCE per side to `ETCH/<side>` + `PIN/<side>` + `VIA
+CLASS/<side>` and the find filter to clines / shapes / pins / vias, each
+opening's box is selected (`axlAddSelectBox` with BOTH corners - one or
+none is a pick prompt), the objects converted (`s3dCopperPolys`: pins and
+vias by `axlPolyFromDB ?layer`, shapes through `?window`, clines per
+segment) and `axlPolyOperation AND` keeps what is under the opening. The
+result goes into `pads.exposed.{top,bottom}` in the silkscreen's vertex form
+with Allegro's area per polygon, and the reader builds it with
+`legend.build_silkscreen` in flat mode - the arc convention scored against
+the areas, the faces unioned - as one part per side, `copper_top_<stem>` /
+`copper_bot_<stem>`, lifted TWICE the pads' micron so a pad that also lies
+under a drawn opening is covered rather than fought; per zone level on a
+rigid-flex board. Measured: my_test_board2 53 openings on top -> 2 polygons
+(1.0318 and 1.0073 mm2, the probe's own numbers), the demo 36 -> 10 and 26
+-> 0, variants 58 on the bottom -> 6; export times 35 / 31 / 25 s. Open:
+the 51 LINE openings of my_test_board2 expose nothing - true, or the sweep
+misses their copper? `tools/probes/probe_openings.il` (REQUIRES the
+exporter, `--with-exporter`) answers per opening, and could not be run - see
+below.
+
+Tests: test_pads [1] mask triples, [2b] six clipping cases, [5] an untented
+and a tented via, one exposed polygon (built, area-checked, named), a v11
+file (note, no exposed part), a v10 library; test_emit's transliteration
+carries the `exposed` shape. Docs: README (both halves), CHANGELOG,
+ARCHITECTURE, config (`soldermask` section), QUICKSTART.
+
+**Why the headless probes hung.** Four times that day a probe sat ten
+minutes and never printed its first line, while the same code in parts ran
+in 20 s. `tools/run_probe.py` now streams the console straight to its file,
+and the file said it: Allegro X's AI widget (QtWebEngine, `XAIWidget`)
+cannot take its cache and cookie database under
+`%LOCALAPPDATA%\allegro\cache\QtWebEngine\` - "database is locked" -
+because the user's own interactive Allegro holds it (two `allegro.exe` on
+their Nivelir boards were open), and the `-nograph` session stalls before
+the `.scr` runs. Every hang lines up with their Allegro being open; every
+success with it closed. Check `tasklist` for another `allegro.exe` before
+a headless run; never kill one that is not yours.
+
+**Answered for the user, with numbers:** why the legend is one surface body
+in Inventor and the pads many - the legend side is ONE part holding a
+unioned compound of faces, every pad a shared part instanced per pin, and
+Inventor shows a part per occurrence. And whether the legend could be
+instanced like the pads: on the demo the legend IS the file - 1.34 MB
+without it, 20.1 MB flat, 93.8 MB solid - but of its 2287 polygons only the
+431 on PACKAGE GEOMETRY repeat per footprint (40 models for 357 parts), and
+they carry 6% of the vertices; REF DES text is 68% and unique per string,
+AUTOSILK 25% and DFM-trimmed per instance (the user's own point). Instancing
+the package outlines would save about 6% of the legend; sharing glyphs of
+the stroke font would be the real saving and is a different project.
+
 ### Not verified
 
-- The user's Inventor view of the board with the closed rounded rectangles
-  and the mask-clipped pads.
+- The user's Inventor view of the board with the closed rounded rectangles,
+  the mask-clipped pads, the via rings and the exposed copper.
+- The 51 line openings of my_test_board2 that expose no copper - see above;
+  `probe_openings.il` when the user's Allegro is closed.
 - A mirrored through pin whose padstack has different TOP and BOTTOM pads
   (none on five boards) - handled by rule, not measured.
 - Vias: deliberately out. If a board needs them, the same library serves:

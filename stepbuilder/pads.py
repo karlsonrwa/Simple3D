@@ -507,6 +507,8 @@ class PadsResult:
     hidden: int = 0                 # placements whose opening misses the copper entirely
     mask_defined: int = 0           # distinct figures whose opening is smaller than the copper
     no_mask_data: bool = False      # a format_version 10 library: no openings known, copper drawn whole
+    vias: int = 0                   # via rows read (format_version 12)
+    via_placed: int = 0             # of the placements, those that are vias - untented ones
     in_bend: int = 0                # pins standing in a bend area
     notes: list[str] = field(default_factory=list)
 
@@ -583,9 +585,16 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
             name = str(row[4])
             pin = {"mirrored": mirrored, "start": row[5] if len(row) > 5 else None,
                    "end": row[6] if len(row) > 6 else None}
+            # An eighth element names the kind since format_version 12; a
+            # row without one is a pin. A via is a pin with no symbol: the
+            # same padstack rules, and a tented one has no mask pad and
+            # draws nothing.
+            is_via = len(row) > 7 and str(row[7]).lower() == "via"
         except (TypeError, ValueError, IndexError):
             continue
         result.pins += 1
+        if is_via:
+            result.vias += 1
         padstack = library.get(name)
         if not isinstance(padstack, dict):
             result.no_padstack += 1
@@ -660,5 +669,71 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
             shape_tool.AddComponent(group_for("pads_top" if face_side == "top" else "pads_bot"),
                                     label, TopLoc_Location(trsf))
             result.placed += 1
+            if is_via:
+                result.via_placed += 1
 
     return result
+
+
+# --------------------------------------------------------------------------- #
+# the copper under the drawn mask openings (format_version 12)
+# --------------------------------------------------------------------------- #
+
+def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bottom_z,
+                  lift: float, log: LogFn = _noop_log) -> dict[str, tuple]:
+    """The copper the DRAWN mask openings expose, per side, as flat faces.
+
+    `pads.exposed.top` / `.bottom` are polygons in the silkscreen's vertex
+    form - the exporter computed opening AND copper in Allegro and wrote the
+    result the way it writes the legend - so they are built with the
+    legend's own machinery: `build_silkscreen` in flat mode, the arc reading
+    scored against Allegro's areas, the faces unioned. Lifted *lift* above
+    the outer face (the caller passes twice the pads' lift, so a pad that
+    lies under a drawn opening as well is covered by this, not fought).
+
+    On a board with zones each polygon is built at the level of the zone it
+    stands in, by its centroid; a plain board has one level.
+
+    Returns {side: (compound or None, built, skipped)} for the sides the
+    file carries.
+    """
+    from .legend import _silk_point, build_silkscreen
+
+    pads = data.get("pads")
+    exposed = pads.get("exposed") if isinstance(pads, dict) else None
+    if not isinstance(exposed, dict):
+        return {}
+    where = _Zones(zones, stackups, levels, board_top_z, board_bottom_z)
+    out = {}
+    for side, sign in (("top", 1.0), ("bottom", -1.0)):
+        polygons = [p for p in (exposed.get(side) or []) if isinstance(p, dict)]
+        if not polygons:
+            continue
+        # group by the level of the zone each polygon stands in
+        groups: dict[float, list] = {}
+        for polygon in polygons:
+            point = _silk_point(polygon)
+            faces = where.at(*point)[1] if point else where.default[1]
+            z = faces[0] if side == "top" else faces[1]
+            groups.setdefault(z, []).append(polygon)
+        pieces, built, skipped = [], 0, 0
+        for z, group in groups.items():
+            compound, n_built, n_skipped = build_silkscreen(
+                group, z, 0.0, log=log, side=f"copper_{side}", flat=True,
+                flat_offset=sign * abs(lift))
+            built += n_built
+            skipped += n_skipped
+            if compound is not None:
+                pieces.append(compound)
+        if not pieces:
+            out[side] = (None, built, skipped)
+        elif len(pieces) == 1:
+            out[side] = (pieces[0], built, skipped)
+        else:
+            builder = BRep_Builder()
+            compound = TopoDS_Compound()
+            builder.MakeCompound(compound)
+            for piece in pieces:
+                builder.Add(compound, piece)
+            out[side] = (compound, built, skipped)
+    return out

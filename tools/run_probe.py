@@ -67,17 +67,19 @@ def run(probe: Path, proc: str, brd: Path, out_dir: Path, allegro: Path,
         cmd = [str(allegro), "-nograph", "-s", slashes(scr), slashes(copy)]
         t0 = time.time()
         print(f"  {brd.name} ({brd.stat().st_size / 1e6:.1f} MB) {proc} ...", end="", flush=True)
-        try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT,
-                               errors="replace")
-            console = (r.stdout or "") + (r.stderr or "")
-            rc: int | str = r.returncode
-        except subprocess.TimeoutExpired as exc:
-            console = ((exc.stdout or b"").decode("utf-8", "replace")
-                       + (exc.stderr or b"").decode("utf-8", "replace"))
-            rc = f"TIMED OUT after {TIMEOUT}s"
+        # The console goes STRAIGHT to the result file, not through a pipe
+        # read at the end: a session that hangs then still leaves everything
+        # it printed before it stopped, which is the one clue there is. A
+        # probe that wants its lines there at once follows each printf with
+        # drain( poport ).
         result = out_dir / f"{brd.stem}.{proc}.txt"
-        result.write_text(console, encoding="utf-8")
+        with open(result, "w", encoding="utf-8", errors="replace") as console:
+            try:
+                r = subprocess.run(cmd, stdout=console, stderr=subprocess.STDOUT,
+                                   timeout=TIMEOUT)
+                rc: int | str = r.returncode
+            except subprocess.TimeoutExpired:
+                rc = f"TIMED OUT after {TIMEOUT}s"
         print(f" exit {rc} in {time.time() - t0:.0f}s -> {result}")
         return result
     finally:

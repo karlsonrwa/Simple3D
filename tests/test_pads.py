@@ -313,12 +313,24 @@ board = {"format": "simple3d", "format_version": 10, "name": "padboard",
              {"name": "BOTTOM", "type": "CONDUCTOR", "thickness": 0.045, "z_top": -1.009, "z_bottom": -1.054, "shapes": None},
              {"name": "SOLDERMASK_BOTTOM", "type": "MASK", "thickness": 0.025, "z_top": -1.054, "z_bottom": -1.079, "shapes": None}]}},
          "zones": [], "components": {},
-         "pads": {"padstacks": {"SMD": smd, "THRU": thru, "BARE": bare},
+         "pads": {"padstacks": {"SMD": smd, "THRU": thru, "BARE": bare,
+                                # an untented via: a mask pad on top only; a tented one: none
+                                "VIA": {"usage": "Via", "drill": circle(0.15),
+                                        "pads": {"ETCH/TOP": DISC, "ETCH/BOTTOM": DISC, "PIN/SOLDERMASK_TOP": MASK}},
+                                "TENTED": {"usage": "Via", "drill": circle(0.15),
+                                           "pads": {"ETCH/TOP": DISC, "ETCH/BOTTOM": DISC}}},
                   "pins": [[2.0, 2.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],
                            [2.0, 8.0, 90.0, True, "SMD", "ETCH/BOTTOM", "ETCH/BOTTOM"],
                            [5.0, 5.0, 0.0, False, "THRU", "ETCH/TOP", "ETCH/BOTTOM"],
                            [15.0, 5.0, 0.0, False, "NOSUCH", "ETCH/TOP", "ETCH/TOP"],
-                           [12.0, 2.0, 0.0, False, "BARE", "ETCH/TOP", "ETCH/TOP"]]}}
+                           [12.0, 2.0, 0.0, False, "BARE", "ETCH/TOP", "ETCH/TOP"],
+                           [17.0, 8.0, 0.0, False, "VIA", "ETCH/TOP", "ETCH/BOTTOM", "via"],
+                           [17.0, 2.0, 0.0, False, "TENTED", "ETCH/TOP", "ETCH/BOTTOM", "via"]],
+                  # the copper under a drawn opening, as the exporter writes it:
+                  # a 3 x 2 rectangle at (8, 8), Allegro's own area beside it
+                  "exposed": {"top": [{"layer": "PACKAGE GEOMETRY/SOLDERMASK_TOP", "area": 6.0,
+                                       "vertices": [[8, 8, 0], [11, 8, 0], [11, 10, 0], [8, 10, 0]]}],
+                              "bottom": []}}}
 jf = OUT / "padboard.json"
 jf.write_text(json.dumps(board))
 
@@ -331,10 +343,19 @@ def build(name, **kw):
 
 
 res, logs, text = build("pads_on", copper_pads=True)
-check("four pad faces placed: two surface pins, a through pin on both faces",
-      res.pads_placed == 4 and res.pads_figures == 4, (res.pads_placed, res.pads_figures))
+check("five pad faces placed: two surface pins, a through pin on both faces, the untented via on top",
+      res.pads_placed == 5 and res.pads_figures == 5, (res.pads_placed, res.pads_figures))
+check("the via is a pin with no symbol: the log counts it, and the tented one draws nothing",
+      "pad_VIA_TOP" in text and "pad_TENTED" not in text
+      and any("2 via(s), 1 untented" in m for m in logs), [m for m in logs if "via" in m])
+check("the copper under the drawn opening is one part per side, copper-coloured, named",
+      "copper_top_pads_on" in text and "copper_bot_pads_on" not in text
+      and any("Exposed copper under drawn openings, top: 1 polygon(s)" in m for m in logs),
+      [m for m in logs if "xposed" in m])
+check("its area is checked against Allegro's like the legend's",
+      any("copper_top: 1 polygon(s) match Allegro's areas" in m for m in logs), [m for m in logs if "copper_top" in m])
 check("the pin whose padstack has no mask opening is under the mask: not drawn, and said",
-      "pad_BARE" not in text and any("1 pad(s) have no mask opening" in m for m in logs),
+      "pad_BARE" not in text and any("4 pad(s) have no mask opening" in m for m in logs),
       [m for m in logs if "mask" in m])
 check("no v10 note on a v11 library", not any("carries no mask openings" in m for m in logs))
 
@@ -345,10 +366,21 @@ for ps in v10["pads"]["padstacks"].values():
     ps["pads"] = {l: p for l, p in ps["pads"].items() if "SOLDERMASK" not in l}
 jf.write_text(json.dumps(v10))
 res10, logs10, text10 = build("pads_v10", copper_pads=True)
-check("a v10 library draws every pad whole, the bare one included",
-      res10.pads_placed == 5 and "pad_BARE" in text10, (res10.pads_placed, [m for m in logs10 if "pads" in m]))
+check("a v10 library draws every pad whole, the bare one and both vias included",
+      res10.pads_placed == 9 and "pad_BARE" in text10 and "pad_TENTED" in text10,
+      (res10.pads_placed, [m for m in logs10 if "pads" in m]))
 check("and says that the openings are not in the file",
       any("carries no mask openings" in m for m in logs10), logs10[-6:])
+
+# A format_version 11 file has the openings but not the copper under the
+# drawn ones: built as before, and the log says what a re-export would add.
+v11 = json.loads(json.dumps(board))
+del v11["pads"]["exposed"]
+jf.write_text(json.dumps(v11))
+res11, logs11, text11 = build("pads_v11", copper_pads=True)
+check("a v11 file: the pads as before, no exposed copper, and a note",
+      res11.pads_placed == 5 and "copper_top" not in text11
+      and any("carries no copper under drawn mask openings" in m for m in logs11), logs11[-5:])
 jf.write_text(json.dumps(board))
 check("the pin with an unknown padstack is counted, not fatal", res.pads_skipped == 1
       and any("name a padstack" in m for m in logs), (res.pads_skipped, [m for m in logs if "padstack" in m]))
@@ -357,7 +389,7 @@ check("pads_top and pads_bot are nodes of the assembly, named per board",
 check("the figures are parts named after the padstack and layer",
       "pad_SMD_TOP" in text and "pad_SMD_TOPm" in text and "pad_THRU_TOP" in text and "pad_THRU_BOTTOM" in text)
 check("the board is still one solid - no boolean touched it", count_solids(read_step(OUT / "pads_on.step")) == 1)
-check("the log says what was placed", any("Copper pads: 4 placed" in m for m in logs), logs[-6:])
+check("the log says what was placed", any("Copper pads: 5 placed" in m for m in logs), logs[-6:])
 
 res2, logs2, text2 = build("pads_off", copper_pads=False)
 check("off: nothing placed, nothing in the file, nothing said",
@@ -368,14 +400,14 @@ check("off: nothing placed, nothing in the file, nothing said",
 # Instanced, not copied: a second pin on the same figure costs a placement,
 # not a face. Measured on the demo board's 2906 placements of 83 figures.
 more = json.loads(json.dumps(board))
-more["pads"]["pins"] += [[x + 0.0, y + 1.0, r, m, n, s, e] for x, y, r, m, n, s, e in board["pads"]["pins"]]
+more["pads"]["pins"] += [[x + 0.0, y + 1.0] + rest for x, y, *rest in board["pads"]["pins"]]
 jf.write_text(json.dumps(more))
 res_more, _, _ = build("pads_more", copper_pads=True)
 size_on = (OUT / "pads_on.step").stat().st_size
 size_more = (OUT / "pads_more.step").stat().st_size
 per_placement = (size_more - size_on) / max(res_more.pads_placed - res.pads_placed, 1)
 check(f"twice the pins, the same figures: {res_more.pads_figures} figures still",
-      res_more.pads_placed == 8 and res_more.pads_figures == 4, (res_more.pads_placed, res_more.pads_figures))
+      res_more.pads_placed == 10 and res_more.pads_figures == 5, (res_more.pads_placed, res_more.pads_figures))
 check(f"and each extra placement costs under 1.5 kB ({per_placement:.0f} bytes)", 0 < per_placement < 1500)
 jf.write_text(json.dumps(board))
 

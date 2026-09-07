@@ -35,11 +35,16 @@ to use the tool.
   own mask opening travels beside the copper, and a solder-mask-defined
   pad shows the opening's shape, a copper-defined one its copper, a pad
   with no opening nothing (Dell: 621 mask-defined and 101 covered of
-  12 146 pins). An opening drawn in the footprint on a SOLDERMASK layer
-  rather than in the padstack is not read yet. The exporter now writes
-  `format_version` 11 with a `pads` object (`settings.exportPads`, on by
-  default); a 10 file draws the copper whole and an older one none - the
-  log says which. Off by default; vias are not drawn.
+  12 146 pins). Vias are rows like pins, so an untented via shows its ring
+  and a tented one draws nothing (the demo tents none: 2484 rings). An
+  opening drawn in the footprint or on the board - a line or a shape on a
+  SOLDERMASK layer, the `soldermask` section of the config says which -
+  exposes the copper under it: computed in Allegro with `axlPolyOperation`
+  and built like a flat legend, one part per side (`copper_top_<board>`),
+  a micron above the pads. The exporter now writes `format_version` 12
+  with a `pads` object (`settings.exportPads`, on by default); an 11 file
+  has no vias and nothing under drawn openings, a 10 file draws the copper
+  whole and an older one none - the log says which. Off by default.
   / **Медь площадок, поверхностями.** Новая галочка *Copper pads (as
   surfaces)* рисует медь площадок всех выводов на двух наружных гранях
   цветом меди, на микрон над маской, — чтобы модель читалась как плата с
@@ -65,11 +70,17 @@ to use the tool.
   вскрытие из самого падстека едет рядом с медью, и mask-defined площадка
   показывает форму вскрытия, copper-defined — свою медь, площадка без
   вскрытия — ничего (Dell: 621 mask-defined и 101 закрытая из 12146).
-  Вскрытие, нарисованное в посадочном месте на слое SOLDERMASK, а не в
-  падстеке, пока не читается. Экспорт теперь пишет `format_version` 11 с
-  объектом `pads` (`settings.exportPads`, по умолчанию включено); файл 10
-  рисует медь целиком, более старый — ничего, лог говорит, что именно. По
-  умолчанию выключено; переходные отверстия не рисуются.
+  Переходные отверстия — такие же строки, как выводы: незакрытое показывает
+  кольцо, закрытое не рисуется (демо не закрывает ни одного: 2484 кольца).
+  Вскрытие, нарисованное в посадочном месте или на плате — линия или фигура
+  на слое SOLDERMASK, секция `soldermask` конфига говорит, на каких, —
+  открывает медь под собой: считается в Allegro через `axlPolyOperation` и
+  строится как плоская легенда, одна деталь на сторону
+  (`copper_top_<плата>`), на микрон выше площадок. Экспорт теперь пишет
+  `format_version` 12 с объектом `pads` (`settings.exportPads`, по
+  умолчанию включено); файл 11 не несёт отверстий и меди под нарисованными
+  вскрытиями, файл 10 рисует медь целиком, более старый — ничего, лог
+  говорит, что именно. По умолчанию выключено.
 
 - **2026-09-06** — **A flex layer no longer loses a corner where its zone
   contour carries a hairline.** On flex2-a0 the FLEX zone's outline, as
