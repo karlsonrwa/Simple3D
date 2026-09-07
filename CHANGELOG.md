@@ -41,7 +41,10 @@ to use the tool.
   text on a SOLDERMASK layer, the `soldermask` section of the config says which -
   exposes the copper under it: computed in Allegro with `axlPolyOperation`
   and built like a flat legend, one part per side (`copper_top_<board>`),
-  a micron above the pads. The exporter now writes `format_version` 12
+  a micron above the pads - and the bare laminate it shows where there is
+  no copper (a label cut into the mask as strokes) comes the same way, in
+  the dielectric's colour (`bare_top_<board>`), so the label is in the
+  model. The exporter now writes `format_version` 12
   with a `pads` object (`settings.exportPads`, on by default); an 11 file
   has no vias and nothing under drawn openings, a 10 file draws the copper
   whole and an older one none - the log says which. Off by default.
@@ -77,7 +80,10 @@ to use the tool.
   каких, —
   открывает медь под собой: считается в Allegro через `axlPolyOperation` и
   строится как плоская легенда, одна деталь на сторону
-  (`copper_top_<плата>`), на микрон выше площадок. Экспорт теперь пишет
+  (`copper_top_<плата>`), на микрон выше площадок, — а голый текстолит,
+  который оно показывает там, где меди нет (надпись, прорезанная в маске
+  штрихами), едет так же, цветом диэлектрика (`bare_top_<плата>`), и
+  надпись есть в модели. Экспорт теперь пишет
   `format_version` 12 с объектом `pads` (`settings.exportPads`, по
   умолчанию включено); файл 11 не несёт отверстий и меди под нарисованными
   вскрытиями, файл 10 рисует медь целиком, более старый — ничего, лог

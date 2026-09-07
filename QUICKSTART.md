@@ -67,8 +67,9 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   faces, as copper-coloured surfaces a micron above the mask. Off by default;
   needs a JSON exported with this version (`format_version` 12). Only what
   the mask exposes: a mask-defined pad shows its opening, a covered pad
-  nothing; untented vias and the copper under openings drawn on the
-  `SOLDERMASK` layers are drawn too (README, *Copper pads*).
+  nothing; untented vias, the copper under openings drawn on the
+  `SOLDERMASK` layers and the bare laminate those openings show (a label
+  cut into the mask) are drawn too (README, *Copper pads*).
 
 **Silk options**
 - **Top**/**Bottom** tickboxes, **White/Black** for the ink, and on its own line
@@ -206,7 +207,11 @@ builds it.
 - **Copper pads (as surfaces)** — медь площадок всех выводов на наружных
   гранях, поверхностями цвета меди на микрон над маской. По умолчанию
   выключено; нужен JSON, экспортированный этой версией (`format_version` 12).
-  Переходные отверстия не рисуются (README, *Медь площадок*).
+  Рисуется только то, что открыто маской: mask-defined площадка показывает
+  своё вскрытие, закрытая — ничего; незакрытые переходные отверстия, медь под
+  вскрытиями, нарисованными на слоях `SOLDERMASK`, и голый текстолит в этих
+  вскрытиях (надпись, прорезанная в маске) рисуются тоже (README, *Медь
+  площадок*).
 
 **Silk options**
 - Галочки **Top**/**Bottom**, цвет **White/Black**, отдельной строкой

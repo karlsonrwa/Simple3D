@@ -330,7 +330,12 @@ board = {"format": "simple3d", "format_version": 10, "name": "padboard",
                   # a 3 x 2 rectangle at (8, 8), Allegro's own area beside it
                   "exposed": {"top": [{"layer": "PACKAGE GEOMETRY/SOLDERMASK_TOP", "area": 6.0,
                                        "vertices": [[8, 8, 0], [11, 8, 0], [11, 10, 0], [8, 10, 0]]}],
-                              "bottom": []}}}
+                              "bottom": []},
+                  # and the laminate an opening shows where no copper is: a
+                  # part number cut into the mask, on the bottom here
+                  "bare": {"top": [],
+                           "bottom": [{"layer": "BOARD GEOMETRY/SOLDERMASK_BOTTOM", "area": 1.0,
+                                       "vertices": [[3, 3, 0], [4, 3, 0], [4, 4, 0], [3, 4, 0]]}]}}}
 jf = OUT / "padboard.json"
 jf.write_text(json.dumps(board))
 
@@ -354,6 +359,10 @@ check("the copper under the drawn opening is one part per side, copper-coloured,
       [m for m in logs if "xposed" in m])
 check("its area is checked against Allegro's like the legend's",
       any("copper_top: 1 polygon(s) match Allegro's areas" in m for m in logs), [m for m in logs if "copper_top" in m])
+check("the bare laminate in an opening is its own part per side, in the dielectric's colour",
+      "bare_bot_pads_on" in text and "bare_top_pads_on" not in text
+      and any("Bare laminate in drawn openings, bottom: 1 polygon(s)" in m for m in logs),
+      [m for m in logs if "Bare" in m])
 check("the pin whose padstack has no mask opening is under the mask: not drawn, and said",
       "pad_BARE" not in text and any("4 pad(s) have no mask opening" in m for m in logs),
       [m for m in logs if "mask" in m])

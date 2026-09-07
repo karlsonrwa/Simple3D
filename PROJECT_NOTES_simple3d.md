@@ -3339,17 +3339,45 @@ scratch copy, and runs the exporter. Measured: 60 openings instead of 53,
 6 polygons of copper instead of 2 - the four strokes that cross the pour,
 0.0037 to 0.045 mm2 - and the reader rebuilt all six to Allegro's areas.
 
+**The label that did not export - bare laminate in the drawn openings.**
+The user built my_test_board2 with the pads on and saw no label. Right:
+its 51 strokes on `PACKAGE GEOMETRY/SOLDERMASK_TOP` lie over bare
+laminate, and "the copper under the openings" is, by definition, nothing
+there - true, and useless for the picture the feature exists for. So
+`s3dCollectExposed` now keeps the remainder of each opening as well:
+`axlPolyOperation( list(opening) copper 'ANDNOT )`, the whole opening when
+its box held no copper at all; it returns `list( copper bare )` per side
+and `s3dWritePads` writes `pads.bare.{top,bottom}` after `exposed`, the
+same vertex form, Allegro's area per polygon. The reader's `build_exposed`
+took a `section` argument and `_build_pads` runs it twice: the copper in
+the copper colour as `copper_<side>_<stem>`, the laminate in the palette's
+`base` colour (Allegro's dielectric colour) as `bare_<side>_<stem>`, both
+at 2h - they cannot overlap, one is the other's complement inside the
+opening. A v12 file written before this (the user's export of the morning)
+gets a note asking for a re-export. Measured, my_test_board2 exported from
+a copy with absolute paths: 53 openings on top -> 2 polygons of copper as
+before and 53 of laminate, 13.47 mm2 (the two openings over the pour keep
+a bare rim), built in 1.9 s into a 2.79 MB file, all 53 matching Allegro's
+areas, `bare_top_my_test_board2` in the assembly and no bottom part. Tests:
+test_pads [5] a bare polygon on the bottom only (`bare_bot_pads_on`, no
+top part, the log line), test_emit's key list
+`["padstacks", "pins", "exposed", "bare"]` and the transliteration's stub.
+
 What is still NOT drawn, said to the user: copper other than the pad inside
 a padstack's own opening (the trace neck and the thermal spokes in a
 copper-defined pad's ring - per-pin booleans and no instancing to get it,
-5.9 MB against 2.1 on the demo, for slivers); coverlay openings and
-coverlay-side copper on a rigid-flex; layers not in the `soldermask`
-section; rectangles, unchecked.
+5.9 MB against 2.1 on the demo, for slivers); the ring of a padstack's own
+opening around a copper-defined pad as bare laminate (per FIGURE it would
+be opening ANDNOT copper - one more shared face, instanced, cheap - but
+not asked for; only the DRAWN openings get the laminate); coverlay
+openings and coverlay-side copper on a rigid-flex; layers not in the
+`soldermask` section; rectangles, unchecked.
 
 ### Not verified
 
 - The user's Inventor view of the board with the closed rounded rectangles,
-  the mask-clipped pads, the via rings and the exposed copper.
+  the mask-clipped pads, the via rings, the exposed copper and the label as
+  bare laminate.
 - A mirrored through pin whose padstack has different TOP and BOTTOM pads
   (none on five boards) - handled by rule, not measured.
 - Vias: deliberately out. If a board needs them, the same library serves:

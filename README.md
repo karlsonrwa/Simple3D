@@ -179,7 +179,7 @@ Most controls say what they do. These are the ones worth knowing about:
 | **Make surface** | The legend as surfaces rather than thin solids: about a quarter of its file size. The ink then has no thickness and cannot be used in boolean work. |
 | **Silkscreen layers** | A tick per layer *found in this JSON*, with its polygon count. Untick and press Generate again — no re-export needed. |
 | **Fold flex bends** | Fold along the bend areas. Off exports the board flat. Does nothing on a board without them. |
-| **Copper pads (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces a micron above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Only what the mask opening exposes is drawn: a solder-mask-defined pad shows its opening's shape, a pad with no opening shows nothing. Needs a JSON written with `format_version` 11 (10 draws the copper whole, an older one draws none; the log says which). Vias are not drawn. See *Copper pads*. |
+| **Copper pads (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces a micron above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Only what the mask opening exposes is drawn: a solder-mask-defined pad shows its opening's shape, a pad with no opening shows nothing, an untented via its ring, a tented one nothing. Openings drawn on the `SOLDERMASK` layers add the copper under them and the bare laminate they show (a label cut into the mask), one flat part per side each. Needs a JSON written with `format_version` 12 (11 has no vias and nothing under drawn openings, 10 draws the copper whole, an older one draws none; the log says which). See *Copper pads*. |
 | **Compact STEP** | Drops parametric surface curves — roughly half the file, identical geometry. |
 | **Build the full-board file too** | With a folder queued, whether the batch also builds `<board>.json` — the whole board, variants ignored (`settings.exportFullBoard` is what writes it). A file you point at directly is always built: choosing it is choice enough. |
 | **Generate** / **Cancel** | While a build runs every other control is greyed out — a snapshot of the settings has already been taken, so changing them mid-build would only look as if it did something — and this button becomes **Cancel**. Cancelling kills the build outright, which is the only thing that works on a boolean that has been inside OCCT for a minute; the file being written at that moment may be left incomplete, and the log says so. |
@@ -389,6 +389,8 @@ as they are to Windows itself. An exact match is always preferred.
 ├── pads_bot_<board>        copper pads, bottom (a mirrored figure carries an m: pad_…_TOPm)
 ├── copper_top_<board>      copper under the drawn mask openings, top  (one part per side, like a flat legend)
 ├── copper_bot_<board>      the same, bottom
+├── bare_top_<board>        bare laminate those openings show, top      (a label cut into the mask; base colour)
+├── bare_bot_<board>        the same, bottom
 ├── symbols_top_<board>     top-side components
 │   ├── cap_D8x10mm         part, named after its STEP file, placed in situ
 │   └── cap_D8x10mm         the same part instanced again if the model repeats
@@ -535,12 +537,27 @@ faces unioned, a micron above the pads so a pad that lies under a drawn opening
 as well is covered rather than fought. Measured on a small board: 53 drawn
 openings, two of them over copper, 1.03 and 1.01 mm² of it, under a second.
 
+**Bare laminate in those openings.** An opening drawn over no copper — a part
+number or a label cut into the mask as line strokes, the ring of an opening
+drawn wider than its pad — shows the dielectric, and copper alone drew nothing
+there: the label was simply missing from the model. So the export also keeps
+what is left of each opening once its copper is taken away (`axlPolyOperation
+ANDNOT`; the whole opening when there is no copper under it), and it is built
+the same way, one part per side in the `base` colour of *layerColors*,
+`bare_top_<board>` / `bare_bot_<board>`, at the copper's height — the two never
+overlap, one is the other's complement inside the opening. On the same small
+board the 53 openings are the 51 strokes of a label over bare laminate and two
+shapes over the pour: 53 polygons of laminate, 13.5 mm², beside the two of
+copper, all rebuilt to Allegro's areas.
+
 Needs an intermediate written with `format_version` 12 (`settings.exportPads`,
 on by default, is what collects them); an 11 file has the pads and their
 openings but no vias and nothing under drawn openings, a 10 file draws the
-copper whole, an older one draws none — the log says which. **Vias are not drawn** — they are tented under the mask on nearly
-every board — and the pads are a picture: surfaces without thickness that take
-part in no boolean.
+copper whole, an older one draws none, and a 12 file written before the bare
+laminate was added has the copper under the openings but not the laminate —
+the log says which, and a re-export cures each. **A tented via draws nothing** — and that is nearly every via
+on nearly every board — and the pads are a picture: surfaces without thickness
+that take part in no boolean.
 
 ## Multi-stackup and rigid-flex
 
@@ -671,7 +688,9 @@ and vias' pads through their padstack openings and the copper under openings
 drawn on the `SOLDERMASK` layers; a pin whose span reaches no outer face of its
 zone (a part mounted on an inner layer of a rigid zone) draws nothing and is
 counted in the log, and a trace entering a pad's opening is not drawn inside
-it. A legend printed over a pad — a design-rule violation in Allegro — lands in
+it; the ring of a padstack's own opening around a copper-defined pad is not
+drawn as laminate either — only openings drawn on the layers get that. A
+legend printed over a pad — a design-rule violation in Allegro — lands in
 the same plane as a flat legend and may flicker there.
 
 ## Command line (without Allegro)
@@ -914,7 +933,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **Make surface** | Легенда поверхностями, а не тонкими телами: примерно четверть её объёма в файле. Толщины у краски тогда нет, и в булевых операциях она не участвует. |
 | **Silkscreen layers** | Галочка на каждый слой, *найденный в этом JSON*, с числом полигонов. Снимите и нажмите Generate снова — повторный экспорт не нужен. |
 | **Fold flex bends** | Сгибать по областям сгиба. Выключено — плата экспортируется плоской. На плате без сгибов ничего не меняет. |
-| **Copper pads (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на микрон над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего. Нужен JSON с `format_version` 11 (10 рисует медь целиком, более старый — ничего; лог говорит, что именно). Переходные отверстия не рисуются. См. *Медь площадок*. |
+| **Copper pads (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на микрон над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего, незакрытое переходное отверстие — своё кольцо, закрытое — ничего. Вскрытия, нарисованные на слоях `SOLDERMASK`, добавляют медь под собой и голый текстолит, который они показывают (надпись, прорезанная в маске), — по одной плоской детали на сторону. Нужен JSON с `format_version` 12 (11 не несёт отверстий и меди под нарисованными вскрытиями, 10 рисует медь целиком, более старый — ничего; лог говорит, что именно). См. *Медь площадок*. |
 | **Compact STEP** | Убирает параметрические кривые на поверхностях — примерно вдвое меньший файл при той же геометрии. |
 | **Build the full-board file too** | Когда в очереди папка — собирать ли вместе с вариантами `<плата>.json`, всю плату без учёта вариантов (пишет его `settings.exportFullBoard`). Файл, выбранный напрямую, собирается всегда: выбор и есть выбор. |
 | **Generate** / **Cancel** | Пока идёт сборка, остальные элементы погашены — настройки уже сняты снимком, и правка на ходу лишь выглядела бы действием, — а кнопка становится **Cancel**. Отмена убивает сборку немедленно: с булевой операцией, которая уже минуту внутри OCCT, иначе не выйдет. Файл, который писался в этот момент, может остаться недописанным — лог об этом говорит. |
@@ -1122,6 +1141,8 @@ Allegro, где его набирают руками, а файл на диск�
 ├── pads_bot_<плата>        медь площадок снизу (зеркальная фигура несёт m: pad_…_TOPm)
 ├── copper_top_<плата>      медь под нарисованными вскрытиями маски сверху (одна деталь на сторону, как плоская легенда)
 ├── copper_bot_<плата>      то же снизу
+├── bare_top_<плата>        голый текстолит в этих вскрытиях сверху (надпись, прорезанная в маске; цвет основания)
+├── bare_bot_<плата>        то же снизу
 ├── symbols_top_<плата>     компоненты верхней стороны
 │   ├── cap_D8x10mm         деталь с именем своего STEP-файла, на месте
 │   └── cap_D8x10mm         та же деталь ещё раз, если модель повторяется
@@ -1271,12 +1292,26 @@ Allegro, где его набирают руками, а файл на диск�
 на небольшой плате: 53 нарисованных вскрытия, два над медью, 1.03 и 1.01 мм²,
 меньше секунды.
 
+**Голый текстолит в этих вскрытиях.** Вскрытие, нарисованное там, где меди
+нет — номер платы или надпись, прорезанная в маске штрихами, кольцо вскрытия
+шире своей площадки, — показывает диэлектрик, а одна медь там не рисовала
+ничего: надписи в модели просто не было. Поэтому экспорт оставляет и то, что
+остаётся от вскрытия после вычитания меди (`axlPolyOperation ANDNOT`; всё
+вскрытие целиком, если меди под ним нет), и строится это так же: одна деталь на
+сторону цвета `base` из *layerColors*, `bare_top_<плата>` / `bare_bot_<плата>`,
+на высоте меди — они не пересекаются, одно дополняет другое внутри вскрытия.
+На той же небольшой плате 53 вскрытия — это 51 штрих надписи над голым
+текстолитом и две фигуры над заливкой: 53 полигона текстолита, 13.5 мм², рядом
+с двумя полигонами меди, все собраны по площадям Allegro.
+
 Нужен интермедиат с `format_version` 12 (собирает их `settings.exportPads`,
 по умолчанию включённый); файл 11 несёт площадки и их вскрытия, но не
 переходные отверстия и не медь под нарисованными вскрытиями, файл 10 рисует
-медь целиком, более старый не рисует ничего — лог говорит, что именно. **Переходные отверстия не рисуются** — почти на любой плате они
-закрыты маской, — а площадки остаются картинкой: поверхности без толщины,
-не участвующие в булевых операциях.
+медь целиком, более старый не рисует ничего, а файл 12, записанный до
+появления голого текстолита, несёт медь под вскрытиями, но не текстолит — лог
+говорит, что именно, и повторный экспорт лечит каждый случай. **Закрытое маской переходное отверстие не рисуется** — а это
+почти каждое отверстие почти на любой плате, — а площадки остаются картинкой:
+поверхности без толщины, не участвующие в булевых операциях.
 
 ## Мультистэкап и rigid-flex
 
@@ -1406,7 +1441,9 @@ Allegro построена при `k = 0`. На плате с запасом р�
 отверстий сквозь вскрытия их падстеков и медь под вскрытиями, нарисованными на
 слоях `SOLDERMASK`; вывод, чей диапазон слоёв не достигает наружной грани своей
 зоны (деталь на внутреннем слое жёсткой зоны), не рисуется и считается в логе,
-а дорожка, входящая во вскрытие площадки, внутри него не рисуется. Легенда
+а дорожка, входящая во вскрытие площадки, внутри него не рисуется; кольцо
+собственного вскрытия падстека вокруг copper-defined площадки текстолитом тоже
+не рисуется — так рисуются только вскрытия, нарисованные на слоях. Легенда
 поверх площадки — в Allegro это нарушение правил — попадает в одну плоскость с
 плоской легендой и может там мерцать.
 

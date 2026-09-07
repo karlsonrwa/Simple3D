@@ -35,8 +35,16 @@ and the pin's own layer span. From those:
   `pads_top_<board>` / `pads_bot_<board>`, at the zone's outer face, through
   the fold plan where there is one.
 
-Vias are not in the intermediate and not drawn: they are tented under the
-mask on nearly every board.
+Since format_version 11 each padstack carries its mask openings too, and
+`pad_face` draws copper AND opening: a solder-mask-defined pad shows the
+opening's shape, a covered pad nothing. Since 12 the rows include the vias
+(a via is a pin with no symbol: an untented one shows its ring, a tented
+one draws nothing), and the DRAWN openings - a line, a shape or a text on
+a SOLDERMASK layer - come as polygons in the legend's form: `exposed`, the
+copper under them, and `bare`, the laminate they show where there is none
+(a part number cut into the mask); `build_exposed` builds either through
+the legend's machinery, one flat part per side, in the copper or the
+dielectric colour.
 """
 
 from __future__ import annotations
@@ -680,16 +688,20 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
 # --------------------------------------------------------------------------- #
 
 def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bottom_z,
-                  lift: float, log: LogFn = _noop_log) -> dict[str, tuple]:
-    """The copper the DRAWN mask openings expose, per side, as flat faces.
+                  lift: float, section: str = "exposed", log: LogFn = _noop_log) -> dict[str, tuple]:
+    """What the DRAWN mask openings show, per side, as flat faces.
 
-    `pads.exposed.top` / `.bottom` are polygons in the silkscreen's vertex
-    form - the exporter computed opening AND copper in Allegro and wrote the
-    result the way it writes the legend - so they are built with the
-    legend's own machinery: `build_silkscreen` in flat mode, the arc reading
-    scored against Allegro's areas, the faces unioned. Lifted *lift* above
-    the outer face (the caller passes twice the pads' lift, so a pad that
-    lies under a drawn opening as well is covered by this, not fought).
+    `pads.exposed.top` / `.bottom` are the copper under the openings, and
+    `pads.bare.top` / `.bottom` the laminate they show where there is none
+    (a part number cut into the mask, the ring of an opening wider than its
+    pad) - both as polygons in the silkscreen's vertex form, computed in
+    Allegro (opening AND copper, opening ANDNOT copper) and written the way
+    the legend is - so they are built with the legend's own machinery:
+    `build_silkscreen` in flat mode, the arc reading scored against
+    Allegro's areas, the faces unioned. *section* picks which. Lifted
+    *lift* above the outer face (the caller passes twice the pads' lift, so
+    a pad that lies under a drawn opening as well is covered by this, not
+    fought; copper and bare never overlap each other by construction).
 
     On a board with zones each polygon is built at the level of the zone it
     stands in, by its centroid; a plain board has one level.
@@ -700,7 +712,7 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
     from .legend import _silk_point, build_silkscreen
 
     pads = data.get("pads")
-    exposed = pads.get("exposed") if isinstance(pads, dict) else None
+    exposed = pads.get(section) if isinstance(pads, dict) else None
     if not isinstance(exposed, dict):
         return {}
     where = _Zones(zones, stackups, levels, board_top_z, board_bottom_z)
@@ -719,7 +731,8 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
         pieces, built, skipped = [], 0, 0
         for z, group in groups.items():
             compound, n_built, n_skipped = build_silkscreen(
-                group, z, 0.0, log=log, side=f"copper_{side}", flat=True,
+                group, z, 0.0, log=log,
+                side=f"{'copper' if section == 'exposed' else 'bare'}_{side}", flat=True,
                 flat_offset=sign * abs(lift))
             built += n_built
             skipped += n_skipped

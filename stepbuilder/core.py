@@ -605,26 +605,35 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
         + (f" (of them {result.vias} via(s), {result.via_placed} untented and drawn)" if result.vias else "")
         + f", {result.figures} distinct figure(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
 
-    # The copper under the drawn openings (format_version 12), one part per
-    # side like the legend, a micron above the pads.
-    exposed = build_exposed(
-        data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
-        board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
-        lift=2.0 * abs(options.silk_flat_height), log=log)
+    # What the drawn openings show (format_version 12): the copper under
+    # them in the copper colour, and the bare laminate where there is none
+    # in the dielectric's colour - one part per side each, like the legend,
+    # a micron above the pads.
+    base = palette.get("base", DEFAULT_LAYER_COLORS["base"])
     if not isinstance(data["pads"].get("exposed"), dict):
         log("note: this JSON carries no copper under drawn mask openings (format_version "
             "11 or older); re-export from Allegro for the openings drawn as shapes or lines")
-    for side, (compound, built, skipped) in exposed.items():
-        tag = "copper_top" if side == "top" else "copper_bot"
-        if compound is None:
-            continue
-        label = shape_tool.NewShape()
-        shape_tool.SetShape(label, _folded(fold, log, compound, fuse=False, note=False))
-        document.set_color(label, (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0), options.srgb_color)
-        document.set_name(label, f"{tag}_{json_stem}")
-        shape_tool.AddComponent(document.root, label, TopLoc_Location(gp_Trsf()))
-        log(f"Exposed copper under drawn openings, {side}: {built} polygon(s)"
-            + (f", {skipped} skipped" if skipped else ""))
+    elif not isinstance(data["pads"].get("bare"), dict):
+        log("note: this JSON carries the copper under drawn mask openings but not the bare "
+            "laminate they show; re-export from Allegro for a part number cut into the mask")
+    for section, prefix, colour, what in (("exposed", "copper", rgb, "Exposed copper under drawn openings"),
+                                          ("bare", "bare", base, "Bare laminate in drawn openings")):
+        built_sides = build_exposed(
+            data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
+            board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
+            lift=2.0 * abs(options.silk_flat_height), section=section, log=log)
+        for side, (compound, built, skipped) in built_sides.items():
+            tag = f"{prefix}_top" if side == "top" else f"{prefix}_bot"
+            if compound is None:
+                continue
+            label = shape_tool.NewShape()
+            shape_tool.SetShape(label, _folded(fold, log, compound, fuse=False, note=False))
+            document.set_color(label, (colour[0] / 255.0, colour[1] / 255.0, colour[2] / 255.0),
+                               options.srgb_color)
+            document.set_name(label, f"{tag}_{json_stem}")
+            shape_tool.AddComponent(document.root, label, TopLoc_Location(gp_Trsf()))
+            log(f"{what}, {side}: {built} polygon(s)"
+                + (f", {skipped} skipped" if skipped else ""))
     if result.no_outer_face:
         log(f"  {result.no_outer_face} pin(s) reach no outer face of their zone "
             f"(an inner layer): no copper drawn for them")

@@ -48,8 +48,19 @@
 ;  board carries every pad whether or not the part is installed, so the pads
 ;  are collected once per design and written into every file.
 ;
-;  Vias are not written. They are tented under the mask on almost every
-;  board, and a picture is what this is for; ask when a board needs them.
+;  Since format_version 12 the rows carry the vias as well (every VIA CLASS
+;  subclass swept once, the row's kind "via"; a tented via has no mask pad
+;  and draws nothing), and two more members follow the rows, both in the
+;  silkscreen's vertex form with Allegro's area per polygon:
+;
+;    "exposed"    the copper under the openings DRAWN on the soldermask
+;                 layers the config lists (a line, a shape or a text on
+;                 BOARD / PACKAGE GEOMETRY / SOLDERMASK_<side> by default):
+;                 opening AND copper, computed here with axlPolyOperation.
+;    "bare"       the laminate those openings show where no copper is -
+;                 a part number cut into the mask as strokes, the ring of an
+;                 opening drawn wider than its pad: opening ANDNOT copper,
+;                 the whole opening when its box holds no copper at all.
 ;=====================================================================
 
 ; [x, y] or null.
@@ -423,12 +434,20 @@ procedure( s3dCopperPolys( o_obj t_etch l_window s_endCap )
 ; layer: ( (layer polys) ... ), the silkscreen's group form.
 procedure( s3dCollectExposed( l_layers t_side s_endCap )
     let( ( elems openings key polys etch pinLayer viaLayer saveVis saveEnabled saveOn
-           found copper res groups order out ( nOpen 0 ) ( nOut 0 ) ( nBad 0 ) filter zero )
+           found copper res groups order out ( nOpen 0 ) ( nOut 0 ) ( nBad 0 ) filter zero
+           bareGroups bareOrder bare ( nBare 0 ) bareOut )
         etch = strcat( "ETCH/" t_side )
         pinLayer = strcat( "PIN/" t_side )
         viaLayer = strcat( "VIA CLASS/" t_side )
         groups = makeTable( "s3dExposedGroups" nil )
         order = tconc( nil nil )
+        ; What an opening shows where there is NO copper under it: the bare
+        ; laminate - a part number cut into the mask, the ring of a drawn
+        ; opening wider than its pad. Opening ANDNOT copper, or the whole
+        ; opening when nothing lies under it; the reader draws it in the
+        ; dielectric's colour.
+        bareGroups = makeTable( "s3dBareGroups" nil )
+        bareOrder = tconc( nil nil )
 
         ; 1. the openings, as polygons, before any visibility is touched.
         ; Lines, shapes AND text: a string on a mask layer is an opening in
@@ -481,6 +500,7 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
                 foreach( o found
                     copper = append( copper s3dCopperPolys( o etch cadr( entry )->bBox s_endCap ) )
                 )
+                bare = list( cadr( entry ) )
                 when( copper
                     res = nil
                     errset( res = axlPolyOperation( list( cadr( entry ) ) copper 'AND ) )
@@ -493,6 +513,18 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
                             )
                             tconc( groups[key] p )
                         )
+                    )
+                    bare = nil
+                    errset( bare = axlPolyOperation( list( cadr( entry ) ) copper 'ANDNOT ) )
+                )
+                foreach( p remd( nil bare )
+                    when( p && !p->isHole
+                        nBare = nBare + 1
+                        unless( bareGroups[key]
+                            bareGroups[key] = tconc( nil nil )
+                            tconc( bareOrder key )
+                        )
+                        tconc( bareGroups[key] p )
                     )
                 )
             )
@@ -508,13 +540,18 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
             s3dWarn( sprintf( nil "Simple 3D: %d mask opening(s) on the %s could not be converted and were skipped."
                               nBad t_side ) )
         )
-        printf( "Simple 3D: exposed copper %s - %d drawn opening(s), %d polygon(s) of copper under them\n"
-                t_side nOpen nOut )
+        printf( "Simple 3D: exposed copper %s - %d drawn opening(s), %d polygon(s) of copper under them, %d of bare laminate\n"
+                t_side nOpen nOut nBare )
         out = tconc( nil nil )
         foreach( key cdr( car( order ) )
             tconc( out list( key cdr( car( groups[key] ) ) ) )
         )
-        cdr( car( out ) )
+        bareOut = tconc( nil nil )
+        foreach( key cdr( car( bareOrder ) )
+            tconc( bareOut list( key cdr( car( bareGroups[key] ) ) ) )
+        )
+        ; -> ( copperGroups bareGroups ), each ( (layer polys) ... )
+        list( cdr( car( out ) ) cdr( car( bareOut ) ) )
     )
 )
 
@@ -545,14 +582,24 @@ procedure( s3dWritePads( p_port l_pads g_more )
             fprintf( p_port "\t\t\t%s" p )
         )
         fprintf( p_port "\n\t\t],\n" )
-        ; The copper under the drawn openings, in the silkscreen's polygon
+        ; The copper under the drawn openings, and the bare laminate the
+        ; openings show where there is none, both in the silkscreen's polygon
         ; form (format_version 12) - the legend's writer, the legend's reader.
+        ; Each side is ( copperGroups bareGroups ), or nil.
         fprintf( p_port "\t\t\"exposed\": {\n" )
         fprintf( p_port "\t\t\t\"top\": [\n" )
-        s3dWriteSilkPolys( p_port exposedTop )
+        s3dWriteSilkPolys( p_port car( exposedTop ) )
         fprintf( p_port "\n\t\t\t],\n" )
         fprintf( p_port "\t\t\t\"bottom\": [\n" )
-        s3dWriteSilkPolys( p_port exposedBottom )
+        s3dWriteSilkPolys( p_port car( exposedBottom ) )
+        fprintf( p_port "\n\t\t\t]\n" )
+        fprintf( p_port "\t\t},\n" )
+        fprintf( p_port "\t\t\"bare\": {\n" )
+        fprintf( p_port "\t\t\t\"top\": [\n" )
+        s3dWriteSilkPolys( p_port cadr( exposedTop ) )
+        fprintf( p_port "\n\t\t\t],\n" )
+        fprintf( p_port "\t\t\t\"bottom\": [\n" )
+        s3dWriteSilkPolys( p_port cadr( exposedBottom ) )
         fprintf( p_port "\n\t\t\t]\n" )
         fprintf( p_port "\t\t}\n" )
         fprintf( p_port if( g_more then "\t},\n" else "\t}\n" ) )
