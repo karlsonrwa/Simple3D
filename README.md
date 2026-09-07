@@ -518,13 +518,14 @@ shows its ring, and a tented one draws nothing and costs a row in the JSON.
 Cadence's demo board tents none: 1242 vias, 2484 rings; the user's boards tent
 all of theirs.
 
-**Copper under openings drawn in the footprint or on the board.** A line or a
-shape on a `SOLDERMASK` layer (the `soldermask` section of the config lists
-which layers — `BOARD GEOMETRY` and `PACKAGE GEOMETRY` by default) exposes
-whatever copper lies under it: a thermal pad drawn as a shape, a row of
-fingers, a test area, a pour. The exporter computes that copper **in
-Allegro**: each opening becomes polygons (a line opening is the line widened
-with round caps, as the legend does it), the copper on that side's outer layer
+**Copper under openings drawn in the footprint or on the board.** A line, a
+shape or a text on a `SOLDERMASK` layer (the `soldermask` section of the
+config lists which layers — `BOARD GEOMETRY` and `PACKAGE GEOMETRY` by
+default) exposes whatever copper lies under it: a thermal pad drawn as a
+shape, a row of fingers, a test area, a pour, a part number cut into the mask.
+The exporter computes that copper **in Allegro**: each opening becomes
+polygons (a line opening is the line widened with round caps and a text its
+strokes, as the legend does it), the copper on that side's outer layer
 inside the opening's box is selected — pins and vias by their pads, a pour only
 through the opening's window — and `axlPolyOperation` keeps what is under the
 opening. The result travels in the legend's own polygon form, with Allegro's
@@ -1253,13 +1254,14 @@ Allegro, где его набирают руками, а файл на диск�
 рисуется и стоит одной строки в JSON. Демо-плата Cadence не закрывает ни
 одного: 1242 отверстия, 2484 кольца; на платах пользователя закрыты все.
 
-**Медь под вскрытиями, нарисованными в посадочном месте или на плате.** Линия
-или фигура на слое `SOLDERMASK` (какие слои — секция `soldermask` конфига;
-по умолчанию `BOARD GEOMETRY` и `PACKAGE GEOMETRY`) открывает медь, лежащую
-под ней: термопад, нарисованный фигурой, ряд ламелей, тестовую область,
-заливку. Экспорт считает эту медь **в Allegro**: каждое вскрытие становится
-полигонами (вскрытие-линия — линия, раздутая до ширины со скруглёнными
-концами, как в легенде), медь наружного слоя этой стороны в габарите вскрытия
+**Медь под вскрытиями, нарисованными в посадочном месте или на плате.** Линия,
+фигура или текст на слое `SOLDERMASK` (какие слои — секция `soldermask`
+конфига; по умолчанию `BOARD GEOMETRY` и `PACKAGE GEOMETRY`) открывает медь,
+лежащую под ней: термопад, нарисованный фигурой, ряд ламелей, тестовую
+область, заливку, номер платы, прорезанный в маске. Экспорт считает эту медь
+**в Allegro**: каждое вскрытие становится полигонами (вскрытие-линия — линия,
+раздутая до ширины со скруглёнными концами, текст — его штрихи, как в
+легенде), медь наружного слоя этой стороны в габарите вскрытия
 выбирается — выводы и отверстия своими площадками, заливка только через окно
 вскрытия — и `axlPolyOperation` оставляет то, что под вскрытием. Результат
 едет в форме полигонов легенды, с площадью от Allegro у каждого, и строится

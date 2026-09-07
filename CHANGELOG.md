@@ -37,8 +37,8 @@ to use the tool.
   with no opening nothing (Dell: 621 mask-defined and 101 covered of
   12 146 pins). Vias are rows like pins, so an untented via shows its ring
   and a tented one draws nothing (the demo tents none: 2484 rings). An
-  opening drawn in the footprint or on the board - a line or a shape on a
-  SOLDERMASK layer, the `soldermask` section of the config says which -
+  opening drawn in the footprint or on the board - a line, a shape or a
+  text on a SOLDERMASK layer, the `soldermask` section of the config says which -
   exposes the copper under it: computed in Allegro with `axlPolyOperation`
   and built like a flat legend, one part per side (`copper_top_<board>`),
   a micron above the pads. The exporter now writes `format_version` 12
@@ -72,8 +72,9 @@ to use the tool.
   вскрытия — ничего (Dell: 621 mask-defined и 101 закрытая из 12146).
   Переходные отверстия — такие же строки, как выводы: незакрытое показывает
   кольцо, закрытое не рисуется (демо не закрывает ни одного: 2484 кольца).
-  Вскрытие, нарисованное в посадочном месте или на плате — линия или фигура
-  на слое SOLDERMASK, секция `soldermask` конфига говорит, на каких, —
+  Вскрытие, нарисованное в посадочном месте или на плате — линия, фигура
+  или текст на слое SOLDERMASK, секция `soldermask` конфига говорит, на
+  каких, —
   открывает медь под собой: считается в Allegro через `axlPolyOperation` и
   строится как плоская легенда, одна деталь на сторону
   (`copper_top_<плата>`), на микрон выше площадок. Экспорт теперь пишет

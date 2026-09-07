@@ -72,7 +72,7 @@
         ]
     },
     "soldermask": {
-        "_comment": "Layers whose DRAWN objects are mask openings - a line or a shape here exposes the copper under it (a thermal pad drawn as a shape, a row of fingers, a test area), and the export computes that copper in Allegro and writes it for the Copper pads to draw. The padstacks' own openings are not listed here: they travel with each padstack. Add MANUFACTURING/SOLDERMASK_TOP or a site layer if your footprints draw their openings there; a layer the board does not have is named in the console and skipped.",
+        "_comment": "Layers whose DRAWN objects are mask openings - a line, a shape or a text here exposes the copper under it (a thermal pad drawn as a shape, a row of fingers, a test area, a part number cut into the mask), and the export computes that copper in Allegro and writes it for the Copper pads to draw. The padstacks' own openings are not listed here: they travel with each padstack. Add MANUFACTURING/SOLDERMASK_TOP or a site layer if your footprints draw their openings there; a layer the board does not have is named in the console and skipped.",
         "top": [
             "BOARD GEOMETRY/SOLDERMASK_TOP",
             "PACKAGE GEOMETRY/SOLDERMASK_TOP"

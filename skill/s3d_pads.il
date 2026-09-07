@@ -423,15 +423,20 @@ procedure( s3dCopperPolys( o_obj t_etch l_window s_endCap )
 ; layer: ( (layer polys) ... ), the silkscreen's group form.
 procedure( s3dCollectExposed( l_layers t_side s_endCap )
     let( ( elems openings key polys etch pinLayer viaLayer saveVis saveEnabled saveOn
-           found copper res groups order out ( nOpen 0 ) ( nOut 0 ) ( nBad 0 ) filter )
+           found copper res groups order out ( nOpen 0 ) ( nOut 0 ) ( nBad 0 ) filter zero )
         etch = strcat( "ETCH/" t_side )
         pinLayer = strcat( "PIN/" t_side )
         viaLayer = strcat( "VIA CLASS/" t_side )
         groups = makeTable( "s3dExposedGroups" nil )
         order = tconc( nil nil )
 
-        ; 1. the openings, as polygons, before any visibility is touched
-        elems = s3dSelectVisibleOn( l_layers list( "noall" "lines" "shapes" )
+        ; 1. the openings, as polygons, before any visibility is touched.
+        ; Lines, shapes AND text: a string on a mask layer is an opening in
+        ; the shape of its letters (a part number showing the laminate), and
+        ; the silkscreen's converter already vectorises text. A zero-width
+        ; object cannot be plotted and is skipped with a word, as the legend
+        ; does it, rather than handed to the converter to fail on.
+        elems = s3dSelectVisibleOn( l_layers list( "noall" "lines" "shapes" "text" )
                                     "Simple 3D: no such layer: %s" )
         openings = nil
         foreach( elem elems
@@ -439,7 +444,13 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
             errset( key = elem->layer )
             unless( stringp( key )  key = sprintf( nil "%L" key ) )
             polys = nil
-            unless( errset( polys = s3dPolysFromDbid( elem s_endCap ) )
+            zero = nil
+            errset( zero = s3dZeroWidth( elem ) )
+            when( zero
+                s3dWarn( sprintf( nil "Simple 3D: zero width: %s - skipped, it opens nothing."
+                                  s3dDescribeObject( elem key ) ) )
+            )
+            unless( zero || errset( polys = s3dPolysFromDbid( elem s_endCap ) )
                 nBad = nBad + 1
             )
             foreach( poly polys

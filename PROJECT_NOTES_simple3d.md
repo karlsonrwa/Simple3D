@@ -3327,10 +3327,27 @@ AUTOSILK 25% and DFM-trimmed per instance (the user's own point). Instancing
 the package outlines would save about 6% of the legend; sharing glyphs of
 the stroke font would be the real saving and is a different project.
 
+**Text on the mask layers** (the user's pick from the list of what part 2
+still leaves out): the openings sweep takes `text` beside lines and shapes,
+through the legend's converter (`axlText2Lines` + `?line2poly`), and a
+zero-width object is skipped with a word like the legend does. No board in
+`input/` carries text on a mask layer, so `tools/probes/probe_masktext.il`
+makes the case: it creates a text on `PACKAGE GEOMETRY/SOLDERMASK_TOP` over
+my_test_board2's pour, in the runner's scratch copy, and runs the exporter -
+awaiting a session with the user's Allegro closed.
+
+What is still NOT drawn, said to the user: copper other than the pad inside
+a padstack's own opening (the trace neck and the thermal spokes in a
+copper-defined pad's ring - per-pin booleans and no instancing to get it,
+5.9 MB against 2.1 on the demo, for slivers); coverlay openings and
+coverlay-side copper on a rigid-flex; layers not in the `soldermask`
+section; rectangles, unchecked.
+
 ### Not verified
 
 - The user's Inventor view of the board with the closed rounded rectangles,
   the mask-clipped pads, the via rings and the exposed copper.
+- Text on a mask layer on a live board: `probe_masktext.il`.
 - A mirrored through pin whose padstack has different TOP and BOTTOM pads
   (none on five boards) - handled by rule, not measured.
 - Vias: deliberately out. If a board needs them, the same library serves:
