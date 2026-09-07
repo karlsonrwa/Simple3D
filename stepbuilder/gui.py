@@ -196,9 +196,9 @@ class StepBuilderApp(tk.Tk):
         self.fold_anchor: tuple[float, float] | str | None = None
         self.fold_neutral: float = DEFAULT_NEUTRAL_FACTOR
         self.fold_slice_angle: float = DEFAULT_SLICE_ANGLE
-        # The copper of every pin's pad, drawn on the outer faces as surfaces
-        # (round 85). Off by default: it is for a picture, and it costs a
-        # placement per pad in the file.
+        # The copper of every pin's pad, drawn on the outer faces as thin
+        # solids (round 85). Off by default: it is for a picture, and it
+        # costs a placement per pad in the file.
         self.copper_pads = tk.BooleanVar(value=False)
 
         # Prefill state, set by prefill_jobs() when launched from Allegro.
@@ -360,10 +360,10 @@ class StepBuilderApp(tk.Tk):
                         variable=self.fold_bends).grid(
             row=5, column=0, columnspan=6, sticky="w", pady=(6, 0))
 
-        # The pads' copper on the two outer faces, as surfaces in the copper
+        # The pads' copper on the two outer faces, as thin solids in the copper
         # colour of the layer swatches. Needs an intermediate written with
         # format_version 10; an older one says so in the log and draws none.
-        ttk.Checkbutton(opts, text="Copper pads (as surfaces)",
+        ttk.Checkbutton(opts, text="Copper pads",
                         variable=self.copper_pads).grid(
             row=6, column=0, columnspan=6, sticky="w", pady=(6, 0))
 

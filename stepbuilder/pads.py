@@ -2,12 +2,19 @@
 copper-coloured surfaces lying on the board's outer faces (round 85).
 
 What the picture needs is the copper a pad shows through the mask, on the
-two outer faces, in the copper colour. What it does not need is a body per
-pad or a window per pad cut into the mask: a boolean over thousands of pad
-prisms is minutes of OCCT time on a dense board and a real chance of an
-empty result, and a picture cannot tell a flush copper pad from a face one
-micron above the mask. So a pad is a FACE, lifted the same micron a flat
-silkscreen is (`silk_flat_height`), and the board body is never touched.
+two outer faces, in the copper colour. What it does not need is a window
+per pad cut into the mask with a body set into it: a boolean over thousands
+of pad prisms is minutes of OCCT time on a dense board and a real chance of
+an empty result, and a picture cannot tell a flush copper pad from one
+standing ten microns proud of the mask. So a pad is a THIN SOLID,
+`PAD_THICKNESS` high, standing on the outer face and growing away from the
+board like the solid legend does, and the board body is never touched. A
+solid rather than a face lifted a micron: the first cut of this drew faces,
+and in the user's CAD not every pad showed - a face a micron off a large
+face is inside the depth resolution of an ordinary viewer and flickers or
+vanishes, and a surface body is not shown the way a solid is by every
+reader. A prism ten microns high has its top well clear of the mask, and
+its bottom face, coincident with the mask, is hidden under its own top.
 
 The intermediate carries a LIBRARY (format_version 10, `pads`): one entry
 per padstack with its drill and its REGULAR pads on the ETCH layers, each
@@ -29,11 +36,19 @@ and the pin's own layer span. From those:
   the outline, a DONUT's inside diameter as a hole, the drill cut out so the
   hole in the board stays visible, and the whole figure mirrored (x -> -x)
   for a mirrored pin before it is rotated - the same order Allegro applies.
-  Built ONCE and instanced per pin, like a component model: a face costs its
-  edges and surface every time it is written, an instance costs a placement.
-* `build_pads` places every pin: one shared part per figure under
-  `pads_top_<board>` / `pads_bot_<board>`, at the zone's outer face, through
-  the fold plan where there is one.
+  `pad_solid` extrudes it `PAD_THICKNESS` up for the top side, down for the
+  bottom. Built ONCE and instanced per pin, like a component model: a solid
+  costs its faces every time it is written, an instance costs a placement.
+* `build_pads` places every pin: one shared part per figure and side under
+  `pads_top_<board>` / `pads_bot_<board>`, standing on the zone's outer face,
+  through the fold plan where there is one.
+
+The pad's declared bounding box is the FIGURE's own box, about its centre;
+its outline path already includes the padstack's offset. Measured on the
+Dell board's fifteen offset padstacks: an outline running 0..29.53 against a
+box of +-14.77 and an offset of 14.76. `_settle_offset` keeps that reading
+as the normal case and shifts the outline only when it is plainly the
+figure-centred one.
 
 Vias are not in the intermediate and not drawn: they are tented under the
 mask on nearly every board.
@@ -44,13 +59,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from OCP.BRepAdaptor import BRepAdaptor_Surface
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
 from OCP.BRepBndLib import BRepBndLib
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCP.Bnd import Bnd_Box
-from OCP.GeomAbs import GeomAbs_SurfaceType
-from OCP.TopAbs import TopAbs_FACE, TopAbs_Orientation
+from OCP.TopAbs import TopAbs_FACE
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS, TopoDS_Face, TopoDS_Shape
@@ -61,10 +75,18 @@ from .errors import StepBuilderError
 from .reporting import LogFn, _noop_log
 from .stackup import _is_conductor, board_stackup
 
-# A pad's declared bounding box and the box of the outline it carries have to
-# agree this closely (mm) for the outline to be taken as already in place;
-# else the declared offset is tried - see _settle_offset.
-BOX_TOLERANCE = 2.0e-3
+# How high a pad stands on the mask, in design units (mm on every board this
+# tool has met; a mil board would get a hundredth of a mil, which a viewer
+# still separates). Ten microns: clear of any depth buffer at board scale,
+# invisible as a step, and a tenth of the solid legend's 25 um.
+PAD_THICKNESS = 0.01
+
+# A pad's declared bounding box (of the figure, about its own centre) shifted
+# by the declared offset has to land this close (design units) to the box of
+# the outline for the outline to be read as already in place. 0.02 clears
+# the 0.01-mil rounding of a board laid out in mils and is well under any
+# real offset - see _settle_offset.
+BOX_TOLERANCE = 0.02
 
 
 # --------------------------------------------------------------------------- #
@@ -170,32 +192,37 @@ def _boxes_agree(a, b) -> bool:
 
 
 def _settle_offset(face: TopoDS_Face, pad: dict) -> tuple[TopoDS_Face, str | None]:
-    """The outline is Allegro's path; the pad also declares a bounding box and
-    an offset, and the reference does not say whether the path already
-    includes the offset (every padstack measured so far carries 0, so it
-    could not be settled by measuring). The three facts settle it per pad:
-    when the outline's box is the declared box the path is in place; when
-    the outline's box plus the offset is, the path is moved by it; when
-    neither, the path is kept and the disagreement reported."""
+    """The outline is Allegro's path, and it already includes the padstack's
+    offset; the declared bounding box is the figure's own, about its centre.
+    MEASURED on the Dell board (fifteen padstacks with an offset, SHAPE and
+    RECTANGLE alike): an outline running 0..29.53 against a box of +-14.77
+    and an offset of 14.76 - so box + offset = outline, every time.
+
+    The three facts are still checked per pad rather than trusted: when the
+    outline's box is the declared box shifted by the offset, the path is in
+    place (the normal case, offset 0 included); when it is the declared box
+    itself and the offset is not zero, the path is the figure-centred one
+    and is moved by the offset; when neither, the path is kept and the
+    disagreement reported."""
     declared = pad.get("bbox")
     offset = pad.get("offset") or [0.0, 0.0]
     if not declared:
         return face, None
-    want = (float(declared[0][0]), float(declared[0][1]),
-            float(declared[1][0]), float(declared[1][1]))
-    got = _tight_box(face)
-    if _boxes_agree(got, want):
-        return face, None
     ox, oy = float(offset[0]), float(offset[1])
-    if abs(ox) > 1e-9 or abs(oy) > 1e-9:
-        shifted = (got[0] + ox, got[1] + oy, got[2] + ox, got[3] + oy)
-        if _boxes_agree(shifted, want):
-            trsf = gp_Trsf()
-            trsf.SetTranslation(gp_Vec(ox, oy, 0.0))
-            return TopoDS.Face_s(BRepBuilderAPI_Transform(face, trsf, True).Shape()), None
+    box = (float(declared[0][0]), float(declared[0][1]),
+           float(declared[1][0]), float(declared[1][1]))
+    placed = (box[0] + ox, box[1] + oy, box[2] + ox, box[3] + oy)
+    got = _tight_box(face)
+    if _boxes_agree(got, placed):
+        return face, None
+    if (abs(ox) > 1e-9 or abs(oy) > 1e-9) and _boxes_agree(got, box):
+        trsf = gp_Trsf()
+        trsf.SetTranslation(gp_Vec(ox, oy, 0.0))
+        return TopoDS.Face_s(BRepBuilderAPI_Transform(face, trsf, True).Shape()), None
     return face, (f"outline box ({got[0]:.4f}, {got[1]:.4f})..({got[2]:.4f}, {got[3]:.4f}) "
-                  f"is not the declared box ({want[0]:.4f}, {want[1]:.4f})..({want[2]:.4f}, "
-                  f"{want[3]:.4f}) with offset ({ox:.4f}, {oy:.4f}); the outline is used as it is")
+                  f"is neither the declared box ({box[0]:.4f}, {box[1]:.4f})..({box[2]:.4f}, "
+                  f"{box[3]:.4f}) nor that box at its offset ({ox:.4f}, {oy:.4f}); "
+                  f"the outline is used as it is")
 
 
 def _first_face(shape: TopoDS_Shape) -> TopoDS_Face | None:
@@ -203,27 +230,12 @@ def _first_face(shape: TopoDS_Shape) -> TopoDS_Face | None:
     return TopoDS.Face_s(exp.Current()) if exp.More() else None
 
 
-def _normal_up(face: TopoDS_Face) -> bool | None:
-    """Does the face's ORIENTED normal point +z? None for a non-planar face."""
-    surface = BRepAdaptor_Surface(face)
-    if surface.GetType() != GeomAbs_SurfaceType.GeomAbs_Plane:
-        return None
-    z = surface.Plane().Axis().Direction().Z()
-    if face.Orientation() == TopAbs_Orientation.TopAbs_REVERSED:
-        z = -z
-    return z > 0.0
-
-
-def pad_face(pad: dict, hole: list | None, mirrored: bool, face_up: bool) -> tuple[TopoDS_Face | None, str | None]:
-    """One pad figure as a planar face at the origin, z = 0, ready to be placed.
+def pad_face(pad: dict, hole: list | None, mirrored: bool) -> tuple[TopoDS_Face | None, str | None]:
+    """One pad figure as a planar face at the origin, z = 0, in the pin's frame.
 
     Returns (face, note): the face is None when the figure cannot be built
     or has nothing left once its hole is cut out; the note, when there is
     one, is a line for the log (a box disagreement, an empty figure).
-
-    *face_up* says which way the face's normal should point: up for the top
-    side, down for the bottom, so a viewer that culls back faces shows the
-    pad from the side it is on.
     """
     outline = pad.get("outline")
     if not outline:
@@ -259,11 +271,14 @@ def pad_face(pad: dict, hole: list | None, mirrored: bool, face_up: bool) -> tup
         mirror = gp_Trsf()
         mirror.SetMirror(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)))
         face = TopoDS.Face_s(BRepBuilderAPI_Transform(face, mirror, True).Shape())
-
-    up = _normal_up(face)
-    if up is not None and up != face_up:
-        face = TopoDS.Face_s(face.Reversed())
     return face, note
+
+
+def pad_solid(face: TopoDS_Face, up: bool, thickness: float = PAD_THICKNESS) -> TopoDS_Shape:
+    """The pad as a thin solid standing on z = 0: extruded +z for the top
+    side, -z for the bottom, so placed at the outer face it grows away from
+    the board like the solid legend does."""
+    return BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, thickness if up else -thickness)).Shape()
 
 
 # --------------------------------------------------------------------------- #
@@ -322,13 +337,14 @@ class _Zones:
 
 
 def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom_z,
-               fold, lift: float, document, group_for, rgb01, srgb: bool,
-               json_stem: str, log: LogFn = _noop_log) -> PadsResult:
-    """Every pin's copper into the document, as instances of shared faces.
+               fold, document, group_for, rgb01, srgb: bool,
+               json_stem: str, thickness: float = PAD_THICKNESS,
+               log: LogFn = _noop_log) -> PadsResult:
+    """Every pin's copper into the document, as instances of shared thin solids.
 
     *group_for(side)* hands back the assembly label of `pads_top` /
-    `pads_bot`, created on first use; *lift* is how far above the face the
-    copper floats (the flat-silkscreen clearance); *rgb01* the copper.
+    `pads_bot`, created on first use; *thickness* is how high a pad stands
+    on the outer face; *rgb01* the copper.
     """
     result = PadsResult()
     pads = data.get("pads")
@@ -369,8 +385,7 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
             key = (name, layer, mirrored, face_side)
             if key not in parts:
                 try:
-                    face, note = pad_face(pad, padstack.get("drill"), mirrored,
-                                          face_up=(face_side == "top"))
+                    face, note = pad_face(pad, padstack.get("drill"), mirrored)
                 except (StepBuilderError, RuntimeError, KeyError, TypeError,
                         ValueError, IndexError) as exc:
                     face, note = None, str(exc)
@@ -384,7 +399,7 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
                     parts[key] = "hole" if note is None else None
                 else:
                     label = shape_tool.NewShape()
-                    shape_tool.SetShape(label, face)
+                    shape_tool.SetShape(label, pad_solid(face, face_side == "top", thickness))
                     tag = "m" if mirrored else ""
                     document.set_name(label, f"pad_{name}_{layer_subclass(layer)}{tag}")
                     document.set_color(label, rgb01, srgb)
@@ -397,7 +412,7 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
             if label == "hole":
                 result.all_hole += 1
                 continue
-            z = top_z + lift if face_side == "top" else bottom_z - lift
+            z = top_z if face_side == "top" else bottom_z
             trsf = _placement(x, y, z, rotation, fold)
             shape_tool.AddComponent(group_for("pads_top" if face_side == "top" else "pads_bot"),
                                     label, TopLoc_Location(trsf))

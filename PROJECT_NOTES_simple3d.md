@@ -9,9 +9,10 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 **Branch `feature/copper-pads` (round 85, 2026-09-07) is where the copper
 pads live until the user has tried them**: a checkbox that draws every pin's
-pad on the outer faces as copper-coloured surfaces, from a `pads` library the
-exporter now writes (`format_version` 10). `main` is at round 84. Read round
-85 for the construction, the measurements and what is still unverified.
+pad on the outer faces as thin copper-coloured solids, from a `pads` library
+the exporter now writes (`format_version` 10). `main` is at round 84. Read
+round 85 for the construction, the measurements, the second pass after the
+user's "not all pads are visible", and what is still unverified.
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -71,11 +72,12 @@ from, and `S3D_ScriptDir` is now `""` in source.
   special case: the export list comes from the design and the variant table only
   subtracts from it.
 - **Copper pads** (round 85, branch `feature/copper-pads`), `format_version:
-  10`: the pad of every pin as a copper-coloured face a micron above the outer
-  face of its zone, one shared face per figure instanced per pin; the outline
-  is the padstack's own axlPath, the face is the pin's own layer span. Checked
-  against `axlPolyFromDB` per pin on three boards; not yet looked at by the
-  user in their CAD.
+  10`: the pad of every pin as a thin copper-coloured solid standing on the
+  outer face of its zone, one shared solid per figure instanced per pin; the
+  outline is the padstack's own axlPath, the face is the pin's own layer
+  span. Checked against `axlPolyFromDB` per pin on five boards (54 000
+  placements); the user's first look, at the surface version, missed pads -
+  the solid version is what they have not yet seen.
 
 ### Load-bearing decisions that look like they could be simplified, but cannot
 
@@ -2986,9 +2988,10 @@ on a branch as asked.
 
 ### The construction, and why not the windows
 
-A pad is a **face** in the copper colour, lifted `silkscreenFlatHeight` (a
-micron) above the outer face of its zone - exactly where a flat legend sits.
-The board body is never touched: no window, no boolean. Cutting a window per
+A pad is a **thin solid** in the copper colour standing on the outer face of
+its zone (a face lifted a micron in the first cut - see the second pass
+below for why that changed). The board body is never touched: no window, no
+boolean. Cutting a window per
 pad through the mask and setting a prism into it is a boolean over thousands
 of prisms - on this codebase that is minutes of OCCT and, per round 61, a
 real chance of `IsDone()` with an empty result - and a picture cannot tell a
@@ -3039,12 +3042,12 @@ variants_test-b0, 131 / 19; my_test_board-a0, 20 / 5). `pd->??` first, per
   for a mirrored pin (Allegro flips the padstack with the part - on these three
   boards every through padstack has TOP == BOTTOM, so the reversal is
   unobservable here and stays an assumption).
-- **Offsets are 0.0 on every pad of all three boards**, so whether
-  `pd->bBox` / the path include `pd->offset` could not be measured. Rather
-  than assume, `_settle_offset` decides per pad from the three facts the
-  exporter writes (bbox, offset, outline): the outline's box equals the
-  declared box -> in place; equals it once shifted by the offset -> shift;
-  neither -> keep and say so. Pinned in test_pads [2].
+- **Offsets are 0.0 on every pad of these three boards**, so whether
+  `pd->bBox` / the path include `pd->offset` could not be measured here.
+  `_settle_offset` decides per pad from the three facts the exporter writes
+  (bbox, offset, outline) - and the second pass below, on the Dell board,
+  measured which way round it is and corrected the first reading. Pinned in
+  test_pads [2].
 - **The oracle**: `axlPolyFromDB(pin ?layer "ETCH/TOP"|"ETCH/BOTTOM"
   ?padType 'REGULAR)` per pin, its bounding box and area. pads.py's placed
   face agrees on **every placed pad of all three boards** - 2906 + 129 + 18
@@ -3115,14 +3118,56 @@ looked at in the browser: copper pads on both faces, the rings of the
 mounting holes, the bottom face visible from below - so the normal choice
 holds in at least that viewer.
 
+### Second pass, the same day: "not all pads are visible"
+
+The user built a board in their window and reported that not every pad
+showed, and pointed at the Dell and 109 boards in AllegroBaseStructure's
+`input/` for testing. Both went through the exporter (copied to `build/`
+without a Variants.lst: Dell 12 146 pins / 232 padstacks, 43 MB JSON;
+109 37 996 pins / 169 padstacks, 43 MB) and through both probes, then
+`build/probe-out/analyse_pads.py` and `oracle_vs_pads.py`:
+
+- **Every pin on both boards gets a side and a figure** - 12 225 and 39 090
+  placements, 0 with no outer face, 0 unbuildable, 42 and 222 all-hole
+  (mounting holes). No class of pin is dropped there.
+- **Every placed pad agrees with `axlPolyFromDB` per pin**: 12 225 + 39 090
+  boxes within 2 um, 0 bad. That covers what the first three boards could
+  not: 17 padstacks WITH an offset (Dell 15, 109 2), mirrored and turned.
+- **The offset reading was backwards.** On the Dell board an offset SHAPE
+  pad's outline runs 0..29.53 with a declared box of +-14.77 and an offset
+  of 14.76: the OUTLINE already includes the offset and the box is the
+  figure's own, about its centre. `_settle_offset` had it the other way
+  (outline == box -> in place). It kept the outline as it was, so nothing
+  was misplaced - the notes in the log said so, fifteen times - but the
+  rule is now the measured one: box + offset == outline is the normal case,
+  outline == box with a non-zero offset means the figure-centred path and a
+  shift. `BOX_TOLERANCE` 0.002 -> 0.02: a board in mils rounds its path to
+  0.01 mil and one pad (SHAPE94X88-NPM, 47.05 against 47.06) tripped it.
+
+So the geometry is not what was missing. What is left is rendering: a face
+one micron above the board's top face is inside the depth resolution of an
+ordinary CAD viewer (step2html separated them; the user's CAD evidently did
+not for every pad), and a surface body is not shown the way a solid is by
+every reader. **The pad is now a thin solid**, `PAD_THICKNESS` = 0.01 mm,
+extruded from the face at the outer surface away from the board (up on top,
+down below) - `pad_solid`, next to `pad_face` which stays the 2-D builder
+the tests measure by area. Its top is ten microns clear of the mask; its
+bottom, coincident with the mask, is hidden under its own top. The
+orientation flip of the first cut is gone with it. Per placement the cost
+is unchanged (605 bytes measured in test_pads [5]); the figures cost their
+walls. The checkbox is "Copper pads" now, the docs say solids.
+
+Not measured: whether that is what the user's CAD was missing - they had not
+answered which pads (top or bottom, through or surface, which CAD) when this
+was written. If a class is still missing, the analysis scripts in
+`build/probe-out/` take any exported board and say per padstack what was
+built and why not.
+
 ### Not verified
 
-- The user has not yet built a board with it in their own window or looked at
-  the STEP in their CAD; the bottom-face normal choice and the flat-legend
-  clearance are a rendering question only a viewer answers.
+- The user's CAD with the thin solids - see the second pass above.
 - A mirrored through pin whose padstack has different TOP and BOTTOM pads
-  (none on three boards), and a pad with a non-zero `offset` (none) - both
-  handled by rule, neither measured.
+  (none on five boards) - handled by rule, not measured.
 - Vias: deliberately out. If a board needs them, the same library serves:
   a via is a placement with a padstack and a span, `axlDBGetDesign()->vias`
   does not exist and they would come from a `VIA CLASS` sweep

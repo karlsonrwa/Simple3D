@@ -565,7 +565,7 @@ def _build_legend(data: dict, stack: _Stack, fold, options: BuildOptions,
 def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
                 document: StepDocument, json_stem: str, log: LogFn) -> PadsResult | None:
     """The copper pads into the document, when asked for (round 85): one
-    group per side, every pin an instance of its figure's shared face.
+    group per side, every pin an instance of its figure's shared thin solid.
     None when the option is off; an empty result when the file has none."""
     if not options.copper_pads:
         return None
@@ -594,7 +594,7 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
     result = build_pads(
         data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
         board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
-        fold=fold, lift=abs(options.silk_flat_height), document=document,
+        fold=fold, document=document,
         group_for=group_for, rgb01=(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0),
         srgb=options.srgb_color, json_stem=json_stem, log=log)
 
