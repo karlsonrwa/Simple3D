@@ -44,8 +44,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from OCP.BRep import BRep_Builder
 from OCP.BRepAdaptor import BRepAdaptor_Surface
-from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+from OCP.BRepAlgoAPI import BRepAlgoAPI_Common, BRepAlgoAPI_Cut
 from OCP.BRepBndLib import BRepBndLib
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_Transform
 from OCP.Bnd import Bnd_Box
@@ -56,7 +57,7 @@ from OCP.TopAbs import TopAbs_FACE, TopAbs_Orientation
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopTools import TopTools_HSequenceOfShape
-from OCP.TopoDS import TopoDS, TopoDS_Face, TopoDS_Shape, TopoDS_Wire
+from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Face, TopoDS_Shape, TopoDS_Wire
 from OCP.gp import gp_Ax1, gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
 from .contour import (WIRE_TOLERANCE, _face_from_wires, _open_wire_detail, build_contour,
@@ -119,34 +120,75 @@ def etch_pads(padstack: dict) -> list[tuple[str, dict]]:
     return out
 
 
-def pin_sides(pin: dict, padstack: dict, top: str, bottom: str) -> list[tuple[str, dict]]:
-    """[(face, pad)] for one pin: which of the zone's outer faces ("top",
-    "bottom") its copper reaches, and the pad figure that goes there.
+def mask_pads(padstack: dict) -> dict[str, dict]:
+    """The padstack's REGULAR pads on the SOLDERMASK subclasses, by subclass
+    ("SOLDERMASK_TOP", "SOLDERMASK_BOTTOM") - the openings the copper shows
+    through, in the library since format_version 11. The class is dropped:
+    a padstack names them "PIN/SOLDERMASK_TOP" whether a pin or a via wears
+    it."""
+    out = {}
+    for layer, pad in (padstack.get("pads") or {}).items():
+        sub = layer_subclass(layer)
+        if sub.startswith("SOLDERMASK_") and isinstance(pad, dict):
+            out[sub] = pad
+    return out
+
+
+def has_mask_data(library: dict) -> bool:
+    """Does this library carry mask pads at all? A format_version 10 file
+    does not, and then "no mask pad" means "unknown", not "covered"."""
+    return any(mask_pads(ps) for ps in (library or {}).values() if isinstance(ps, dict))
+
+
+def _mask_for(masks: dict, face: str, mirrored: bool) -> dict | None:
+    """The opening of a THROUGH padstack on one outer face: the mask drawn
+    for that side, or for the other side when the pin is mirrored - the
+    padstack flips with the part, mask pads included."""
+    wanted = ("SOLDERMASK_TOP" if face == "top" else "SOLDERMASK_BOTTOM")
+    if mirrored:
+        wanted = "SOLDERMASK_BOTTOM" if wanted == "SOLDERMASK_TOP" else "SOLDERMASK_TOP"
+    return masks.get(wanted)
+
+
+def pin_sides(pin: dict, padstack: dict, top: str, bottom: str) -> list[tuple[str, dict, dict | None]]:
+    """[(face, pad, mask)] for one pin: which of the zone's outer faces
+    ("top", "bottom") its copper reaches, the pad figure that goes there, and
+    the mask opening it shows through - None when the padstack has no
+    opening on that face, which is a covered pad (or, in a library that
+    carries no mask pads at all, an older file: see has_mask_data).
 
     *top* / *bottom* are the outer conductor names of the pin's zone.
     """
     pads = etch_pads(padstack)
     if not pads:
         return []
+    masks = mask_pads(padstack)
     start, end = layer_subclass(pin.get("start")), layer_subclass(pin.get("end"))
     mirrored = bool(pin.get("mirrored"))
 
     if len(pads) == 1:
         # A surface padstack: one pad, placed where the span says. With no
         # span (a pin the exporter could not ask) the mirror flag decides.
-        _, pad = pads[0]
+        # Its opening is its one mask pad, on whichever side the library
+        # drew it - a surface padstack is defined for "the side the part
+        # sits on"; given both, the one on the etch pad's own side.
+        layer, pad = pads[0]
+        if len(masks) == 1:
+            mask = next(iter(masks.values()))
+        else:
+            mask = masks.get("SOLDERMASK_BOTTOM" if layer == "BOTTOM" else "SOLDERMASK_TOP")
         if not start:
-            return [("bottom" if mirrored else "top", pad)]
+            return [("bottom" if mirrored else "top", pad, mask)]
         faces = []
         if start == top:
-            faces.append(("top", pad))
+            faces.append(("top", pad, mask))
         if start == bottom and start != top:
-            faces.append(("bottom", pad))
+            faces.append(("bottom", pad, mask))
         return faces
 
     # Several etch pads: a through (or blind) padstack defined layer by
     # layer. Mirrored, the stack is read backwards - the pad drawn for TOP
-    # lands on BOTTOM.
+    # lands on BOTTOM, and so does its opening.
     by_layer = {name: pad for name, pad in pads}
     if mirrored:
         names = [name for name, _ in pads]
@@ -158,9 +200,9 @@ def pin_sides(pin: dict, padstack: dict, top: str, bottom: str) -> list[tuple[st
         span = {start, end}
     faces = []
     if top and top in span and top in by_layer:
-        faces.append(("top", by_layer[top]))
+        faces.append(("top", by_layer[top], _mask_for(masks, "top", mirrored)))
     if bottom and bottom in span and bottom != top and bottom in by_layer:
-        faces.append(("bottom", by_layer[bottom]))
+        faces.append(("bottom", by_layer[bottom], _mask_for(masks, "bottom", mirrored)))
     return faces
 
 
@@ -331,17 +373,33 @@ def _normal_up(face: TopoDS_Face) -> bool | None:
     return z > 0.0
 
 
-def pad_face(pad: dict, hole: list | None, mirrored: bool, face_up: bool = True) -> tuple[TopoDS_Face | None, str | None]:
-    """One pad figure as a planar face at the origin, z = 0, ready to be placed.
+def _faces_of(shape: TopoDS_Shape) -> list[TopoDS_Face]:
+    faces = []
+    exp = TopExp_Explorer(shape, TopAbs_FACE)
+    while exp.More():
+        faces.append(TopoDS.Face_s(exp.Current()))
+        exp.Next()
+    return faces
 
-    Returns (face, note): the face is None when the figure cannot be built
-    or has nothing left once its hole is cut out; the note, when there is
-    one, is a line for the log (a box disagreement, an empty figure).
 
-    *face_up* says which way the face's normal should point: up for the top
-    side, down for the bottom, so a viewer that culls back faces shows the
-    pad from the side it is on.
-    """
+def _assemble(faces: list[TopoDS_Face]) -> TopoDS_Shape:
+    """One face as itself, several as a compound - a pad cut in two by a
+    slot, or an opening that shows two islands of it."""
+    if len(faces) == 1:
+        return faces[0]
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for face in faces:
+        builder.Add(compound, face)
+    return compound
+
+
+def figure_face(pad: dict) -> tuple[TopoDS_Face | None, str | None]:
+    """One pad figure - copper or mask opening - as a planar face at the
+    origin, in the pin's frame: the outline (the bounding box standing in
+    when there is none), a DONUT's inside diameter as a hole, and the offset
+    settled. Returns (face, note)."""
     outline = pad.get("outline")
     if not outline:
         bbox = pad.get("bbox")
@@ -357,30 +415,79 @@ def pad_face(pad: dict, hole: list | None, mirrored: bool, face_up: bool = True)
         inner.append(build_contour([{"type": "circle", "x": (x0 + x1) / 2.0,
                                      "y": (y0 + y1) / 2.0, "radius": inside / 2.0}], 0.0))
     face = _face_from_wires(outer, inner)
-    face, note = _settle_offset(face, pad)
+    return _settle_offset(face, pad)
+
+
+def pad_face(pad: dict, hole: list | None, mirrored: bool, face_up: bool = True,
+             mask: dict | None = None) -> tuple[TopoDS_Shape | None, str | None]:
+    """One pad's VISIBLE copper as a planar face (or a compound of faces) at
+    the origin, z = 0, ready to be placed.
+
+    The copper figure, its drill cut out, and - when *mask* is given - only
+    what lies inside the mask opening: a solder-mask-defined pad shows the
+    opening's shape, a copper-defined one its own, and a pad whose opening
+    misses it entirely shows nothing. Returns (shape, note): the shape is
+    None when the figure cannot be built or nothing of it is visible; the
+    note, when there is one, is a line for the log (a box disagreement, a
+    figure that failed). No note with None means "all hole" or "nothing
+    inside the opening" - ordinary, and counted by the caller.
+
+    *face_up* says which way the faces' normals should point: up for the top
+    side, down for the bottom, so a viewer that culls back faces shows the
+    pad from the side it is on.
+    """
+    face, note = figure_face(pad)
+    if face is None:
+        return None, note
+    faces = [face]
 
     if hole:
         cutter = _face_from_wires(build_contour(hole, 0.0), [])
         cut = BRepAlgoAPI_Cut(face, cutter)
         if not cut.IsDone():
             return None, "the drill could not be cut out of the pad"
-        left = _first_face(cut.Shape())
-        if left is None:
+        faces = _faces_of(cut.Shape())
+        if not faces:
             # A mounting hole with a nominal pad smaller than its drill: the
             # copper is all hole. Ordinary, not an error - no note, and the
             # caller counts it as a pad that is all hole.
             return None, None
-        face = left
+
+    if mask is not None:
+        window, mask_note = figure_face(mask)
+        if window is None:
+            return None, f"its mask opening could not be built ({mask_note})"
+        if mask_note and not note:
+            note = "mask opening: " + mask_note
+        common = BRepAlgoAPI_Common(_assemble(faces), window)
+        if not common.IsDone():
+            return None, "the copper could not be clipped to its mask opening"
+        faces = _faces_of(common.Shape())
+        if not faces:
+            return None, None
 
     if mirrored:
         mirror = gp_Trsf()
         mirror.SetMirror(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)))
-        face = TopoDS.Face_s(BRepBuilderAPI_Transform(face, mirror, True).Shape())
+        faces = [TopoDS.Face_s(BRepBuilderAPI_Transform(f, mirror, True).Shape()) for f in faces]
 
-    up = _normal_up(face)
-    if up is not None and up != face_up:
-        face = TopoDS.Face_s(face.Reversed())
-    return face, note
+    oriented = []
+    for f in faces:
+        up = _normal_up(f)
+        oriented.append(TopoDS.Face_s(f.Reversed()) if up is not None and up != face_up else f)
+    return _assemble(oriented), note
+
+
+def shape_area(shape: TopoDS_Shape | None) -> float:
+    """Surface area of a face or a compound of faces; 0 for None."""
+    if shape is None:
+        return 0.0
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    props = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(shape, props)
+    return props.Mass()
 
 
 # --------------------------------------------------------------------------- #
@@ -396,6 +503,10 @@ class PadsResult:
     no_padstack: int = 0            # pins naming a padstack the library lacks
     unbuildable: int = 0            # figures that could not be built
     all_hole: int = 0               # pads placed on nothing: the drill is larger than the pad
+    covered: int = 0                # placements with no mask opening in the padstack: under the mask
+    hidden: int = 0                 # placements whose opening misses the copper entirely
+    mask_defined: int = 0           # distinct figures whose opening is smaller than the copper
+    no_mask_data: bool = False      # a format_version 10 library: no openings known, copper drawn whole
     in_bend: int = 0                # pins standing in a bend area
     notes: list[str] = field(default_factory=list)
 
@@ -455,6 +566,12 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
     rows = pads.get("pins") or []
     where = _Zones(zones, stackups, levels, board_top_z, board_bottom_z)
     shape_tool = document.shape_tool
+    # A library without a single mask pad is a format_version 10 file: it
+    # cannot say which pads are covered, so the copper is drawn whole, as it
+    # was, and the caller says so once. With mask data, no opening on a face
+    # means the pad is under the mask and draws nothing.
+    masks_known = has_mask_data(library)
+    result.no_mask_data = not masks_known
 
     parts: dict[tuple, object] = {}       # (padstack, layer, mirrored, face) -> label or None
     noted_boxes: set[str] = set()
@@ -481,13 +598,34 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
         if fold is not None and fold.in_bend_area(x, y):
             result.in_bend += 1
 
-        for face_side, pad in sides:
+        for face_side, pad, mask in sides:
+            if mask is None and masks_known:
+                result.covered += 1
+                continue
             layer = next((lay for lay, p in (padstack.get("pads") or {}).items() if p is pad), "?")
             key = (name, layer, mirrored, face_side)
             if key not in parts:
+                empty = None                   # why nothing shows: "hole" or "hidden"
                 try:
-                    face, note = pad_face(pad, padstack.get("drill"), mirrored,
-                                          face_up=(face_side == "top"))
+                    # The copper first, whole - it says whether the drill took
+                    # all of it - then what the opening leaves of it. Per
+                    # figure, not per pin, so the second build is cheap.
+                    whole, note = pad_face(pad, padstack.get("drill"), mirrored,
+                                           face_up=(face_side == "top"))
+                    face = whole
+                    if whole is None:
+                        empty = "hole" if note is None else None
+                    elif mask is not None:
+                        face, mask_note = pad_face(pad, padstack.get("drill"), mirrored,
+                                                   face_up=(face_side == "top"), mask=mask)
+                        note = note or mask_note
+                        if face is None:
+                            empty = "hidden" if mask_note is None else None
+                        # Solder-mask-defined: the opening is what shows, and
+                        # it is smaller than the copper. Counted per figure,
+                        # for the log; a percent of slack covers the arcs.
+                        elif shape_area(face) < 0.99 * shape_area(whole):
+                            result.mask_defined += 1
                 except (StepBuilderError, RuntimeError, KeyError, TypeError,
                         ValueError, IndexError) as exc:
                     face, note = None, str(exc)
@@ -495,10 +633,10 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
                     noted_boxes.add(name)
                     result.notes.append(f"padstack {name} ({layer}): {note}")
                 if face is None:
-                    # No note means the figure built and its drill took all
-                    # of it - a mounting hole's nominal pad. Counted apart
-                    # from a figure that failed.
-                    parts[key] = "hole" if note is None else None
+                    # Nothing visible and no failure: the drill took all of
+                    # it (a mounting hole's nominal pad) or the opening misses
+                    # it. Counted apart from a figure that failed (None).
+                    parts[key] = empty
                 else:
                     label = shape_tool.NewShape()
                     shape_tool.SetShape(label, face)
@@ -513,6 +651,9 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
                 continue
             if label == "hole":
                 result.all_hole += 1
+                continue
+            if label == "hidden":
+                result.hidden += 1
                 continue
             z = top_z + lift if face_side == "top" else bottom_z - lift
             trsf = _placement(x, y, z, rotation, fold)

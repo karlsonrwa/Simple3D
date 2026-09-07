@@ -50,8 +50,9 @@ STEP but knows nothing about Allegro. Everything the export decides in Allegro
 is in the file, so the model can be rebuilt — differently — without touching
 the board again.
 
-The exporter writes `format_version: 10` (10 adds the optional `pads` object
-the *Copper pads* are drawn from). Every earlier version still builds —
+The exporter writes `format_version: 11` (10 added the optional `pads` object
+the *Copper pads* are drawn from; 11 adds each padstack's mask openings to it,
+so a pad shows only what its opening exposes). Every earlier version still builds —
 each version only ever *added* something optional — so an intermediate you kept
 from an older release does not have to be re-exported to be used. The other
 way round is new with 9: it keeps the components under one `"components"`
@@ -178,7 +179,7 @@ Most controls say what they do. These are the ones worth knowing about:
 | **Make surface** | The legend as surfaces rather than thin solids: about a quarter of its file size. The ink then has no thickness and cannot be used in boolean work. |
 | **Silkscreen layers** | A tick per layer *found in this JSON*, with its polygon count. Untick and press Generate again — no re-export needed. |
 | **Fold flex bends** | Fold along the bend areas. Off exports the board flat. Does nothing on a board without them. |
-| **Copper pads (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces a micron above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Needs a JSON written with `format_version` 10; an older one says so in the log and draws none. Vias are not drawn. See *Copper pads*. |
+| **Copper pads (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces a micron above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Only what the mask opening exposes is drawn: a solder-mask-defined pad shows its opening's shape, a pad with no opening shows nothing. Needs a JSON written with `format_version` 11 (10 draws the copper whole, an older one draws none; the log says which). Vias are not drawn. See *Copper pads*. |
 | **Compact STEP** | Drops parametric surface curves — roughly half the file, identical geometry. |
 | **Build the full-board file too** | With a folder queued, whether the batch also builds `<board>.json` — the whole board, variants ignored (`settings.exportFullBoard` is what writes it). A file you point at directly is always built: choosing it is choice enough. |
 | **Generate** / **Cancel** | While a build runs every other control is greyed out — a snapshot of the settings has already been taken, so changing them mid-build would only look as if it did something — and this button becomes **Cancel**. Cancelling kills the build outright, which is the only thing that works on a boolean that has been inside OCCT for a minute; the file being written at that moment may be left incomplete, and the log says so. |
@@ -499,9 +500,22 @@ placements, offset, mirrored and turned padstacks included — was checked
 against the polygon Allegro itself reports for that pin (`axlPolyFromDB` with
 `?layer`): same face, same bounding box.
 
-Needs an intermediate written with `format_version` 10 (`settings.exportPads`,
-on by default, is what collects them); an older file says so in the log and
-draws none. **Vias are not drawn** — they are tented under the mask on nearly
+**Only what the mask exposes.** The padstack carries the opening as a pad of
+its own — `PIN/SOLDERMASK_TOP`, with the same kind of outline — and the
+exporter writes it beside the copper. What is drawn is copper **and** opening,
+settled once per figure: a *solder-mask-defined* pad, whose opening is smaller
+than its copper, shows the opening's shape; a copper-defined one shows its
+copper; a pad whose padstack has no opening on that side is under the mask and
+draws nothing, counted in the log. Measured on the Dell board: 621 of 12 146
+pins are mask-defined and 101 are covered. An opening drawn in the footprint
+as a shape or a line on a `SOLDERMASK` layer, rather than in the padstack, is
+not read yet — a pad opened only that way still draws nothing, and copper that
+is not a pad (a thermal pad, a finger) is not drawn at all.
+
+Needs an intermediate written with `format_version` 11 (`settings.exportPads`,
+on by default, is what collects them); a `format_version` 10 file carries no
+openings and draws the copper whole, an older one draws none — the log says
+which. **Vias are not drawn** — they are tented under the mask on nearly
 every board — and the pads are a picture: surfaces without thickness that take
 part in no boolean.
 
@@ -744,8 +758,9 @@ SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE �
 ничего не знает про Allegro. Всё, что экспорт выяснил в Allegro, лежит в файле —
 поэтому модель можно пересобрать иначе, не открывая плату заново.
 
-Экспорт пишет `format_version: 10` (10 добавил необязательный объект `pads`,
-из которого рисуется *медь площадок*). Все предыдущие версии по-прежнему
+Экспорт пишет `format_version: 11` (10 добавил необязательный объект `pads`,
+из которого рисуется *медь площадок*; 11 добавил в него вскрытия маски каждого
+падстека, так что площадка показывает только то, что открыто). Все предыдущие версии по-прежнему
 собираются — каждая версия только *добавляла* необязательное, — так что
 интермедиат, оставшийся от старого релиза, переэкспортировать не обязательно.
 Обратное с версией 9 стало новостью: компоненты лежат под одним ключом
@@ -874,7 +889,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **Make surface** | Легенда поверхностями, а не тонкими телами: примерно четверть её объёма в файле. Толщины у краски тогда нет, и в булевых операциях она не участвует. |
 | **Silkscreen layers** | Галочка на каждый слой, *найденный в этом JSON*, с числом полигонов. Снимите и нажмите Generate снова — повторный экспорт не нужен. |
 | **Fold flex bends** | Сгибать по областям сгиба. Выключено — плата экспортируется плоской. На плате без сгибов ничего не меняет. |
-| **Copper pads (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на микрон над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Нужен JSON с `format_version` 10; старый скажет об этом в логе и ничего не нарисует. Переходные отверстия не рисуются. См. *Медь площадок*. |
+| **Copper pads (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на микрон над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего. Нужен JSON с `format_version` 11 (10 рисует медь целиком, более старый — ничего; лог говорит, что именно). Переходные отверстия не рисуются. См. *Медь площадок*. |
 | **Compact STEP** | Убирает параметрические кривые на поверхностях — примерно вдвое меньший файл при той же геометрии. |
 | **Build the full-board file too** | Когда в очереди папка — собирать ли вместе с вариантами `<плата>.json`, всю плату без учёта вариантов (пишет его `settings.exportFullBoard`). Файл, выбранный напрямую, собирается всегда: выбор и есть выбор. |
 | **Generate** / **Cancel** | Пока идёт сборка, остальные элементы погашены — настройки уже сняты снимком, и правка на ходу лишь выглядела бы действием, — а кнопка становится **Cancel**. Отмена убивает сборку немедленно: с булевой операцией, которая уже минуту внутри OCCT, иначе не выйдет. Файл, который писался в этот момент, может остаться недописанным — лог об этом говорит. |
@@ -1197,9 +1212,22 @@ Allegro, где его набирают руками, а файл на диск�
 сверена с полигоном, который сам Allegro сообщает для этого вывода
 (`axlPolyFromDB` с `?layer`): та же грань, тот же габарит.
 
-Нужен интермедиат с `format_version` 10 (собирает их `settings.exportPads`,
-по умолчанию включённый); старый файл скажет об этом в логе и ничего не
-нарисует. **Переходные отверстия не рисуются** — почти на любой плате они
+**Только то, что открыто маской.** Падстек хранит вскрытие как собственную
+площадку — `PIN/SOLDERMASK_TOP`, с таким же контуром, — и экспорт пишет его
+рядом с медью. Рисуется медь **и** вскрытие, один раз на фигуру:
+*mask-defined* площадка, у которой вскрытие меньше меди, показывает форму
+вскрытия; copper-defined — свою медь; площадка, у падстека которой нет
+вскрытия с этой стороны, закрыта маской и не рисуется, это считается в логе.
+Замер на плате Dell: 621 из 12146 выводов mask-defined и 101 закрыт. Вскрытие,
+нарисованное в посадочном месте фигурой или линией на слое `SOLDERMASK`, а не
+в падстеке, пока не читается: площадка, открытая только так, всё равно не
+рисуется, а медь, не являющаяся площадкой (термопад, ламель), не рисуется
+вовсе.
+
+Нужен интермедиат с `format_version` 11 (собирает их `settings.exportPads`,
+по умолчанию включённый); файл `format_version` 10 не несёт вскрытий и
+рисует медь целиком, более старый не рисует ничего — лог говорит, что
+именно. **Переходные отверстия не рисуются** — почти на любой плате они
 закрыты маской, — а площадки остаются картинкой: поверхности без толщины,
 не участвующие в булевых операциях.
 

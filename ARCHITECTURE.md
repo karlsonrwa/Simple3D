@@ -28,7 +28,7 @@ Allegro PCB Editor (SKILL, one global namespace, loads once per session)
                                   geometry, stackup, bends, silk, pads, export - which read
                                   the database and write <design>[_<variant>].json
         │
-        │   the intermediate JSON  ("format": "simple3d", format_version 10)
+        │   the intermediate JSON  ("format": "simple3d", format_version 11)
         ▼
 Python 3.10+ / cadquery-ocp  (package stepbuilder, runs OUTSIDE Allegro)
   __main__.py   entry: window / --gui prefilled window / headless CLI, one parser
@@ -78,7 +78,7 @@ the keys that differ from the default.
 | `stepbuilder/stepdoc.py` | 89 | 6 | `StepDocument`: the XCAF app/doc, shape and colour tools, the root assembly, `set_name`, `set_color`, and `write(path, minimize_size)` with the one writer setting that halves the file, set after the writer is constructed. Round 73, plan A7 |
 | `stepbuilder/models.py` | 359 | 14 | component models: `StepFileIndex` (an ordered search path over the model folders, case-folded as the last resort), `ModelCache` (each distinct STEP read once into the document; `labels_for` says "missing" or "unreadable" once per file), `component_transform`, `_report_embedded_only`, `_sanitize`. Round 73, plan A6 |
 | `stepbuilder/legend.py` | 544 | 13 | the silkscreen legend: the arc conventions and `_pick_convention` (settled by the board's own areas), `_wire_from_vertices`, `_silk_face`, `build_silkscreen`, `_merge_coplanar`, `clip_silk_to_zones`, `DEFAULT_FLAT_HEIGHT` / `DEFAULT_SILK_THICKNESS`. Round 73, plan A5 |
-| `stepbuilder/pads.py` | 450 | 21 | the copper pads (round 85): `pin_sides` (which outer face(s) of the pin's zone its span reaches, and which pad - a surface padstack's one pad, a through padstack's by layer, backwards when mirrored), `_pad_wire` (the outline's pieces chained end to end, each arc through its two exact ends and the exported arc's midpoint - the centre is rounded to the design's resolution), `pad_face` (that wire as a face at the origin, the donut's hole, the drill cut out, mirrored x -> -x, the normal facing out; `_settle_offset` checks bbox + offset against the outline - the outline already stands at the offset, measured on the Dell board), `_placement` (turn, move, fold), `_Zones` (point -> outer conductors + faces), `build_pads` (one shared face per (padstack, layer, mirrored, side), instanced per pin under `pads_top` / `pads_bot`), `PadsResult` |
+| `stepbuilder/pads.py` | 560 | 27 | the copper pads (round 85): `pin_sides` (which outer face(s) of the pin's zone its span reaches, which pad - a surface padstack's one pad, a through padstack's by layer, backwards when mirrored - and which mask opening: `mask_pads`, `_mask_for`, `has_mask_data` for a v10 library), `_pad_wire` (the outline's pieces chained end to end, each arc through its two exact ends and the exported arc's midpoint - the centre is rounded to the design's resolution), `figure_face` (that wire as a face at the origin, the donut's hole; `_settle_offset` checks bbox + offset against the outline - the outline already stands at the offset, measured on the Dell board), `pad_face` (the copper figure, the drill cut out, clipped to the mask opening's figure - `BRepAlgoAPI_Common`, one per figure - mirrored x -> -x, the normals facing out; a face or a compound of faces), `_placement` (turn, move, fold), `_Zones` (point -> outer conductors + faces), `build_pads` (one shared face per (padstack, layer, mirrored, side), instanced per pin under `pads_top` / `pads_bot`), `PadsResult` |
 | `stepbuilder/board.py` | 633 | 14 | the board body: `make_board_geometry` (a plain board and the zone paths), `layer_solids` (THE zones×layers walk: `_layer_region` turns a drawn shape into material or an opening, each layer extruded at its own height, cutouts per layer when asked), `make_board_layer_parts` + `fuse_keeping_faces` (the inspect and layer-coloured builds), `_stackup_board` + `fuse_and_unify`, `_zone_solid`, `board_cutouts` (repeats dropped), `has_solid`, `_rim_faces`. Round 73, plan A4 |
 | `stepbuilder/stackup.py` | 223 | 8 | the stackup arithmetic, no OCC: `restack`, `drop_soldermask`, `align_stackups`, `stackup_levels`, `zone_levels`, the soldermask / conductor matchers. Round 73, plan A3 |
 | `stepbuilder/reporting.py` | 29 | 2 | `LogFn`, `ProgressFn` and the two no-ops — every stage module needs them and none may import core for them. Round 73 |
@@ -293,11 +293,11 @@ flowchart TD
 | `load("…/tools/probes/probe_*.il")` | in Allegro, by hand | read-only diagnostics; `probe_variants.il` calls into the exporter |
 | `load("…/tools/s3d_userprop_test.il")` | in Allegro, by hand | the one file that writes to a design |
 
-### 3.2 The intermediate (format_version 10), as the reader sees it
+### 3.2 The intermediate (format_version 11), as the reader sees it
 
 ```
 {
-  "format": "simple3d", "format_version": 10, "name": "<design>[_<variant>]",
+  "format": "simple3d", "format_version": 11, "name": "<design>[_<variant>]",
   "full_board": true,                       optional, only ever true
   "warnings": [ "..." ],                    optional (2026-09-03): the exporter's lines for the window's log - a variant naming components the board lacks
   "embedded_models": ["X.step", …],          v4+
@@ -313,7 +313,8 @@ flowchart TD
   "components": { "<refdes or NAME_MECHn>": { step_mapping:{step_name, rotation_xyz, offset_xyz},
                                                zone, is_mirrored, x, y, angle }, … },   v9; {} when none
   "pads": { "padstacks": { "<name>": { usage, drill: null | [prim…] (at the padstack origin, unrotated),
-                                       pads: { "ETCH/<layer>": {figure, bbox, offset, inside, outline:[prim…] | null} … } } … },
+                                       pads: { "ETCH/<layer>": {figure, bbox, offset, inside, outline:[prim…] | null},
+                                               "PIN/SOLDERMASK_<side>": {…the same, the opening…} … } } … },   masks v11
             "pins": [ [x, y, rotation, mirrored, "<padstack>", "<start layer>", "<end layer>"] … ] },   v10 (round 85), optional
   "silkscreen": { thickness, warnings:[…], top:[poly…], bottom:[poly…] }   v2+
 }

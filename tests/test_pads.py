@@ -46,42 +46,64 @@ def pad(outline, bbox, figure="RECTANGLE", offset=(0.0, 0.0), inside=0.0):
 RECT = pad(rect(-1.0, -0.5, 1.0, 0.5), [[-1.0, -0.5], [1.0, 0.5]])
 DISC = pad(circle(0.8), [[-0.8, -0.8], [0.8, 0.8]], "CIRCLE")
 
-print("\n[1] which outer face a pin reaches, and with which pad")
+print("\n[1] which outer face a pin reaches, with which pad, through which opening")
 # A surface padstack: one etch pad, placed where the span says - "ETCH/TOP"
 # in the padstack is "the side the part sits on", not the layer called TOP.
-smd = {"usage": "Smd", "drill": None, "pads": {"ETCH/TOP": RECT}}
-check("a surface pin on TOP: the top face",
+# Its opening is its one mask pad, wherever the library drew it.
+MASK = pad(rect(-1.1, -0.6, 1.1, 0.6), [[-1.1, -0.6], [1.1, 0.6]])
+smd = {"usage": "Smd", "drill": None, "pads": {"ETCH/TOP": RECT, "PIN/SOLDERMASK_TOP": MASK}}
+check("a surface pin on TOP: the top face, its pad, its opening",
       P.pin_sides({"mirrored": False, "start": "ETCH/TOP", "end": "ETCH/TOP"}, smd, "TOP", "BOTTOM")
-      == [("top", RECT)])
-check("a surface pin whose span says BOTTOM: the bottom face, same pad",
+      == [("top", RECT, MASK)])
+check("a surface pin whose span says BOTTOM: the bottom face, same pad, same opening",
       P.pin_sides({"mirrored": True, "start": "ETCH/BOTTOM", "end": "ETCH/BOTTOM"}, smd, "TOP", "BOTTOM")
-      == [("bottom", RECT)])
+      == [("bottom", RECT, MASK)])
 check("a surface pin on INNER1 in a zone whose top copper IS INNER1: the top face",
       P.pin_sides({"mirrored": False, "start": "ETCH/INNER1", "end": "ETCH/INNER1"}, smd, "INNER1", "INNER2")
-      == [("top", RECT)])
+      == [("top", RECT, MASK)])
 check("a surface pin on INNER1 in the rigid zone: no outer face at all",
       P.pin_sides({"mirrored": False, "start": "ETCH/INNER1", "end": "ETCH/INNER1"}, smd, "TOP", "BOTTOM")
       == [])
 check("no span: the mirror flag decides",
-      P.pin_sides({"mirrored": True, "start": None, "end": None}, smd, "TOP", "BOTTOM") == [("bottom", RECT)]
-      and P.pin_sides({"mirrored": False, "start": None, "end": None}, smd, "TOP", "BOTTOM") == [("top", RECT)])
+      P.pin_sides({"mirrored": True, "start": None, "end": None}, smd, "TOP", "BOTTOM") == [("bottom", RECT, MASK)]
+      and P.pin_sides({"mirrored": False, "start": None, "end": None}, smd, "TOP", "BOTTOM") == [("top", RECT, MASK)])
+bare = {"usage": "Smd", "drill": None, "pads": {"ETCH/TOP": RECT}}
+check("a surface padstack with no mask pad: the face and the pad, and None for the opening",
+      P.pin_sides({"mirrored": False, "start": "ETCH/TOP", "end": "ETCH/TOP"}, bare, "TOP", "BOTTOM")
+      == [("top", RECT, None)])
+MASKB = pad(rect(-1.2, -0.7, 1.2, 0.7), [[-1.2, -0.7], [1.2, 0.7]])
+both = {"usage": "Smd", "drill": None,
+        "pads": {"ETCH/TOP": RECT, "PIN/SOLDERMASK_TOP": MASK, "PIN/SOLDERMASK_BOTTOM": MASKB}}
+check("a surface padstack with masks on both sides takes the one on its pad's side",
+      P.pin_sides({"mirrored": True, "start": "ETCH/BOTTOM", "end": "ETCH/BOTTOM"}, both, "TOP", "BOTTOM")
+      == [("bottom", RECT, MASK)])
 
-# A through padstack: pads by layer name; mirrored, the stack is read backwards.
+# A through padstack: pads by layer name; mirrored, the stack is read backwards
+# - openings included.
 TOPPAD, BOTPAD = dict(RECT, tag="t"), dict(DISC, tag="b")
+TOPMASK, BOTMASK = dict(MASK, tag="mt"), dict(MASK, tag="mb")
 thru = {"usage": "Through", "drill": circle(0.4),
-        "pads": {"ETCH/TOP": TOPPAD, "ETCH/INNER1": DISC, "ETCH/BOTTOM": BOTPAD}}
-check("a through pin: both faces, each with its own layer's pad",
+        "pads": {"ETCH/TOP": TOPPAD, "ETCH/INNER1": DISC, "ETCH/BOTTOM": BOTPAD,
+                 "PIN/SOLDERMASK_TOP": TOPMASK, "PIN/SOLDERMASK_BOTTOM": BOTMASK}}
+check("a through pin: both faces, each with its own layer's pad and opening",
       P.pin_sides({"mirrored": False, "start": "ETCH/TOP", "end": "ETCH/BOTTOM"}, thru, "TOP", "BOTTOM")
-      == [("top", TOPPAD), ("bottom", BOTPAD)])
-check("mirrored: the pad drawn for TOP lands on the bottom face",
+      == [("top", TOPPAD, TOPMASK), ("bottom", BOTPAD, BOTMASK)])
+check("mirrored: the pad drawn for TOP lands on the bottom face, its opening with it",
       P.pin_sides({"mirrored": True, "start": "ETCH/TOP", "end": "ETCH/BOTTOM"}, thru, "TOP", "BOTTOM")
-      == [("top", BOTPAD), ("bottom", TOPPAD)])
+      == [("top", BOTPAD, BOTMASK), ("bottom", TOPPAD, TOPMASK)])
 check("a through pin spanning the flex core only: nothing on the rigid faces",
       P.pin_sides({"mirrored": False, "start": "ETCH/INNER1", "end": "ETCH/INNER2"}, thru, "TOP", "BOTTOM")
       == [])
+onemask = {"usage": "Through", "drill": circle(0.4),
+           "pads": {"ETCH/TOP": TOPPAD, "ETCH/BOTTOM": BOTPAD, "PIN/SOLDERMASK_TOP": TOPMASK}}
+check("a through padstack opened on one side only: the other face is covered (None)",
+      P.pin_sides({"mirrored": False, "start": "ETCH/TOP", "end": "ETCH/BOTTOM"}, onemask, "TOP", "BOTTOM")
+      == [("top", TOPPAD, TOPMASK), ("bottom", BOTPAD, None)])
 check("a padstack with no etch pad reaches nothing",
       P.pin_sides({"mirrored": False, "start": "ETCH/TOP", "end": "ETCH/TOP"},
                   {"usage": "Smd", "drill": None, "pads": {"PIN/SOLDERMASK_TOP": RECT}}, "TOP", "BOTTOM") == [])
+check("has_mask_data tells a v11 library from a v10 one",
+      P.has_mask_data({"A": smd, "B": bare}) and not P.has_mask_data({"B": bare}))
 check("outer conductors by position, not by name",
       P.outer_conductors({"layers": [{"name": "COVERLAY", "type": "MASK"}, {"name": "INNER1", "type": "CONDUCTOR"},
                                      {"name": "", "type": "DIELECTRIC"}, {"name": "INNER2", "type": "PLANE"}]})
@@ -184,6 +206,35 @@ face, note = P.pad_face({"figure": "FLASH", "bbox": [[-1, -1], [1, 1]], "offset"
                         None, False, True)
 check("no outline: the bounding box stands in", face is not None and abs(area(face) - 4.0) < 1e-9, note)
 
+print("\n[2b] the mask opening: what shows is copper AND opening")
+# Per figure, one boolean: a solder-mask-defined pad shows the opening, a
+# copper-defined one its own copper, and a covered pad is the caller's
+# business (mask None in pin_sides) - pad_face with mask=None clips nothing.
+small = pad(rect(-0.8, -0.4, 0.8, 0.4), [[-0.8, -0.4], [0.8, 0.4]])
+face, note = P.pad_face(RECT, None, False, True, mask=small)
+check("an opening smaller than the copper: the opening's area (mask-defined)",
+      face is not None and abs(P.shape_area(face) - 1.28) < 1e-9, (note, face and P.shape_area(face)))
+face, note = P.pad_face(RECT, None, False, True, mask=MASK)
+check("an opening larger than the copper: the copper's area (copper-defined)",
+      face is not None and abs(P.shape_area(face) - 2.0) < 1e-9, (note, face and P.shape_area(face)))
+face, note = P.pad_face(RECT, None, False, True, mask=RECT)
+check("an opening equal to the copper: the same area", face is not None and abs(P.shape_area(face) - 2.0) < 1e-9, note)
+face, note = P.pad_face(DISC, circle(0.4), False, True, mask=pad(circle(0.6), [[-0.6, -0.6], [0.6, 0.6]], "CIRCLE"))
+check("a through pad in a smaller round opening keeps its hole: a thinner ring",
+      face is not None and abs(P.shape_area(face) - math.pi * (0.36 - 0.16)) < 1e-6, (note, face and P.shape_area(face)))
+away = pad(rect(5, 5, 6, 6), [[5, 5], [6, 6]])
+face, note = P.pad_face(RECT, None, False, True, mask=away)
+check("an opening that misses the copper: nothing, quietly", face is None and note is None, (face, note))
+half = pad(rect(0.0, -1.0, 1.0, 1.0), [[0.0, -1.0], [1.0, 1.0]])
+face, note = P.pad_face(RECT, None, True, True, mask=half)
+check("clipped, then mirrored: the visible half ends up on the mirrored side",
+      face is not None and P._boxes_agree(P._tight_box(face), (-1.0, -0.5, 0.0, 0.5)), face and P._tight_box(face))
+two = pad(rect(-1.0, -0.5, 1.0, 0.5), [[-1.0, -0.5], [1.0, 0.5]])
+face, note = P.pad_face(two, circle(0.5), False, True, mask=RECT)
+check("a slot-like drill wider than the pad cuts it in two: a compound of two faces, both kept",
+      face is not None and abs(P.shape_area(face) - (2.0 - math.pi * 0.25)) < 1e-6 and len(P._faces_of(face)) == 2,
+      (note, face and P.shape_area(face), face and len(P._faces_of(face))))
+
 print("\n[3] placement: rotate about the pin, then move, then the fold")
 face, _ = P.pad_face(asym, None, False, True)
 placed = BRepBuilderAPI_Transform(face, P._placement(10.0, 20.0, 0.5, 90.0, None), True).Shape()
@@ -226,14 +277,14 @@ for entry in fx["pins"]:
         # the flex: the probe asked only ETCH/TOP and ETCH/BOTTOM, so the
         # oracle is empty there and what is pinned is the zone's answer
         flex += 1
-        if top != "INNER1" or {s for s, _ in sides} != ({"top"} if row[5] == row[6] else {"top", "bottom"}):
-            bad.append(f"{name} span {row[5]}..{row[6]}: zone {top}/{bottom}, sides {sorted(s for s, _ in sides)}")
+        if top != "INNER1" or {s for s, _, _ in sides} != ({"top"} if row[5] == row[6] else {"top", "bottom"}):
+            bad.append(f"{name} span {row[5]}..{row[6]}: zone {top}/{bottom}, sides {sorted(s for s, _, _ in sides)}")
         continue
-    if {s for s, _ in sides} != set(oracle):
-        bad.append(f"{name} mir={mir} span {row[5]}..{row[6]}: sides {sorted(s for s, _ in sides)} vs Allegro {sorted(oracle)}")
+    if {s for s, _, _ in sides} != set(oracle):
+        bad.append(f"{name} mir={mir} span {row[5]}..{row[6]}: sides {sorted(s for s, _, _ in sides)} vs Allegro {sorted(oracle)}")
         continue
     sides_ok += 1
-    for side, pd in sides:
+    for side, pd, _mask in sides:
         face, _ = P.pad_face(pd, None, mir, side == "top")
         placed = BRepBuilderAPI_Transform(face, P._placement(x, y, 0.0, rot, None), True).Shape()
         got = P._tight_box(placed)
@@ -262,11 +313,12 @@ board = {"format": "simple3d", "format_version": 10, "name": "padboard",
              {"name": "BOTTOM", "type": "CONDUCTOR", "thickness": 0.045, "z_top": -1.009, "z_bottom": -1.054, "shapes": None},
              {"name": "SOLDERMASK_BOTTOM", "type": "MASK", "thickness": 0.025, "z_top": -1.054, "z_bottom": -1.079, "shapes": None}]}},
          "zones": [], "components": {},
-         "pads": {"padstacks": {"SMD": smd, "THRU": thru},
+         "pads": {"padstacks": {"SMD": smd, "THRU": thru, "BARE": bare},
                   "pins": [[2.0, 2.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],
                            [2.0, 8.0, 90.0, True, "SMD", "ETCH/BOTTOM", "ETCH/BOTTOM"],
                            [5.0, 5.0, 0.0, False, "THRU", "ETCH/TOP", "ETCH/BOTTOM"],
-                           [15.0, 5.0, 0.0, False, "NOSUCH", "ETCH/TOP", "ETCH/TOP"]]}}
+                           [15.0, 5.0, 0.0, False, "NOSUCH", "ETCH/TOP", "ETCH/TOP"],
+                           [12.0, 2.0, 0.0, False, "BARE", "ETCH/TOP", "ETCH/TOP"]]}}
 jf = OUT / "padboard.json"
 jf.write_text(json.dumps(board))
 
@@ -281,6 +333,23 @@ def build(name, **kw):
 res, logs, text = build("pads_on", copper_pads=True)
 check("four pad faces placed: two surface pins, a through pin on both faces",
       res.pads_placed == 4 and res.pads_figures == 4, (res.pads_placed, res.pads_figures))
+check("the pin whose padstack has no mask opening is under the mask: not drawn, and said",
+      "pad_BARE" not in text and any("1 pad(s) have no mask opening" in m for m in logs),
+      [m for m in logs if "mask" in m])
+check("no v10 note on a v11 library", not any("carries no mask openings" in m for m in logs))
+
+# A format_version 10 library - no mask pad anywhere - cannot say which pads
+# are covered: the copper is drawn whole, as before, and the log says so once.
+v10 = json.loads(json.dumps(board))
+for ps in v10["pads"]["padstacks"].values():
+    ps["pads"] = {l: p for l, p in ps["pads"].items() if "SOLDERMASK" not in l}
+jf.write_text(json.dumps(v10))
+res10, logs10, text10 = build("pads_v10", copper_pads=True)
+check("a v10 library draws every pad whole, the bare one included",
+      res10.pads_placed == 5 and "pad_BARE" in text10, (res10.pads_placed, [m for m in logs10 if "pads" in m]))
+check("and says that the openings are not in the file",
+      any("carries no mask openings" in m for m in logs10), logs10[-6:])
+jf.write_text(json.dumps(board))
 check("the pin with an unknown padstack is counted, not fatal", res.pads_skipped == 1
       and any("name a padstack" in m for m in logs), (res.pads_skipped, [m for m in logs if "padstack" in m]))
 check("pads_top and pads_bot are nodes of the assembly, named per board",

@@ -65,7 +65,7 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   material, set `gui.foldNeutral` to `0` (README, *The K factor*).
 - **Copper pads (as surfaces)** — the copper of every pin's pad on the outer
   faces, as copper-coloured surfaces a micron above the mask. Off by default;
-  needs a JSON exported with this version (`format_version` 10). Vias are not
+  needs a JSON exported with this version (`format_version` 11). Vias are not
   drawn (README, *Copper pads*).
 
 **Silk options**
@@ -203,7 +203,7 @@ builds it.
   (README, *K-фактор*).
 - **Copper pads (as surfaces)** — медь площадок всех выводов на наружных
   гранях, поверхностями цвета меди на микрон над маской. По умолчанию
-  выключено; нужен JSON, экспортированный этой версией (`format_version` 10).
+  выключено; нужен JSON, экспортированный этой версией (`format_version` 11).
   Переходные отверстия не рисуются (README, *Медь площадок*).
 
 **Silk options**

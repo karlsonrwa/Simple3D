@@ -570,7 +570,7 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
     if not options.copper_pads:
         return None
     if not isinstance(data.get("pads"), dict):
-        log("No pads in this JSON (re-export from Allegro, format_version 10, to include them)")
+        log("No pads in this JSON (re-export from Allegro, format_version 11, to include them)")
         return PadsResult()
 
     from .colors import DEFAULT_LAYER_COLORS
@@ -605,6 +605,18 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
     if result.no_outer_face:
         log(f"  {result.no_outer_face} pin(s) reach no outer face of their zone "
             f"(an inner layer): no copper drawn for them")
+    if result.no_mask_data:
+        log("note: this JSON carries no mask openings (format_version 10); every pad "
+            "is drawn as its full copper - re-export from Allegro for the openings, "
+            "which is what a solder-mask-defined pad or a covered one needs")
+    if result.mask_defined:
+        log(f"  {result.mask_defined} figure(s) are solder-mask-defined: the opening is "
+            f"smaller than the copper, and the opening is what is drawn")
+    if result.covered:
+        log(f"  {result.covered} pad(s) have no mask opening in their padstack - under "
+            f"the mask - and draw nothing")
+    if result.hidden:
+        log(f"  {result.hidden} pad(s) lie entirely outside their mask opening and draw nothing")
     if result.all_hole:
         log(f"  {result.all_hole} pad(s) are all hole - the drill is larger than the "
             f"pad, as on a mounting hole - and draw nothing")

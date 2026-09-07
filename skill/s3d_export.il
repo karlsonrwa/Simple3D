@@ -316,7 +316,10 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; keys are NOT components. A v9 file may also carry an optional
         ; top-level "warnings" list (2026-09-03): lines for the window's log;
         ; 10 adds the optional "pads" object (round 85): the padstack figures
-        ; and the pin placements the copper pads are drawn from.
+        ; and the pin placements the copper pads are drawn from; 11 carries
+        ; each padstack's SOLDERMASK pads in that library beside its ETCH
+        ; pads, so the reader can clip the copper to its opening - a 10 file
+        ; has no openings and the reader draws the copper whole, and says so.
         ; All of them are optional to a reader - an older file simply has no
         ; layers to choose from, nothing to say about embedded models, an empty
         ; zone list, which means "ordinary single-stackup board", no bends,
@@ -327,7 +330,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; components sit beside the metadata, is still read.
         members = list(
             "\"format\": \"simple3d\""
-            "\"format_version\": 10"
+            "\"format_version\": 11"
             strcat( "\"name\": " s3dJsonQuote( variantName ) )
         )
         ; Optional, and only ever true: the whole board, variants ignored.

@@ -96,7 +96,7 @@ def makePcb(thicknesses, edges, cuts, color):
 
 
 def create3dIntermediateFormat(variantName, full_board, edges, cuts, placements, silk, pads=False):
-    members = ['"format": "simple3d"', '"format_version": 10', '"name": ' + s3dJsonQuote(variantName)]
+    members = ['"format": "simple3d"', '"format_version": 11', '"name": ' + s3dJsonQuote(variantName)]
     if full_board:
         members.append('"full_board": true')
     members += ['"embedded_models": []', '"stackups": {\n}', '"zones": []', '"bends": []']

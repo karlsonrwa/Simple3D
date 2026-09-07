@@ -10,7 +10,8 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 **Branch `feature/copper-pads` (round 85, 2026-09-07) is where the copper
 pads live until the user has tried them**: a checkbox that draws every pin's
 pad on the outer faces as copper-coloured surfaces, from a `pads` library the
-exporter now writes (`format_version` 10). `main` is at round 84. Read round
+exporter now writes (`format_version` 11: the copper and, since part 1 of
+the exposed-copper work, each padstack's mask openings). `main` is at round 84. Read round
 85 for the construction, the measurements and what is still unverified.
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
@@ -3054,7 +3055,7 @@ variants_test-b0, 131 / 19; my_test_board-a0, 20 / 5). `pd->??` first, per
   mirror x span x drill x quarter turn) is `tests/fixtures/pads_demo.json`
   and test_pads [4] compares against it.
 
-### The exporter (skill/s3d_pads.il, part 10 of 10; format_version 10)
+### The exporter (skill/s3d_pads.il, part 10 of 10; format_version 10, then 11 with the mask pads)
 
 `s3dCollectPads` walks `dsn->symbols -> sym->pins` exactly as
 `symbolReturnPinHoles` does (mechanical symbols included), collects the
@@ -3218,9 +3219,42 @@ proposing - the numbers are in the answer to the user and in
   (preload makeVariant3dIntermediates.il) on the way; the probe itself
   loads alone now.
 
+### Part 1 of the exposed copper: the pad shows what its opening exposes (format_version 11)
+
+The user chose part 1 of the proposal above. The exporter's library now
+carries every padstack's REGULAR pads on the SOLDERMASK subclasses beside
+its ETCH pads (`s3dIsPadCopperOrMask`; keys like `PIN/SOLDERMASK_TOP`, the
+reader goes by the subclass), `format_version` 11. On the Python side
+`pin_sides` returns (face, pad, mask): a surface padstack's one mask pad,
+on whichever side the library drew it (given both, the etch pad's own
+side); a through padstack's mask of that side, the other side's when
+mirrored, like the copper. `pad_face(..., mask=)` builds the copper whole
+(drill cut), then `BRepAlgoAPI_Common` with the opening's `figure_face`,
+one boolean per FIGURE, and hands back a face or a compound of faces (a
+slot can cut a pad in two, an opening can leave two islands). Then:
+
+- opening smaller than the copper: the opening's shape - measured on
+  variants_test-b0, its three mask-defined figures show exactly the
+  opening's area (0.3344, 0.4219, 0.3593 mm2 of 0.50, 0.62, 0.59 of copper);
+- no opening on that face in a library that has mask pads: covered, not
+  drawn, counted (`covered`); an opening that misses the copper: `hidden`;
+- a library with no mask pad anywhere is a v10 file: the copper is drawn
+  whole, as before, and the log says so once (`no_mask_data`).
+
+Demo, my_test_board2 and variants re-exported and built: 2982 / 61 / 129
+placed as before (the demo has no mask-defined pad; its 10 all-hole
+mounting pads are still all-hole). test_pads [1] pins the triples, [2b]
+the six clipping cases, [5] a covered pin and a v10 library; 28/28.
+
+What part 1 does NOT do, and the docs say so: an opening drawn in the
+footprint on a SOLDERMASK layer (51 lines + 2 shapes on my_test_board2) is
+not read - a pad opened only that way draws nothing - and copper that is
+not a pad is not drawn. That is part 2, still the user's call.
+
 ### Not verified
 
-- The user's Inventor view of the board with the closed rounded rectangles.
+- The user's Inventor view of the board with the closed rounded rectangles
+  and the mask-clipped pads.
 - A mirrored through pin whose padstack has different TOP and BOTTOM pads
   (none on five boards) - handled by rule, not measured.
 - Vias: deliberately out. If a board needs them, the same library serves:

@@ -31,9 +31,15 @@ to use the tool.
   radius can miss the next line by a fraction of a micron - which is how
   four rounded-rectangle padstacks first came out as nothing. Measured on
   the demo: 2982 pads add 2.3 MB to a 94 MB file and five seconds to a
-  three-minute build. The exporter now writes `format_version` 10 with a
-  `pads` object (`settings.exportPads`, on by default); an older file says
-  so in the log. Off by default; vias are not drawn.
+  three-minute build. Only what the mask exposes is drawn: the padstack's
+  own mask opening travels beside the copper, and a solder-mask-defined
+  pad shows the opening's shape, a copper-defined one its copper, a pad
+  with no opening nothing (Dell: 621 mask-defined and 101 covered of
+  12 146 pins). An opening drawn in the footprint on a SOLDERMASK layer
+  rather than in the padstack is not read yet. The exporter now writes
+  `format_version` 11 with a `pads` object (`settings.exportPads`, on by
+  default); a 10 file draws the copper whole and an older one none - the
+  log says which. Off by default; vias are not drawn.
   / **Медь площадок, поверхностями.** Новая галочка *Copper pads (as
   surfaces)* рисует медь площадок всех выводов на двух наружных гранях
   цветом меди, на микрон над маской, — чтобы модель читалась как плата с
@@ -55,9 +61,15 @@ to use the tool.
   может не дойти до соседнего отрезка на доли микрона — так четыре
   падстека со скруглёнными прямоугольниками сначала не нарисовались вовсе.
   Замер на демо: 2982 площадки добавляют 2.3 МБ к файлу в 94 МБ и пять
-  секунд к трёхминутной сборке. Экспорт теперь пишет `format_version` 10 с объектом `pads`
-  (`settings.exportPads`, по умолчанию включено); старый файл говорит об
-  этом в логе. По умолчанию выключено; переходные отверстия не рисуются.
+  секунд к трёхминутной сборке. Рисуется только то, что открыто маской:
+  вскрытие из самого падстека едет рядом с медью, и mask-defined площадка
+  показывает форму вскрытия, copper-defined — свою медь, площадка без
+  вскрытия — ничего (Dell: 621 mask-defined и 101 закрытая из 12146).
+  Вскрытие, нарисованное в посадочном месте на слое SOLDERMASK, а не в
+  падстеке, пока не читается. Экспорт теперь пишет `format_version` 11 с
+  объектом `pads` (`settings.exportPads`, по умолчанию включено); файл 10
+  рисует медь целиком, более старый — ничего, лог говорит, что именно. По
+  умолчанию выключено; переходные отверстия не рисуются.
 
 - **2026-09-06** — **A flex layer no longer loses a corner where its zone
   contour carries a hairline.** On flex2-a0 the FLEX zone's outline, as

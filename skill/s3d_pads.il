@@ -17,10 +17,15 @@
 ;
 ;    "padstacks"  one entry per distinct padstack the pins use: its drill
 ;                 (at the padstack origin, unrotated) and every REGULAR pad
-;                 on an ETCH layer, each with the figure Allegro names, its
-;                 bounding box and offset, and its OUTLINE - the pad's own
-;                 axlPath, walked with the documented accessors, in the same
-;                 segment / arc / circle vocabulary the board outline uses.
+;                 on an ETCH layer - the copper - and, since format_version
+;                 11, on a SOLDERMASK subclass - the opening the copper
+;                 shows through; the reader draws copper AND opening, so a
+;                 solder-mask-defined pad shows the opening's shape and a
+;                 pad with no opening at all shows nothing. Each with the
+;                 figure Allegro names, its bounding box and offset, and
+;                 its OUTLINE - the pad's own axlPath, walked with the
+;                 documented accessors, in the same segment / arc / circle
+;                 vocabulary the board outline uses.
 ;                 Every figure kind carries such a path (measured on three
 ;                 boards: CIRCLE is a start point and one closing arc,
 ;                 OBLONG two lines and two arcs, ROUNDED_RECTANGLE eight
@@ -152,17 +157,23 @@ procedure( s3dPadFigureJson( o_pad )
     )
 )
 
-; A REGULAR pad on an ETCH layer, with a figure. Masks, paste, thermals and
-; antipads are not copper.
-procedure( s3dIsEtchCopper( o_pad )
-    let( ( lay type name )
+; A REGULAR pad with a figure on an ETCH layer (the copper) or on a
+; SOLDERMASK subclass (the opening the copper shows through - format_version
+; 11). Paste, thermals and antipads are neither. Written under the pad's own
+; layer name, "PIN/SOLDERMASK_TOP" and the like; the reader goes by the
+; subclass, so a padstack used by a via ("VIA CLASS/...") reads the same.
+procedure( s3dIsPadCopperOrMask( o_pad )
+    let( ( lay type name up )
         lay = nil
         errset( lay = o_pad->layer )
         type = nil
         errset( type = o_pad->type )
         name = nil
         errset( name = o_pad->figureName )
-        stringp( lay ) && (strlen( lay ) > 5) && (upperCase( substring( lay 1 5 ) ) == "ETCH/")
+        up = if( stringp( lay ) then upperCase( lay ) else "" )
+        stringp( lay )
+            && ( ((strlen( up ) > 5) && (substring( up 1 5 ) == "ETCH/"))
+                 || s3dContains( up "/SOLDERMASK_" ) )
             && stringp( type ) && (upperCase( type ) == "REGULAR")
             && stringp( name ) && !(upperCase( name ) == "NULL")
     )
@@ -220,7 +231,7 @@ procedure( s3dPadstackJson( t_name )
             pads = nil
             errset( pads = ps->pads )
             foreach( pd pads
-                when( s3dIsEtchCopper( pd )
+                when( s3dIsPadCopperOrMask( pd )
                     lay = pd->layer
                     body = strcat( s3dJsonQuote( lay ) ": " s3dPadFigureJson( pd ) )
                     out = strcat( out if( first then "\n" else ",\n" ) s3dAddIndent( body 2 ) )
