@@ -46,7 +46,12 @@ def find_allegro(explicit: str | None) -> Path:
     sys.exit("allegro.exe not found; pass --allegro <path>")
 
 
-def run(probe: Path, proc: str, brd: Path, out_dir: Path, allegro: Path) -> Path:
+def run(probe: Path, proc: str, brd: Path, out_dir: Path, allegro: Path,
+        preload: list[Path] = ()) -> Path:
+    """*preload*: .il files load()ed before the probe - the exporter itself
+    (makeVariant3dIntermediates.il) when the probe calls its procedures;
+    a probe that does and is loaded alone fails at the call, and inside a
+    headless session that can look like a hang."""
     out_dir.mkdir(parents=True, exist_ok=True)
     work = out_dir / f"_work_{brd.stem}_{int(time.time())}"
     work.mkdir(parents=True, exist_ok=True)
@@ -55,7 +60,8 @@ def run(probe: Path, proc: str, brd: Path, out_dir: Path, allegro: Path) -> Path
         shutil.copy2(brd, copy)
         scr = work / "run.scr"
         scr.write_text(
-            f'skill load("{slashes(probe.resolve())}")\n'
+            "".join(f'skill load("{slashes(Path(p).resolve())}")\n' for p in preload)
+            + f'skill load("{slashes(probe.resolve())}")\n'
             f'skill errset( {proc}() t )\n'
             "exit\n", encoding="ascii")
         cmd = [str(allegro), "-nograph", "-s", slashes(scr), slashes(copy)]
@@ -85,15 +91,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("boards", nargs="+", help=".brd files")
     ap.add_argument("-o", "--out", default=str(ROOT / "build" / "probe-out"))
     ap.add_argument("--allegro", default=None)
+    ap.add_argument("--with-exporter", action="store_true",
+                    help="load makeVariant3dIntermediates.il first, for a probe that "
+                         "calls the exporter's procedures (s3dSelectVisibleOn and the like)")
     args = ap.parse_args(argv)
     allegro = find_allegro(args.allegro)
     print(f"allegro: {allegro}")
+    preload = [ROOT / "makeVariant3dIntermediates.il"] if args.with_exporter else []
     for b in args.boards:
         brd = Path(b)
         if not brd.exists():
             print(f"no such board: {brd}")
             return 1
-        run(Path(args.probe), args.proc, brd, Path(args.out), allegro)
+        run(Path(args.probe), args.proc, brd, Path(args.out), allegro, preload)
     return 0
 
 

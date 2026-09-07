@@ -3176,6 +3176,48 @@ z-buffer"): the pads are faces again, one micron above the outer face, as
 in commit `86cdaf8`; the offset correction, the tolerance and the
 Dell / 109 verification stay. Inventor shows the surfaces.
 
+### Towards the exposed copper (measurements only, no code yet)
+
+The user's next question, once every pad showed in Inventor: what about
+copper that is not a pin's pad but is open in the mask, and pads whose mask
+opening is smaller than the copper (solder-mask-defined)? Measured before
+proposing - the numbers are in the answer to the user and in
+`tools/probes/probe_mask.il` + `build/probe-out/` outputs:
+
+- **Pins whose mask opening is SMALLER than the copper**: 621 of 12 146 on
+  Dell (13 padstacks), 629 of 37 996 on the 109 board (8), 5 of 131 on
+  variants_test-b0; none on the demo or my_test_board-a0. **Pins with NO
+  mask opening** (covered, and today drawn as copper): 101 on Dell, 109 on
+  the 109 board. Compared per padstack from probe_pads: ETCH/TOP bbox
+  against PIN/SOLDERMASK_TOP bbox.
+- **The mask pad is in the padstack library**, with the same axlPath
+  outline as the etch pad (probe_pads printed them: `LTUMODULEPIN1SM`),
+  and `axlDBGetPad( pin "PIN/SOLDERMASK_TOP" "REGULAR" )` /
+  `axlDBGetPad( via "VIA CLASS/SOLDERMASK_TOP" "REGULAR" )` answer for pins
+  and vias alike. So a pin's visible copper = etch pad AND mask pad is one
+  boolean per FIGURE, instanced as now - no new API, no per-pin work.
+- **Openings that are not padstacks** (probe_mask part 1): demo top - 4
+  paths on BOARD GEOMETRY/SOLDERMASK_TOP, 10 shapes on PACKAGE
+  GEOMETRY/SOLDERMASK_TOP, 2038 pin flashes, **1229 via flashes** (the demo's
+  vias are NOT tented - each has a mask pad 0.559 against 0.3 of copper);
+  the user's my_test_board2 top - **51 paths + 2 shapes on PACKAGE
+  GEOMETRY/SOLDERMASK_TOP against 61 pins**, no via openings. Drawn openings
+  are not a corner case on their boards.
+- **A drawn opening against the copper under it works and is cheap**:
+  `axlAddSelectBox` (BOTH corners - one or none is a pick prompt, a hang
+  with no window) with clines / shapes / pins / vias on ETCH/TOP, each
+  shape through `axlPolyFromDB ?window` (a pour with 3000 voids converted
+  whole is what took a session past ten minutes), then `axlPolyOperation
+  AND`: sub-second per shape on both boards; the user's two shapes expose
+  1.03 and 1.01 mm2 of 1.18 and 1.16 mm2 openings.
+- **Unexplained**: the whole probe (`s3dProbeMask`) hung three times on the
+  demo, in three versions, before the first line was written; the same
+  code as five separate procedures, one session each
+  (`build/probe-out/run_mask_parts.py`, 150 s timeout), ran in 18-25 s a
+  part. Not resolved. `tools/run_probe.py` gained `--with-exporter`
+  (preload makeVariant3dIntermediates.il) on the way; the probe itself
+  loads alone now.
+
 ### Not verified
 
 - The user's Inventor view of the board with the closed rounded rectangles.
