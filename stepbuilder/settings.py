@@ -287,7 +287,7 @@ GUI_KEYS: tuple[Key, ...] = (
     Key("foldAnchor", "fold_anchor", None, _load_anchor, _save_anchor),
     Key("foldNeutral", "fold_neutral", DEFAULT_NEUTRAL_FACTOR, _load_neutral),
     Key("foldSliceAngle", "fold_slice_angle", DEFAULT_SLICE_ANGLE, _load_slice_angle),
-    # The copper pads as thin solids on the outer faces (round 85). Off by
+    # The copper pads as surfaces on the outer faces (round 85). Off by
     # default: a picture wants them, a mechanical check does not need them.
     Key("copperPads", "copper_pads", False),
     # Where the window was, so the next run comes up in the same place - on the

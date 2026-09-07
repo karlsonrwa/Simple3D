@@ -11,49 +11,53 @@ to use the tool.
 
 ---
 
-- **2026-09-07** — **Copper pads.** A new checkbox, *Copper pads*, draws the
-  copper of every pin's pad on the two outer faces in the copper colour, as
-  thin solids ten microns high standing on the mask - so the model reads as
-  a board with its pads rather than as a plain slab. Nothing is cut into the
+- **2026-09-07** — **Copper pads, as surfaces.** A new checkbox, *Copper pads
+  (as surfaces)*, draws the copper of every pin's pad on the two outer faces
+  in the copper colour, a micron above the mask - so the model reads as a
+  board with its pads rather than as a plain slab. Nothing is cut into the
   board and no boolean runs: each pad figure is built once from the outline
   Allegro itself holds for it (every figure kind carries one - circle,
   oblong, rounded rectangle, *Shape*) and instanced per pin, the way
   component models are shared, so a pad costs a placement in the file and
-  not a body of its own. Through-hole pads keep their drill; a mounting hole
-  whose pad is smaller than its drill draws nothing. Which face a pin
-  reaches is its own layer span against the outer copper of its zone, so
-  the flex connector on Cadence's demo board lands on the flex's top face
-  and a part on an inner layer of a rigid zone is counted, not drawn. Every
-  placed pad on five boards - 54 000 placements, offset, mirrored and turned
-  padstacks included - agrees with the polygon Allegro reports for that pin.
-  Solids rather than surfaces a micron above the mask: the first cut drew
-  surfaces, and in a CAD package not every pad showed. Measured on the demo:
-  2982 pads add about 2.3 MB to a 94 MB file and five seconds to a
+  not a body. Through-hole pads keep their drill; a mounting hole whose pad
+  is smaller than its drill draws nothing. Which face a pin reaches is its
+  own layer span against the outer copper of its zone, so the flex connector
+  on Cadence's demo board lands on the flex's top face and a part on an
+  inner layer of a rigid zone is counted, not drawn. Every placed pad on
+  five boards - 54 000 placements, offset, mirrored and turned padstacks
+  included - agrees with the polygon Allegro reports for that pin. A pad's
+  corner arc is built through its two end points, because Allegro keeps an
+  arc's centre only to the design's resolution and an arc rebuilt on its
+  radius can miss the next line by a fraction of a micron - which is how
+  four rounded-rectangle padstacks first came out as nothing. Measured on
+  the demo: 2982 pads add 2.3 MB to a 94 MB file and five seconds to a
   three-minute build. The exporter now writes `format_version` 10 with a
   `pads` object (`settings.exportPads`, on by default); an older file says
   so in the log. Off by default; vias are not drawn.
-  / **Медь площадок.** Новая галочка *Copper pads* рисует медь площадок всех
-  выводов на двух наружных гранях цветом меди — тонкими телами высотой
-  десять микрон, стоящими на маске, — чтобы модель читалась как плата с
+  / **Медь площадок, поверхностями.** Новая галочка *Copper pads (as
+  surfaces)* рисует медь площадок всех выводов на двух наружных гранях
+  цветом меди, на микрон над маской, — чтобы модель читалась как плата с
   площадками, а не как гладкая пластина. В плату ничего не вырезается,
   булевых операций нет: фигура площадки строится один раз по контуру,
   который сам Allegro хранит для неё (он есть у каждого вида фигуры — круг,
   овал, скруглённый прямоугольник, *Shape*), и ставится вхождением на
   каждый вывод, как общие модели компонентов, так что площадка стоит в
-  файле как размещение, а не как собственное тело. Сквозные площадки
-  сохраняют отверстие; крепёжное отверстие с площадкой меньше сверла не
-  рисует ничего. Какой грани достигает вывод, решает его собственный
-  диапазон слоёв против наружной меди его зоны: разъём на флексе демо-платы
-  Cadence ложится на верхнюю грань флекса, а деталь на внутреннем слое
-  жёсткой зоны считается, но не рисуется. Каждая поставленная площадка на
-  пяти платах — 54 000 размещений, включая смещённые, зеркальные и
-  повёрнутые падстеки — совпадает с полигоном, который Allegro сообщает для
-  этого вывода. Тела, а не поверхности на микрон над маской: первый вариант
-  рисовал поверхности, и в CAD не все площадки оказались видны. Замер на
-  демо: 2982 площадки добавляют около 2.3 МБ к файлу в 94 МБ и пять секунд к
-  трёхминутной сборке. Экспорт теперь пишет `format_version` 10 с объектом
-  `pads` (`settings.exportPads`, по умолчанию включено); старый файл говорит
-  об этом в логе. По умолчанию выключено; переходные отверстия не рисуются.
+  файле как размещение, а не как тело. Сквозные площадки сохраняют
+  отверстие; крепёжное отверстие с площадкой меньше сверла не рисует ничего.
+  Какой грани достигает вывод, решает его собственный диапазон слоёв против
+  наружной меди его зоны: разъём на флексе демо-платы Cadence ложится на
+  верхнюю грань флекса, а деталь на внутреннем слое жёсткой зоны считается,
+  но не рисуется. Каждая поставленная площадка на пяти платах — 54 000
+  размещений, включая смещённые, зеркальные и повёрнутые падстеки —
+  совпадает с полигоном, который Allegro сообщает для этого вывода. Дуга
+  угла площадки строится через свои две концевые точки: центр дуги Allegro
+  хранит лишь с разрешением проекта, и дуга, восстановленная по радиусу,
+  может не дойти до соседнего отрезка на доли микрона — так четыре
+  падстека со скруглёнными прямоугольниками сначала не нарисовались вовсе.
+  Замер на демо: 2982 площадки добавляют 2.3 МБ к файлу в 94 МБ и пять
+  секунд к трёхминутной сборке. Экспорт теперь пишет `format_version` 10 с объектом `pads`
+  (`settings.exportPads`, по умолчанию включено); старый файл говорит об
+  этом в логе. По умолчанию выключено; переходные отверстия не рисуются.
 
 - **2026-09-06** — **A flex layer no longer loses a corner where its zone
   contour carries a hairline.** On flex2-a0 the FLEX zone's outline, as

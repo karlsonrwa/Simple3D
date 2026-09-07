@@ -88,80 +88,104 @@ check("outer conductors by position, not by name",
       == ("INNER1", "INNER2"))
 
 print("\n[2] one figure as a face: the outline, the donut, the drill, the mirror")
-face, note = P.pad_face(RECT, None, False)
+face, note = P.pad_face(RECT, None, False, True)
 check("a rectangle: 2 x 1", face is not None and abs(area(face) - 2.0) < 1e-9, note or (face and area(face)))
-face, note = P.pad_face(DISC, None, False)
+face, note = P.pad_face(DISC, None, False, True)
 check("a circle (one closing arc in the export) is a disc", face is not None
       and abs(area(face) - math.pi * 0.64) < 1e-6, note or (face and area(face)))
 donut = pad(circle(1.0), [[-1, -1], [1, 1]], "DONUT", inside=1.0)
-face, note = P.pad_face(donut, None, False)
+face, note = P.pad_face(donut, None, False, True)
 check("a donut's inside diameter is a hole", face is not None
       and abs(area(face) - math.pi * (1.0 - 0.25)) < 1e-6, note or (face and area(face)))
-face, note = P.pad_face(DISC, circle(0.4), False)
+face, note = P.pad_face(DISC, circle(0.4), False, True)
 check("a through pad keeps its drill hole (annular ring)", face is not None
       and abs(area(face) - math.pi * (0.64 - 0.16)) < 1e-6, note or (face and area(face)))
-face, note = P.pad_face(pad(circle(0.3), [[-0.3, -0.3], [0.3, 0.3]], "CIRCLE"), circle(1.5), False)
+face, note = P.pad_face(pad(circle(0.3), [[-0.3, -0.3], [0.3, 0.3]], "CIRCLE"), circle(1.5), False, True)
 check("a pad smaller than its drill is nothing, quietly", face is None and note is None, (face, note))
-face, note = P.pad_face(pad(circle(0.5, 0.2, 0.0), [[-0.3, -0.5], [0.7, 0.5]], "CIRCLE"), circle(0.4), False)
+face, note = P.pad_face(pad(circle(0.5, 0.2, 0.0), [[-0.3, -0.5], [0.7, 0.5]], "CIRCLE"), circle(0.4), False, True)
 check("a drill off the pad's centre still cuts (a boolean, not a hole wire)",
       face is not None and area(face) < math.pi * 0.25 - 1e-6, note or (face and area(face)))
 # The offset, as the Dell board's fifteen offset padstacks have it: the
 # declared box is the figure's own, about its centre, and the outline already
 # stands at the offset. Checked from the three facts rather than assumed.
 inplace = pad(rect(0, 0, 2, 1), [[-1, -0.5], [1, 0.5]], offset=(1.0, 0.5))
-face, note = P.pad_face(inplace, None, False)
+face, note = P.pad_face(inplace, None, False, True)
 check("an outline standing at the offset of its figure-centred box is in place",
       face is not None and note is None and P._boxes_agree(P._tight_box(face), (0.0, 0.0, 2.0, 1.0)),
       (note, face and P._tight_box(face)))
 centred = pad(rect(-1, -0.5, 1, 0.5), [[-1, -0.5], [1, 0.5]], offset=(1.0, 0.5))
-face, note = P.pad_face(centred, None, False)
+face, note = P.pad_face(centred, None, False, True)
 check("an outline that is the figure-centred box itself is moved by the offset",
       face is not None and note is None and P._boxes_agree(P._tight_box(face), (0.0, 0.0, 2.0, 1.0)),
       (note, face and P._tight_box(face)))
 odd = pad(rect(0, 0, 2, 1), [[3, 3], [5, 4]], offset=(0.5, 0.5))
-face, note = P.pad_face(odd, None, False)
+face, note = P.pad_face(odd, None, False, True)
 check("one that matches neither is used as it is and says so",
       face is not None and note is not None and "neither the declared box" in note, note)
 rounded = pad(rect(-47.06, -44.0, 47.05, 44.0), [[-47.06, -44.0], [47.06, 44.0]])
-face, note = P.pad_face(rounded, None, False)
+face, note = P.pad_face(rounded, None, False, True)
 check("a hundredth of a mil of rounding (a board laid out in mils) is not a disagreement",
       face is not None and note is None, note)
+
+# A ROUNDED_RECTANGLE exactly as my_test_board2 exports it: the corner arcs'
+# centres are rounded to the design's resolution, so from one end the radius
+# is 0.19985 and to the other 0.1999, and an arc rebuilt on the first misses
+# the next line by 0.05 um - four open wires, and the pad was not drawn. The
+# ends are exact; the arc is built through them.
+def arc(cx, cy, r, alpha, beta):
+    return {"type": "arc", "center": [cx, cy], "radius": r, "alpha": alpha, "beta": beta, "ccw": True}
+
+
+def seg(x0, y0, x1, y1):
+    return {"type": "segment", "start": [x0, y0], "end": [x1, y1]}
+
+
+R130 = pad([seg(0.4501, 0.4, -0.4501, 0.4),
+            arc(-0.4501, 0.20015, 0.19985, 90.0, 180.014331),
+            seg(-0.65, 0.2001, -0.65, -0.2001),
+            arc(-0.4501, -0.20015, 0.1999, 179.985669, 270.0),
+            seg(-0.4501, -0.4, 0.4501, -0.4),
+            arc(0.4501, -0.20015, 0.19985, 270.0, 0.014331),
+            seg(0.65, -0.2001, 0.65, 0.2001),
+            arc(0.4501, 0.20015, 0.1999, 359.985669, 90.0)],
+           [[-0.65, -0.4001], [0.65, 0.4]], "ROUNDED_RECTANGLE")
+face, note = P.pad_face(R130, None, False, True)
+expected = 1.3 * 0.8 - (4 - math.pi) * 0.2 * 0.2
+check("a rounded rectangle whose arc centres are rounded still closes, through its end points",
+      face is not None and abs(area(face) - expected) < 2e-4, (note, face and area(face), expected))
+# and the same figure with EXACT arcs builds to the same area, so the join
+# rule changes nothing where nothing needs joining
+R130x = pad([seg(0.45, 0.4, -0.45, 0.4), arc(-0.45, 0.2, 0.2, 90.0, 180.0),
+             seg(-0.65, 0.2, -0.65, -0.2), arc(-0.45, -0.2, 0.2, 180.0, 270.0),
+             seg(-0.45, -0.4, 0.45, -0.4), arc(0.45, -0.2, 0.2, 270.0, 360.0),
+             seg(0.65, -0.2, 0.65, 0.2), arc(0.45, 0.2, 0.2, 0.0, 90.0)],
+            [[-0.65, -0.4], [0.65, 0.4]], "ROUNDED_RECTANGLE")
+face, note = P.pad_face(R130x, None, False, True)
+check("an exact rounded rectangle: the same area to the micron",
+      face is not None and abs(area(face) - expected) < 1e-9, (note, face and area(face)))
+# a clockwise arc is entered from its beta end - the join has to follow travel
+CW = pad([seg(0.0, 0.0, 1.0, 0.0),
+          {"type": "arc", "center": [1.0, 0.5], "radius": 0.5, "alpha": 270.0, "beta": 90.0, "ccw": False},
+          seg(1.0, 1.0, 0.0, 1.0), seg(0.0, 1.0, 0.0, 0.0)],
+         [[0.0, 0.0], [1.5, 1.0]])
+face, note = P.pad_face(CW, None, False, True)
+check("a clockwise arc in the chain joins by travel, not by alpha",
+      face is not None and abs(area(face) - (1.0 + math.pi * 0.125)) < 1e-9, (note, face and area(face)))
 asym = pad(rect(0.0, -0.5, 2.0, 0.5), [[0.0, -0.5], [2.0, 0.5]])
-face, _ = P.pad_face(asym, None, True)
+face, _ = P.pad_face(asym, None, True, True)
 check("mirrored: x -> -x", face is not None and P._boxes_agree(P._tight_box(face), (-2.0, -0.5, 0.0, 0.5)),
       face and P._tight_box(face))
+check("top faces look up, bottom faces look down",
+      P._normal_up(P.pad_face(RECT, None, False, True)[0]) is True
+      and P._normal_up(P.pad_face(RECT, None, False, False)[0]) is False
+      and P._normal_up(P.pad_face(RECT, None, True, True)[0]) is True
+      and P._normal_up(P.pad_face(RECT, None, True, False)[0]) is False)
 face, note = P.pad_face({"figure": "FLASH", "bbox": [[-1, -1], [1, 1]], "offset": [0, 0], "inside": 0, "outline": None},
-                        None, False)
+                        None, False, True)
 check("no outline: the bounding box stands in", face is not None and abs(area(face) - 4.0) < 1e-9, note)
 
-# The pad is a thin solid on the face, not a face a micron above it: the
-# first cut drew faces and in the user's CAD not every pad showed - a face a
-# micron off a large face is inside a viewer's depth resolution.
-from OCP.Bnd import Bnd_Box
-from OCP.BRepBndLib import BRepBndLib
-from _support import volume
-
-
-def zspan(shape):
-    box = Bnd_Box()
-    BRepBndLib.AddOptimal_s(shape, box, False, False)
-    return box.CornerMin().Z(), box.CornerMax().Z()
-
-
-top = P.pad_solid(P.pad_face(RECT, None, False)[0], True)
-bottom = P.pad_solid(P.pad_face(RECT, None, False)[0], False)
-check(f"a top pad stands {P.PAD_THICKNESS} mm UP from the face it is placed on",
-      abs(zspan(top)[0]) < 1e-9 and abs(zspan(top)[1] - P.PAD_THICKNESS) < 1e-9, zspan(top))
-check("a bottom pad hangs the same way DOWN",
-      abs(zspan(bottom)[1]) < 1e-9 and abs(zspan(bottom)[0] + P.PAD_THICKNESS) < 1e-9, zspan(bottom))
-check("and its volume is the figure's area times that height",
-      abs(volume(top) - 2.0 * P.PAD_THICKNESS) < 1e-9 and count_solids(top) == 1, volume(top))
-ring = P.pad_solid(P.pad_face(DISC, circle(0.4), False)[0], True)
-check("a ring pad is one solid with the hole through it",
-      count_solids(ring) == 1 and abs(volume(ring) - math.pi * (0.64 - 0.16) * P.PAD_THICKNESS) < 1e-9, volume(ring))
-
 print("\n[3] placement: rotate about the pin, then move, then the fold")
-face, _ = P.pad_face(asym, None, False)
+face, _ = P.pad_face(asym, None, False, True)
 placed = BRepBuilderAPI_Transform(face, P._placement(10.0, 20.0, 0.5, 90.0, None), True).Shape()
 check("a 2x1 pad along +x turned 90 degrees stands along +y at the pin",
       P._boxes_agree(P._tight_box(placed), (9.5, 20.0, 10.5, 22.0)), P._tight_box(placed))
@@ -179,6 +203,8 @@ class _Fold:
 
 
 placed = BRepBuilderAPI_Transform(face, P._placement(10.0, 20.0, 0.5, 0.0, _Fold()), True).Shape()
+from OCP.Bnd import Bnd_Box
+from OCP.BRepBndLib import BRepBndLib
 box = Bnd_Box()
 BRepBndLib.AddOptimal_s(placed, box, False, False)
 check("the fold's transform is applied last", abs(box.CornerMin().Z() - 100.5) < 1e-9, box.CornerMin().Z())
@@ -208,7 +234,7 @@ for entry in fx["pins"]:
         continue
     sides_ok += 1
     for side, pd in sides:
-        face, _ = P.pad_face(pd, None, mir)
+        face, _ = P.pad_face(pd, None, mir, side == "top")
         placed = BRepBuilderAPI_Transform(face, P._placement(x, y, 0.0, rot, None), True).Shape()
         got = P._tight_box(placed)
         if all(abs(a - b) < 2e-3 for a, b in zip(got, oracle[side])):
@@ -261,8 +287,7 @@ check("pads_top and pads_bot are nodes of the assembly, named per board",
       "pads_top_pads_on" in text and "pads_bot_pads_on" in text)
 check("the figures are parts named after the padstack and layer",
       "pad_SMD_TOP" in text and "pad_SMD_TOPm" in text and "pad_THRU_TOP" in text and "pad_THRU_BOTTOM" in text)
-check("the board is still one solid and the pads four more - no boolean touched it",
-      count_solids(read_step(OUT / "pads_on.step")) == 5, count_solids(read_step(OUT / "pads_on.step")))
+check("the board is still one solid - no boolean touched it", count_solids(read_step(OUT / "pads_on.step")) == 1)
 check("the log says what was placed", any("Copper pads: 4 placed" in m for m in logs), logs[-6:])
 
 res2, logs2, text2 = build("pads_off", copper_pads=False)

@@ -9,10 +9,9 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 **Branch `feature/copper-pads` (round 85, 2026-09-07) is where the copper
 pads live until the user has tried them**: a checkbox that draws every pin's
-pad on the outer faces as thin copper-coloured solids, from a `pads` library
-the exporter now writes (`format_version` 10). `main` is at round 84. Read
-round 85 for the construction, the measurements, the second pass after the
-user's "not all pads are visible", and what is still unverified.
+pad on the outer faces as copper-coloured surfaces, from a `pads` library the
+exporter now writes (`format_version` 10). `main` is at round 84. Read round
+85 for the construction, the measurements and what is still unverified.
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -72,12 +71,11 @@ from, and `S3D_ScriptDir` is now `""` in source.
   special case: the export list comes from the design and the variant table only
   subtracts from it.
 - **Copper pads** (round 85, branch `feature/copper-pads`), `format_version:
-  10`: the pad of every pin as a thin copper-coloured solid standing on the
-  outer face of its zone, one shared solid per figure instanced per pin; the
-  outline is the padstack's own axlPath, the face is the pin's own layer
-  span. Checked against `axlPolyFromDB` per pin on five boards (54 000
-  placements); the user's first look, at the surface version, missed pads -
-  the solid version is what they have not yet seen.
+  10`: the pad of every pin as a copper-coloured face a micron above the outer
+  face of its zone, one shared face per figure instanced per pin; the outline
+  is the padstack's own axlPath, the face is the pin's own layer span. Checked
+  against `axlPolyFromDB` per pin on three boards; not yet looked at by the
+  user in their CAD.
 
 ### Load-bearing decisions that look like they could be simplified, but cannot
 
@@ -2988,10 +2986,9 @@ on a branch as asked.
 
 ### The construction, and why not the windows
 
-A pad is a **thin solid** in the copper colour standing on the outer face of
-its zone (a face lifted a micron in the first cut - see the second pass
-below for why that changed). The board body is never touched: no window, no
-boolean. Cutting a window per
+A pad is a **face** in the copper colour, lifted `silkscreenFlatHeight` (a
+micron) above the outer face of its zone - exactly where a flat legend sits.
+The board body is never touched: no window, no boolean. Cutting a window per
 pad through the mask and setting a prism into it is a boolean over thousands
 of prisms - on this codebase that is minutes of OCCT and, per round 61, a
 real chance of `IsDone()` with an empty result - and a picture cannot tell a
@@ -3120,12 +3117,12 @@ holds in at least that viewer.
 
 ### Second pass, the same day: "not all pads are visible"
 
-The user built a board in their window and reported that not every pad
-showed, and pointed at the Dell and 109 boards in AllegroBaseStructure's
-`input/` for testing. Both went through the exporter (copied to `build/`
-without a Variants.lst: Dell 12 146 pins / 232 padstacks, 43 MB JSON;
-109 37 996 pins / 169 padstacks, 43 MB) and through both probes, then
-`build/probe-out/analyse_pads.py` and `oracle_vs_pads.py`:
+The user built a board in their window (Inventor is the viewer) and reported
+that not every pad showed, and pointed at the Dell and 109 boards in
+AllegroBaseStructure's `input/` for testing. Both went through the exporter
+(copied to `build/` without a Variants.lst: Dell 12 146 pins / 232
+padstacks, 43 MB JSON; 109 37 996 pins / 169 padstacks, 43 MB) and through
+both probes, then `build/probe-out/analyse_pads.py` and `oracle_vs_pads.py`:
 
 - **Every pin on both boards gets a side and a figure** - 12 225 and 39 090
   placements, 0 with no outer face, 0 unbuildable, 42 and 222 all-hole
@@ -3144,28 +3141,44 @@ without a Variants.lst: Dell 12 146 pins / 232 padstacks, 43 MB JSON;
   shift. `BOX_TOLERANCE` 0.002 -> 0.02: a board in mils rounds its path to
   0.01 mil and one pad (SHAPE94X88-NPM, 47.05 against 47.06) tripped it.
 
-So the geometry is not what was missing. What is left is rendering: a face
-one micron above the board's top face is inside the depth resolution of an
-ordinary CAD viewer (step2html separated them; the user's CAD evidently did
-not for every pad), and a surface body is not shown the way a solid is by
-every reader. **The pad is now a thin solid**, `PAD_THICKNESS` = 0.01 mm,
-extruded from the face at the outer surface away from the board (up on top,
-down below) - `pad_solid`, next to `pad_face` which stays the 2-D builder
-the tests measure by area. Its top is ten microns clear of the mask; its
-bottom, coincident with the mask, is hidden under its own top. The
-orientation flip of the first cut is gone with it. Per placement the cost
-is unchanged (605 bytes measured in test_pads [5]); the figures cost their
-walls. The checkbox is "Copper pads" now, the docs say solids.
+So the geometry was right on those two boards, and the wrong conclusion was
+drawn from that: that a viewer was losing a face one micron above the board
+(the pads were made 10 um solids, commit `faeb4fc`). **The user's log said
+what it was**, on their own my_test_board2:
 
-Not measured: whether that is what the user's CAD was missing - they had not
-answered which pads (top or bottom, through or surface, which CAD) when this
-was written. If a class is still missing, the analysis scripts in
-`build/probe-out/` take any exported board and say per padstack what was
-built and why not.
+    warning: padstack R130_80M140_90R20 (ETCH/TOP): Contour is not closed:
+    edges formed 4 separate wires (tolerance 1e-05).
+
+Four ROUNDED_RECTANGLE padstacks, 30 of 61 placements. The path's corner arc
+has its CENTRE rounded to the design's resolution: from the centre
+(-0.4501, 0.20015) it is 0.19985 to one end and 0.1999 to the other. The
+exporter's arc primitive carries the radius from the first end, and
+`build_contour` rebuilds the arc on that circle - its far end then misses
+the next line by 0.05 um, five times `WIRE_TOLERANCE`, and the wire falls
+apart. Dell and 109 are laid out in mils and their centres happened to be
+exact; the first three boards' rounded rectangles (my_test_board-a0,
+variants_test-b0) had exact centres too.
+
+The fix is `pads._pad_wire`: the pieces are chained in the order the
+exporter walked them, a segment between its own points, an arc THROUGH
+three points - where the previous piece ended, the midpoint of the exported
+arc, where the next piece starts (taken from the neighbour when within
+`JOIN_TOLERANCE` = 1 um of the arc's own end, else the arc's own) - so the
+wire closes by construction whatever the centre's rounding; a clockwise arc
+is chained by travel, from its beta end. The end points are the exact
+thing; the centre is the rounded one. Pinned in test_pads [2] with the
+board's own numbers: the same area as the exact figure to 2e-4 mm2, the
+exact figure unchanged to 1e-9, and a clockwise arc in a chain. The user's
+board: 61 of 61 placed, 10 figures, no warnings.
+
+**The solids are reverted at the user's request** ("it is not the
+z-buffer"): the pads are faces again, one micron above the outer face, as
+in commit `86cdaf8`; the offset correction, the tolerance and the
+Dell / 109 verification stay. Inventor shows the surfaces.
 
 ### Not verified
 
-- The user's CAD with the thin solids - see the second pass above.
+- The user's Inventor view of the board with the closed rounded rectangles.
 - A mirrored through pin whose padstack has different TOP and BOTTOM pads
   (none on five boards) - handled by rule, not measured.
 - Vias: deliberately out. If a board needs them, the same library serves:
