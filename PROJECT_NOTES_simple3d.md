@@ -3283,11 +3283,14 @@ the areas, the faces unioned - as one part per side, `copper_top_<stem>` /
 under a drawn opening is covered rather than fought; per zone level on a
 rigid-flex board. Measured: my_test_board2 53 openings on top -> 2 polygons
 (1.0318 and 1.0073 mm2, the probe's own numbers), the demo 36 -> 10 and 26
--> 0, variants 58 on the bottom -> 6; export times 35 / 31 / 25 s. Open:
-the 51 LINE openings of my_test_board2 expose nothing - true, or the sweep
-misses their copper? `tools/probes/probe_openings.il` (REQUIRES the
-exporter, `--with-exporter`) answers per opening, and could not be run - see
-below.
+-> 0, variants 58 on the bottom -> 6; export times 35 / 31 / 25 s. The 51
+LINE openings of my_test_board2 that expose nothing: `probe_openings.il`
+(REQUIRES the exporter, `--with-exporter`) walked them one by one - every
+one a 0.3 mm-wide path in a band y = 19.9..21.3 mm, x = 0.9..11.2 mm, boxes
+0.3 to 1 mm across: text drawn as strokes on the mask layer, windows in the
+mask over bare laminate - and the selection in each one's box found no
+copper object at all, where it found the pour under the two real shapes.
+True, not a miss.
 
 Tests: test_pads [1] mask triples, [2b] six clipping cases, [5] an untented
 and a tented via, one exposed polygon (built, area-checked, named), a v11
@@ -3304,8 +3307,13 @@ cannot take its cache and cookie database under
 because the user's own interactive Allegro holds it (two `allegro.exe` on
 their Nivelir boards were open), and the `-nograph` session stalls before
 the `.scr` runs. Every hang lines up with their Allegro being open; every
-success with it closed. Check `tasklist` for another `allegro.exe` before
-a headless run; never kill one that is not yours.
+success with it closed - including one more hang started within a minute
+of the user closing theirs, and then five clean runs of the same files
+(a hello and the full probe, with and without the exporter, 25 s each). So
+it is the environment, not the probe. Check `tasklist` for another
+`allegro.exe` before a headless run, give a just-closed one a minute, and
+never kill one that is not yours. `tools/run_probe.py` streams the console
+to its file now, so the next hang says where it stopped.
 
 **Answered for the user, with numbers:** why the legend is one surface body
 in Inventor and the pads many - the legend side is ONE part holding a
@@ -3323,8 +3331,6 @@ the stroke font would be the real saving and is a different project.
 
 - The user's Inventor view of the board with the closed rounded rectangles,
   the mask-clipped pads, the via rings and the exposed copper.
-- The 51 line openings of my_test_board2 that expose no copper - see above;
-  `probe_openings.il` when the user's Allegro is closed.
 - A mirrored through pin whose padstack has different TOP and BOTTOM pads
   (none on five boards) - handled by rule, not measured.
 - Vias: deliberately out. If a board needs them, the same library serves:
