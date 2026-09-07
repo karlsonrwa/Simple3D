@@ -22,7 +22,13 @@ to use the tool.
   mask exposes, not only the pads - the via rings, a pour or a label under a
   drawn opening - so it is *Exposed copper (as surfaces)* now, with
   `gui.exposedCopper` and `--exposed-copper` to match (`copperPads` and
-  `--copper-pads` lived one day, on a branch). / **Окна под медью;
+  `--copper-pads` lived one day, on a branch). Windows only where there is
+  a mask: a zone whose stackup has no soldermask on that side - a flex or
+  stiffener zone under coverlay - gets no windows for its pins and no drawn
+  openings, and an opening running across zones (the demo's outline is
+  drawn as strokes on the mask layers through every zone) is clipped to
+  the masked zones, each piece at its own zone's face, instead of floating
+  above the flex. / **Окна под медью;
   *Copper pads* теперь *Exposed copper*.** В step2html на демо-плате белое
   окно одного вывода «съедало» медное кольцо соседнего: окна и медь лежали
   на одной высоте, на микрон над маской, а там, где две грани совпадают,
@@ -32,7 +38,13 @@ to use the tool.
   всю медь, которую открывает маска, а не только площадки — кольца отверстий,
   заливку или надпись под нарисованным вскрытием, — поэтому теперь она
   *Exposed copper (as surfaces)*, с `gui.exposedCopper` и `--exposed-copper`
-  (`copperPads` и `--copper-pads` прожили один день, в ветке).
+  (`copperPads` и `--copper-pads` прожили один день, в ветке). Окна только
+  там, где маска есть: зона, чей стек не несёт паяльной маски с этой стороны
+  — флекс или стиффенер под коверлеем, — не получает ни окон для своих
+  выводов, ни нарисованных вскрытий, а вскрытие, пересекающее зоны (контур
+  демо-платы нарисован штрихами на слоях маски сквозь все зоны), обрезается
+  по зонам с маской, каждый кусок на грани своей зоны, вместо того чтобы
+  висеть над флексом.
 
 - **2026-09-07** — **Mask openings, as surfaces; copper drawn with no net.**
   A second checkbox, *Mask openings (as surfaces)*, draws the windows in the

@@ -641,6 +641,9 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
         if result.no_mask_data:
             log("note: this JSON carries no mask openings (format_version 10); re-export from "
                 "Allegro to draw them")
+        if result.no_mask_zone:
+            log(f"  {result.no_mask_zone} opening(s) not drawn: their zone carries no soldermask "
+                f"on that side ({', '.join(sorted(result.no_mask_zone_names))})")
 
     # What the drawn openings show (format_version 12): with the copper pads
     # on, the copper under them in the copper colour; with the openings on,

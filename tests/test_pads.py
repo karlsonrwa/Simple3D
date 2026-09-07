@@ -514,6 +514,63 @@ res3, logs3, _ = build("pads_old", exposed_copper=True)
 check("a file without pads says so and builds", res3.pads_placed == 0
       and any("No pads in this JSON" in m for m in logs3), logs3[-4:])
 
+print("\n[7] a rigid-flex board: openings only where the zone's stackup carries a soldermask")
+# tests/fixtures/rigidflex.json: zone S2 (x 0..16, y 0..11.38) on STIFFENER2,
+# which has SOLDERMASK_TOP and _BOTTOM; zone F2 (x 0..41, y 11.38..26.5) on
+# FLEX, coverlay and adhesive only. Cadence's demo is the same shape: its
+# outline is drawn as strokes on BOARD GEOMETRY/SOLDERMASK_* through every
+# zone, and the part over a flex zone floated two millimetres above it.
+rf = json.loads((ROOT / "tests/fixtures/rigidflex.json").read_text())
+rf.update({"format_version": 12, "name": "rfpads", "components": {}})
+rf["pads"] = {"padstacks": {"SMD": smd},
+              "pins": [[8.0, 5.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],       # on S2: a mask there
+                       [20.0, 20.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"]],    # on F2: coverlay, no mask
+              "exposed": {"top": [], "bottom": []},
+              "bare": {"top": [{"layer": "BOARD GEOMETRY/SOLDERMASK_TOP", "area": 4.0,       # inside S2
+                                "vertices": [[2, 2, 0], [4, 2, 0], [4, 4, 0], [2, 4, 0]]},
+                               {"layer": "BOARD GEOMETRY/SOLDERMASK_TOP", "area": 4.0,       # inside F2
+                                "vertices": [[20, 18, 0], [22, 18, 0], [22, 20, 0], [20, 20, 0]]},
+                               {"layer": "BOARD GEOMETRY/SOLDERMASK_TOP", "area": 6.0,       # across y = 11.38
+                                "vertices": [[6, 10, 0], [8, 10, 0], [8, 13, 0], [6, 13, 0]]}],
+                       "bottom": []}}
+check("mask_sides reads the stackups: STIFFENER2 both sides, FLEX neither, no layers means both",
+      P.mask_sides(rf["stackups"]["STIFFENER2"]) == (True, True)
+      and P.mask_sides(rf["stackups"]["FLEX"]) == (False, False)
+      and P.mask_sides({"layers": []}) == (True, True))
+jf.write_text(json.dumps(rf))
+res_rf, logs_rf, text_rf = build("rf_open", exposed_copper=True, mask_openings=True, fold_bends=False)
+check("both pins keep their copper, only the one on the masked zone gets a window",
+      res_rf.pads_placed == 2 and res_rf.openings_placed == 1
+      and any("1 opening(s) not drawn: their zone carries no soldermask on that side (F2)" in m for m in logs_rf),
+      (res_rf.pads_placed, res_rf.openings_placed, [m for m in logs_rf if "opening" in m]))
+check("the drawn opening on the flex is left out, the one across the boundary clipped, the log says so",
+      any("bare_top: the mask is only on S2 - 1 drawn-opening polygon(s) clipped to it, 1 left out" in m for m in logs_rf)
+      and any("Bare laminate in drawn openings, top: 2 polygon(s)" in m for m in logs_rf),
+      [m for m in logs_rf if "bare_top" in m or "Bare" in m])
+out_rf = P.build_exposed(rf, stackups=rf["stackups"], zones=rf["zones"],
+                         levels={"S2": (0.0, -2.44), "F2": (-2.05, -2.415)},
+                         board_top_z=0.0, board_bottom_z=-2.44, lift=0.003, section="bare")
+comp_rf, built_rf, _ = out_rf["top"]
+check("what is built is the square on S2 plus the clipped strip: 4 + 2 x 1.38 mm2, ending at the boundary",
+      built_rf == 2 and comp_rf is not None and abs(P.shape_area(comp_rf) - 6.76) < 1e-3
+      and abs(P._tight_box(comp_rf)[3] - 11.38) < 1e-6,
+      (built_rf, P.shape_area(comp_rf) if comp_rf is not None else None,
+       P._tight_box(comp_rf) if comp_rf is not None else None))
+
+# A plain board that is all flex: one stackup, coverlay instead of a mask.
+flex_only = json.loads(json.dumps(board))
+for lay in flex_only["stackups"]["Primary"]["layers"]:
+    if lay["name"].startswith("SOLDERMASK_"):
+        lay["name"] = lay["name"].replace("SOLDERMASK_", "COVERLAY_")
+jf.write_text(json.dumps(flex_only))
+res_fo, logs_fo, text_fo = build("flex_only", exposed_copper=True, mask_openings=True)
+check("a plain board without a soldermask gets its copper and no window anywhere",
+      res_fo.pads_placed == 5 and res_fo.openings_placed == 0 and "openings_top" not in text_fo
+      and any("5 opening(s) not drawn: their zone carries no soldermask on that side (the board)" in m for m in logs_fo)
+      and any("bare_bottom: 1 drawn-opening polygon(s) left out - the board carries no soldermask on the bottom" in m
+              for m in logs_fo),
+      (res_fo.pads_placed, res_fo.openings_placed, [m for m in logs_fo if "soldermask" in m]))
+
 print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

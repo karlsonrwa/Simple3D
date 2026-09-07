@@ -3437,13 +3437,52 @@ rings, the copper under drawn openings); `gui.copperPads` ->
 log lines "Copper pads: N placed" and the `pads_top` nodes keep their
 names - they are about the pads). *Mask openings* stays.
 
+**Windows only where there is a mask** (the user, from the demo in
+step2html: "in the flex zones the perimeter is outlined with mask, and
+the opening floats above the board"). Measured on the fresh demo export:
+`BOARD GEOMETRY/SOLDERMASK_TOP` and `_BOTTOM` carry the board OUTLINE as
+strokes - 8 polygons on top with a box over the whole board (x -25..134,
+y -21..182), 409 mm2, plus the stiffener zones' outlines (2-4 polygons
+each) and MAIN_PCB's (11, 251 mm2) - every one of them straddling zones
+by its vertices; and the stackups: PRIMARY has SOLDERMASK_TOP/_BOTTOM,
+FLEXI1 / FLEXI_STIFFENER / LCD_STIFFENER have STIFFNER, COVERLAY,
+ADHESIVE, EPOXY (all Allegro type MASK) and no soldermask at all. The
+level by centroid put a stroke at one zone's face for its whole length,
+and the part over a flex zone - two millimetres lower - floated. Rule,
+the user's own: a window exists only where the zone's stackup has a
+soldermask on that side. `mask_sides(stackup)` reads it (a soldermask
+layer outside the outer conductors, `_is_soldermask`; no layers = both,
+as before); `_Zones.mask_at` / `mask_zones` carry it; `build_pads` skips
+the window of a pin on a zone without one (`no_mask_zone`, the zone
+names in the log; the copper stays); `build_exposed` sorts each polygon
+by its vertices - all in one masked zone: built there; touching a masked
+zone's box but not inside one: built whole and CLIPPED with
+`BRepAlgoAPI_Common` to that zone's contour face at that zone's face
+height, once per masked zone it touches; on none: left out - and says
+so. A plain board whose one stackup has no soldermask (a bare flex) gets
+no windows and a line in the log. The demo, measured: "102 opening(s)
+not drawn: their zone carries no soldermask on that side
+(CONN_FLEXI_STIFFENER, FLEXI_STIFFENER, LCD_FLEXI_STIFFENER)" (2136 ->
+2080 placed with both options on, 5374 with the windows alone), "the
+mask is only on MAIN_PCB - 14 drawn-opening polygon(s) clipped to it, 12
+left out" on each side (37 -> 25 built on top, 26 -> 14 on the bottom),
+the 10 copper polygons untouched (all inside MAIN_PCB). The build takes
+95-107 s with silk off whichever option is on - the board, not the
+clipping. test_pads [7] on tests/fixtures/
+rigidflex.json (S2 with a mask, F2 without): 2 pads, 1 window, the
+polygon on F2 out, the one across y = 11.38 clipped to 4 + 2 x 1.38 mm2
+ending at the boundary (the first run said 6.76 against my 6.8: the
+fixture's boundary is 11.38, not the 11.4 I had read off); and the fixture board with its SOLDERMASK layers
+renamed COVERLAY: copper yes, windows none, both logs.
+
 What is still NOT drawn, said to the user: copper other than the pad inside
 a padstack's own opening (the trace neck and the thermal spokes in a
 copper-defined pad's ring - per-pin booleans and no instancing to get it,
 5.9 MB against 2.1 on the demo, for slivers; with the openings on, their
 place in the ring is laminate); coverlay openings and coverlay-side copper
-on a rigid-flex; layers not in the `soldermask` section; Allegro
-"figures" on a mask layer.
+on a rigid-flex (the pads on a flex zone are still clipped to their
+padstack's MASK pad, which stands in for the coverlay opening); layers not
+in the `soldermask` section; Allegro "figures" on a mask layer.
 
 ### Not verified
 

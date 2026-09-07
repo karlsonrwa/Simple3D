@@ -81,7 +81,7 @@ from .contour import (WIRE_TOLERANCE, _face_from_wires, _open_wire_detail, build
                       contour_points, point_in_polygon)
 from .errors import StepBuilderError
 from .reporting import LogFn, _noop_log
-from .stackup import _is_conductor, board_stackup
+from .stackup import _is_conductor, _is_soldermask, board_stackup
 
 # A pad's declared bounding box (of the figure, about its own centre) shifted
 # by the declared offset has to land this close (design units) to the box of
@@ -124,6 +124,23 @@ def outer_conductors(stackup: dict | None) -> tuple[str, str]:
     if not names:
         return "", ""
     return names[0], names[-1]
+
+
+def mask_sides(stackup: dict | None) -> tuple[bool, bool]:
+    """(top, bottom): whether the stackup carries a SOLDERMASK layer outside
+    its outer conductors on that side. A flex stackup has coverlay and
+    adhesive there and no soldermask at all - Cadence's demo: FLEXI1 is
+    STIFFNER / COVERLAY / ADHESIVE over INNER1 - so a mask opening drawn
+    over it, or a padstack's mask pad on a pin there, is a window in a mask
+    that does not exist. A stackup with no layers (a file older than
+    format_version 6) cannot say, and is taken to have a mask on both
+    sides, as every build before this assumed."""
+    layers = [lay for lay in (stackup or {}).get("layers") or [] if isinstance(lay, dict)]
+    conductors = [i for i, lay in enumerate(layers) if _is_conductor(lay)]
+    if not layers or not conductors:
+        return True, True
+    return (any(_is_soldermask(lay) for lay in layers[:conductors[0]]),
+            any(_is_soldermask(lay) for lay in layers[conductors[-1] + 1:]))
 
 
 def etch_pads(padstack: dict) -> list[tuple[str, dict]]:
@@ -580,6 +597,8 @@ class PadsResult:
     openings_placed: int = 0        # opening faces placed (the mask-openings option)
     opening_figures: int = 0        # distinct opening faces built
     openings_filled: int = 0        # placements whose copper fills the opening: nothing left to draw
+    no_mask_zone: int = 0           # openings not drawn: the pin's zone has no soldermask on that side
+    no_mask_zone_names: set = field(default_factory=set)
     notes: list[str] = field(default_factory=list)
 
 
@@ -597,28 +616,50 @@ def _placement(x: float, y: float, z: float, rotation: float, fold) -> gp_Trsf:
 
 
 class _Zones:
-    """Which zone a point is in, and that zone's outer conductors and faces."""
+    """Which zone a point is in, and that zone's outer conductors, faces and
+    soldermask sides."""
 
     def __init__(self, zones, stackups, levels, board_top_z, board_bottom_z):
         self.entries = []
         for zone in zones or []:
             name = str(zone.get("name"))
             stackup = (stackups or {}).get(str(zone.get("stackup")))
-            polygon = contour_points(zone.get("contour") or [])
+            contour = zone.get("contour") or []
+            polygon = contour_points(contour)
             if not polygon or not stackup or not levels or name not in levels:
                 continue
-            self.entries.append((name, polygon, outer_conductors(stackup), levels[name]))
+            xs = [p[0] for p in polygon]
+            ys = [p[1] for p in polygon]
+            self.entries.append((name, polygon, outer_conductors(stackup), levels[name],
+                                 mask_sides(stackup), contour,
+                                 (min(xs), min(ys), max(xs), max(ys))))
         # A plain board: the one stackup, the two board faces.
         chosen = board_stackup(stackups or {})
         self.default = (outer_conductors(chosen[1]) if chosen else ("", ""),
                         (board_top_z, board_bottom_z))
+        self.default_masks = mask_sides(chosen[1]) if chosen else (True, True)
 
     def at(self, x: float, y: float):
         """((top name, bottom name), (top z, bottom z)) for a point."""
-        for _, polygon, conductors, faces in self.entries:
+        for _, polygon, conductors, faces, *_rest in self.entries:
             if point_in_polygon((x, y), polygon):
                 return conductors, faces
         return self.default
+
+    def mask_at(self, x: float, y: float) -> tuple[bool, bool, str | None]:
+        """(mask on top, mask on the bottom, zone name) for a point; the
+        plain board's stackup answers for a point on no zone."""
+        for name, polygon, _conductors, _faces, masks, *_rest in self.entries:
+            if point_in_polygon((x, y), polygon):
+                return masks[0], masks[1], name
+        return self.default_masks[0], self.default_masks[1], None
+
+    def mask_zones(self, side: str) -> list:
+        """The zones that carry a soldermask on *side*, as
+        [(name, polygon, contour, bbox, z of that face)]."""
+        i = 0 if side == "top" else 1
+        return [(name, polygon, contour, bbox, faces[i])
+                for name, polygon, _c, faces, masks, contour, bbox in self.entries if masks[i]]
 
 
 def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom_z,
@@ -757,7 +798,15 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
             # The window in the mask, shared per figure like the copper: what
             # the copper leaves of it when the pads are drawn too (nothing
             # for a solder-mask-defined pad), the opening whole otherwise.
+            # Only where the pin's zone HAS a mask on that side: a pin on a
+            # flex or stiffener zone sits under coverlay, and its padstack's
+            # mask pad is a window in nothing.
             if openings and mask is not None:
+                mask_top, mask_bottom, zone_name = where.mask_at(x, y)
+                if not (mask_top if face_side == "top" else mask_bottom):
+                    result.no_mask_zone += 1
+                    result.no_mask_zone_names.add(zone_name or "the board")
+                    continue
                 mask_layer = next((lay for lay, p in (padstack.get("pads") or {}).items() if p is mask), "?")
                 okey = (name, mask_layer, mirrored, face_side, "opening")
                 if okey not in parts:
@@ -820,7 +869,7 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
     Returns {side: (compound or None, built, skipped)} for the sides the
     file carries.
     """
-    from .legend import _silk_point, build_silkscreen
+    from .legend import build_silkscreen
 
     pads = data.get("pads")
     exposed = pads.get(section) if isinstance(pads, dict) else None
@@ -828,27 +877,95 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
         return {}
     where = _Zones(zones, stackups, levels, board_top_z, board_bottom_z)
     out = {}
+    tag = "copper" if section == "exposed" else "bare"
     for side, sign in (("top", 1.0), ("bottom", -1.0)):
         polygons = [p for p in (exposed.get(side) or []) if isinstance(p, dict)]
         if not polygons:
             continue
-        # group by the level of the zone each polygon stands in
-        groups: dict[float, list] = {}
-        for polygon in polygons:
-            point = _silk_point(polygon)
-            faces = where.at(*point)[1] if point else where.default[1]
-            z = faces[0] if side == "top" else faces[1]
-            groups.setdefault(z, []).append(polygon)
         pieces, built, skipped = [], 0, 0
-        for z, group in groups.items():
+        masked = where.mask_zones(side) if where.entries else []
+        if where.entries and not masked:
+            log(f"{tag}_{side}: {len(polygons)} drawn-opening polygon(s) left out - no zone "
+                f"carries a soldermask on the {side}")
+            out[side] = (None, 0, len(polygons))
+            continue
+        if not where.entries and not (where.default_masks[0] if side == "top" else where.default_masks[1]):
+            log(f"{tag}_{side}: {len(polygons)} drawn-opening polygon(s) left out - the board "
+                f"carries no soldermask on the {side}")
+            out[side] = (None, 0, len(polygons))
+            continue
+
+        # A drawn opening is a window in the mask, so it exists only where
+        # the zone under it has one: a flex zone has coverlay instead, and
+        # the demo board's outline strokes on the mask layers run through
+        # every zone - the part over the flex would float two millimetres
+        # above it. So: a polygon with every vertex in one masked zone is
+        # built at that zone's face; one that reaches beyond is built whole
+        # and clipped to each masked zone it touches, at that zone's face;
+        # one that touches none is left out.
+        whole: dict[float, list] = {}          # z -> polygons
+        straddling: list = []
+        dropped = 0
+        for polygon in polygons:
+            verts = [(float(v[0]), float(v[1])) for v in (polygon.get("vertices") or []) if len(v) >= 2]
+            if not verts:
+                verts = contour_points(polygon.get("outline") or [])
+            if not masked:
+                # a plain board with a mask: one level, no clipping
+                z = where.default[1][0] if side == "top" else where.default[1][1]
+                whole.setdefault(z, []).append(polygon)
+                continue
+            homes = set()
+            for v in verts:
+                homes.add(next((name for name, poly, _c, _b, _z in masked if point_in_polygon(v, poly)), None))
+            if len(homes) == 1 and None not in homes:
+                z = next(zf for name, _p, _c, _b, zf in masked if name in homes)
+                whole.setdefault(z, []).append(polygon)
+            else:
+                xs = [v[0] for v in verts]
+                ys = [v[1] for v in verts]
+                box = (min(xs), min(ys), max(xs), max(ys))
+                touches = [m for m in masked
+                           if not (box[2] < m[3][0] or box[0] > m[3][2] or box[3] < m[3][1] or box[1] > m[3][3])]
+                if touches:
+                    straddling.append((polygon, touches))
+                else:
+                    dropped += 1
+        for z, group in whole.items():
             compound, n_built, n_skipped = build_silkscreen(
-                group, z, 0.0, log=log,
-                side=f"{'copper' if section == 'exposed' else 'bare'}_{side}", flat=True,
-                flat_offset=sign * abs(lift))
+                group, z, 0.0, log=log, side=f"{tag}_{side}", flat=True, flat_offset=sign * abs(lift))
             built += n_built
             skipped += n_skipped
             if compound is not None:
                 pieces.append(compound)
+        clipped = 0
+        if straddling:
+            # every masked zone any of them touches, each at its own face
+            for name, _poly, contour, _box, zf in masked:
+                group = [p for p, touches in straddling if any(t[0] == name for t in touches)]
+                if not group:
+                    continue
+                compound, n_built, n_skipped = build_silkscreen(
+                    group, zf, 0.0, log=log, side=f"{tag}_{side} ({name})", flat=True,
+                    flat_offset=sign * abs(lift))
+                skipped += n_skipped
+                if compound is None:
+                    continue
+                region = _face_from_wires(build_contour(contour, zf + sign * abs(lift)), [])
+                common = BRepAlgoAPI_Common(compound, region)
+                faces = _faces_of(common.Shape()) if common.IsDone() else []
+                if faces:
+                    pieces.append(_assemble(faces))
+                    clipped += len(group)
+                elif not common.IsDone():
+                    log(f"warning: {tag}_{side}: {len(group)} drawn-opening polygon(s) could not be "
+                        f"clipped to zone {name} and are left out")
+            built += len({id(p) for p, _t in straddling})
+        if dropped or straddling:
+            log(f"{tag}_{side}: the mask is only on "
+                + ", ".join(name for name, *_r in masked)
+                + f" - {len(straddling)} drawn-opening polygon(s) clipped to it"
+                + (f", {dropped} left out" if dropped else ""))
         if not pieces:
             out[side] = (None, built, skipped)
         elif len(pieces) == 1:

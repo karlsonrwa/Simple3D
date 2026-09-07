@@ -579,6 +579,16 @@ the other's complement inside the opening, at the same height. **On its own**
 the checkbox draws the openings whole: the mask's windows on a board without
 its copper.
 
+**Only where there is a mask.** A window is drawn only on a zone whose stackup
+carries a soldermask layer on that side. A flex or stiffener zone has coverlay
+and adhesive there and no soldermask, so a pin on it gets no window (its copper
+is still drawn), a drawn opening lying on it is left out, and one that runs
+across a zone boundary — Cadence's demo draws its outline as strokes on the
+mask layers, through every zone, and the part over the flex used to float two
+millimetres above it — is clipped to the masked zones, each piece at its own
+zone's face. The log counts what was left out and clipped. A plain board with
+one stackup and no soldermask in it gets no windows at all, and says so.
+
 Measured on the same small board: 61 padstack openings from 10 figures, and
 the 53 drawn openings — the copper label's strokes and two shapes over the
 pour — as 53 polygons of copper with 94 laminate rims when both are on, or 147
@@ -1366,6 +1376,16 @@ Allegro, где его набирают руками, а файл на диск�
 штрихами с ободками текстолита. Медь и текстолит не пересекаются — одно
 дополняет другое внутри вскрытия, на одной высоте. **Сама по себе** галочка
 рисует вскрытия целиком: окна маски на плате без её меди.
+
+**Только там, где маска есть.** Окно рисуется только в зоне, чей стек несёт
+слой паяльной маски с этой стороны. У зоны флекса или стиффенера там
+коверлей и клей, а маски нет, поэтому вывод на ней окна не получает (его
+медь рисуется по-прежнему), нарисованное вскрытие, лежащее на ней,
+пропускается, а пересекающее границу зон — демо-плата Cadence рисует свой
+контур штрихами на слоях маски сквозь все зоны, и часть над флексом висела на
+два миллиметра выше него — обрезается по зонам с маской, каждый кусок на
+грани своей зоны. Лог считает пропущенное и обрезанное. Обычная плата с одним
+стеком без паяльной маски окон не получает вовсе, и лог об этом говорит.
 
 Замер на той же небольшой плате: 61 вскрытие падстеков из 10 фигур и 53
 нарисованных — штрихи медной надписи и две фигуры над заливкой — дают 53
