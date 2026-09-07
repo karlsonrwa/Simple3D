@@ -200,6 +200,7 @@ class StepBuilderApp(tk.Tk):
         # (round 85). Off by default: it is for a picture, and it costs a
         # placement per pad in the file.
         self.copper_pads = tk.BooleanVar(value=False)
+        self.mask_openings = tk.BooleanVar(value=False)
 
         # Prefill state, set by prefill_jobs() when launched from Allegro.
         # Note: there is deliberately NO cached job list - jobs are resolved
@@ -367,6 +368,15 @@ class StepBuilderApp(tk.Tk):
         ttk.Checkbutton(opts, text="Copper pads (as surfaces)",
                         variable=self.copper_pads).grid(
             row=6, column=0, columnspan=6, sticky="w", pady=(6, 0))
+
+        # The mask openings as surfaces in the dielectric's colour: every
+        # padstack's opening, instanced like the pads, and every opening
+        # drawn on the mask layers. With the pads on, what the copper leaves
+        # of each opening; on their own, the openings whole. Needs the mask
+        # data of format_version 11 for the padstacks, 12 for the drawn ones.
+        ttk.Checkbutton(opts, text="Mask openings (as surfaces)",
+                        variable=self.mask_openings).grid(
+            row=7, column=0, columnspan=6, sticky="w", pady=(6, 0))
 
         # --- silkscreen ---
         silk = ttk.LabelFrame(mid, text="Silk options", padding=8)
@@ -939,6 +949,7 @@ class StepBuilderApp(tk.Tk):
             fold_neutral=self.fold_neutral,
             fold_slice_angle=self.fold_slice_angle,
             copper_pads=self.copper_pads.get(),
+            mask_openings=self.mask_openings.get(),
             brd_name=self._brd_name,
             dated_name=self._dated_name,
         )
@@ -1189,6 +1200,7 @@ class StepBuilderApp(tk.Tk):
         self.fold_neutral = s.fold_neutral
         self.fold_slice_angle = s.fold_slice_angle
         self.copper_pads.set(s.copper_pads)
+        self.mask_openings.set(s.mask_openings)
         self._saved_geometry = s.window_geometry
         self._saved_state = s.window_state
 
@@ -1227,6 +1239,7 @@ class StepBuilderApp(tk.Tk):
             fold_neutral=self.fold_neutral,
             fold_slice_angle=self.fold_slice_angle,
             copper_pads=self.copper_pads.get(),
+            mask_openings=self.mask_openings.get(),
             # The NON-maximized rect is stored even when closing maximized, so
             # un-maximizing later gives back a sane window.
             window_geometry=self._last_normal_geometry or self.geometry(),

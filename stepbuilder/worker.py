@@ -57,6 +57,7 @@ class BuildSettings:
     fold_neutral: float
     fold_slice_angle: float
     copper_pads: bool
+    mask_openings: bool
     brd_name: str | None
     dated_name: bool
     build_full_board: bool

@@ -106,6 +106,8 @@ class BuildResult:
     pads_placed: int = 0
     pads_figures: int = 0
     pads_skipped: int = 0
+    openings_placed: int = 0
+    opening_figures: int = 0
     # MFRPN reporting DISABLED (property attachment unreliable); kept for future:
     # missing_mfr_pn: list[str] = field(default_factory=list)
 
@@ -305,6 +307,21 @@ def _plan_fold(data: dict, stack: _Stack, options: BuildOptions, log: LogFn):
         log("Bend folding is off: the board is exported flat")
 
     return fold
+
+
+def _compound_of(shapes: list) -> TopoDS_Shape:
+    """One compound holding every shape given, for a part made of pieces
+    built separately (the drawn openings' copper area and laminate, when
+    both go into one laminate-coloured part)."""
+    from OCP.BRep import BRep_Builder
+    from OCP.TopoDS import TopoDS_Compound
+
+    compound = TopoDS_Compound()
+    builder = BRep_Builder()
+    builder.MakeCompound(compound)
+    for shape in shapes:
+        builder.Add(compound, shape)
+    return compound
 
 
 def _folded(fold, log: LogFn, shape, fuse: bool = True, note: bool = True):
@@ -568,7 +585,7 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
     """The copper pads into the document, when asked for (round 85): one
     group per side, every pin an instance of its figure's shared face.
     None when the option is off; an empty result when the file has none."""
-    if not options.copper_pads:
+    if not (options.copper_pads or options.mask_openings):
         return None
     if not isinstance(data.get("pads"), dict):
         log("No pads in this JSON (re-export from Allegro, format_version 12, to include them)")
@@ -591,43 +608,76 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
 
     palette = {**DEFAULT_LAYER_COLORS, **(options.layer_colors or {})}
     rgb = palette.get("copper", DEFAULT_LAYER_COLORS["copper"])
-    log("Building the copper pads")
+    base = palette.get("base", DEFAULT_LAYER_COLORS["base"])
+    log("Building " + " and ".join(what for what, on in (("the copper pads", options.copper_pads),
+                                                          ("the mask openings", options.mask_openings)) if on))
     result = build_pads(
         data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
         board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
         fold=fold, lift=abs(options.silk_flat_height), document=document,
         group_for=group_for, rgb01=(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0),
-        srgb=options.srgb_color, json_stem=json_stem, log=log)
+        srgb=options.srgb_color, json_stem=json_stem,
+        copper=options.copper_pads, openings=options.mask_openings,
+        base01=(base[0] / 255.0, base[1] / 255.0, base[2] / 255.0), log=log)
 
     for note in result.notes:
         log(f"warning: {note}")
-    log(f"Copper pads: {result.placed} placed on {result.pins} pin(s)"
-        + (f" (of them {result.vias} via(s), {result.via_placed} untented and drawn)" if result.vias else "")
-        + f", {result.figures} distinct figure(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+    if options.copper_pads:
+        log(f"Copper pads: {result.placed} placed on {result.pins} pin(s)"
+            + (f" (of them {result.vias} via(s), {result.via_placed} untented and drawn)" if result.vias else "")
+            + f", {result.figures} distinct figure(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+    if options.mask_openings:
+        log(f"Mask openings: {result.openings_placed} placed on {result.pins} pin(s)"
+            + (f" (of them {result.vias} via(s))" if result.vias else "")
+            + f", {result.opening_figures} distinct figure(s)"
+            + (f", {result.openings_filled} filled by their copper" if result.openings_filled else "")
+            + f", RGB {base[0]},{base[1]},{base[2]}")
+        if result.no_mask_data:
+            log("note: this JSON carries no mask openings (format_version 10); re-export from "
+                "Allegro to draw them")
 
-    # What the drawn openings show (format_version 12): the copper under
-    # them in the copper colour, and the bare laminate where there is none
-    # in the dielectric's colour - one part per side each, like the legend,
-    # a micron above the pads.
-    base = palette.get("base", DEFAULT_LAYER_COLORS["base"])
+    # What the drawn openings show (format_version 12): with the copper pads
+    # on, the copper under them in the copper colour; with the openings on,
+    # the bare laminate where there is none in the dielectric's colour - and
+    # the copper's area as laminate too when the pads are off, so the opening
+    # is whole. One part per side each, like the legend, a micron above the
+    # pads.
     if not isinstance(data["pads"].get("exposed"), dict):
         log("note: this JSON carries no copper under drawn mask openings (format_version "
             "11 or older); re-export from Allegro for the openings drawn as shapes or lines")
     elif not isinstance(data["pads"].get("bare"), dict):
         log("note: this JSON carries the copper under drawn mask openings but not the bare "
             "laminate they show; re-export from Allegro for a part number cut into the mask")
-    for section, prefix, colour, what in (("exposed", "copper", rgb, "Exposed copper under drawn openings"),
-                                          ("bare", "bare", base, "Bare laminate in drawn openings")):
+
+    def drawn(section: str) -> dict[str, list]:
         built_sides = build_exposed(
             data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
             board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
             lift=2.0 * abs(options.silk_flat_height), section=section, log=log)
-        for side, (compound, built, skipped) in built_sides.items():
+        return {side: [piece] for side, piece in built_sides.items()}
+
+    flat_parts: list[tuple[str, tuple, str, dict]] = []
+    if options.copper_pads:
+        flat_parts.append(("copper", rgb, "Exposed copper under drawn openings", drawn("exposed")))
+    if options.mask_openings:
+        sides = drawn("bare")
+        what = "Bare laminate in drawn openings"
+        if not options.copper_pads:
+            for side, pieces in drawn("exposed").items():
+                sides.setdefault(side, []).extend(pieces)
+            what = "Drawn openings, whole"
+        flat_parts.append(("bare", base, what, sides))
+    for prefix, colour, what, sides in flat_parts:
+        for side, pieces in sides.items():
             tag = f"{prefix}_top" if side == "top" else f"{prefix}_bot"
-            if compound is None:
+            compounds = [c for c, _, _ in pieces if c is not None]
+            built = sum(b for _, b, _ in pieces)
+            skipped = sum(k for _, _, k in pieces)
+            if not compounds:
                 continue
+            shape = compounds[0] if len(compounds) == 1 else _compound_of(compounds)
             label = shape_tool.NewShape()
-            shape_tool.SetShape(label, _folded(fold, log, compound, fuse=False, note=False))
+            shape_tool.SetShape(label, _folded(fold, log, shape, fuse=False, note=False))
             document.set_color(label, (colour[0] / 255.0, colour[1] / 255.0, colour[2] / 255.0),
                                options.srgb_color)
             document.set_name(label, f"{tag}_{json_stem}")
@@ -864,6 +914,8 @@ def generate(
         result.pads_placed = pads.placed
         result.pads_figures = pads.figures
         result.pads_skipped = pads.no_outer_face + pads.no_padstack + pads.unbuildable
+        result.openings_placed = pads.openings_placed
+        result.opening_figures = pads.opening_figures
 
     # ---- write ----------------------------------------------------------- #
     # FIX: the C++ version hardcoded a backslash separator, which produced a

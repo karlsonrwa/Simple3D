@@ -11,6 +11,32 @@ to use the tool.
 
 ---
 
+- **2026-09-07** — **Mask openings, as surfaces; copper drawn with no net.**
+  A second checkbox, *Mask openings (as surfaces)*, draws the windows in the
+  solder mask in the dielectric's colour: every pin's and via's opening from
+  its padstack, instanced like the pads, and every opening drawn on the mask
+  layers - a line, a shape or rectangle, a text - flat like the legend. With
+  *Copper pads* on, what the copper leaves of each opening: the ring around
+  a copper-defined pad, the laminate a label cut into the mask shows (which
+  the copper pads drew on their own for a few hours and now leave to this
+  checkbox); alone, the openings whole. And a label written in copper with
+  *Add Line* on an etch layer - on no net, a "line" to Allegro's find filter
+  rather than a "cline" - is copper under its opening now: the sweep asks
+  for both, where it asked for clines alone and found none of the 51 strokes
+  of the user's label. / **Вскрытия маски поверхностями; медь без цепи.**
+  Вторая галочка, *Mask openings (as surfaces)*, рисует окна в паяльной
+  маске цветом диэлектрика: вскрытие каждого вывода и переходного отверстия
+  из его падстека, вхождениями как площадки, и каждое вскрытие,
+  нарисованное на слоях маски — линия, фигура или прямоугольник, текст, —
+  плоско, как легенда. Вместе с *Copper pads* — то, что от вскрытия
+  оставляет медь: кольцо вокруг copper-defined площадки, текстолит, который
+  показывает прорезанная в маске надпись (несколько часов его рисовали сами
+  площадки, теперь он у этой галочки); сами по себе — вскрытия целиком. И
+  надпись, нарисованная медью через *Add Line* на слое etch — без цепи, для
+  фильтра поиска Allegro «line», а не «cline», — теперь медь под своим
+  вскрытием: развёртка спрашивает и то и другое, а спрашивая одни clines, не
+  находила ни одного из 51 штриха надписи пользователя.
+
 - **2026-09-07** — **Copper pads, as surfaces.** A new checkbox, *Copper pads
   (as surfaces)*, draws the copper of every pin's pad on the two outer faces
   in the copper colour, a micron above the mask - so the model reads as a

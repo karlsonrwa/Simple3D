@@ -410,8 +410,9 @@ procedure( s3dSelectInBox( l_bbox )
 )
 
 ; The polygons of one copper object, for the AND: a pin or via's pad on the
-; side's etch layer, a shape only inside the window, a cline widened with
-; round caps, anything else whole.
+; side's etch layer, a shape only inside the window, a cline - or a no-net
+; line on the etch layer, a label in copper - widened with round caps,
+; anything else whole.
 procedure( s3dCopperPolys( o_obj t_etch l_window s_endCap )
     let( ( polys )
         polys = nil
@@ -486,7 +487,13 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
             saveVis     = axlVisibleGet()
             saveEnabled = axlGetFindFilter( t )
             saveOn      = axlGetFindFilter( nil )
-            filter = list( "noall" "clines" "shapes" "pins" "vias" )
+            ; "lines" AND "clines": copper drawn with Add Line on an ETCH
+            ; subclass belongs to no net and is a "line" to the find filter,
+            ; not a "cline" - the user's label in copper on my_test_board2 is
+            ; 51 such paths, and "clines" alone selected none of them
+            ; (tools/probes/probe_etchtext.il: "lines" 38 in the band,
+            ; "clines" 0; 52 no-net paths on ETCH/TOP in all).
+            filter = list( "noall" "lines" "clines" "shapes" "pins" "vias" )
             axlVisibleDesign( nil )
             axlVisibleLayer( etch t )
             errset( axlVisibleLayer( pinLayer t ) )

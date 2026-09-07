@@ -45,6 +45,13 @@ copper under them, and `bare`, the laminate they show where there is none
 (a part number cut into the mask); `build_exposed` builds either through
 the legend's machinery, one flat part per side, in the copper or the
 dielectric colour.
+
+The mask openings are a second option beside the copper: `opening_face`
+is the window in the mask as a face - the mask figure, the drill out of
+it, and minus the copper pad when the pads are drawn too, so the two never
+overlap - shared per figure and instanced per pin like the pads, under
+`openings_top` / `openings_bot`; the drawn openings' laminate (and, with
+the copper off, their copper area as laminate too) is the `bare` part.
 """
 
 from __future__ import annotations
@@ -474,6 +481,56 @@ def pad_face(pad: dict, hole: list | None, mirrored: bool, face_up: bool = True,
         if not faces:
             return None, None
 
+    return _finish(faces, mirrored, face_up), note
+
+
+def opening_face(mask: dict, hole: list | None, mirrored: bool, face_up: bool = True,
+                 copper: dict | None = None) -> tuple[TopoDS_Shape | None, str | None]:
+    """One padstack's mask OPENING as a planar face (or a compound of faces)
+    at the origin, z = 0, ready to be placed - the window in the mask.
+
+    The opening's figure, the drill cut out so the hole stays a hole, and -
+    when *copper* is given, the pad the copper pads draw - minus that pad:
+    what is left is the laminate the opening shows around a copper-defined
+    pad, and nothing at all for a solder-mask-defined one, whose copper
+    fills its opening. Without *copper* the opening comes whole, for a model
+    that shows the windows and not the pads. Same (shape, note) contract as
+    `pad_face`: None with no note is "nothing to show", ordinary.
+    """
+    window, note = figure_face(mask)
+    if window is None:
+        return None, note
+    faces = [window]
+
+    if hole:
+        cutter = _face_from_wires(build_contour(hole, 0.0), [])
+        cut = BRepAlgoAPI_Cut(window, cutter)
+        if not cut.IsDone():
+            return None, "the drill could not be cut out of the opening"
+        faces = _faces_of(cut.Shape())
+        if not faces:
+            return None, None
+
+    if copper is not None:
+        pad, pad_note = figure_face(copper)
+        if pad is None:
+            return None, f"its copper could not be built ({pad_note})"
+        if pad_note and not note:
+            note = "copper: " + pad_note
+        cut = BRepAlgoAPI_Cut(_assemble(faces), pad)
+        if not cut.IsDone():
+            return None, "the copper could not be taken out of the opening"
+        faces = _faces_of(cut.Shape())
+        if not faces:
+            return None, None
+
+    return _finish(faces, mirrored, face_up), note
+
+
+def _finish(faces: list, mirrored: bool, face_up: bool) -> TopoDS_Shape:
+    """Mirror the faces of a figure for a mirrored pin (x -> -x, before the
+    rotation, the order Allegro applies) and turn their normals to face out
+    of the side they lie on, so a viewer that culls back faces shows them."""
     if mirrored:
         mirror = gp_Trsf()
         mirror.SetMirror(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)))
@@ -483,7 +540,7 @@ def pad_face(pad: dict, hole: list | None, mirrored: bool, face_up: bool = True,
     for f in faces:
         up = _normal_up(f)
         oriented.append(TopoDS.Face_s(f.Reversed()) if up is not None and up != face_up else f)
-    return _assemble(oriented), note
+    return _assemble(oriented)
 
 
 def shape_area(shape: TopoDS_Shape | None) -> float:
@@ -518,6 +575,9 @@ class PadsResult:
     vias: int = 0                   # via rows read (format_version 12)
     via_placed: int = 0             # of the placements, those that are vias - untented ones
     in_bend: int = 0                # pins standing in a bend area
+    openings_placed: int = 0        # opening faces placed (the mask-openings option)
+    opening_figures: int = 0        # distinct opening faces built
+    openings_filled: int = 0        # placements whose copper fills the opening: nothing left to draw
     notes: list[str] = field(default_factory=list)
 
 
@@ -561,12 +621,17 @@ class _Zones:
 
 def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom_z,
                fold, lift: float, document, group_for, rgb01, srgb: bool,
-               json_stem: str, log: LogFn = _noop_log) -> PadsResult:
-    """Every pin's copper into the document, as instances of shared faces.
+               json_stem: str, copper: bool = True, openings: bool = False, base01=None,
+               log: LogFn = _noop_log) -> PadsResult:
+    """Every pin's copper - and/or its mask opening - into the document, as
+    instances of shared faces.
 
     *group_for(side)* hands back the assembly label of `pads_top` /
-    `pads_bot`, created on first use; *lift* is how far above the face the
-    copper floats (the flat-silkscreen clearance); *rgb01* the copper.
+    `pads_bot` (and `openings_top` / `openings_bot`), created on first use;
+    *lift* is how far above the face the faces float (the flat-silkscreen
+    clearance); *rgb01* the copper, *base01* the dielectric. *copper* draws
+    the pads, *openings* the windows in the mask: what the copper leaves of
+    each when both are on, the openings whole otherwise.
     """
     result = PadsResult()
     pads = data.get("pads")
@@ -620,65 +685,101 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
                 result.covered += 1
                 continue
             layer = next((lay for lay, p in (padstack.get("pads") or {}).items() if p is pad), "?")
-            key = (name, layer, mirrored, face_side)
-            if key not in parts:
-                empty = None                   # why nothing shows: "hole" or "hidden"
-                try:
-                    # The copper first, whole - it says whether the drill took
-                    # all of it - then what the opening leaves of it. Per
-                    # figure, not per pin, so the second build is cheap.
-                    whole, note = pad_face(pad, padstack.get("drill"), mirrored,
-                                           face_up=(face_side == "top"))
-                    face = whole
-                    if whole is None:
-                        empty = "hole" if note is None else None
-                    elif mask is not None:
-                        face, mask_note = pad_face(pad, padstack.get("drill"), mirrored,
-                                                   face_up=(face_side == "top"), mask=mask)
-                        note = note or mask_note
-                        if face is None:
-                            empty = "hidden" if mask_note is None else None
-                        # Solder-mask-defined: the opening is what shows, and
-                        # it is smaller than the copper. Counted per figure,
-                        # for the log; a percent of slack covers the arcs.
-                        elif shape_area(face) < 0.99 * shape_area(whole):
-                            result.mask_defined += 1
-                except (StepBuilderError, RuntimeError, KeyError, TypeError,
-                        ValueError, IndexError) as exc:
-                    face, note = None, str(exc)
-                if note and (name not in noted_boxes):
-                    noted_boxes.add(name)
-                    result.notes.append(f"padstack {name} ({layer}): {note}")
-                if face is None:
-                    # Nothing visible and no failure: the drill took all of
-                    # it (a mounting hole's nominal pad) or the opening misses
-                    # it. Counted apart from a figure that failed (None).
-                    parts[key] = empty
-                else:
-                    label = shape_tool.NewShape()
-                    shape_tool.SetShape(label, face)
-                    tag = "m" if mirrored else ""
-                    document.set_name(label, f"pad_{name}_{layer_subclass(layer)}{tag}")
-                    document.set_color(label, rgb01, srgb)
-                    parts[key] = label
-                    result.figures += 1
-            label = parts[key]
-            if label is None:
-                result.unbuildable += 1
-                continue
-            if label == "hole":
-                result.all_hole += 1
-                continue
-            if label == "hidden":
-                result.hidden += 1
-                continue
+            tag = "m" if mirrored else ""
             z = top_z + lift if face_side == "top" else bottom_z - lift
             trsf = _placement(x, y, z, rotation, fold)
-            shape_tool.AddComponent(group_for("pads_top" if face_side == "top" else "pads_bot"),
-                                    label, TopLoc_Location(trsf))
-            result.placed += 1
-            if is_via:
-                result.via_placed += 1
+
+            if copper:
+                key = (name, layer, mirrored, face_side)
+                if key not in parts:
+                    empty = None                   # why nothing shows: "hole" or "hidden"
+                    try:
+                        # The copper first, whole - it says whether the drill took
+                        # all of it - then what the opening leaves of it. Per
+                        # figure, not per pin, so the second build is cheap.
+                        whole, note = pad_face(pad, padstack.get("drill"), mirrored,
+                                               face_up=(face_side == "top"))
+                        face = whole
+                        if whole is None:
+                            empty = "hole" if note is None else None
+                        elif mask is not None:
+                            face, mask_note = pad_face(pad, padstack.get("drill"), mirrored,
+                                                       face_up=(face_side == "top"), mask=mask)
+                            note = note or mask_note
+                            if face is None:
+                                empty = "hidden" if mask_note is None else None
+                            # Solder-mask-defined: the opening is what shows, and
+                            # it is smaller than the copper. Counted per figure,
+                            # for the log; a percent of slack covers the arcs.
+                            elif shape_area(face) < 0.99 * shape_area(whole):
+                                result.mask_defined += 1
+                    except (StepBuilderError, RuntimeError, KeyError, TypeError,
+                            ValueError, IndexError) as exc:
+                        face, note = None, str(exc)
+                    if note and (name not in noted_boxes):
+                        noted_boxes.add(name)
+                        result.notes.append(f"padstack {name} ({layer}): {note}")
+                    if face is None:
+                        # Nothing visible and no failure: the drill took all of
+                        # it (a mounting hole's nominal pad) or the opening misses
+                        # it. Counted apart from a figure that failed (None).
+                        parts[key] = empty
+                    else:
+                        label = shape_tool.NewShape()
+                        shape_tool.SetShape(label, face)
+                        document.set_name(label, f"pad_{name}_{layer_subclass(layer)}{tag}")
+                        document.set_color(label, rgb01, srgb)
+                        parts[key] = label
+                        result.figures += 1
+                label = parts[key]
+                if label is None:
+                    result.unbuildable += 1
+                elif label == "hole":
+                    result.all_hole += 1
+                elif label == "hidden":
+                    result.hidden += 1
+                else:
+                    shape_tool.AddComponent(group_for("pads_top" if face_side == "top" else "pads_bot"),
+                                            label, TopLoc_Location(trsf))
+                    result.placed += 1
+                    if is_via:
+                        result.via_placed += 1
+
+            # The window in the mask, shared per figure like the copper: what
+            # the copper leaves of it when the pads are drawn too (nothing
+            # for a solder-mask-defined pad), the opening whole otherwise.
+            if openings and mask is not None:
+                mask_layer = next((lay for lay, p in (padstack.get("pads") or {}).items() if p is mask), "?")
+                okey = (name, mask_layer, mirrored, face_side, "opening")
+                if okey not in parts:
+                    try:
+                        window, onote = opening_face(mask, padstack.get("drill"), mirrored,
+                                                     face_up=(face_side == "top"),
+                                                     copper=pad if copper else None)
+                    except (StepBuilderError, RuntimeError, KeyError, TypeError,
+                            ValueError, IndexError) as exc:
+                        window, onote = None, str(exc)
+                    if onote and (name + "/opening" not in noted_boxes):
+                        noted_boxes.add(name + "/opening")
+                        result.notes.append(f"padstack {name} ({mask_layer}): {onote}")
+                    if window is None:
+                        parts[okey] = None if onote else "filled"
+                    else:
+                        label = shape_tool.NewShape()
+                        shape_tool.SetShape(label, window)
+                        document.set_name(label, f"opening_{name}_{layer_subclass(mask_layer)}{tag}")
+                        document.set_color(label, base01 or rgb01, srgb)
+                        parts[okey] = label
+                        result.opening_figures += 1
+                label = parts[okey]
+                if label is None:
+                    result.unbuildable += 1
+                elif label == "filled":
+                    result.openings_filled += 1
+                else:
+                    shape_tool.AddComponent(group_for("openings_top" if face_side == "top" else "openings_bot"),
+                                            label, TopLoc_Location(trsf))
+                    result.openings_placed += 1
 
     return result
 

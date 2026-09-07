@@ -3363,21 +3363,66 @@ test_pads [5] a bare polygon on the bottom only (`bare_bot_pads_on`, no
 top part, the log line), test_emit's key list
 `["padstacks", "pins", "exposed", "bare"]` and the transliteration's stub.
 
+**Copper drawn with no net, and the mask openings as a checkbox** (the
+user's next two, the same afternoon). They saw the label's mask openings
+in the model and not its copper: F4 on a stroke says `< VERTICAL LINE
+SEGMENT > class ETCH subclass TOP`, no net line. `tools/probes/
+probe_etchtext.il`, headless on the copy: with ETCH/TOP alone visible, a
+box over the label band selects 38 objects under the find filter "lines"
+and 0 under "clines" (0 under "cline segs", "line segs", "shapes", "text"
+too); they are objType "path", ->net nil, and `s3dCopperPolys` converts
+each to one polygon (0.27, 0.22, 0.20 ... mm2); ETCH/TOP holds 93
+line/cline objects, 52 of them on no net. So copper drawn with Add Line on
+an etch subclass is a "line" to the find filter, not a "cline" - the copper
+sweep in `s3dCollectExposed` asks for both now. Re-export: 53 openings ->
+53 polygons of copper (the two shapes over the pour and the 51 strokes)
+and 94 of bare laminate (the rims around the strokes).
+
+The checkbox *Mask openings (as surfaces)* (`gui.maskOpenings`,
+`--mask-openings`, `BuildOptions.mask_openings`, its own GUI row):
+`opening_face` in pads.py is the mask figure as a face, the drill cut out,
+minus the copper pad when the pads are drawn too (`BRepAlgoAPI_Cut` face
+by face; nothing left for a solder-mask-defined pad, counted as "filled"),
+shared per (padstack, mask layer, mirrored, side) and instanced per pin
+under `openings_top/bot_<stem>` in the palette's `base` colour at the
+pads' height - the two cannot overlap, one is the other's complement.
+`build_pads` takes `copper` and `openings`; `_build_pads` runs when either
+is on. The drawn openings' `bare` section moved from the copper checkbox
+to this one, and with the copper off the `exposed` section goes into the
+same laminate part (`_compound_of`), so the opening is whole ("Drawn
+openings, whole"). Rectangles: the `axlSetFindFilter` reference says
+"SHAPES" "enables shapes, rects and frects"; `tools/probes/
+probe_maskrect.il` made the case in the runner's scratch copy - an
+unfilled rectangle on PACKAGE GEOMETRY/SOLDERMASK_TOP is refused (nil: the
+layer wants filled ones), a filled one is objType "shape" and the sweep
+took it without a change: 54 openings, 0.124 mm2 of copper + 0.138 +
+0.228 of laminate = 0.49 = 0.7 x 0.7. "FIGURES" is a separate keyword and
+is not swept. Measured on my_test_board2 from the fresh JSON: pads 61
+placed / 10 figures, openings 61 / 10 (every opening on that board is
+wider than its copper - none filled), 53 copper + 94 laminate polygons
+with both on, 147 whole with the copper off; 2.77 / 3.05 / 3.17 MB, 1.8 to
+2.4 s. Tests: test_pads [6] (the figure: whole = the mask's area, with the
+copper = the mask less what the copper shows through it, a copper that
+fills its opening -> (None, None), the drill; the build alone, both, off,
+a v10 library and its note), [5]'s bare check inverted (the copper alone
+draws no laminate now), test_gui's snapshot set, the README settings row
+and the config key. Docs: README both halves (a *Mask openings* section,
+the window and settings rows, the tree, the limitations), QUICKSTART,
+CHANGELOG, ARCHITECTURE, the config comments, both module headers.
+
 What is still NOT drawn, said to the user: copper other than the pad inside
 a padstack's own opening (the trace neck and the thermal spokes in a
 copper-defined pad's ring - per-pin booleans and no instancing to get it,
-5.9 MB against 2.1 on the demo, for slivers); the ring of a padstack's own
-opening around a copper-defined pad as bare laminate (per FIGURE it would
-be opening ANDNOT copper - one more shared face, instanced, cheap - but
-not asked for; only the DRAWN openings get the laminate); coverlay
-openings and coverlay-side copper on a rigid-flex; layers not in the
-`soldermask` section; rectangles, unchecked.
+5.9 MB against 2.1 on the demo, for slivers; with the openings on, their
+place in the ring is laminate); coverlay openings and coverlay-side copper
+on a rigid-flex; layers not in the `soldermask` section; Allegro
+"figures" on a mask layer.
 
 ### Not verified
 
 - The user's Inventor view of the board with the closed rounded rectangles,
-  the mask-clipped pads, the via rings, the exposed copper and the label as
-  bare laminate.
+  the mask-clipped pads, the via rings and the exposed copper - seen; the
+  copper label with its laminate rims and the openings checkbox - not yet.
 - A mirrored through pin whose padstack has different TOP and BOTTOM pads
   (none on five boards) - handled by rule, not measured.
 - Vias: deliberately out. If a board needs them, the same library serves:

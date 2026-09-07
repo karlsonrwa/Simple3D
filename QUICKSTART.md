@@ -67,9 +67,13 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   faces, as copper-coloured surfaces a micron above the mask. Off by default;
   needs a JSON exported with this version (`format_version` 12). Only what
   the mask exposes: a mask-defined pad shows its opening, a covered pad
-  nothing; untented vias, the copper under openings drawn on the
-  `SOLDERMASK` layers and the bare laminate those openings show (a label
-  cut into the mask) are drawn too (README, *Copper pads*).
+  nothing; untented vias and the copper under openings drawn on the
+  `SOLDERMASK` layers are drawn too (README, *Copper pads*).
+- **Mask openings (as surfaces)** — the windows in the solder mask as
+  surfaces in the dielectric's colour: every padstack's opening and every
+  opening drawn on the `SOLDERMASK` layers. With *Copper pads* on, what the
+  copper leaves of them — the ring around a pad, a label cut into the mask;
+  alone, the openings whole. Off by default (README, *Mask openings*).
 
 **Silk options**
 - **Top**/**Bottom** tickboxes, **White/Black** for the ink, and on its own line
@@ -208,10 +212,14 @@ builds it.
   гранях, поверхностями цвета меди на микрон над маской. По умолчанию
   выключено; нужен JSON, экспортированный этой версией (`format_version` 12).
   Рисуется только то, что открыто маской: mask-defined площадка показывает
-  своё вскрытие, закрытая — ничего; незакрытые переходные отверстия, медь под
-  вскрытиями, нарисованными на слоях `SOLDERMASK`, и голый текстолит в этих
-  вскрытиях (надпись, прорезанная в маске) рисуются тоже (README, *Медь
-  площадок*).
+  своё вскрытие, закрытая — ничего; незакрытые переходные отверстия и медь под
+  вскрытиями, нарисованными на слоях `SOLDERMASK`, рисуются тоже (README,
+  *Медь площадок*).
+- **Mask openings (as surfaces)** — окна в паяльной маске поверхностями цвета
+  диэлектрика: вскрытие каждого падстека и каждое вскрытие, нарисованное на
+  слоях `SOLDERMASK`. Вместе с *Copper pads* — то, что от них оставляет медь:
+  кольцо вокруг площадки, надпись, прорезанная в маске; сами по себе —
+  вскрытия целиком. По умолчанию выключено (README, *Вскрытия маски*).
 
 **Silk options**
 - Галочки **Top**/**Bottom**, цвет **White/Black**, отдельной строкой

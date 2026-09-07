@@ -151,6 +151,7 @@ class GuiSettings:
     fold_neutral: float
     fold_slice_angle: float
     copper_pads: bool
+    mask_openings: bool
     window_geometry: str | None
     window_state: str
     json_file: str
@@ -290,6 +291,10 @@ GUI_KEYS: tuple[Key, ...] = (
     # The copper pads as surfaces on the outer faces (round 85). Off by
     # default: a picture wants them, a mechanical check does not need them.
     Key("copperPads", "copper_pads", False),
+    # The mask openings as surfaces in the dielectric's colour - every
+    # padstack's opening and every opening drawn on the mask layers - what
+    # the pads leave of them when both are on, whole on their own.
+    Key("maskOpenings", "mask_openings", False),
     # Where the window was, so the next run comes up in the same place - on the
     # same monitor, which is the point on a multi-screen desk.
     Key("windowGeometry", "window_geometry", None, _load_geometry),

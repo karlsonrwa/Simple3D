@@ -88,6 +88,16 @@ copper_pads:
     figure, instanced per pin, so the file grows by a placement per pad
     rather than by a body; the copper under drawn openings is flat faces
     like the legend. Off by default: it is for a picture. See pads.py.
+mask_openings:
+    Draw the solder-mask openings as surfaces in the dielectric's colour
+    (`base` in layer_colors): every pin's and via's opening from its
+    padstack, instanced like the pads, and every opening drawn on the mask
+    layers (a line, a shape, a text), flat like the legend. With copper_pads
+    on, what the copper leaves of each opening - the ring around a
+    copper-defined pad, the laminate a label cut into the mask shows; on
+    its own, the openings whole. Needs the mask data of format_version 11
+    (a 10 file has none and says so); the drawn openings need 12. Off by
+    default.
 """
 
 from __future__ import annotations
@@ -132,6 +142,7 @@ class BuildOptions:
     fold_neutral: float | None = None
     fold_slice_angle: float | None = None
     copper_pads: bool = False
+    mask_openings: bool = False
 
     @classmethod
     def from_settings(cls, settings: BuildSettings, output_name: str | None) -> BuildOptions:
@@ -158,6 +169,7 @@ class BuildOptions:
             fold_neutral=settings.fold_neutral,
             fold_slice_angle=settings.fold_slice_angle,
             copper_pads=settings.copper_pads,
+            mask_openings=settings.mask_openings,
         )
 
     @classmethod
@@ -187,4 +199,5 @@ class BuildOptions:
             fold_neutral=args.fold_neutral,
             fold_slice_angle=args.fold_slice_angle,
             copper_pads=args.copper_pads,
+            mask_openings=args.mask_openings,
         )

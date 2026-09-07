@@ -359,10 +359,9 @@ check("the copper under the drawn opening is one part per side, copper-coloured,
       [m for m in logs if "xposed" in m])
 check("its area is checked against Allegro's like the legend's",
       any("copper_top: 1 polygon(s) match Allegro's areas" in m for m in logs), [m for m in logs if "copper_top" in m])
-check("the bare laminate in an opening is its own part per side, in the dielectric's colour",
-      "bare_bot_pads_on" in text and "bare_top_pads_on" not in text
-      and any("Bare laminate in drawn openings, bottom: 1 polygon(s)" in m for m in logs),
-      [m for m in logs if "Bare" in m])
+check("the bare laminate in an opening belongs to the mask openings, not to the copper: none here",
+      "bare_bot_pads_on" not in text and "bare_top_pads_on" not in text
+      and not any("Bare laminate" in m for m in logs), [m for m in logs if "Bare" in m])
 check("the pin whose padstack has no mask opening is under the mask: not drawn, and said",
       "pad_BARE" not in text and any("4 pad(s) have no mask opening" in m for m in logs),
       [m for m in logs if "mask" in m])
@@ -418,6 +417,74 @@ per_placement = (size_more - size_on) / max(res_more.pads_placed - res.pads_plac
 check(f"twice the pins, the same figures: {res_more.pads_figures} figures still",
       res_more.pads_placed == 10 and res_more.pads_figures == 5, (res_more.pads_placed, res_more.pads_figures))
 check(f"and each extra placement costs under 1.5 kB ({per_placement:.0f} bytes)", 0 < per_placement < 1500)
+
+print("\n[6] the mask openings: on their own, with the copper, and on a file without them")
+# The figure first: a window is the mask figure whole; with the copper it
+# is what the copper leaves - the mask's area less the copper the opening
+# exposes - and a drill takes its hole out of it like it does of the pad.
+whole_area = P.shape_area(P.figure_face(MASK)[0])
+window, wnote = P.opening_face(MASK, None, False)
+ring, rnote = P.opening_face(MASK, None, False, copper=DISC)
+shown = P.shape_area(P.pad_face(DISC, None, False, mask=MASK)[0])
+holed, hnote = P.opening_face(MASK, circle(0.15), False)
+check("an opening on its own is the mask figure whole",
+      window is not None and wnote is None and abs(P.shape_area(window) - whole_area) < 1e-6,
+      (wnote, P.shape_area(window), whole_area))
+check("with the copper it is the mask less what the copper shows through it",
+      ring is not None and rnote is None and abs(P.shape_area(ring) - (whole_area - shown)) < 1e-6,
+      (rnote, P.shape_area(ring), whole_area, shown))
+check("a copper that fills its opening leaves nothing, and says nothing",
+      P.opening_face(DISC, None, False, copper=DISC) == (None, None))
+check("the drill is cut out of the opening as it is out of the pad",
+      holed is not None and hnote is None and P.shape_area(holed) < whole_area, (hnote,))
+
+jf.write_text(json.dumps(board))
+res_o, logs_o, text_o = build("openings_on", copper_pads=False, mask_openings=True)
+check("openings alone: a window per pin and via with a mask pad, no copper anywhere",
+      res_o.pads_placed == 0 and "pads_top_openings_on" not in text_o and "copper_top_openings_on" not in text_o
+      and "openings_top_openings_on" in text_o and "openings_bot_openings_on" in text_o
+      and res_o.openings_placed == 5 and res_o.opening_figures == 5,
+      (res_o.pads_placed, res_o.openings_placed, res_o.opening_figures))
+check("the figures are parts named after the padstack and the mask layer, a mirrored one with m",
+      "opening_SMD_SOLDERMASK_TOP" in text_o and "opening_SMD_SOLDERMASK_TOPm" in text_o
+      and "opening_THRU_SOLDERMASK_" in text_o and "opening_VIA_SOLDERMASK_TOP" in text_o
+      and "opening_TENTED" not in text_o and "opening_BARE" not in text_o)
+check("the drawn openings come whole, as laminate, on both sides",
+      "bare_top_openings_on" in text_o and "bare_bot_openings_on" in text_o
+      and any("Drawn openings, whole, top: 1 polygon(s)" in m for m in logs_o)
+      and any("Drawn openings, whole, bottom: 1 polygon(s)" in m for m in logs_o),
+      [m for m in logs_o if "Drawn" in m])
+check("the log says what was placed, in the dielectric's colour",
+      any("Mask openings: 5 placed" in m and "RGB 252,255,214" in m for m in logs_o)
+      and not any("Copper pads:" in m for m in logs_o), [m for m in logs_o if "openings" in m])
+
+res_b, logs_b, text_b = build("both_on", copper_pads=True, mask_openings=True)
+check("both on: the pads as before, the windows beside them, the laminate under the drawn openings",
+      res_b.pads_placed == 5 and res_b.pads_figures == 5
+      and "pads_top_both_on" in text_b and "openings_top_both_on" in text_b
+      and "copper_top_both_on" in text_b and "bare_bot_both_on" in text_b
+      and any("Bare laminate in drawn openings, bottom: 1 polygon(s)" in m for m in logs_b)
+      and any("Exposed copper under drawn openings, top: 1 polygon(s)" in m for m in logs_b)
+      and not any("Drawn openings, whole" in m for m in logs_b),
+      (res_b.pads_placed, res_b.openings_placed, [m for m in logs_b if "opening" in m]))
+check("a window the copper fills is counted, not placed",
+      res_b.openings_placed + sum(1 for m in logs_b if "filled by their copper" in m) >= 1
+      and res_b.openings_placed <= res_o.openings_placed,
+      (res_b.openings_placed, [m for m in logs_b if "Mask openings" in m]))
+check("off: no openings node, nothing said", "openings_top" not in text2
+      and not any("Mask openings" in m for m in logs2))
+
+v10o = json.loads(json.dumps(board))
+for stack in v10o["pads"]["padstacks"].values():
+    stack["pads"] = {lay: p for lay, p in stack["pads"].items() if lay.startswith("ETCH/")}
+del v10o["pads"]["exposed"]
+del v10o["pads"]["bare"]
+jf.write_text(json.dumps(v10o))
+res_v, logs_v, text_v = build("openings_v10", copper_pads=False, mask_openings=True)
+check("a v10 library has no openings to draw, and says so",
+      res_v.openings_placed == 0 and "openings_top" not in text_v
+      and any("carries no mask openings (format_version 10)" in m for m in logs_v),
+      [m for m in logs_v if "note" in m])
 jf.write_text(json.dumps(board))
 
 old = dict(board)
