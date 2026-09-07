@@ -52,6 +52,12 @@ def run(probe: Path, proc: str, brd: Path, out_dir: Path, allegro: Path,
     (makeVariant3dIntermediates.il) when the probe calls its procedures;
     a probe that does and is loaded alone fails at the call, and inside a
     headless session that can look like a hang."""
+    # ABSOLUTE, whatever the caller passed: the `.scr` lives under this
+    # folder and Allegro resolves a relative `-s` path against the DESIGN's
+    # folder, finds nothing, and waits forever with no window to say so.
+    # Six "hung" probes on 2026-09-07 were exactly `-o build/probe-out`;
+    # every run given an absolute folder finished in 25 s.
+    out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     work = out_dir / f"_work_{brd.stem}_{int(time.time())}"
     work.mkdir(parents=True, exist_ok=True)

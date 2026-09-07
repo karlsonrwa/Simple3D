@@ -3298,22 +3298,23 @@ file (note, no exposed part), a v10 library; test_emit's transliteration
 carries the `exposed` shape. Docs: README (both halves), CHANGELOG,
 ARCHITECTURE, config (`soldermask` section), QUICKSTART.
 
-**Why the headless probes hung.** Four times that day a probe sat ten
-minutes and never printed its first line, while the same code in parts ran
-in 20 s. `tools/run_probe.py` now streams the console straight to its file,
-and the file said it: Allegro X's AI widget (QtWebEngine, `XAIWidget`)
-cannot take its cache and cookie database under
-`%LOCALAPPDATA%\allegro\cache\QtWebEngine\` - "database is locked" -
-because the user's own interactive Allegro holds it (two `allegro.exe` on
-their Nivelir boards were open), and the `-nograph` session stalls before
-the `.scr` runs. Every hang lines up with their Allegro being open; every
-success with it closed - including one more hang started within a minute
-of the user closing theirs, and then five clean runs of the same files
-(a hello and the full probe, with and without the exporter, 25 s each). So
-it is the environment, not the probe. Check `tasklist` for another
-`allegro.exe` before a headless run, give a just-closed one a minute, and
-never kill one that is not yours. `tools/run_probe.py` streams the console
-to its file now, so the next hang says where it stopped.
+**Why the headless probes hung - the real reason, found last.** Seven
+times that day a probe sat ten minutes and never printed its first line,
+while the same code in parts, or in other runs, took 25 s. Two wrong
+theories first: the probe's code (split into parts: fine), then the user's
+own open Allegro - its AI widget's QtWebEngine cache was "database is
+locked" in the live console, real but harmless, and I asked the user to
+close their session for it. The command line of the hung process said it:
+`-s build/probe-out/_work_.../run.scr` - RELATIVE. `tools/run_probe.py`
+built the `.scr` under whatever `-o` it was given, and every hung run had
+been typed with `-o build/probe-out`, every clean one with an absolute
+folder (the part runners pass `ROOT / ...`). The rule at the top of
+`allegro-runs-headless` and of this repo's `skill_export.py` - Allegro
+resolves a relative `-s` against the DESIGN's folder and waits forever -
+broken by my own runner. `run_probe.py` resolves `out_dir` now and streams
+the console to its file, so the next hang shows where it stopped. Lesson:
+read the hung process's command line (`wmic process get CommandLine`)
+before theorising about the environment.
 
 **Answered for the user, with numbers:** why the legend is one surface body
 in Inventor and the pads many - the legend side is ONE part holding a
@@ -3332,9 +3333,11 @@ still leaves out): the openings sweep takes `text` beside lines and shapes,
 through the legend's converter (`axlText2Lines` + `?line2poly`), and a
 zero-width object is skipped with a word like the legend does. No board in
 `input/` carries text on a mask layer, so `tools/probes/probe_masktext.il`
-makes the case: it creates a text on `PACKAGE GEOMETRY/SOLDERMASK_TOP` over
-my_test_board2's pour, in the runner's scratch copy, and runs the exporter -
-awaiting a session with the user's Allegro closed.
+makes the case: it creates "MASK" (text block 10) on `PACKAGE
+GEOMETRY/SOLDERMASK_TOP` over my_test_board2's pour, in the runner's
+scratch copy, and runs the exporter. Measured: 60 openings instead of 53,
+6 polygons of copper instead of 2 - the four strokes that cross the pour,
+0.0037 to 0.045 mm2 - and the reader rebuilt all six to Allegro's areas.
 
 What is still NOT drawn, said to the user: copper other than the pad inside
 a padstack's own opening (the trace neck and the thermal spokes in a
@@ -3347,7 +3350,6 @@ section; rectangles, unchecked.
 
 - The user's Inventor view of the board with the closed rounded rectangles,
   the mask-clipped pads, the via rings and the exposed copper.
-- Text on a mask layer on a live board: `probe_masktext.il`.
 - A mirrored through pin whose padstack has different TOP and BOTTOM pads
   (none on five boards) - handled by rule, not measured.
 - Vias: deliberately out. If a board needs them, the same library serves:
