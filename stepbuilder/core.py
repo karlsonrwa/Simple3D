@@ -585,7 +585,7 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
     """The copper pads into the document, when asked for (round 85): one
     group per side, every pin an instance of its figure's shared face.
     None when the option is off; an empty result when the file has none."""
-    if not (options.copper_pads or options.mask_openings):
+    if not (options.exposed_copper or options.mask_openings):
         return None
     if not isinstance(data.get("pads"), dict):
         log("No pads in this JSON (re-export from Allegro, format_version 12, to include them)")
@@ -609,20 +609,26 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
     palette = {**DEFAULT_LAYER_COLORS, **(options.layer_colors or {})}
     rgb = palette.get("copper", DEFAULT_LAYER_COLORS["copper"])
     base = palette.get("base", DEFAULT_LAYER_COLORS["base"])
-    log("Building " + " and ".join(what for what, on in (("the copper pads", options.copper_pads),
+    log("Building " + " and ".join(what for what, on in (("the copper pads", options.exposed_copper),
                                                           ("the mask openings", options.mask_openings)) if on))
     result = build_pads(
         data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
         board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
-        fold=fold, lift=abs(options.silk_flat_height), document=document,
+        # Three heights, a flat-silkscreen clearance apart: the windows in
+        # the mask lowest, the copper above them, the drawn openings' parts
+        # above both - what overlaps is then decided by height, not by the
+        # viewer's draw order (two windows of neighbouring through pins
+        # overlap each other's copper ring).
+        fold=fold, lift=2.0 * abs(options.silk_flat_height),
+        opening_lift=abs(options.silk_flat_height), document=document,
         group_for=group_for, rgb01=(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0),
         srgb=options.srgb_color, json_stem=json_stem,
-        copper=options.copper_pads, openings=options.mask_openings,
+        copper=options.exposed_copper, openings=options.mask_openings,
         base01=(base[0] / 255.0, base[1] / 255.0, base[2] / 255.0), log=log)
 
     for note in result.notes:
         log(f"warning: {note}")
-    if options.copper_pads:
+    if options.exposed_copper:
         log(f"Copper pads: {result.placed} placed on {result.pins} pin(s)"
             + (f" (of them {result.vias} via(s), {result.via_placed} untented and drawn)" if result.vias else "")
             + f", {result.figures} distinct figure(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
@@ -653,16 +659,16 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
         built_sides = build_exposed(
             data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
             board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
-            lift=2.0 * abs(options.silk_flat_height), section=section, log=log)
+            lift=3.0 * abs(options.silk_flat_height), section=section, log=log)
         return {side: [piece] for side, piece in built_sides.items()}
 
     flat_parts: list[tuple[str, tuple, str, dict]] = []
-    if options.copper_pads:
+    if options.exposed_copper:
         flat_parts.append(("copper", rgb, "Exposed copper under drawn openings", drawn("exposed")))
     if options.mask_openings:
         sides = drawn("bare")
         what = "Bare laminate in drawn openings"
-        if not options.copper_pads:
+        if not options.exposed_copper:
             for side, pieces in drawn("exposed").items():
                 sides.setdefault(side, []).extend(pieces)
             what = "Drawn openings, whole"

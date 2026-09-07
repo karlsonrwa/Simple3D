@@ -51,7 +51,7 @@ is in the file, so the model can be rebuilt — differently — without touching
 the board again.
 
 The exporter writes `format_version: 12` (10 added the optional `pads` object
-the *Copper pads* are drawn from; 11 adds each padstack's mask openings to it,
+the *Exposed copper* are drawn from; 11 adds each padstack's mask openings to it,
 so a pad shows only what its opening exposes). Every earlier version still builds —
 each version only ever *added* something optional — so an intermediate you kept
 from an older release does not have to be re-exported to be used. The other
@@ -179,8 +179,8 @@ Most controls say what they do. These are the ones worth knowing about:
 | **Make surface** | The legend as surfaces rather than thin solids: about a quarter of its file size. The ink then has no thickness and cannot be used in boolean work. |
 | **Silkscreen layers** | A tick per layer *found in this JSON*, with its polygon count. Untick and press Generate again — no re-export needed. |
 | **Fold flex bends** | Fold along the bend areas. Off exports the board flat. Does nothing on a board without them. |
-| **Copper pads (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces a micron above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Only what the mask opening exposes is drawn: a solder-mask-defined pad shows its opening's shape, a pad with no opening shows nothing, an untented via its ring, a tented one nothing. Openings drawn on the `SOLDERMASK` layers add the copper under them, one flat part per side. Needs a JSON written with `format_version` 12 (11 has no vias and nothing under drawn openings, 10 draws the copper whole, an older one draws none; the log says which). See *Copper pads*. |
-| **Mask openings (as surfaces)** | The solder-mask openings as surfaces in the dielectric's colour (`base` in *layerColors*): every pin's and via's opening from its padstack, instanced like the pads, and every opening drawn on the `SOLDERMASK` layers — a line, a shape or rectangle, a text. With *Copper pads* on, what the copper leaves of each opening: the ring around a copper-defined pad, the laminate a label cut into the mask shows; on its own, the openings whole. Needs a JSON written with `format_version` 11 for the padstacks' openings, 12 for the drawn ones. See *Copper pads*. |
+| **Exposed copper (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces two microns above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Only what the mask opening exposes is drawn: a solder-mask-defined pad shows its opening's shape, a pad with no opening shows nothing, an untented via its ring, a tented one nothing. Openings drawn on the `SOLDERMASK` layers add the copper under them, one flat part per side. Needs a JSON written with `format_version` 12 (11 has no vias and nothing under drawn openings, 10 draws the copper whole, an older one draws none; the log says which). See *Exposed copper*. |
+| **Mask openings (as surfaces)** | The solder-mask openings as surfaces in the dielectric's colour (`base` in *layerColors*): every pin's and via's opening from its padstack, instanced like the pads, and every opening drawn on the `SOLDERMASK` layers — a line, a shape or rectangle, a text. With *Exposed copper* on, what the copper leaves of each opening: the ring around a copper-defined pad, the laminate a label cut into the mask shows; on its own, the openings whole. Needs a JSON written with `format_version` 11 for the padstacks' openings, 12 for the drawn ones. See *Exposed copper*. |
 | **Compact STEP** | Drops parametric surface curves — roughly half the file, identical geometry. |
 | **Build the full-board file too** | With a folder queued, whether the batch also builds `<board>.json` — the whole board, variants ignored (`settings.exportFullBoard` is what writes it). A file you point at directly is always built: choosing it is choice enough. |
 | **Generate** / **Cancel** | While a build runs every other control is greyed out — a snapshot of the settings has already been taken, so changing them mid-build would only look as if it did something — and this button becomes **Cancel**. Cancelling kills the build outright, which is the only thing that works on a boolean that has been inside OCCT for a minute; the file being written at that moment may be left incomplete, and the log says so. |
@@ -232,13 +232,13 @@ The keys worth setting by hand — the rest mirror controls in the window:
 | | `foldAnchor` | The point that stays in the XY plane, `[x, y]`. **`[0, 0]` by convention** — see *Folding*. `"auto"` holds the largest piece instead. |
 | | `foldNeutral` | Where the neutral axis sits, as a fraction of thickness (default `0.5`). **Set it to `0` on a board whose bend areas touch** — see *Folding*. |
 | | `foldSliceAngle` | Arc per slice for a bend that has to be faceted (default `7.5`). Bends built as true cylinders ignore it. |
-| | `copperPads` | The *Copper pads* checkbox: the pads' copper on the outer faces, as surfaces. Off by default. See *Copper pads*. |
-| | `maskOpenings` | The *Mask openings* checkbox: the solder-mask openings as surfaces in the dielectric's colour — what the copper leaves of them when both are on. Off by default. See *Copper pads*. |
+| | `exposedCopper` | The *Exposed copper* checkbox: the pads' copper on the outer faces, as surfaces. Off by default. See *Exposed copper*. |
+| | `maskOpenings` | The *Mask openings* checkbox: the solder-mask openings as surfaces in the dielectric's colour — what the copper leaves of them when both are on. Off by default. See *Exposed copper*. |
 | | `exportFullBoard` | With a `Variants.lst` present, also write `<design>.json` — the whole board with variants ignored (`NO_STEP_EXPORT` still applies). See *What gets exported*. |
 | `settings` | `exportPads` | Whether the export **collects** the pads into the intermediate at all (on by default). Whether they are *drawn* is the checkbox, per build. Off saves the collection on a board where they are never wanted. |
 | | `negativeLayers` | Stackup layers whose drawn shapes are **openings** rather than material, matched as a case-insensitive substring. Coverlay, soldermask and pastemask are drawn that way by convention; stiffener, adhesive and epoxy are the opposite. Add a layer here if its bodies come out inverted — and **take one out** if a board draws it as material: Allegro's 3D Canvas guide says a coverlay is read as negative and that *"coverlays specified as positive shapes are not rendered in 3D canvas"*, so such a board exists and Allegro's own 3D just omits the layer. The log names the layer when its openings leave nothing of it in a zone. Decided at export time, so changing this needs a re-export. |
 | `silkscreen` | `top` / `bottom` | Which Allegro layers are **collected** — see *Silkscreen*. |
-| `soldermask` | `top` / `bottom` | Which layers hold **drawn mask openings** — a line or a shape there exposes the copper under it, computed at export. `BOARD GEOMETRY` and `PACKAGE GEOMETRY / SOLDERMASK_*` by default; add `MANUFACTURING/SOLDERMASK_*` or a site layer if your footprints draw their openings there. See *Copper pads*. |
+| `soldermask` | `top` / `bottom` | Which layers hold **drawn mask openings** — a line or a shape there exposes the copper under it, computed at export. `BOARD GEOMETRY` and `PACKAGE GEOMETRY / SOLDERMASK_*` by default; add `MANUFACTURING/SOLDERMASK_*` or a site layer if your footprints draw their openings there. See *Exposed copper*. |
 
 The rest of `gui` mirrors the window and is written back when it closes —
 `zDatum`, `boardColor`, `boardEdge`, `boardEdgeCustom`, `silkscreenTop`,
@@ -385,11 +385,11 @@ as they are to Windows itself. An exact match is always preferred.
 ├── PCB_<board>             one solid at the finished thickness
 ├── silkscreen_top_<board>  printed legend, top   (only if enabled and present)
 ├── silkscreen_bot_<board>  printed legend, bottom
-├── pads_top_<board>        copper pads, top      (only with Copper pads ticked)
+├── pads_top_<board>        copper pads, top      (only with Exposed copper ticked)
 │   ├── pad_S_RCT_1-00_X_0-95_TOP   one face per pad figure, named after the padstack and layer
 │   └── pad_S_RCT_1-00_X_0-95_TOP   the same face instanced again, per pin
 ├── pads_bot_<board>        copper pads, bottom (a mirrored figure carries an m: pad_…_TOPm)
-├── copper_top_<board>      copper under the drawn mask openings, top  (Copper pads; one part per side, like a flat legend)
+├── copper_top_<board>      copper under the drawn mask openings, top  (Exposed copper; one part per side, like a flat legend)
 ├── copper_bot_<board>      the same, bottom
 ├── openings_top_<board>    mask openings, top    (only with Mask openings ticked; the dielectric's colour)
 │   └── opening_S_RCT_1-00_X_0-95_SOLDERMASK_TOP   one face per opening figure, instanced per pin - what the copper leaves of it when both are on
@@ -468,14 +468,15 @@ at 154%) while buying nothing visible. So a solid legend is a compound of
 separate solids: correct to look at, export and render, but not one manifold
 solid if you mean to do boolean work on the ink.
 
-## Copper pads
+## Exposed copper
 
-Off by default; tick **Copper pads (as surfaces)** for a model that reads as a
+Off by default; tick **Exposed copper (as surfaces)** for a model that reads as a
 board with its pads rather than as a green slab. The copper of every pin's pad
 is drawn on the two outer faces as a surface in the copper colour of
-`layerColors`, a `silkscreenFlatHeight` above the mask — exactly the way a flat
-legend sits on it. That is the whole construction: **nothing is cut into the
-board.** A window per pad cut through the mask and a body per pad set into it
+`layerColors`, two `silkscreenFlatHeight`s above the mask — the way a flat
+legend sits on it, one step higher (the *Mask openings* take the first step,
+so where a window overlaps a neighbouring pad's copper the copper is on top).
+That is the whole construction: **nothing is cut into the board.** A window per pad cut through the mask and a body per pad set into it
 would be a boolean over thousands of prisms — minutes of solver time on a dense
 board and a real chance of an empty result — for a picture that cannot tell a
 flush pad from a face one micron above it.
@@ -552,8 +553,12 @@ copper, where a sweep for clines alone had found none of them.
 
 A second checkbox, **Mask openings (as surfaces)**, draws the windows in the
 solder mask in the dielectric's colour (`base` in `layerColors`). Two kinds,
-both the way the pads are drawn — surfaces a micron above the mask, nothing cut
-into the board:
+both the way the pads are drawn — surfaces above the mask, nothing cut into the
+board. Three heights, a `silkscreenFlatHeight` apart: the windows lowest, the
+copper above them, the drawn openings' parts above both — so where the windows
+of two neighbouring through pins overlap each other's copper ring, the copper
+is on top by construction rather than by whatever the viewer drew last (which
+is how rings came out eaten on the demo board in step2html):
 
 - **every pin's and via's opening from its padstack** — one shared face per
   opening figure, instanced per pin exactly like the pads, under
@@ -563,7 +568,7 @@ into the board:
   (a rectangle on a mask layer is a filled shape to Allegro), a text — flat like
   the legend, one part per side, `bare_top_<board>` / `bare_bot_<board>`.
 
-**With *Copper pads* on, what the copper leaves of each opening**: the ring of
+**With *Exposed copper* on, what the copper leaves of each opening**: the ring of
 laminate around a copper-defined pad, and nothing for a solder-mask-defined
 one, whose copper fills its window; for a drawn opening, the opening minus its
 copper (`axlPolyOperation ANDNOT` in Allegro, the whole opening when nothing
@@ -710,8 +715,8 @@ inside them.
 and its cutouts, not the drill holes. Legend is not printed over holes anyway,
 so this shows only if the artwork deliberately runs a line across one.
 
-**Copper pads are a picture, not copper.** They are surfaces floating a micron
-above the mask, in the mask's own plane rather than in a window cut through it;
+**Exposed copper is a picture, not copper.** It is surfaces floating a micron
+or two above the mask, in the mask's own plane rather than in a window cut through it;
 they have no thickness and take part in no boolean. What is drawn is the pins'
 and vias' pads through their padstack openings and the copper under openings
 drawn on the `SOLDERMASK` layers; a pin whose span reaches no outer face of its
@@ -740,7 +745,7 @@ they would collide), `--no-silkscreen`, `--no-silk-top`, `--no-silk-bottom`,
 `--flat-silkscreen`, `--silk-flat-height MM`,
 `--silk-layer-off LAYER` (repeatable), `--silk-color White|Black`,
 `--ignore-soldermask`, `--flat` (do not fold), `--fold-anchor X,Y|auto`,
-`--fold-neutral K`, `--fold-slice-angle DEG`, `--copper-pads`, `--mask-openings`,
+`--fold-neutral K`, `--fold-slice-angle DEG`, `--exposed-copper`, `--mask-openings`,
 `--board-mode {solid,layers,inspect}`, `--no-minimize`, `--legacy-color`,
 `--quiet`. Exit code 0 on success, 1 on error.
 
@@ -961,8 +966,8 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **Make surface** | Легенда поверхностями, а не тонкими телами: примерно четверть её объёма в файле. Толщины у краски тогда нет, и в булевых операциях она не участвует. |
 | **Silkscreen layers** | Галочка на каждый слой, *найденный в этом JSON*, с числом полигонов. Снимите и нажмите Generate снова — повторный экспорт не нужен. |
 | **Fold flex bends** | Сгибать по областям сгиба. Выключено — плата экспортируется плоской. На плате без сгибов ничего не меняет. |
-| **Copper pads (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на микрон над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего, незакрытое переходное отверстие — своё кольцо, закрытое — ничего. Вскрытия, нарисованные на слоях `SOLDERMASK`, добавляют медь под собой — одна плоская деталь на сторону. Нужен JSON с `format_version` 12 (11 не несёт отверстий и меди под нарисованными вскрытиями, 10 рисует медь целиком, более старый — ничего; лог говорит, что именно). См. *Медь площадок*. |
-| **Mask openings (as surfaces)** | Вскрытия паяльной маски поверхностями цвета диэлектрика (`base` из *layerColors*): вскрытие каждого вывода и переходного отверстия из его падстека, вхождениями как площадки, и каждое вскрытие, нарисованное на слоях `SOLDERMASK` — линия, фигура или прямоугольник, текст. Вместе с *Copper pads* — то, что от вскрытия оставляет медь: кольцо вокруг copper-defined площадки, текстолит, который показывает прорезанная в маске надпись; сами по себе — вскрытия целиком. Нужен JSON с `format_version` 11 для вскрытий падстеков, 12 для нарисованных. См. *Медь площадок*. |
+| **Exposed copper (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на два микрона над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего, незакрытое переходное отверстие — своё кольцо, закрытое — ничего. Вскрытия, нарисованные на слоях `SOLDERMASK`, добавляют медь под собой — одна плоская деталь на сторону. Нужен JSON с `format_version` 12 (11 не несёт отверстий и меди под нарисованными вскрытиями, 10 рисует медь целиком, более старый — ничего; лог говорит, что именно). См. *Открытая медь*. |
+| **Mask openings (as surfaces)** | Вскрытия паяльной маски поверхностями цвета диэлектрика (`base` из *layerColors*): вскрытие каждого вывода и переходного отверстия из его падстека, вхождениями как площадки, и каждое вскрытие, нарисованное на слоях `SOLDERMASK` — линия, фигура или прямоугольник, текст. Вместе с *Exposed copper* — то, что от вскрытия оставляет медь: кольцо вокруг copper-defined площадки, текстолит, который показывает прорезанная в маске надпись; сами по себе — вскрытия целиком. Нужен JSON с `format_version` 11 для вскрытий падстеков, 12 для нарисованных. См. *Открытая медь*. |
 | **Compact STEP** | Убирает параметрические кривые на поверхностях — примерно вдвое меньший файл при той же геометрии. |
 | **Build the full-board file too** | Когда в очереди папка — собирать ли вместе с вариантами `<плата>.json`, всю плату без учёта вариантов (пишет его `settings.exportFullBoard`). Файл, выбранный напрямую, собирается всегда: выбор и есть выбор. |
 | **Generate** / **Cancel** | Пока идёт сборка, остальные элементы погашены — настройки уже сняты снимком, и правка на ходу лишь выглядела бы действием, — а кнопка становится **Cancel**. Отмена убивает сборку немедленно: с булевой операцией, которая уже минуту внутри OCCT, иначе не выйдет. Файл, который писался в этот момент, может остаться недописанным — лог об этом говорит. |
@@ -1013,13 +1018,13 @@ JSON — ничего не записывается до конца сессии
 | | `foldAnchor` | Точка, остающаяся в плоскости XY, `[x, y]`. **По соглашению `[0, 0]`** — см. *Сгибание*. `"auto"` держит самый большой кусок. |
 | | `foldNeutral` | Положение нейтральной оси как доля толщины (по умолчанию `0.5`). **Поставьте `0`, если области сгиба на плате соприкасаются** — см. *Сгибание*. |
 | | `foldSliceAngle` | Угол дольки для сгиба, который пришлось гранить (по умолчанию `7.5`). Сгибы, построенные истинными цилиндрами, его игнорируют. |
-| | `copperPads` | Галочка *Copper pads*: медь площадок на наружных гранях, поверхностями. По умолчанию выключено. См. *Медь площадок*. |
-| | `maskOpenings` | Галочка *Mask openings*: вскрытия маски поверхностями цвета диэлектрика — вместе с медью то, что она от них оставляет. По умолчанию выключено. См. *Медь площадок*. |
+| | `exposedCopper` | Галочка *Exposed copper*: медь площадок на наружных гранях, поверхностями. По умолчанию выключено. См. *Открытая медь*. |
+| | `maskOpenings` | Галочка *Mask openings*: вскрытия маски поверхностями цвета диэлектрика — вместе с медью то, что она от них оставляет. По умолчанию выключено. См. *Открытая медь*. |
 | | `exportFullBoard` | Когда есть `Variants.lst`, писать ещё и `<плата>.json` — всю плату без учёта вариантов (`NO_STEP_EXPORT` продолжает действовать). См. *Что попадает в экспорт*. |
 | `settings` | `exportPads` | **Собирать** ли площадки в интермедиат вообще (по умолчанию да). *Рисовать* ли их — галочка, решается на каждой сборке. Выключение экономит сбор на плате, где они не нужны никогда. |
 | | `negativeLayers` | Слои стека, чьи нарисованные фигуры — **окна**, а не материал; сравнение по подстроке без учёта регистра. Покрытие, маска и паста рисуются так по соглашению; стиффенер, клей и эпоксид — наоборот. Добавьте слой сюда, если его тела получаются инвертированными, — и **уберите**, если на плате он нарисован материалом: руководство по 3D Canvas говорит, что коверлей читается как негатив и что *«coverlays specified as positive shapes are not rendered in 3D canvas»*, то есть такие платы бывают и сам Allegro тогда слой просто не рисует. Лог называет слой, когда его окна не оставляют от него ничего в зоне. Решается при экспорте, поэтому смена требует переэкспорта. |
 | `silkscreen` | `top` / `bottom` | Какие слои Allegro **собираются** — см. *Шелкография*. |
-| `soldermask` | `top` / `bottom` | На каких слоях лежат **нарисованные вскрытия маски** — линия или фигура там открывает медь под собой, считается при экспорте. По умолчанию `BOARD GEOMETRY` и `PACKAGE GEOMETRY / SOLDERMASK_*`; добавьте `MANUFACTURING/SOLDERMASK_*` или свой слой, если посадочные места рисуют вскрытия там. См. *Медь площадок*. |
+| `soldermask` | `top` / `bottom` | На каких слоях лежат **нарисованные вскрытия маски** — линия или фигура там открывает медь под собой, считается при экспорте. По умолчанию `BOARD GEOMETRY` и `PACKAGE GEOMETRY / SOLDERMASK_*`; добавьте `MANUFACTURING/SOLDERMASK_*` или свой слой, если посадочные места рисуют вскрытия там. См. *Открытая медь*. |
 
 Остальное в `gui` повторяет окно и записывается при его закрытии — `zDatum`,
 `boardColor`, `boardEdge`, `boardEdgeCustom`, `silkscreenTop`,
@@ -1165,11 +1170,11 @@ Allegro, где его набирают руками, а файл на диск�
 ├── PCB_<плата>             одно тело итоговой толщины
 ├── silkscreen_top_<плата>  шелкография сверху (если включена и есть)
 ├── silkscreen_bot_<плата>  шелкография снизу
-├── pads_top_<плата>        медь площадок сверху  (только с галочкой Copper pads)
+├── pads_top_<плата>        медь площадок сверху  (только с галочкой Exposed copper)
 │   ├── pad_S_RCT_1-00_X_0-95_TOP   одна грань на фигуру площадки, по имени падстека и слоя
 │   └── pad_S_RCT_1-00_X_0-95_TOP   та же грань ещё раз, на каждый вывод
 ├── pads_bot_<плата>        медь площадок снизу (зеркальная фигура несёт m: pad_…_TOPm)
-├── copper_top_<плата>      медь под нарисованными вскрытиями маски сверху (Copper pads; одна деталь на сторону, как плоская легенда)
+├── copper_top_<плата>      медь под нарисованными вскрытиями маски сверху (Exposed copper; одна деталь на сторону, как плоская легенда)
 ├── copper_bot_<плата>      то же снизу
 ├── openings_top_<плата>    вскрытия маски сверху  (только с галочкой Mask openings; цвет диэлектрика)
 │   └── opening_S_RCT_1-00_X_0-95_SOLDERMASK_TOP   одна грань на фигуру вскрытия, вхождение на каждый вывод — с медью то, что она оставляет
@@ -1250,14 +1255,15 @@ Allegro, где его набирают руками, а файл на диск�
 не одно многообразное тело, если вы собираетесь делать булевы операции с самой
 краской.
 
-## Медь площадок
+## Открытая медь
 
-По умолчанию выключено; поставьте **Copper pads (as surfaces)**, чтобы модель
+По умолчанию выключено; поставьте **Exposed copper (as surfaces)**, чтобы модель
 читалась как плата с площадками, а не как зелёная пластина. Медь площадки
 каждого вывода рисуется на двух наружных гранях поверхностью цвета меди из
-`layerColors`, на `silkscreenFlatHeight` над маской — ровно так, как на ней
-лежит плоская легенда. В этом вся конструкция: **в плату ничего не
-вырезается.** Окно на каждую площадку сквозь маску и тело в нём — это булева
+`layerColors`, на два `silkscreenFlatHeight` над маской — как плоская
+легенда, на ступеньку выше (первую ступеньку занимают *Mask openings*, и там,
+где окно ложится на медь соседней площадки, медь сверху). В этом вся
+конструкция: **в плату ничего не вырезается.** Окно на каждую площадку сквозь маску и тело в нём — это булева
 операция над тысячами призм: минуты решателя на плотной плате и реальный шанс
 пустого результата ради картинки, которая не отличит площадку заподлицо от
 грани на микрон выше.
@@ -1335,7 +1341,12 @@ Allegro, где его набирают руками, а файл на диск�
 
 Вторая галочка, **Mask openings (as surfaces)**, рисует окна в паяльной маске
 цветом диэлектрика (`base` из `layerColors`). Два вида, оба так же, как
-площадки: поверхности на микрон над маской, в плату ничего не вырезается:
+площадки: поверхности над маской, в плату ничего не вырезается. Три высоты
+через `silkscreenFlatHeight`: окна ниже всех, медь над ними, детали
+нарисованных вскрытий выше обоих — и там, где окна двух соседних выводов
+ложатся на кольца меди друг друга, медь сверху по построению, а не потому, что
+просмотрщик нарисовал её последней (именно так кольца на демо-плате
+оказались «съедены» в step2html):
 
 - **вскрытие каждого вывода и переходного отверстия из его падстека** — одна
   общая грань на фигуру вскрытия, вхождение на каждый вывод ровно как у
@@ -1346,7 +1357,7 @@ Allegro, где его набирают руками, а файл на диск�
   фигура), текст — плоско, как легенда, одна деталь на сторону,
   `bare_top_<плата>` / `bare_bot_<плата>`.
 
-**Вместе с *Copper pads* — то, что от вскрытия оставляет медь**: кольцо
+**Вместе с *Exposed copper* — то, что от вскрытия оставляет медь**: кольцо
 текстолита вокруг copper-defined площадки и ничего у solder-mask-defined, чью
 рамку медь заполняет целиком; у нарисованного вскрытия — вскрытие минус его
 медь (`axlPolyOperation ANDNOT` в Allegro, всё вскрытие целиком, если под ним
@@ -1492,7 +1503,7 @@ Allegro построена при `k = 0`. На плате с запасом р�
 вырезам, но не по сверловке. Легенду поверх отверстий всё равно не печатают,
 так что это заметно, только если линия проведена через отверстие намеренно.
 
-**Медь площадок — картинка, а не медь.** Это поверхности на микрон над маской,
+**Открытая медь — картинка, а не медь.** Это поверхности на микрон-другой над маской,
 в плоскости самой маски, а не в вырезанном в ней окне; толщины у них нет, и в
 булевых операциях они не участвуют. Рисуются площадки выводов и переходных
 отверстий сквозь вскрытия их падстеков и медь под вскрытиями, нарисованными на
@@ -1522,7 +1533,7 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # все вариа
 `--no-silk-top`, `--no-silk-bottom`, `--flat-silkscreen`, `--silk-flat-height MM`,
 `--silk-layer-off LAYER` (можно повторять), `--silk-color White|Black`,
 `--ignore-soldermask`, `--flat` (не сгибать), `--fold-anchor X,Y|auto`,
-`--fold-neutral K`, `--fold-slice-angle DEG`, `--copper-pads`, `--mask-openings`,
+`--fold-neutral K`, `--fold-slice-angle DEG`, `--exposed-copper`, `--mask-openings`,
 `--board-mode {solid,layers,inspect}`, `--no-minimize`, `--legacy-color`,
 `--quiet`. Код возврата 0 при успехе, 1 при ошибке.
 

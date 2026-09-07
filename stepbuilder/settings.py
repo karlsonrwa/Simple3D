@@ -150,7 +150,7 @@ class GuiSettings:
     fold_anchor: tuple[float, float] | str | None
     fold_neutral: float
     fold_slice_angle: float
-    copper_pads: bool
+    exposed_copper: bool
     mask_openings: bool
     window_geometry: str | None
     window_state: str
@@ -290,7 +290,7 @@ GUI_KEYS: tuple[Key, ...] = (
     Key("foldSliceAngle", "fold_slice_angle", DEFAULT_SLICE_ANGLE, _load_slice_angle),
     # The copper pads as surfaces on the outer faces (round 85). Off by
     # default: a picture wants them, a mechanical check does not need them.
-    Key("copperPads", "copper_pads", False),
+    Key("exposedCopper", "exposed_copper", False),
     # The mask openings as surfaces in the dielectric's colour - every
     # padstack's opening and every opening drawn on the mask layers - what
     # the pads leave of them when both are on, whole on their own.

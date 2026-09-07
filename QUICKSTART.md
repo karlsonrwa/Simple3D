@@ -63,15 +63,15 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   piece lying over the **origin** — put whatever should stay flat there, or name
   another point in `gui.foldAnchor`. If the log says two bends claim the same
   material, set `gui.foldNeutral` to `0` (README, *The K factor*).
-- **Copper pads (as surfaces)** — the copper of every pin's pad on the outer
+- **Exposed copper (as surfaces)** — the copper of every pin's pad on the outer
   faces, as copper-coloured surfaces a micron above the mask. Off by default;
   needs a JSON exported with this version (`format_version` 12). Only what
   the mask exposes: a mask-defined pad shows its opening, a covered pad
   nothing; untented vias and the copper under openings drawn on the
-  `SOLDERMASK` layers are drawn too (README, *Copper pads*).
+  `SOLDERMASK` layers are drawn too (README, *Exposed copper*).
 - **Mask openings (as surfaces)** — the windows in the solder mask as
   surfaces in the dielectric's colour: every padstack's opening and every
-  opening drawn on the `SOLDERMASK` layers. With *Copper pads* on, what the
+  opening drawn on the `SOLDERMASK` layers. With *Exposed copper* on, what the
   copper leaves of them — the ring around a pad, a label cut into the mask;
   alone, the openings whole. Off by default (README, *Mask openings*).
 
@@ -208,16 +208,16 @@ builds it.
   плоским, или укажите другую точку в `gui.foldAnchor`. Если в логе написано,
   что два сгиба претендуют на один материал, поставьте `gui.foldNeutral` в `0`
   (README, *K-фактор*).
-- **Copper pads (as surfaces)** — медь площадок всех выводов на наружных
+- **Exposed copper (as surfaces)** — медь площадок всех выводов на наружных
   гранях, поверхностями цвета меди на микрон над маской. По умолчанию
   выключено; нужен JSON, экспортированный этой версией (`format_version` 12).
   Рисуется только то, что открыто маской: mask-defined площадка показывает
   своё вскрытие, закрытая — ничего; незакрытые переходные отверстия и медь под
   вскрытиями, нарисованными на слоях `SOLDERMASK`, рисуются тоже (README,
-  *Медь площадок*).
+  *Открытая медь*).
 - **Mask openings (as surfaces)** — окна в паяльной маске поверхностями цвета
   диэлектрика: вскрытие каждого падстека и каждое вскрытие, нарисованное на
-  слоях `SOLDERMASK`. Вместе с *Copper pads* — то, что от них оставляет медь:
+  слоях `SOLDERMASK`. Вместе с *Exposed copper* — то, что от них оставляет медь:
   кольцо вокруг площадки, надпись, прорезанная в маске; сами по себе —
   вскрытия целиком. По умолчанию выключено (README, *Вскрытия маски*).
 

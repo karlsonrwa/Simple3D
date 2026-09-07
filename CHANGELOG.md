@@ -11,12 +11,35 @@ to use the tool.
 
 ---
 
+- **2026-09-07** — **Windows below the copper; *Copper pads* is now
+  *Exposed copper*.** In step2html the demo board showed the white window of
+  one through pin eating the copper ring of its neighbour: the windows and
+  the copper sat at one height, a micron above the mask, and where two
+  overlap a viewer draws whichever it drew last. Now there are three
+  heights, a `silkscreenFlatHeight` apart - the windows lowest, the copper
+  above them, the drawn openings' parts above both - so the copper is on top
+  by construction. And the first checkbox draws every copper feature the
+  mask exposes, not only the pads - the via rings, a pour or a label under a
+  drawn opening - so it is *Exposed copper (as surfaces)* now, with
+  `gui.exposedCopper` and `--exposed-copper` to match (`copperPads` and
+  `--copper-pads` lived one day, on a branch). / **Окна под медью;
+  *Copper pads* теперь *Exposed copper*.** В step2html на демо-плате белое
+  окно одного вывода «съедало» медное кольцо соседнего: окна и медь лежали
+  на одной высоте, на микрон над маской, а там, где две грани совпадают,
+  просмотрщик показывает ту, что нарисовал последней. Теперь высот три, через
+  `silkscreenFlatHeight`: окна ниже всех, медь над ними, детали нарисованных
+  вскрытий выше обоих — медь сверху по построению. А первая галочка рисует
+  всю медь, которую открывает маска, а не только площадки — кольца отверстий,
+  заливку или надпись под нарисованным вскрытием, — поэтому теперь она
+  *Exposed copper (as surfaces)*, с `gui.exposedCopper` и `--exposed-copper`
+  (`copperPads` и `--copper-pads` прожили один день, в ветке).
+
 - **2026-09-07** — **Mask openings, as surfaces; copper drawn with no net.**
   A second checkbox, *Mask openings (as surfaces)*, draws the windows in the
   solder mask in the dielectric's colour: every pin's and via's opening from
   its padstack, instanced like the pads, and every opening drawn on the mask
   layers - a line, a shape or rectangle, a text - flat like the legend. With
-  *Copper pads* on, what the copper leaves of each opening: the ring around
+  *Exposed copper* on, what the copper leaves of each opening: the ring around
   a copper-defined pad, the laminate a label cut into the mask shows (which
   the copper pads drew on their own for a few hours and now leave to this
   checkbox); alone, the openings whole. And a label written in copper with
@@ -28,7 +51,7 @@ to use the tool.
   маске цветом диэлектрика: вскрытие каждого вывода и переходного отверстия
   из его падстека, вхождениями как площадки, и каждое вскрытие,
   нарисованное на слоях маски — линия, фигура или прямоугольник, текст, —
-  плоско, как легенда. Вместе с *Copper pads* — то, что от вскрытия
+  плоско, как легенда. Вместе с *Exposed copper* — то, что от вскрытия
   оставляет медь: кольцо вокруг copper-defined площадки, текстолит, который
   показывает прорезанная в маске надпись (несколько часов его рисовали сами
   площадки, теперь он у этой галочки); сами по себе — вскрытия целиком. И
@@ -37,8 +60,9 @@ to use the tool.
   вскрытием: развёртка спрашивает и то и другое, а спрашивая одни clines, не
   находила ни одного из 51 штриха надписи пользователя.
 
-- **2026-09-07** — **Copper pads, as surfaces.** A new checkbox, *Copper pads
-  (as surfaces)*, draws the copper of every pin's pad on the two outer faces
+- **2026-09-07** — **Copper pads, as surfaces.** A new checkbox, *Exposed
+  copper (as surfaces)* (named *Copper pads* for a few hours), draws the
+  copper of every pin's pad on the two outer faces
   in the copper colour, a micron above the mask - so the model reads as a
   board with its pads rather than as a plain slab. Nothing is cut into the
   board and no boolean runs: each pad figure is built once from the outline
@@ -74,8 +98,9 @@ to use the tool.
   with a `pads` object (`settings.exportPads`, on by default); an 11 file
   has no vias and nothing under drawn openings, a 10 file draws the copper
   whole and an older one none - the log says which. Off by default.
-  / **Медь площадок, поверхностями.** Новая галочка *Copper pads (as
-  surfaces)* рисует медь площадок всех выводов на двух наружных гранях
+  / **Медь площадок, поверхностями.** Новая галочка *Exposed copper (as
+  surfaces)* (несколько часов звалась *Copper pads*) рисует медь площадок
+  всех выводов на двух наружных гранях
   цветом меди, на микрон над маской, — чтобы модель читалась как плата с
   площадками, а не как гладкая пластина. В плату ничего не вырезается,
   булевых операций нет: фигура площадки строится один раз по контуру,

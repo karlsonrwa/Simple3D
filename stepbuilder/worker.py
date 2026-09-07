@@ -56,7 +56,7 @@ class BuildSettings:
     fold_anchor: tuple[float, float] | str | None
     fold_neutral: float
     fold_slice_angle: float
-    copper_pads: bool
+    exposed_copper: bool
     mask_openings: bool
     brd_name: str | None
     dated_name: bool

@@ -79,10 +79,11 @@ fold_neutral:
 fold_slice_angle:
     Degrees of arc per slice for a bend that has to be faceted (default
     7.5). Only reached when neither exact construction applies.
-copper_pads:
+exposed_copper:
     Draw the copper of every pin's pad on the board's outer faces, as
-    copper-coloured surfaces a micron above the mask, clipped to the
-    padstack's mask opening, plus the untented vias and the copper under the
+    copper-coloured surfaces two microns above the mask (the mask openings
+    take the first micron, so the copper is on top where a window overlaps a
+    neighbour's pad), clipped to the padstack's mask opening, plus the untented vias and the copper under the
     drawn mask openings (format_version 12; a 10 file draws the copper
     whole, an older JSON draws none, the log says which). One shared face per
     figure, instanced per pin, so the file grows by a placement per pad
@@ -92,7 +93,7 @@ mask_openings:
     Draw the solder-mask openings as surfaces in the dielectric's colour
     (`base` in layer_colors): every pin's and via's opening from its
     padstack, instanced like the pads, and every opening drawn on the mask
-    layers (a line, a shape, a text), flat like the legend. With copper_pads
+    layers (a line, a shape, a text), flat like the legend. With exposed_copper
     on, what the copper leaves of each opening - the ring around a
     copper-defined pad, the laminate a label cut into the mask shows; on
     its own, the openings whole. Needs the mask data of format_version 11
@@ -141,7 +142,7 @@ class BuildOptions:
     fold_anchor: tuple[float, float] | str | None = None
     fold_neutral: float | None = None
     fold_slice_angle: float | None = None
-    copper_pads: bool = False
+    exposed_copper: bool = False
     mask_openings: bool = False
 
     @classmethod
@@ -168,7 +169,7 @@ class BuildOptions:
             fold_anchor=settings.fold_anchor,
             fold_neutral=settings.fold_neutral,
             fold_slice_angle=settings.fold_slice_angle,
-            copper_pads=settings.copper_pads,
+            exposed_copper=settings.exposed_copper,
             mask_openings=settings.mask_openings,
         )
 
@@ -198,6 +199,6 @@ class BuildOptions:
             fold_anchor=fold_anchor,
             fold_neutral=args.fold_neutral,
             fold_slice_angle=args.fold_slice_angle,
-            copper_pads=args.copper_pads,
+            exposed_copper=args.exposed_copper,
             mask_openings=args.mask_openings,
         )

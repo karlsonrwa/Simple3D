@@ -347,7 +347,7 @@ def build(name, **kw):
     return res, logs, (OUT / f"{name}.step").read_text(errors="replace")
 
 
-res, logs, text = build("pads_on", copper_pads=True)
+res, logs, text = build("pads_on", exposed_copper=True)
 check("five pad faces placed: two surface pins, a through pin on both faces, the untented via on top",
       res.pads_placed == 5 and res.pads_figures == 5, (res.pads_placed, res.pads_figures))
 check("the via is a pin with no symbol: the log counts it, and the tented one draws nothing",
@@ -373,7 +373,7 @@ v10 = json.loads(json.dumps(board))
 for ps in v10["pads"]["padstacks"].values():
     ps["pads"] = {l: p for l, p in ps["pads"].items() if "SOLDERMASK" not in l}
 jf.write_text(json.dumps(v10))
-res10, logs10, text10 = build("pads_v10", copper_pads=True)
+res10, logs10, text10 = build("pads_v10", exposed_copper=True)
 check("a v10 library draws every pad whole, the bare one and both vias included",
       res10.pads_placed == 9 and "pad_BARE" in text10 and "pad_TENTED" in text10,
       (res10.pads_placed, [m for m in logs10 if "pads" in m]))
@@ -385,7 +385,7 @@ check("and says that the openings are not in the file",
 v11 = json.loads(json.dumps(board))
 del v11["pads"]["exposed"]
 jf.write_text(json.dumps(v11))
-res11, logs11, text11 = build("pads_v11", copper_pads=True)
+res11, logs11, text11 = build("pads_v11", exposed_copper=True)
 check("a v11 file: the pads as before, no exposed copper, and a note",
       res11.pads_placed == 5 and "copper_top" not in text11
       and any("carries no copper under drawn mask openings" in m for m in logs11), logs11[-5:])
@@ -399,7 +399,7 @@ check("the figures are parts named after the padstack and layer",
 check("the board is still one solid - no boolean touched it", count_solids(read_step(OUT / "pads_on.step")) == 1)
 check("the log says what was placed", any("Copper pads: 5 placed" in m for m in logs), logs[-6:])
 
-res2, logs2, text2 = build("pads_off", copper_pads=False)
+res2, logs2, text2 = build("pads_off", exposed_copper=False)
 check("off: nothing placed, nothing in the file, nothing said",
       res2.pads_placed == 0 and "pads_top" not in text2
       and not any("Copper pads" in m or "No pads" in m for m in logs2),
@@ -410,7 +410,7 @@ check("off: nothing placed, nothing in the file, nothing said",
 more = json.loads(json.dumps(board))
 more["pads"]["pins"] += [[x + 0.0, y + 1.0] + rest for x, y, *rest in board["pads"]["pins"]]
 jf.write_text(json.dumps(more))
-res_more, _, _ = build("pads_more", copper_pads=True)
+res_more, _, _ = build("pads_more", exposed_copper=True)
 size_on = (OUT / "pads_on.step").stat().st_size
 size_more = (OUT / "pads_more.step").stat().st_size
 per_placement = (size_more - size_on) / max(res_more.pads_placed - res.pads_placed, 1)
@@ -439,7 +439,7 @@ check("the drill is cut out of the opening as it is out of the pad",
       holed is not None and hnote is None and P.shape_area(holed) < whole_area, (hnote,))
 
 jf.write_text(json.dumps(board))
-res_o, logs_o, text_o = build("openings_on", copper_pads=False, mask_openings=True)
+res_o, logs_o, text_o = build("openings_on", exposed_copper=False, mask_openings=True)
 check("openings alone: a window per pin and via with a mask pad, no copper anywhere",
       res_o.pads_placed == 0 and "pads_top_openings_on" not in text_o and "copper_top_openings_on" not in text_o
       and "openings_top_openings_on" in text_o and "openings_bot_openings_on" in text_o
@@ -458,7 +458,7 @@ check("the log says what was placed, in the dielectric's colour",
       any("Mask openings: 5 placed" in m and "RGB 252,255,214" in m for m in logs_o)
       and not any("Copper pads:" in m for m in logs_o), [m for m in logs_o if "openings" in m])
 
-res_b, logs_b, text_b = build("both_on", copper_pads=True, mask_openings=True)
+res_b, logs_b, text_b = build("both_on", exposed_copper=True, mask_openings=True)
 check("both on: the pads as before, the windows beside them, the laminate under the drawn openings",
       res_b.pads_placed == 5 and res_b.pads_figures == 5
       and "pads_top_both_on" in text_b and "openings_top_both_on" in text_b
@@ -471,6 +471,25 @@ check("a window the copper fills is counted, not placed",
       res_b.openings_placed + sum(1 for m in logs_b if "filled by their copper" in m) >= 1
       and res_b.openings_placed <= res_o.openings_placed,
       (res_b.openings_placed, [m for m in logs_b if "Mask openings" in m]))
+
+# Three heights, a flat-silkscreen clearance apart: the windows lowest, the
+# copper one step up - so where the windows of two neighbouring through pins
+# overlap each other's copper ring, the copper is on top by construction and
+# not by the viewer's draw order (rings came out eaten on the demo board in
+# step2html when both sat at one height). Measured through the placements.
+from stepbuilder.defaults import DEFAULT_FLAT_HEIGHT as H
+placed_z = []
+_orig_placement = P._placement
+P._placement = lambda x, y, z, rotation, fold: (placed_z.append(round(z, 6)), _orig_placement(x, y, z, rotation, fold))[1]
+try:
+    build("both_on_heights", exposed_copper=True, mask_openings=True)
+finally:
+    P._placement = _orig_placement
+top_face, bottom_face = 0.0, -1.104            # z_datum top: the mask's top face at 0, the stack 1.104 down
+check("the windows sit one clearance above the face and the copper two, on both sides",
+      sorted(set(z for z in placed_z if z > 0)) == [round(top_face + H, 6), round(top_face + 2 * H, 6)]
+      and sorted(set(z for z in placed_z if z < 0)) == [round(bottom_face - 2 * H, 6), round(bottom_face - H, 6)],
+      sorted(set(placed_z)))
 check("off: no openings node, nothing said", "openings_top" not in text2
       and not any("Mask openings" in m for m in logs2))
 
@@ -480,7 +499,7 @@ for stack in v10o["pads"]["padstacks"].values():
 del v10o["pads"]["exposed"]
 del v10o["pads"]["bare"]
 jf.write_text(json.dumps(v10o))
-res_v, logs_v, text_v = build("openings_v10", copper_pads=False, mask_openings=True)
+res_v, logs_v, text_v = build("openings_v10", exposed_copper=False, mask_openings=True)
 check("a v10 library has no openings to draw, and says so",
       res_v.openings_placed == 0 and "openings_top" not in text_v
       and any("carries no mask openings (format_version 10)" in m for m in logs_v),
@@ -491,7 +510,7 @@ old = dict(board)
 del old["pads"]
 old["format_version"] = 9
 jf.write_text(json.dumps(old))
-res3, logs3, _ = build("pads_old", copper_pads=True)
+res3, logs3, _ = build("pads_old", exposed_copper=True)
 check("a file without pads says so and builds", res3.pads_placed == 0
       and any("No pads in this JSON" in m for m in logs3), logs3[-4:])
 

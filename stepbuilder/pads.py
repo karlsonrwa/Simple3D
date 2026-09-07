@@ -6,8 +6,10 @@ two outer faces, in the copper colour. What it does not need is a body per
 pad or a window per pad cut into the mask: a boolean over thousands of pad
 prisms is minutes of OCCT time on a dense board and a real chance of an
 empty result, and a picture cannot tell a flush copper pad from a face one
-micron above the mask. So a pad is a FACE, lifted the same micron a flat
-silkscreen is (`silk_flat_height`), and the board body is never touched.
+micron above the mask. So a pad is a FACE, lifted two of the microns a flat
+silkscreen is (`silk_flat_height`) - the mask openings take the first, so a
+window overlapping a neighbour's copper lies under it - and the board body
+is never touched.
 
 The intermediate carries a LIBRARY (format_version 10, `pads`): one entry
 per padstack with its drill and its REGULAR pads on the ETCH layers, each
@@ -622,17 +624,24 @@ class _Zones:
 def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom_z,
                fold, lift: float, document, group_for, rgb01, srgb: bool,
                json_stem: str, copper: bool = True, openings: bool = False, base01=None,
-               log: LogFn = _noop_log) -> PadsResult:
+               opening_lift: float | None = None, log: LogFn = _noop_log) -> PadsResult:
     """Every pin's copper - and/or its mask opening - into the document, as
     instances of shared faces.
 
     *group_for(side)* hands back the assembly label of `pads_top` /
     `pads_bot` (and `openings_top` / `openings_bot`), created on first use;
-    *lift* is how far above the face the faces float (the flat-silkscreen
-    clearance); *rgb01* the copper, *base01* the dielectric. *copper* draws
-    the pads, *openings* the windows in the mask: what the copper leaves of
-    each when both are on, the openings whole otherwise.
+    *lift* is how far above the face the copper floats and *opening_lift*
+    how far the windows do - BELOW the copper (the caller passes one and
+    two flat-silkscreen clearances): two windows of neighbouring through
+    pins overlap each other's copper ring, and two faces at one height
+    leave the viewer to pick, which is how a ring came out eaten on the demo
+    board; a micron apart, the copper wins. *rgb01* the copper, *base01*
+    the dielectric. *copper* draws the pads, *openings* the windows in the
+    mask: what the copper leaves of each when both are on, the openings
+    whole otherwise.
     """
+    if opening_lift is None:
+        opening_lift = lift / 2.0
     result = PadsResult()
     pads = data.get("pads")
     if not isinstance(pads, dict):
@@ -777,8 +786,9 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
                 elif label == "filled":
                     result.openings_filled += 1
                 else:
+                    oz = top_z + opening_lift if face_side == "top" else bottom_z - opening_lift
                     shape_tool.AddComponent(group_for("openings_top" if face_side == "top" else "openings_bot"),
-                                            label, TopLoc_Location(trsf))
+                                            label, TopLoc_Location(_placement(x, y, oz, rotation, fold)))
                     result.openings_placed += 1
 
     return result

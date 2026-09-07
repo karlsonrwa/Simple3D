@@ -3410,6 +3410,33 @@ and the config key. Docs: README both halves (a *Mask openings* section,
 the window and settings rows, the tree, the limitations), QUICKSTART,
 CHANGELOG, ARCHITECTURE, the config comments, both module headers.
 
+**The windows ate the rings (step2html), and the rename.** The user ran
+the demo board through step2html with both options on and sent three
+crops: where the windows of neighbouring through pins overlap, the white
+of one covers the copper ring of the other, and an oblong SMD pad loses
+its end under the round window beside it; turning the edges off changes
+nothing. Not step2html's doing and not a layer order in the stack: the
+windows (opening minus its OWN copper) and the copper both sat at h above
+the mask, and a window cannot know its neighbour's copper - per figure,
+instanced, it only subtracts its own. Two coplanar faces leave the viewer
+to pick, and step2html picks the one drawn later. Fix: three heights a
+`silk_flat_height` apart - the windows at h, the copper at 2h, the drawn
+openings' parts at 3h (`opening_lift` in `build_pads`, the lifts in
+`_build_pads`) - so what overlaps is decided by height. The one-micron
+step is the one the pads already stand on over the mask, and it resolves in
+both the user's viewers (they see the pads); test_pads [6] records the
+placements' z through `_placement` and checks the two levels on both
+sides. Rename, at the user's word (they proposed *Visible copper features*
+because the checkbox shows more than pad openings): *Copper pads (as
+surfaces)* -> **Exposed copper (as surfaces)** - the industry's term for
+copper the mask does not cover, and exactly what it draws (pads, via
+rings, the copper under drawn openings); `gui.copperPads` ->
+`exposedCopper`, `--copper-pads` -> `--exposed-copper`, the Python field
+`exposed_copper`, the README section *Exposed copper* / *Открытая медь*
+(`build/probe-out/rename_exposed.py`, binary-safe, counts asserted; the
+log lines "Copper pads: N placed" and the `pads_top` nodes keep their
+names - they are about the pads). *Mask openings* stays.
+
 What is still NOT drawn, said to the user: copper other than the pad inside
 a padstack's own opening (the trace neck and the thermal spokes in a
 copper-defined pad's ring - per-pin booleans and no instancing to get it,

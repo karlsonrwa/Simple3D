@@ -81,8 +81,8 @@ def _open_window(args: argparse.Namespace) -> int:
             app.silk_bottom.set(False)
         if args.flat_silkscreen:
             app.silk_flat.set(True)
-        if args.copper_pads:
-            app.copper_pads.set(True)
+        if args.exposed_copper:
+            app.exposed_copper.set(True)
         if args.mask_openings:
             app.mask_openings.set(True)
         app.prefill_jobs(
@@ -253,7 +253,7 @@ def build_parser() -> argparse.ArgumentParser:
              "thickness from the inner surface (default 0.5)",
     )
     parser.add_argument(
-        "--copper-pads", action="store_true",
+        "--exposed-copper", action="store_true",
         help="draw the copper of every pin's pad on the outer faces, as "
              "copper-coloured surfaces clipped to their mask openings (needs a "
              "format_version 12 JSON; 11 has no copper under drawn openings, 10 draws the pads whole)",
@@ -262,7 +262,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mask-openings", action="store_true",
         help="draw the solder-mask openings as surfaces in the dielectric's colour: "
              "every pin's and via's opening and every opening drawn on the mask layers; "
-             "with --copper-pads, what the copper leaves of them (needs a format_version 11 "
+             "with --exposed-copper, what the copper leaves of them (needs a format_version 11 "
              "JSON for the padstacks' openings, 12 for the drawn ones)",
     )
     parser.add_argument(
