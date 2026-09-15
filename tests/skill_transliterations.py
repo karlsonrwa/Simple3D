@@ -29,7 +29,7 @@ def s3dBoxesMeet(a, b):
     return not (ax1 < bx0 or bx1 < ax0 or ay1 < by0 or by1 < ay0)
 
 
-# mirrors skill/s3d_json.il: s3dJsonQuote (and its control-character class)
+# mirrors skill/s3d_json.il: s3dJsonQuote  -- and its control-character class
 def s3dJsonQuote(value):
     if not isinstance(value, str):
         return "null"
@@ -61,7 +61,8 @@ def _is_other_control(c):
     return 0x01 <= n <= 0x1f and c not in "\t\n\r"
 
 
-# mirrors skill/s3d_export.il: symbolReturn3DElements (placement), the header of create3dIntermediateFormat; skill/s3d_silk.il: s3dWriteSilkPolys (silk_poly), s3dWriteSilkscreen (silk_warnings)
+# mirrors skill/s3d_export.il: symbolReturn3DElements, create3dIntermediateFormat; skill/s3d_silk.il: s3dWriteSilkPolys, s3dWriteSilkscreen
+# -- placement; the header; silk_poly; silk_warnings
 # ---- the fragments, as the SKILL writes them ------------------------------ #
 
 def placement(refDes, stepFileName, zoneName):
@@ -94,7 +95,8 @@ def header(variantName, models):
             '"embedded_models": [' + ', '.join(s3dJsonQuote(m) for m in models) + ']')
 
 
-# mirrors skill/s3d_util.il: s3dAddIndent; skill/s3d_export.il: makePcb, create3dIntermediateFormat (the member list and the re-indent)
+# mirrors skill/s3d_util.il: s3dAddIndent; skill/s3d_export.il: makePcb, create3dIntermediateFormat
+# -- the member list and the re-indent
 def s3dAddIndent(text, levels=1):
     pad = "\t" * levels
     return "\n".join(pad + line for line in text.split("\n") if line != "")
@@ -190,7 +192,7 @@ def s3d_variant_file_path(full):
     return folder + "/Variants.lst"
 
 
-# mirrors skill/s3d_variants.il: s3dVariantFit (the three answers)
+# mirrors skill/s3d_variants.il: s3dVariantFit  -- the three answers
 def variant_fit(known, board):
     """The SKILL decision, in the same three branches."""
     known = {r.upper() for r in known}
@@ -203,7 +205,7 @@ def variant_fit(known, board):
     return f"{covered} of {len(board)}"
 
 
-# mirrors skill/s3d_variants.il: s3dSymbolsToExport's cond, for one symbol
+# mirrors skill/s3d_variants.il: s3dSymbolsToExport  -- its cond, for one symbol
 def exported(*, refdes, installed, has_table=True, no_step_export=False,
              always_export=False, variant="ALL"):
     """s3dSymbolsToExport's cond, for one symbol."""
@@ -214,7 +216,7 @@ def exported(*, refdes, installed, has_table=True, no_step_export=False,
     return True
 
 
-# mirrors skill/s3d_variants.il: gdsysGetVariantInfo's awaitEndCondition branch (alternate_line)
+# mirrors skill/s3d_variants.il: gdsysGetVariantInfo  -- the awaitEndCondition branch (alternate_line)
 STRIP = '"\t+\\()'                                   # the parser's own char class
 
 
@@ -236,7 +238,7 @@ def is_refdes_token(tok):                            # s3dIsRefdesToken
     return isinstance(tok, str) and bool(re.search(r"[A-Za-z0-9]", tok))
 
 
-# mirrors skill/s3d_variants.il: gdsysGetVariantInfo's states - which lines open, fill and close a variant
+# mirrors skill/s3d_variants.il: gdsysGetVariantInfo  -- its states: which lines open, fill and close a variant
 def parse_variants(text):
     """{variant: [token, ...]}, walking the lines the way the parser's state
     machine does: a line with one quoted name opens a variant, "\t\t(base"
@@ -281,7 +283,7 @@ def parse_variants(text):
     return table
 
 
-# mirrors skill/s3d_variants.il: s3dSymbolsToExport's tail - the listed refdes the board does not have
+# mirrors skill/s3d_variants.il: s3dSymbolsToExport  -- its tail: the listed refdes the board does not have
 def not_placed(variant_refdes, board_refdes):
     """The refdes a variant names that no symbol on the board carries, by
     name: what the export warns about per variant since 2026-09-03. The
@@ -291,7 +293,7 @@ def not_placed(variant_refdes, board_refdes):
     return sorted(r for r in listed if r not in on_board)
 
 
-# mirrors SKILL's tconc structure, destructive as the real one (skill/s3d_export.il uses it for the cutout list)
+# mirrors SKILL's own tconc structure, destructive as the real one  -- no procedure of ours; skill/s3d_export.il uses it for the cutout list
 class Tconc:
     """SKILL's tconc structure - (list . last-cell). car() is the list."""
 
@@ -323,8 +325,32 @@ def skill_merge(base, over):
     return out
 
 
-# mirrors skill/s3d_stackup.il: s3dLayerInBody (what the name and the function say)
+# mirrors skill/s3d_stackup.il: s3dLayerInBody  -- what the name and the function say
 # what the SKILL filter keeps, transliterated
 def in_body(nm, fn):
     probe = (nm or "").upper() + " " + (fn or "").upper()
     return not ("SILK" in probe or "PASTE" in probe)
+
+
+# mirrors skill/s3d_stackup.il: s3dLayerIsNegative
+# The default S3D_NegativeLayers, as simple3d_config.json ships it.
+NEGATIVE_LAYER_KEYS = ["COVERLAY", "SOLDERMASK", "PASTEMASK"]
+
+
+def s3d_layer_is_negative(name, func=None, keys=None):
+    """Is this stackup layer drawn negative - are its shapes openings?
+
+    The probe is the layer FUNCTION followed by the layer NAME, both upper
+    case, and any configured key appearing anywhere in it says yes. A
+    substring search, so COVERLAY matches COVERLAY_TOP and a function spelled
+    "Coverlay" alike.
+
+    Lived in test_neg.py until 2026-09-15, three lines above the fourteen
+    assertions that tested it - so `neg = t` -> `neg = nil` in the SKILL, which
+    makes every layer on every board positive, passed the whole suite
+    (docs/test-audit.md, finding 3). Pinned to the original in test_skill_pins.
+    """
+    if keys is None:
+        keys = NEGATIVE_LAYER_KEYS
+    probe = (func or "").upper() + " " + (name or "").upper()
+    return any(k.upper() in probe for k in keys if k)

@@ -11,6 +11,50 @@ to use the tool.
 
 ---
 
+- **2026-09-15** — **The tests were audited by breaking the code, and what
+  they missed was fixed.** Nothing about the tool changed; what changed is how
+  much its tests are worth. 27 deliberate faults were put into the code one at
+  a time to see whether any test noticed, and 11 went through unnoticed: the
+  silkscreen arc code had never run on an arc (every test polygon was a square
+  with no curve in it), the check that ten identical resistors cost one solid
+  instead of ten was printed and compared to nothing, the only measure of "did
+  the folded board join up" had never been seen reporting a gap, and four
+  faults planted in the Allegro half of the tool - among them "no layer is
+  negative any more" and "the drill offset is applied backwards" - passed the
+  whole suite, because what the tests check is a Python copy of those
+  procedures and nothing tied the copy to the original. All of it is closed.
+  The legend is now tested against six real polygons of Cadence's demo board
+  and the areas Allegro itself reports for them; the shared-part check
+  compares a board with two copies of a model against one with five; the seam
+  measure is handed a deliberately mis-stitched fold and has to report 23.8 mm
+  as 23.8 mm. The Allegro half is now both read and RUN: a new probe calls
+  those procedures inside a real headless Allegro over 59 cases, and the
+  Python copies are required to answer exactly as Allegro did - they do, all
+  59. The suite is 26 sets, 30 of 30 pass in 235 s, and the report of the
+  audit and its repair is in docs/test-audit.md. /
+  **Тесты проверены поломкой кода, и то, что они пропускали, починено.** В
+  самом инструменте не изменилось ничего; изменилось то, чего стоят его
+  тесты. В код по одной внесли 27 намеренных поломок, чтобы посмотреть,
+  заметит ли хоть один тест, — и 11 прошли незамеченными: код дуг
+  шелкографии ни разу не исполнялся на дуге (все тестовые полигоны —
+  квадраты без единой кривой), проверка «десять одинаковых резисторов стоят
+  одного солида, а не десяти» печаталась и ни с чем не сравнивалась,
+  единственная мера «сошлась ли сложенная плата» никогда не была замечена
+  сообщающей о зазоре, а четыре поломки в Allegro-половине инструмента —
+  среди них «негативных слоёв больше нет» и «смещение сверловки применяется
+  наоборот» — прошли весь набор, потому что тесты проверяют питоновскую
+  копию тех процедур, а с оригиналом её не связывало ничто. Всё это
+  закрыто. Легенда теперь проверяется на шести настоящих полигонах
+  демо-платы Cadence и площадях, которые сообщает про них сам Allegro;
+  проверка разделяемой детали сравнивает плату с двумя копиями модели и с
+  пятью; мере шва подсовывают заведомо неверно сшитый фолд, и она обязана
+  сообщить про 23.8 мм именно 23.8 мм. Allegro-половина теперь не только
+  читается, но и ЗАПУСКАЕТСЯ: новый зонд вызывает эти процедуры в настоящем
+  headless-Allegro на 59 случаях, и питоновские копии обязаны отвечать ровно
+  так же, как ответил Allegro, — отвечают, все 59. Набор вырос до 26
+  комплектов, 30 из 30 проходят за 235 с, а отчёт об аудите и о починке — в
+  docs/test-audit.ru.md.
+
 - **2026-09-14** — **Exposed copper: the pour comes back.** On a board whose
   copper is opened by a shape drawn on the soldermask layer, *Exported bare
   copper not under mask* showed the traces and the pads and no pour - the

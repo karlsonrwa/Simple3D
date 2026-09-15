@@ -165,6 +165,34 @@ for term in ("Board edge color", "Body stitching", "Reset colors",
     if term not in quick:
         note("term missing from QUICKSTART", term)
 
+# ---- the suite count, wherever the docs state it --------------------------
+# README.md said "23 test suites" for 27 rounds while there were 25: a number
+# in prose has nothing holding it (docs/test-audit.md, finding 5). Read the
+# real one out of run_all.py and compare with every place that states it.
+run_all = (ROOT / "tests/run_all.py").read_text(encoding="utf-8")
+n_suites = len(re.findall(r'TESTS\s*/\s*"test_\w+\.py"', run_all))
+n_checks = len(re.findall(r'TOOLS\s*/\s*"\w+\.py"', run_all))
+arch = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
+for doc, text in (("README.md", readme), ("ARCHITECTURE.md", arch)):
+    for stated, what in re.findall(
+            r"(\d+) (test suites|suites|наборов тестов|набора тестов)", text):
+        if int(stated) != n_suites:
+            note("stale suite count",
+                 f"{doc} says {stated} {what}; run_all.py runs {n_suites}")
+for stated, in re.findall(r"the (\d+) checks \+", arch):
+    if int(stated) != n_checks:
+        note("stale check count",
+             f"ARCHITECTURE.md says {stated} mechanical checks; "
+             f"run_all.py runs {n_checks}")
+# Every suite run_all names has to be there, and every suite there has to be
+# run: a test file nobody runs is the same kind of nothing as a stale count.
+listed = set(re.findall(r'TESTS\s*/\s*"(test_\w+\.py)"', run_all))
+present = {p.name for p in (ROOT / "tests").glob("test_*.py")}
+for missing in sorted(listed - present):
+    note("run_all names a suite that is not there", missing)
+for unrun in sorted(present - listed):
+    note("a suite nobody runs", unrun)
+
 print(f"README {len(readme.splitlines())} lines, QUICKSTART {len(quick.splitlines())} lines")
 print(f"CLI flags: {len(code_flags)} in code, {len(doc_flags)} documented")
 print(f"config: {len(sections)} sections, {len(real_keys)} real keys")

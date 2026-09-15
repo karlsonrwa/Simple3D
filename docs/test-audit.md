@@ -179,4 +179,71 @@ warning in `_pick_convention`, which `test_silk.py` never reads — a mutation
 aimed at something the suite does not claim. It is listed so the count is
 honest.
 
-Nothing here was fixed; the audit was asked for, not the repair.
+Nothing was fixed in the pass above; the audit was asked for, not the
+repair. The repair came next, and is recorded below.
+
+## What was done about it, 15 September 2026
+
+Every finding above is closed, and each repair was measured the way the
+finding was: the mutation is made again, the suite is run, and the assertion
+that bites is named. The ten mutations that survived the audit are all caught
+now. `python tests/run_all.py` is 30/30 in 235 s; the suite count is 26.
+
+| finding | what closed it | what bites when the mutation is made again |
+|---|---|---|
+| 1, silkscreen arcs | `tests/fixtures/silk_demo.json` — six arc-bearing legend polygons of Cadence's demo board with Allegro's own `poly->area` for each; `test_silk [10]`-`[12]` | `silk-arcs-as-chords`: 10 assertions, worst polygon off by 36.3%. `silk-arc-side`: 9, worst 72.7%. `silk-area-comparison-off`: 3, the doctored polygon goes unreported |
+| 2, the shared part | `tests/test_mech.py` rewritten: it goes through `_support.check` at all now, and compares a 2-copy board with a 5-copy one | `model-cache-off`: 5 assertions — the model is read 2 and 5 times instead of once, and the solid bodies written go 6 → 11 and 6 → 26 |
+| 3, the SKILL seam | `tests/test_skill_pins.py` (new suite), `tools/probes/probe_translit.il`, `tools/skill_answers.py`, `tests/fixtures/skill_answers.json` | all four: two independent assertions each — the pinned statement is gone from the `.il`, and the derived check disagrees |
+| 4, `seam_gap` | `test_bend [7d]`: a panel carried a known distance off its strip, and two panels swapping transforms | `seam-gap-zero`: 6 assertions, three displacements in mm and their threshold |
+| 5, the small ones | `test_zones [5]` builds the empty-zones board it was claiming about; the counts are corrected AND `tools/audit_docs.py` now derives them from `run_all.py` | breaking the number back to 23 is a finding in the docs audit within a second |
+
+Two things are worth saying beyond the table.
+
+**The SKILL side is now executed, not only read.** The audit's third finding
+was the serious one: the Python copies in `tests/skill_transliterations.py`
+were worth whatever their link to the original was worth, and the link was
+absent. It is now two links, because either alone can rot:
+
+- `test_skill_pins [1]`-`[5]` read the `.il` and compare the statements that
+  carry each procedure's meaning, character for character after comments and
+  layout are normalised away. Where the meaning can be *derived* it is derived
+  rather than matched: the sign of the drill offset is read out of the source
+  and the copy is run to see whether it agrees, and the control-character class
+  is read out of `s3dCtrlCharPattern` and compared with the copy's predicate
+  over every code point.
+- `test_skill_pins [7]` compares each copy with what Allegro's own interpreter
+  answered. `tools/probes/probe_translit.il` calls the five procedures in a
+  real headless Allegro over 59 fixed cases; `tools/skill_answers.py` turns
+  that run into `tests/fixtures/skill_answers.json`, the same kind of oracle as
+  `pads_demo.json`. Measured on Allegro 25.1, 26 s: **all 59 agree.**
+
+  The probe found one thing on its own: `sprintf "%c"` is not available in this
+  SKILL, so a control character cannot be built that way — but the `\b` and
+  `\f` string escapes are, and both come back as `"a b"`, so the branch the
+  audit's mutation deleted really does run.
+
+`[6]` closes the loop the other way: every `# mirrors` line in
+`skill_transliterations.py` must name a procedure that exists in `skill/`, and
+every procedure the audit found unpinned must be pinned. A copy added later
+with no pin fails there rather than going quietly unwatched. The `# mirrors`
+lines were rewritten into one machine-readable form to make that readable at
+all: `# mirrors skill/<file>.il: proc[, proc ...]  -- prose`.
+
+**`test_neg.py` no longer tests itself.** Its fourteen assertions about
+`is_neg` now run the shared transliteration, which `test_skill_pins` pins to
+`skill/s3d_stackup.il:170`.
+
+### What is still not covered
+
+Said plainly, because a list of repairs reads as a clean bill otherwise.
+
+- The other eleven transliterations are pinned by `[6]` only in the sense that
+  the procedure they name exists. `s3dVariantFit`, `gdsysGetVariantInfo`'s
+  states, `s3dSymbolsToExport` and the rest have no statement-level pin and no
+  recorded answer from Allegro. The machinery for both is now in place -
+  another case in `probe_translit.il` and another `pin(...)` call - so this is
+  work, not a missing idea.
+- `run_all.py` still runs neither golden corpus, so both remain as current as
+  the last hand run.
+- `silk-area-check-silenced` remains what it was: a mutation aimed at something
+  no suite claims.

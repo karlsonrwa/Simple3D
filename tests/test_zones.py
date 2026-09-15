@@ -97,7 +97,22 @@ check("no multi-stackup log", not [m for m in logs2 if "Multi-stackup" in m])
 v2=volume(read_step(OUT/"plain.step"))
 check("plain volume = outline x 1.096", abs(v2-(41.6*32.0*1.096))/(41.6*32.0*1.096)<1e-6,
       f"{v2:.4f}")
-check("empty zones list behaves as no zones", True)
+# An empty list is not the same input as no key at all, and until 2026-09-15
+# the line here was `check("empty zones list behaves as no zones", True)` - a
+# literal, asserting nothing, about a case the board above does not set up
+# (docs/test-audit.md, finding 5). Build it and compare the two.
+d3=json.loads(json.dumps(d2)); d3["zones"]=[]
+f3=OUT/"emptyzones.json"; f3.write_text(json.dumps(d3))
+logs3=[]
+res3=core.generate(step_dir=ROOT/"demo/step_files", json_file=f3, output_dir=OUT,
+                   output_name="emptyzones", log=logs3.append)
+v3=volume(read_step(OUT/"emptyzones.step"))
+check("an empty zones list gives the same volume as no zones key",
+      abs(v3-v2)<1e-9, f"{v3:.6f} vs {v2:.6f}")
+check("and the same component placement", res3.components_placed==res2.components_placed,
+      (res3.components_placed, res2.components_placed))
+check("and says nothing about stackups either",
+      not [m for m in logs3 if "Multi-stackup" in m], [m for m in logs3 if "Multi-stackup" in m])
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

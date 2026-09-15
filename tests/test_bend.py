@@ -842,6 +842,61 @@ check("a wide board with a narrow arm folds where it should",
       plan_narrow.region_at(5.0, 5.0) == "held", plan_narrow.region_at(5.0, 5.0))
 check("and joins up", seam_gap(plan_narrow) < 1e-6, seam_gap(plan_narrow))
 
+# And the oracle itself, seen reporting a gap. Every call above asks
+# `seam_gap(p) < 1e-6` and none of them ever wants a large answer, so
+# `return 0.0` in its place left all 220 assertions of this suite green
+# (docs/test-audit.md, finding 4). A fold is mis-stitched here on purpose -
+# which is exactly the shape of the defect the function was written for, a
+# strip's edge sewn to the wrong panel - and the gap has to come out in
+# millimetres, and be the millimetres it was given.
+from stepbuilder.bend.constants import SEAM_WARN   # gp_Trsf, _Vec, _dc: above
+
+
+def _shift_one_panel(p, label_not, dz):
+    """The same plan with one moved panel carried dz further up.
+
+    Nothing else changes: the strips still place their edges where they did,
+    so the distance between the two placements of the shared edge IS dz.
+    """
+    out = []
+    for region in p.regions:
+        if (region.kind == "panel" and region.moved and region.poly
+                and region.label != label_not and not any(r.label == region.label for r in out)):
+            extra = gp_Trsf()
+            extra.SetTranslation(_Vec(0.0, 0.0, dz))
+            out.append(_dc.replace(region, trsf=extra * region.trsf))
+        else:
+            out.append(region)
+    return _dc.replace(p, regions=out)
+
+
+check("the fold this one is made from joins up first", seam_gap(plan2) < 1e-6,
+      seam_gap(plan2))
+for dz in (0.05, 3.5, 23.8):
+    torn = _shift_one_panel(plan2, "held", dz)
+    got = seam_gap(torn)
+    check(f"a panel carried {dz} mm off its strip is reported as a {got:.3f} mm seam",
+          abs(got - dz) < 1.0e-6, got)
+    check(f"  and {dz} mm is past the threshold that warns ({SEAM_WARN} mm)",
+          got > SEAM_WARN, (got, SEAM_WARN))
+
+# The real defect was not a displacement but a swap: the near edge of a strip
+# sewn to the FAR panel. Two panels exchanging transforms is that, and it has
+# to be reported too.
+panels = [r for r in plan2.regions if r.kind == "panel" and r.poly]
+swapped = []
+first, second = panels[0], panels[-1]
+for region in plan2.regions:
+    if region is first:
+        swapped.append(_dc.replace(region, trsf=second.trsf))
+    elif region is second:
+        swapped.append(_dc.replace(region, trsf=first.trsf))
+    else:
+        swapped.append(region)
+swap_gap = seam_gap(_dc.replace(plan2, regions=swapped))
+check(f"two panels with each other's transform come apart by "
+      f"{swap_gap:.3f} mm", swap_gap > 1.0, swap_gap)
+
 print("\n[8] where a component ends up")
 
 held = plan.transform_at(5.0, 5.0)

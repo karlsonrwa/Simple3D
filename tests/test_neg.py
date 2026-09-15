@@ -8,10 +8,15 @@ from stepbuilder import core
 OUT = out_dir("neg")
 
 print("\n[1] транслитерация s3dLayerIsNegative на реальных слоях")
-NEG=["COVERLAY","SOLDERMASK","PASTEMASK"]
-def is_neg(name, func=None, keys=NEG):
-    probe=((func or "").upper()+" "+(name or "").upper())
-    return any(k.upper() in probe for k in keys if k)
+
+# Транслитерация - общая, в tests/skill_transliterations.py, и привязана к
+# оригиналу в skill/s3d_stackup.il проверками test_skill_pins.py. До
+# 15.09.2026 копия была написана прямо здесь, тремя строками выше своих же
+# четырнадцати утверждений: `neg = t` -> `neg = nil` в SKILL (ни один слой
+# больше не негативный) проходило весь набор незамеченным - находка 3 в
+# docs/test-audit.ru.md.
+from skill_transliterations import s3d_layer_is_negative as is_neg
+
 for nm,exp in [("COVERLAY_TOP",True),("COVERLAY_BOTTOM",True),("SOLDERMASK_TOP",True),
                ("SOLDERMASK_BOTTOM",True),("PASTEMASK_TOP",True),
                ("STIFFENER_TOP",False),("STIFFENER_TOP2",False),("ADHESIVE_TOP",False),

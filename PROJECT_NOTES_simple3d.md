@@ -2974,6 +2974,179 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+## Update 2026-09-15 (round 88) — the test audit, repaired: the SKILL side is executed now
+
+Round 87's work was committed and then the suite was audited by mutation
+(`docs/test-audit.md` and `.ru.md`, the method in the `test-audit` skill): 27
+mutations, 16 caught, 11 through. This round closes all five findings. Every
+repair was measured the same way it was found — make the mutation again, run
+the suite, name the assertion that bites — and the ten mutations that were
+real findings are caught now. `run_all.py`: **30/30 in 235 s**, 26 suites.
+
+### 1. The arc code had never run on an arc
+
+Every silkscreen polygon in the suite was a square with radius 0.0 at each
+vertex, and `demo.json` and the four fixtures have no `silkscreen` key at all.
+So `_wire_from_vertices`'s arc branch, `_arc_bulges_left`, `_arc_geometry` and
+`_arc_edge` — the most carefully settled part of `legend.py`, measured on a
+real board to 0.0004 % — never executed. Three mutations proved it.
+
+`tests/fixtures/silk_demo.json` is six arc-bearing polygons of Cadence's demo
+board with Allegro's own `poly->area` for each, the same kind of oracle as
+`pads_demo.json`. They were picked by measurement, not by eye: of 1337 curved
+polygons on the top side, these six are ones the known-right reading reproduces
+to better than 1e-4 while **every other reading of the radius is off by at
+least 63.6 %** over the set — two rings whose hole is an arc polygon too, a
+six-vertex mixed shape, and glyph strokes with rounded corners of both signs.
+
+`test_silk [10]` checks the sample contains those cases at all (the coverage
+check `test_pads [4]` makes about its pins), then each polygon's area against
+Allegro's, then that `_pick_convention` **lands on** (AXIS, positive-sits-left,
+first-radius-closes) by itself. That last one matters: inverting
+`_arc_bulges_left` leaves the areas reproducible — the polarity flag absorbs it
+— and only moves which reading wins. `[11]` feeds one polygon an area Allegro
+did not report and requires it to be named; `[12]` runs them through
+`core.generate`.
+
+| mutation | what fails now |
+|---|---|
+| `silk-arcs-as-chords` | 10 assertions, worst polygon off by 36.3 % |
+| `silk-arc-side` | 9 assertions, worst 72.7 % |
+| `silk-area-comparison-off` | 3 — the doctored polygon goes unreported |
+
+### 2. `test_mech.py` printed a number and compared it to nothing
+
+It printed `solids in shape: N`, and its verdict was one `ok` expression that
+did not mention N. Cutting `ModelCache.labels_for`'s first line, so every
+refdes re-imports its model, left all fourteen geometric suites green. It was
+also the only suite not going through `_support.check`: **zero** PASS/FAIL
+lines out of the suite's 1198.
+
+`count_solids` cannot be the oracle and never could: `OneShape` expands every
+instance, so it reads 26 for five placements whether the part is shared or
+copied. What moves is the geometry WRITTEN. Measured, one model of 5 solids:
+
+| | 2 placements | 5 placements | cache cut, 2 → 5 |
+|---|---|---|---|
+| `Reading cap_D8x10mm.stp` in the log | 1 | 1 | 2 → 5 |
+| `MANIFOLD_SOLID_BREP` | 6 | 6 | 11 → 26 |
+| `CLOSED_SHELL` | 6 | 6 | 11 → 26 |
+| solids via `OneShape` | 11 | 26 | unchanged |
+| entities | 2535 | 2562 | 4092 → 8790 |
+
+So the suite builds the same board twice, at 2 and 5 copies, and requires the
+solid bodies not to grow while the instances do. `model-cache-off` now fails
+five assertions.
+
+One thing the old suite made look like a defect is not one: it printed
+`CR2032_MECH1 … no`, and the refdes genuinely is not a name in the file —
+`core.py` says so deliberately ("no per-refdes wrapper sub-assembly and no
+refdes_<board> instance name"). That is now asserted in the positive, so
+bringing the wrapper back is a decision someone makes in this file.
+
+### 3. The SKILL seam — the serious one
+
+Half the product is SKILL and no test runs it. The suites test Python copies in
+`tests/skill_transliterations.py` instead, which is worth whatever the link
+between copy and original is worth — and the link was absent: four of five
+semantic mutations made in `skill/` passed the whole suite. `test_neg.py` was
+the clearest case, fourteen assertions about an `is_neg` written three lines
+above them and connected to `skill/s3d_stackup.il:170` by nothing.
+
+There are two links now, because either alone can rot.
+
+**Reading the source.** `tests/test_skill_pins.py` (new, 26th suite) extracts
+each procedure's body from the `.il` and compares the statements that carry its
+meaning, character for character after comments and layout are normalised away.
+Where the meaning can be *derived* it is derived instead of matched:
+
+- the two operators joining pad to offset are read out of `s3dDrillXY` and the
+  Python copy is run to see whether it agrees — no knowledge of the right
+  answer, only that both sides say the same;
+- the control-character class is read out of `s3dCtrlCharPattern` and compared
+  with `_is_other_control` over every code point below 0x80 (28 of them, and
+  tab/newline/return outside it);
+- the default `S3D_NegativeLayersDefault` list is read out and compared with the
+  copy's.
+
+**Running the original.** `tools/probes/probe_translit.il` calls the five
+procedures in a real headless Allegro over 59 fixed cases;
+`tools/skill_answers.py` turns that run into `tests/fixtures/skill_answers.json`
+and `test_skill_pins [7]` runs each copy against it. Measured on Allegro 25.1
+against `demo/demo.brd` (which only gives the interpreter a session — none of
+the five reads the design), 26 s: **all 59 agree.**
+
+The probe settled one thing itself. `sprintf( nil "%c" n )` is not available in
+this SKILL, so a control character cannot be built that way — the probe says so
+in its output rather than pretending. The `\b` and `\f` string escapes ARE
+available: `strlen( "a\bb" )` is 3 and `s3dJsonQuote` returns `"a b"`. So the
+branch `skill-control-chars-kept` deletes really does execute.
+
+`[6]` closes the loop the other way: every `# mirrors` line must name a
+procedure that exists in `skill/` (19 do), and every procedure the audit found
+unpinned must be pinned. A copy added later with no pin fails there instead of
+going quietly unwatched. To make that readable at all the `# mirrors` lines
+were put into one machine-readable form —
+`# mirrors skill/<file>.il: proc[, proc ...]  -- prose` — because the old ones
+mixed names and English and a parser of prose pulled out `and`, `the`, `board`
+and `awaitEndCondition`, which is a state string, not a procedure.
+
+All four SKILL mutations now fail two independent assertions each. Mutating the
+PYTHON copy instead is caught too (measured on four: boxes inverted, nothing
+negative, control chars kept, merge flattened).
+
+### 4. `seam_gap` could be blinded
+
+`stepbuilder/bend/plan.py:seam_gap` is the only oracle in the fold suite for
+"did the board join up", used nine times and every time as `< 1e-6`. No case
+ever wanted a large answer, so `return 0.0` left all 220 assertions green. It
+had never been seen reporting an error.
+
+`test_bend [7d]` now mis-stitches a plan on purpose — one moved panel carried
+0.05, 3.5 and 23.8 mm off its strip, which is the shape of the defect the
+function was written for — and requires the gap to come back as those
+millimetres, to 1e-6, and to be past `SEAM_WARN`. Two panels exchanging
+transforms (the real defect: a strip's near edge sewn to the far panel) come
+apart by 15.607 mm. `seam-gap-zero` fails six assertions.
+
+### 5. The small ones, and making the counts self-checking
+
+`tests/test_zones.py` ended with `check("empty zones list behaves as no zones",
+True)` — a literal, about a case the board above did not even set up (it had
+the `zones` key *removed*, which is not an empty list). It builds the empty
+list now and compares volume, placement and log with the no-key board.
+
+`README.md` said "23 test suites" in both languages while there were 25.
+Correcting a number in prose fixes it until the next time, so
+`tools/audit_docs.py` now derives the count from `run_all.py`'s job list and
+reports a disagreement anywhere in `README.md` or `ARCHITECTURE.md`, plus a
+suite `run_all` names that is missing and a `test_*.py` nobody runs. Breaking
+it back to 23 is a finding within a second.
+
+### What is still not covered
+
+- The other eleven transliterations are pinned only in the sense that the
+  procedure they name exists. `s3dVariantFit`, `gdsysGetVariantInfo`'s states,
+  `s3dSymbolsToExport` and the rest have neither a statement-level pin nor a
+  recorded answer from Allegro. The machinery for both is in place now — one
+  more case in `probe_translit.il`, one more `pin(...)` call — so this is work,
+  not a missing idea.
+- `run_all.py` still runs neither golden corpus.
+- `silk-area-check-silenced` was never a finding: it silenced a warning in
+  `_pick_convention` that `test_silk.py` does not read.
+
+### To regenerate the two new fixtures
+
+    python tools/run_probe.py --with-exporter tools/probes/probe_translit.il \
+           s3dProbeTranslit demo/demo.brd -o D:/.../build/probe-out
+    python tools/skill_answers.py build/probe-out/demo.s3dProbeTranslit.txt
+
+`silk_demo.json` came out of `failed/cadence_demo.json` (Cadence's own demo
+board, `format_version` 7) by scoring every curved polygon under all eight
+readings and keeping the most discriminating; the selection scripts are not
+kept — the fixture carries its provenance in `_comment`, and what matters is
+reproducible from any intermediate that has a `silkscreen` key.
+
 
 ## Update 2026-09-14 (round 87) — the copper pour that vanished: an interactive find in a headless-tested sweep
 
