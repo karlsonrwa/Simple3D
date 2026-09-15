@@ -12,6 +12,23 @@ import math
 import re
 
 
+# mirrors skill/s3d_pads.il: s3dBoxesMeet
+def s3dBoxesMeet(a, b):
+    """Do two bounding boxes meet? Touching counts.
+
+    The test that replaced axlAddSelectBox in the exposed-copper sweep
+    (2026-09-14): the copper of a side is swept once and each polygon is
+    matched to the openings its box meets, instead of asking Allegro for an
+    interactive box select per opening. Touching counts because the AND that
+    follows decides anyway, and a strict test would have to pick a tolerance.
+    """
+    if not a or not b:
+        return True                    # no box to judge by: let the AND decide
+    (ax0, ay0), (ax1, ay1) = a[0], a[1]
+    (bx0, by0), (bx1, by1) = b[0], b[1]
+    return not (ax1 < bx0 or bx1 < ax0 or ay1 < by0 or by1 < ay0)
+
+
 # mirrors skill/s3d_json.il: s3dJsonQuote (and its control-character class)
 def s3dJsonQuote(value):
     if not isinstance(value, str):

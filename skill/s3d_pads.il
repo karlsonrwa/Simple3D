@@ -390,9 +390,23 @@ procedure( s3dCollectPads( @optional ( l_maskTop nil ) ( l_maskBottom nil ) ( s_
 ; The copper objects on the side's outer copper whose box meets l_bbox, with
 ; the design's visibility set to exactly that layer (and the PIN / VIA CLASS
 ; subclass of the same side, so pins and vias are found by the box too).
-; The caller sets and restores the visibility ONCE per side - see
-; s3dCollectExposed - because toggling it per opening is what made the
-; silkscreen's per-layer sweep expensive.
+;
+; NO LONGER USED BY s3dCollectExposed, and that is the whole of the
+; 2026-09-14 fix. axlAddSelectBox is Allegro's INTERACTIVE find, and what it
+; returns depends on the session: headless it answered with every object over
+; the box, and in the user's own GUI session - same board, same SKILL, same
+; config - it left out the 66.709 mm2 copper pour on ETCH/TOP, so the export
+; carried the traces and the pads and no pour. Measured on circle-A0:
+; headless, on 24.1 and 25.1 alike, 24 polygons of copper and 50 of bare
+; laminate, the first of them the pour at 67.534 mm2; the user's GUI export
+; 25 and 48, the pour gone and two stubs of trace in its place. Every OTHER
+; sweep in the exporter - the legend, the openings, the pins, the vias - goes
+; through s3dSelectVisibleOn, which selects with axlAddSelectAll over a
+; visibility set, and in that same journal every one of them matched the
+; headless run exactly.
+;
+; Kept because tools/probes/probe_openings.il reads the design with it, and
+; because a box select is still the right way to ask a question ABOUT one.
 procedure( s3dSelectInBox( l_bbox )
     let( ( elems )
         axlClearSelSet()
@@ -409,10 +423,35 @@ procedure( s3dSelectInBox( l_bbox )
     )
 )
 
+; Do two bounding boxes meet? Touching counts: a pad whose edge lies exactly
+; on an opening's edge exposes nothing, and the AND that follows says so at
+; no cost, where a strict test here would have to pick a tolerance.
+procedure( s3dBoxesMeet( l_a l_b )
+    let( ( ax0 ay0 ax1 ay1 bx0 by0 bx1 by1 )
+        if( !l_a || !l_b then
+            t                                  ; no box to judge by: let the AND decide
+        else
+            ax0 = caar( l_a )
+            ay0 = cadar( l_a )
+            ax1 = caadr( l_a )
+            ay1 = cadadr( l_a )
+            bx0 = caar( l_b )
+            by0 = cadar( l_b )
+            bx1 = caadr( l_b )
+            by1 = cadadr( l_b )
+            !( (ax1 < bx0) || (bx1 < ax0) || (ay1 < by0) || (by1 < ay0) )
+        )
+    )
+)
+
 ; The polygons of one copper object, for the AND: a pin or via's pad on the
-; side's etch layer, a shape only inside the window, a cline - or a no-net
-; line on the etch layer, a label in copper - widened with round caps,
-; anything else whole.
+; side's etch layer, a shape - clipped to l_window when one is given, whole
+; when it is not - a cline, or a no-net line on the etch layer (a label in
+; copper) widened with round caps; anything else whole.
+;
+; l_window is an optimisation and nothing more: the AND against the opening
+; clips the result either way. s3dCollectExposed converts each object ONCE
+; for the whole side now and so passes nil; probe_openings still passes a box.
 procedure( s3dCopperPolys( o_obj t_etch l_window s_endCap )
     let( ( polys )
         polys = nil
@@ -421,7 +460,11 @@ procedure( s3dCopperPolys( o_obj t_etch l_window s_endCap )
                 errset( polys = axlPolyFromDB( o_obj ?layer t_etch ?padType 'REGULAR ) )
             )
             ( o_obj->objType == "shape"
-                errset( polys = axlPolyFromDB( o_obj ?window l_window ) )
+                if( l_window then
+                    errset( polys = axlPolyFromDB( o_obj ?window l_window ) )
+                else
+                    errset( polys = axlPolyFromDB( o_obj ) )
+                )
             )
             ( t
                 errset( polys = s3dPolysFromDbid( o_obj s_endCap ) )
@@ -436,7 +479,8 @@ procedure( s3dCopperPolys( o_obj t_etch l_window s_endCap )
 procedure( s3dCollectExposed( l_layers t_side s_endCap )
     let( ( elems openings key polys etch pinLayer viaLayer saveVis saveEnabled saveOn
            found copper res groups order out ( nOpen 0 ) ( nOut 0 ) ( nBad 0 ) filter zero
-           bareGroups bareOrder bare ( nBare 0 ) bareOut )
+           bareGroups bareOrder bare ( nBare 0 ) bareOut
+           all one ( nFound 0 ) ( nNoPoly 0 ) )
         etch = strcat( "ETCH/" t_side )
         pinLayer = strcat( "PIN/" t_side )
         viaLayer = strcat( "VIA CLASS/" t_side )
@@ -483,30 +527,72 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
         openings = reverse( openings )
 
         when( openings
-            ; 2. the copper, with the visibility set once for the whole side
-            saveVis     = axlVisibleGet()
-            saveEnabled = axlGetFindFilter( t )
-            saveOn      = axlGetFindFilter( nil )
+            ; 2. the side's copper: ONE sweep, and ONE conversion per object.
+            ;
+            ; axlAddSelectAll over the visibility set, NOT a box select per
+            ; opening. See s3dSelectInBox for what the box select did in the
+            ; user's GUI session and did not do headless - it is the one call
+            ; in this file whose answer depended on the session, and a pour it
+            ; left out came back as bare laminate with nothing said. This is
+            ; the discovery every other sweep in the exporter uses, and it is
+            ; cheaper too: the old loop re-converted the same pour once per
+            ; opening.
+            ;
             ; "lines" AND "clines": copper drawn with Add Line on an ETCH
             ; subclass belongs to no net and is a "line" to the find filter,
             ; not a "cline" - the user's label in copper on my_test_board2 is
             ; 51 such paths, and "clines" alone selected none of them
             ; (tools/probes/probe_etchtext.il: "lines" 38 in the band,
             ; "clines" 0; 52 no-net paths on ETCH/TOP in all).
+            saveVis     = axlVisibleGet()
+            saveEnabled = axlGetFindFilter( t )
+            saveOn      = axlGetFindFilter( nil )
             filter = list( "noall" "lines" "clines" "shapes" "pins" "vias" )
             axlVisibleDesign( nil )
             axlVisibleLayer( etch t )
             errset( axlVisibleLayer( pinLayer t ) )
             errset( axlVisibleLayer( viaLayer t ) )
+            axlClearSelSet()
             axlSetFindFilter( ?enabled filter ?onButtons filter )
+            found = nil
+            when( errset( axlAddSelectAll() t )
+                found = axlGetSelSet()
+            )
+            axlClearSelSet()
+
+            errset( axlVisibleSet( saveVis ) )
+            when( saveEnabled || saveOn
+                errset( axlSetFindFilter( ?enabled saveEnabled
+                                          ?onButtons remove( "DYNTHEMALS" saveOn ) ) )
+            )
+
+            ; Each object converted once, for the whole side. nil for the
+            ; window: a shape comes back whole and the AND below clips it.
+            all = nil
+            foreach( o found
+                nFound = nFound + 1
+                one = s3dCopperPolys( o etch nil s_endCap )
+                if( one then
+                    foreach( p one
+                        when( p  all = cons( p all ) )
+                    )
+                else
+                    nNoPoly = nNoPoly + 1
+                )
+            )
+            all = reverse( all )
 
             foreach( entry openings
                 key = car( entry )
-                found = s3dSelectInBox( cadr( entry )->bBox )
+                ; The polygons whose box meets this opening - the question the
+                ; box select used to ask Allegro, asked here instead.
                 copper = nil
-                foreach( o found
-                    copper = append( copper s3dCopperPolys( o etch cadr( entry )->bBox s_endCap ) )
+                foreach( p all
+                    when( s3dBoxesMeet( cadr( entry )->bBox p->bBox )
+                        copper = cons( p copper )
+                    )
                 )
+                copper = reverse( copper )
                 bare = list( cadr( entry ) )
                 when( copper
                     res = nil
@@ -535,20 +621,27 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
                     )
                 )
             )
-
-            errset( axlVisibleSet( saveVis ) )
-            when( saveEnabled || saveOn
-                errset( axlSetFindFilter( ?enabled saveEnabled
-                                          ?onButtons remove( "DYNTHEMALS" saveOn ) ) )
-            )
         )
 
         when( nBad > 0
             s3dWarn( sprintf( nil "Simple 3D: %d mask opening(s) on the %s could not be converted and were skipped."
                               nBad t_side ) )
         )
-        printf( "Simple 3D: exposed copper %s - %d drawn opening(s), %d polygon(s) of copper under them, %d of bare laminate\n"
-                t_side nOpen nOut nBare )
+        ; The copper the sweep FOUND is in the line, not only what survived the
+        ; AND. The fault this replaces showed as an ordinary-looking count -
+        ; 25 polygons of copper where a correct run has 24 - and there was no
+        ; number anywhere saying that the sweep had seen 5 copper objects
+        ; instead of 41. Now there is.
+        when( openings && (nFound == 0)
+            s3dWarn( sprintf( nil "Simple 3D: the %s has %d drawn mask opening(s) and the sweep found NO copper at all on %s. Every opening will be written as bare laminate."
+                              t_side nOpen etch ) )
+        )
+        when( nNoPoly > 0
+            s3dWarn( sprintf( nil "Simple 3D: %d copper object(s) on %s could not be turned into polygons and expose nothing; the openings over them read as bare laminate."
+                              nNoPoly etch ) )
+        )
+        printf( "Simple 3D: exposed copper %s - %d drawn opening(s), %d copper object(s), %d polygon(s) of copper under them, %d of bare laminate\n"
+                t_side nOpen nFound nOut nBare )
         out = tconc( nil nil )
         foreach( key cdr( car( order ) )
             tconc( out list( key cdr( car( groups[key] ) ) ) )

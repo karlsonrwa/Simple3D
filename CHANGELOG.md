@@ -11,6 +11,104 @@ to use the tool.
 
 ---
 
+- **2026-09-14** — **Exposed copper: the pour comes back.** On a board whose
+  copper is opened by a shape drawn on the soldermask layer, *Exported bare
+  copper not under mask* showed the traces and the pads and no pour - the
+  polygon's area was written into the file as bare laminate instead. The
+  exporter looked for the copper under each opening with Allegro's
+  interactive box find, and what that returns depends on the session: run
+  from the menu in a live Allegro it left the pour out, run headless it did
+  not, and nothing in the log said a difference. It now sweeps the side's
+  copper once, the way the legend, the openings, the pins and the vias have
+  always been swept, and matches it to the openings itself. On the board
+  that showed it, 60.758 mm2 moved back from bare laminate to copper. The
+  console line now also says how many copper objects the sweep found, and
+  warns when a board with drawn openings turns up none - so the same kind of
+  fault cannot be silent again. **This lives in the Allegro side, so it
+  takes effect once the exporter is updated where Allegro loads it from and
+  the board is exported again; an intermediate written before that still has
+  the copper missing.** /
+  **Открытая медь: полигон вернулся.** На плате, медь которой вскрыта
+  фигурой, нарисованной на слое паяльной маски, *Экспорт голой меди не под
+  маской* показывал дорожки и площадки без полигона — его площадь попадала в
+  файл как голый ламинат. Экспортёр искал медь под каждым вскрытием
+  интерактивным поиском Allegro по рамке, а его результат зависит от сессии:
+  из меню в живом Allegro полигон в выборку не попадал, в headless-прогоне
+  попадал, и в логе об этом не было ни слова. Теперь медь стороны
+  обходится один раз — так же, как всегда обходились легенда, вскрытия,
+  выводы и переходные, — и сопоставляется со вскрытиями самим экспортёром. На
+  плате, где это проявилось, 60.758 мм² вернулись из голого ламината в медь.
+  В строке консоли теперь ещё и число найденных медных объектов, а если на
+  плате есть нарисованные вскрытия и меди не нашлось вовсе — предупреждение,
+  чтобы такая ошибка больше не могла пройти молча. **Правка в Allegro-части,
+  поэтому она заработает после обновления экспортёра там, откуда его грузит
+  Allegro, и повторного экспорта платы; в уже записанном интермедиате медь
+  по-прежнему отсутствует.**
+
+- **2026-09-14** — **The same compound in two more places, and a word when
+  two bend areas cross.** The holes-with-plugs fix below was one of three
+  places that handed a boolean a tool made of pieces that overlap each other.
+  A layer's own shapes were the second: two shapes on one coverlay or
+  stiffener layer that merely TOUCH, and one of them was silently gone -
+  the opening never cut, or the patch of material never built. No board we
+  have does that (the closest two shapes on one layer are 0.6 mm apart), so
+  nothing changes on today's designs; it would have been a whole patch
+  missing with nothing in the log. The bend strips were the third: two bends
+  whose areas cross on the board left the cut a single pinched piece instead
+  of four, and the repair that put it back quietly made four separate corners
+  into one panel - which is what the fold moves as one rigid piece. Both are
+  cut properly now. And when two bend areas really do cross, the log says so
+  in mm2 instead of leaving it to the coarse "claimed twice" figure, which
+  reads a small crossing as 0.04% and stays silent. Neither bend is dropped
+  for it: a board can have two bends at right angles and both must fold. /
+  **Тот же compound ещё в двух местах и сообщение о пересечении областей
+  гиба.** Правка «отверстий с пробками» ниже была одним из трёх мест, где
+  булевой операции отдавали инструмент из перекрывающихся кусков. Второе —
+  собственные фигуры слоя: две фигуры на одном коверлее или стиффенере,
+  просто КАСАЮЩИЕСЯ друг друга, и одна из них молча пропадала — вскрытие не
+  прорезалось, либо патч материала не появлялся. На имеющихся платах такого
+  нет (ближайшие две фигуры на одном слое разнесены на 0.6 мм), так что на
+  сегодняшних проектах ничего не меняется; но обошлось бы это в целый
+  пропавший патч без единой строки в логе. Третье — полосы гибов: два гиба,
+  области которых пересекаются на плате, оставляли после реза один
+  защемлённый кусок вместо четырёх, а чинящий код тихо сводил четыре
+  отдельных угла в одну панель — а панель это то, что фолд двигает как одно
+  жёсткое целое. Теперь режется правильно. И если области гиба
+  действительно пересекаются, лог говорит об этом в мм², а не оставляет это
+  грубой оценке «заявлено дважды», которая читает небольшое пересечение как
+  0.04% и молчит. Ни один гиб за это не выбрасывается: на плате могут быть
+  два гиба под прямым углом, и сложиться должны оба.
+
+- **2026-09-14** — **Holes with plugs in them: cutouts that overlap each
+  other are cut properly now.** On a round board broken out of its panel by
+  six break-off tabs, three of the mouse-bite holes looked uncut in the model
+  while the wall of the hole was plainly there. The hole *was* cut - what was
+  also in the file was a loose plug sitting in it, a separate little body of
+  0.1654 mm3. Every cutout prism went into one compound and that compound was
+  handed to the boolean as its tool, and OCC never intersects the members of
+  one argument against each other: where a tab's 1.0 mm circle overlapped the
+  0.25 mm bite beside it - by 0.118 mm, which is simply what a mouse bite next
+  to a tab looks like - the result was undefined. Which holes came out wrong
+  was arbitrary: two tabs that are mirror images of each other across the
+  board came out differently. The prisms are separate tools now; the board is
+  one body, every hole is open, and the build takes the same time. The same
+  change also survives the duplicated cutout that used to erase the whole
+  board body. / **Отверстия с пробками: пересекающиеся катауты теперь
+  прорезаются как надо.** На круглой плате, отделяемой от панели шестью
+  перемычками, три отверстия мышиного укуса выглядели непрорезанными, хотя
+  стенка отверстия была на месте. Отверстие прорезано - в файле рядом лежала
+  ещё и пробка, отдельное тельце в 0.1654 мм3 ровно в этом отверстии. Все
+  призмы катаутов складывались в один compound, и он отдавался булевой
+  операции как инструмент, а OCC никогда не пересекает между собой части
+  одного аргумента: там, где круг перемычки 1.0 мм накрывал соседний укус
+  0.25 мм - на 0.118 мм, то есть ровно так, как укус рядом с перемычкой и
+  выглядит, - результат был не определён. Какие именно отверстия выйдут
+  неверными, оказывалось делом случая: две зеркальные друг другу перемычки
+  повели себя по-разному. Теперь призмы идут отдельными инструментами: плата
+  - одно тело, все отверстия открыты, время сборки то же. Эта же правка
+  переживает и продублированный катаут, который раньше стирал тело платы
+  целиком.
+
 - **2026-09-07** — **Windows below the copper; *Copper pads* is now
   *Exposed copper*.** In step2html the demo board showed the white window of
   one through pin eating the copper ring of its neighbour: the windows and

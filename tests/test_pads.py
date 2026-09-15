@@ -1,7 +1,8 @@
 # Paths, the output folder, check() and the STEP measuring helpers come from
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
-from _support import ROOT, out_dir, fails, check, rect, read_step, count_solids
+from _support import (ROOT, out_dir, fails, check, rect, read_step, count_solids,
+                      exporter_source)
 
 """The copper pads (round 85): which face a pin reaches, what its figure
 looks like, where it lands - against the pad polygons Allegro itself reports
@@ -570,6 +571,59 @@ check("a plain board without a soldermask gets its copper and no window anywhere
       and any("bare_bottom: 1 drawn-opening polygon(s) left out - the board carries no soldermask on the bottom" in m
               for m in logs_fo),
       (res_fo.pads_placed, res_fo.openings_placed, [m for m in logs_fo if "soldermask" in m]))
+
+print()
+print("[8] the exposed-copper sweep finds the copper the same way everything else does")
+
+# The pour that vanished (2026-09-14). s3dCollectExposed used to discover the
+# copper under each opening with axlAddSelectBox - Allegro's INTERACTIVE find -
+# and what that returns depends on the session. Headless, on 24.1 and 25.1
+# alike, circle-A0 gave 24 polygons of copper and 50 of bare laminate, the
+# first of them the 67.534 mm2 pour; the user's own GUI export of the same
+# board with the same SKILL gave 25 and 48, the pour gone into bare laminate
+# and two stubs of trace in its place, and the model showed traces and pads on
+# a bare board. Every other sweep in the exporter uses axlAddSelectAll over a
+# visibility set, and in that same journal every one of them matched headless
+# exactly: legend 8 -> 2, openings 24, pins 3, vias 23.
+#
+# So the sweep now selects the side's copper once with axlAddSelectAll,
+# converts each object once, and matches polygons to openings by bounding box
+# in SKILL. These are the two halves of that: the box test, and the source.
+from skill_transliterations import s3dBoxesMeet
+
+BOX = [[0.0, 0.0], [10.0, 10.0]]
+check("a box meets itself", s3dBoxesMeet(BOX, BOX))
+check("and one inside it", s3dBoxesMeet(BOX, [[2.0, 2.0], [3.0, 3.0]]))
+check("and one that swallows it", s3dBoxesMeet(BOX, [[-5.0, -5.0], [50.0, 50.0]]))
+check("and one that overlaps a corner", s3dBoxesMeet(BOX, [[9.0, 9.0], [12.0, 12.0]]))
+check("touching along an edge counts - the AND decides what it exposes",
+      s3dBoxesMeet(BOX, [[10.0, 0.0], [12.0, 10.0]]))
+check("clear to the right does not", not s3dBoxesMeet(BOX, [[10.001, 0.0], [12.0, 10.0]]))
+check("nor clear above", not s3dBoxesMeet(BOX, [[0.0, 10.001], [10.0, 12.0]]))
+check("nor clear to the left", not s3dBoxesMeet([[10.001, 0.0], [12.0, 10.0]], BOX))
+check("nor clear below", not s3dBoxesMeet([[0.0, 10.001], [10.0, 12.0]], BOX))
+# A polygon whose box could not be read must not be dropped silently: the
+# whole point of the round is that missing copper was never reported.
+check("an unreadable box is kept, not discarded", s3dBoxesMeet(None, BOX)
+      and s3dBoxesMeet(BOX, None))
+
+src = exporter_source()
+sweep = src[src.index("procedure( s3dCollectExposed"):]
+sweep = sweep[:sweep.index("\n; The whole \"pads\" object")]
+check("the sweep selects the side's copper with axlAddSelectAll",
+      "axlAddSelectAll()" in sweep, sweep[:200])
+# The NAME still appears in the sweep - in the comment that says why it is
+# not called - so the test is for a CALL, with the spaces normalised away.
+check("and no longer asks for a box select per opening",
+      "s3dSelectInBox(" not in sweep.replace(" ", ""))
+check("it matches polygons to openings by bounding box instead",
+      "s3dBoxesMeet(" in sweep)
+check("and converts each object with no window, so a shape comes back whole",
+      "s3dCopperPolys( o etch nil s_endCap )" in sweep)
+check("the console says how much copper the sweep FOUND, not only what survived",
+      "%d copper object(s)" in src)
+check("and warns when a board with openings turns up no copper at all",
+      "found NO copper at all" in src)
 
 print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")

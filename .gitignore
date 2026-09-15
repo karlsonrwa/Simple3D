@@ -243,3 +243,7 @@ failed/
 # user's own .brd files sat untracked and unignored, one `git add -A` from the
 # public remote). Same rule as failed/: real designs, data, not tool.
 input/
+
+# Claude Code local settings (per-machine permissions; see the rule about
+# user settings never living in tracked files).
+.claude/settings.local.json

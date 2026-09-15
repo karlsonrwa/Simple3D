@@ -71,7 +71,7 @@ from .regions import (  # noqa: F401 - re-exported
 )
 from .pieces import (  # noqa: F401 - re-exported
     _band_face, _closest_point, _cut_into_pieces, _cutters, _face_poly,
-    _faces_of, _grown, _piece_face, _polygon_face, _touching,
+    _faces_of, _grown, _piece_face, _polygon_face, _touching, shared_strips,
 )
 from .cut import _crosses, _cut_to_region, _plane_face, _slab  # noqa: F401
 from .strip_revolve import (  # noqa: F401 - re-exported

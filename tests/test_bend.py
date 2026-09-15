@@ -426,6 +426,95 @@ check("and nothing is reported as unreadable",
       not any("cannot be read" in n for n in plan_cross.notes), plan_cross.notes)
 
 # --------------------------------------------------------------------------- #
+print("\n[7b3] strips that CROSS - one boolean, separate tools, and a warning")
+
+# _cut_into_pieces put every bend strip into one TopoDS_Compound and handed
+# that to BRepAlgoAPI_Cut as its tool. A boolean's argument must not interfere
+# with itself and OCC does not intersect the members of one argument against
+# each other, so a compound of strips that cross is undefined input.
+#
+# Two bends CAN cross without _readable seeing it: that gate compares the
+# RECTANGLES the bend lines draw, while the cut uses a band reaching right
+# across the outline, so two short perpendicular bend lines far apart pass it
+# and still leave strips that share material. Refusing one of them is NOT the
+# answer - [7a] is Cadence's own corner, two perpendicular bends that must both
+# fold - so the geometry is cut properly and the overlap is reported.
+from stepbuilder.bend import shared_strips
+from stepbuilder.bend.pieces import _cut_into_pieces as _cut_pieces
+
+SQ = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+SQ_CURVES = [{"type": "segment", "start": [0.0, 0.0], "end": [100.0, 0.0]},
+             {"type": "segment", "start": [100.0, 0.0], "end": [100.0, 100.0]},
+             {"type": "segment", "start": [100.0, 100.0], "end": [0.0, 100.0]},
+             {"type": "segment", "start": [0.0, 100.0], "end": [0.0, 0.0]}]
+# A bend line at y = 30 over x = 10..20, another at x = 70 over y = 10..20.
+# Their rectangles miss each other by 50 mm; their strips cross in the middle.
+cx_a = Bend(name="CA", start=(10.0, 30.0), end=(20.0, 30.0), angle=90.0, radius=2.0)
+cx_b = Bend(name="CB", start=(70.0, 10.0), end=(70.0, 20.0), angle=90.0, radius=2.0)
+cx_chain = [(cx_a, (0.0, 1.0), cx_a.midpoint, 3.0, 0.0, -T),
+            (cx_b, (1.0, 0.0), cx_b.midpoint, 3.0, 0.0, -T)]
+
+cx_told = []
+cx_panels, cx_strips = _cut_pieces(SQ, cx_chain, cx_told.append, SQ_CURVES)
+
+# Both strips are 6 x 100 and they share the 6 x 6 where they cross. As ONE
+# compound the cut gave a single PINCHED face of 8800.000 mm2 - the shared
+# square taken off twice and the four corner pieces welded together through
+# zero-width slits, which _piece_face then repaired into four and recorded as
+# ONE panel, with the 36 mm2 dropped as a sliver.
+check("the four corner pieces come out as four panels", len(cx_panels) == 4,
+      len(cx_panels))
+CX_WANT = 100.0 * 100.0 - 600.0 - 600.0 + 36.0
+cx_area = sum(abs(polygon_area(polys[0])) for polys, _ in cx_panels)
+check(f"and they are the board minus the UNION of the strips: {CX_WANT:.3f} mm2",
+      abs(cx_area - CX_WANT) < 1e-6, f"{cx_area:.6f}")
+check("nothing had to be repaired out of a pinch",
+      not any("pinch" in m for m in cx_told), cx_told)
+check("and no piece was dropped as a sliver",
+      not any("sliver" in m for m in cx_told), cx_told)
+
+# The overlap itself: real, and named in mm2 rather than left to the 2 mm grid
+# double_claimed samples on - which reads this board as 0.04% and says nothing.
+check("shared_strips finds the one crossing pair",
+      [(i, j) for i, j, _ in shared_strips(cx_strips)] == [(0, 1)],
+      shared_strips(cx_strips))
+check("and measures it at the 36 mm2 the two bands really share",
+      abs(shared_strips(cx_strips)[0][2] - 36.0) < 1e-6,
+      shared_strips(cx_strips))
+
+plan_cx = plan_fold([cx_a, cx_b], SQ, 0.0, -T, anchor=(0.0, 0.0),
+                    outline_curves=SQ_CURVES)
+check("both bends are still folded - a crossing is not a refusal",
+      len(plan_cx.bends) == 2, [b.name for b in plan_cx.bends])
+check("but the plan says the strips cross",
+      any("strips" in n and "cross" in n for n in plan_cx.notes), plan_cx.notes)
+check("and names both bends in the same note",
+      any("CA" in n and "CB" in n and "cross" in n for n in plan_cx.notes),
+      plan_cx.notes)
+
+# Two bends that do not cross must stay silent, or the warning is noise.
+par_a = Bend(name="PA", start=(10.0, 30.0), end=(90.0, 30.0), angle=90.0, radius=2.0)
+par_b = Bend(name="PB", start=(10.0, 70.0), end=(90.0, 70.0), angle=90.0, radius=2.0)
+plan_par = plan_fold([par_a, par_b], SQ, 0.0, -T, anchor=(0.0, 0.0),
+                     outline_curves=SQ_CURVES)
+check("two parallel bends well apart say nothing",
+      not any("cross" in n for n in plan_par.notes), plan_par.notes)
+check("and both fold", len(plan_par.bends) == 2, [b.name for b in plan_par.bends])
+
+# The threshold, which is what keeps a real board quiet: on Cadence's demo
+# BEND_4 and BEND_6 meet at a corner and their strips share 0.065042 mm2 of
+# 118.99 - a numerical sliver along a seam, 5.5e-4 of the smaller strip, and
+# that board folds correctly. SHARED_STRIP_RATIO is 1e-2, eighteen times above
+# it and six times below the 6e-2 of a genuine crossing.
+from stepbuilder.bend.constants import SHARED_STRIP_RATIO
+check("the ratio sits above the demo board's seam sliver",
+      SHARED_STRIP_RATIO > 15.0 * (0.065042 / 118.99), SHARED_STRIP_RATIO)
+check("and below a real crossing's share of its strip",
+      SHARED_STRIP_RATIO < 36.0 / 600.0, SHARED_STRIP_RATIO)
+check("a sliver that small is not reported",
+      shared_strips(cx_strips, ratio=0.5) == [], shared_strips(cx_strips, ratio=0.5))
+
+# --------------------------------------------------------------------------- #
 print("\n[7c] two 180 deg bends that MEET - the ring, and the K factor")
 
 # The real reason two bends collide, nine times out of ten, is the K factor -

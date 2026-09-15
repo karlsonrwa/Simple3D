@@ -23,7 +23,8 @@ from OCP.gp import gp_Pnt
 
 from ..contour import build_contour, point_in_polygon
 from ..errors import StepBuilderError
-from .constants import BAND_REACH, CUTTER_MARGIN, FACE_POLY_PER_CURVE, LogFn, SLIVER_RATIO, _noop_log
+from .constants import (BAND_REACH, CUTTER_MARGIN, FACE_POLY_PER_CURVE, LogFn,
+                        SHARED_STRIP_RATIO, SLIVER_RATIO, _noop_log)
 
 
 # --------------------------------------------------------------------------- #
@@ -201,6 +202,56 @@ def _piece_face(face, log: LogFn = _noop_log, what: str = "a piece"):
     return compound, [_face_poly(f) for f in good]
 
 
+def _area_of(shape) -> float:
+    """The surface area of a face, a compound of faces, or nothing at all."""
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    props = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(shape, props)
+    return props.Mass()
+
+
+def shared_strips(strips: list, ratio: float = SHARED_STRIP_RATIO) -> list:
+    """(i, j, mm2) for every pair of strips that claims the same material.
+
+    THE question `_strips_overlap` in plan.py is trying to answer, asked of
+    the faces the cut actually uses instead of the rectangles the bend lines
+    draw. The two are not the same shape: a strip is the band across the
+    board that holds the bend line, and the band reaches right across the
+    outline, so two short perpendicular bend lines far apart draw rectangles
+    that miss each other while their strips cross in the middle of the board.
+    Cadence's demo has that arrangement in miniature.
+
+    Material claimed by two strips is folded twice, onto two different
+    cylinders, which is exactly what `_readable` refuses a bend for. The
+    rectangle test stays where it is - it is cheap, it runs per trial neutral
+    factor, and it catches the ordinary case of two bend areas laid edge to
+    edge - and this backs it up once the strips exist.
+
+    *ratio* is of the SMALLER strip, because the absolute number says nothing
+    on its own: see SHARED_STRIP_RATIO for the two measurements it sits
+    between. Below it the shared piece is a sliver along a seam, and a real
+    board that folds correctly has one.
+    """
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
+
+    areas = [_area_of(face) for _, face in strips]
+    out = []
+    for i in range(len(strips)):
+        for j in range(i + 1, len(strips)):
+            smaller = min(areas[i], areas[j])
+            if smaller <= 0.0:
+                continue
+            common = BRepAlgoAPI_Common(strips[i][1], strips[j][1])
+            if not common.IsDone():
+                continue
+            shared = _area_of(common.Shape())
+            if shared > ratio * smaller:
+                out.append((i, j, shared))
+    return out
+
+
 def _touching(a, b, tol: float = 1.0e-6) -> bool:
     """Do two faces share a boundary?"""
     from OCP.BRepExtrema import BRepExtrema_DistShapeShape
@@ -294,15 +345,46 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list,
             return None
         strips.append(best)
 
-    builder = BRep_Builder()
-    tools = TopoDS_Compound()
-    builder.MakeCompound(tools)
-    for _, part in strips:
-        builder.Add(tools, part)
-
+    # One boolean, but the strips go in as SEPARATE TOOLS. A boolean's
+    # argument must not interfere with itself and OCC does not intersect the
+    # members of one argument against each other, so a compound of strips that
+    # cross is undefined input. Two bends CAN cross: the gate in plan.py
+    # compares the rectangles their bend lines draw, while the cut here uses a
+    # band that reaches right across the outline, so two short perpendicular
+    # bend lines far apart can still leave strips that share material.
+    #
+    # Measured on a 100 x 100 board with a bend line at y = 30 over
+    # x = 10..20 and another at x = 70 over y = 10..20, both strips 6 mm wide
+    # and sharing the 36 mm2 where they cross:
+    #
+    #   as one compound  : ONE pinched face, 8800.000 mm2 - the shared square
+    #                      subtracted twice, and the four corner pieces welded
+    #                      together through zero-width slits
+    #   separate tools   : FOUR faces, 1809 + 729 + 4489 + 1809 = 8836.000 mm2,
+    #                      which is 10000 - 600 - 600 + 36 exactly
+    #
+    # _piece_face repairs the pinched face into four and drops the 36 mm2 as a
+    # sliver, so the AREA came back - but all four corners stayed inside one
+    # `panels` entry, and a panel is what the fold moves as one rigid piece.
+    # On Cadence's demo board the same thing happens at 0.065 mm2 between
+    # BEND_4 and BEND_6, small enough to have left no mark.
+    #
+    # The strips sharing material at all is a separate fault, and plan.py
+    # refuses one of the pair for it; this is only about the boolean being
+    # given input it is allowed to have.
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+    from OCP.TopTools import TopTools_ListOfShape
 
-    cut = BRepAlgoAPI_Cut(face, tools)
+    arguments = TopTools_ListOfShape()
+    arguments.Append(face)
+    tools = TopTools_ListOfShape()
+    for _, part in strips:
+        tools.Append(part)
+
+    cut = BRepAlgoAPI_Cut()
+    cut.SetArguments(arguments)
+    cut.SetTools(tools)
+    cut.Build()
     if not cut.IsDone():
         return None
     panels = []

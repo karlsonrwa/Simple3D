@@ -74,6 +74,26 @@ CLAIM_GRID = 2.0
 # - a 0.085 mm2 chip once took a 173 mm3 dielectric down with it.
 SLIVER_RATIO = 0.01
 
+# shared_strips: how much of the SMALLER of two bend strips they may both
+# claim before one of the two bends is refused, as a fraction of it.
+#
+# _strips_overlap in plan.py answers this ahead of the cut from the two
+# RECTANGLES the bend lines draw, and that is not the shape the cut uses: the
+# band in _cut_into_pieces reaches right across the outline, so two short
+# perpendicular bend lines far apart can pass that gate and still leave strips
+# that cross. This is the same question asked of the faces themselves, after
+# they exist.
+#
+# Measured, and the two ends are three orders of magnitude apart. Cadence's
+# demo board: BEND_4 and BEND_6 meet at a corner and their strips share
+# 0.065042 mm2 of 118.99, a ratio of 5.5e-4 - a numerical sliver along a seam,
+# and that board folds correctly. A board with two bends genuinely crossing:
+# strips of 600 mm2 sharing 36, a ratio of 6e-2, which is material that would
+# be folded twice, into two different places. 1e-2 sits 18x above the first
+# and 6x below the second. The same number as SLIVER_RATIO, for the same
+# reason and about a different question.
+SHARED_STRIP_RATIO = 0.01
+
 # _face_poly: points sampled per curved edge when a face is read as a polygon
 # that only ever classifies, never becomes geometry. A few microns on a
 # board's radii.

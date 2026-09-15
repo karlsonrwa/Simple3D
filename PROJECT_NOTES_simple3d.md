@@ -2975,6 +2975,400 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-09-14 (round 87) — the copper pour that vanished: an interactive find in a headless-tested sweep
+
+The report: on `circle-A0`, exporting the bare copper that is not under mask,
+"the polygon is gone - only the traces and the pads are left".
+
+### What the file says
+
+`pads.exposed.top` in the user's own export carries 25 polygons totalling
+13.074 mm2, the largest 3.601; `pads.bare.top` carries 48, the largest
+**76.176**. The board's big mask opening is a shape of 82.952 mm2 over the
+whole board, and 82.952 - 76.176 = 6.776 = 3.601 + 3.175 exactly: under that
+opening the exporter found 6.776 mm2 of copper and called the other 76.176
+bare laminate. The 66.709 mm2 pour on ETCH/TOP, net VIN_BATT, is simply not
+in the file.
+
+Exported here from the same board, the same SKILL and the same config:
+`exposed.top` 24 polygons totalling **73.832** mm2, the first of them the pour
+at 67.534, and `bare.top` 50 totalling 17.006. Correct.
+
+### Finding it
+
+`tools/probes/probe_exposed.il` (new, four entry points) asked the sweep the
+same question four ways - its steps one by one, `s3dCollectExposed` itself,
+its polygons through `s3dWriteSilkPolys`, and the real
+`makeVariant3dIntermediates` followed by the sweep in the same session. All
+four gave 67.534. Nothing was wrong with the code as it ran here.
+
+`input/allegro.jrl` - the journal of the user's own session, sitting beside
+the board - had the answer:
+
+    allegro 24.1 S009 ... CmdLine= D:\Cadence\SPB_24.1\tools\bin\allegro.exe
+    ...
+    \i (00:00:51) FORM find all_on
+    \i (00:00:59) simple_3d_export
+    Simple 3D: exposed copper TOP - 24 drawn opening(s), 25 polygon(s) of copper under them, 48 of bare laminate
+
+Not the version: 24.1 headless gives 24 and 50, the same as 25.1. What the
+journal actually pins down is that **every other number in that export matches
+a headless run exactly** - legend 8 polygons clipped to 2, 24 drawn openings,
+3 pins, 23 vias - and only the exposed-copper counts differ.
+
+### The cause
+
+Those matching sweeps all discover objects the same way: `s3dSelectVisibleOn`,
+which sets the visibility, sets the find filter and calls **`axlAddSelectAll`**.
+The exposed-copper sweep was the one place that did something else - for each
+opening it called `s3dSelectInBox`, and that is **`axlAddSelectBox`, Allegro's
+INTERACTIVE find**. In the user's GUI session it did not return the pour; in a
+headless one it does. The documentation for it says "find all nonselected
+objects that intersect with the input box", and headless it does exactly that -
+64 objects over the whole-board opening, the pour among them. A GUI session is
+not obliged to agree, and did not.
+
+Then nothing said so. A copper object that is not selected is not an error:
+the opening simply ANDs against less copper, the difference goes to the
+ANDNOT as bare laminate, and the console prints a count that looks ordinary.
+25 polygons where a correct run has 24 is not a number anyone can read.
+
+### The fix
+
+`s3dCollectExposed` now sweeps the side's copper **once**, with
+`axlAddSelectAll` over the same visibility set it used before, converts each
+object **once**, and matches polygons to openings by bounding box in SKILL
+(`s3dBoxesMeet`) - the question `axlAddSelectBox` used to be asked.
+
+`s3dCopperPolys`'s `l_window` is optional now and the sweep passes nil: the
+window was only ever an optimisation, since the AND against the opening clips
+the result either way. `s3dSelectInBox` stays for `probe_openings.il`, with the
+reason it is no longer called written on it.
+
+The console line carries the copper the sweep FOUND, not only what survived
+the AND, and two warnings were added: openings with no copper found at all on
+the side, and copper objects that could not be turned into polygons.
+
+    Simple 3D: exposed copper TOP - 24 drawn opening(s), 66 copper object(s),
+               24 polygon(s) of copper under them, 50 of bare laminate
+
+### What it changed, measured
+
+circle-A0, the user's board:
+
+| | user's export | fixed |
+|---|---|---|
+| exposed.top | 25 polys, 13.074 mm2 | **24 polys, 73.832 mm2** |
+| bare.top | 48 polys, 77.764 mm2 | 50 polys, **17.006 mm2** |
+
+60.758 mm2 moved from bare laminate to exposed copper - the pour.
+
+The SKILL corpus, all eight boards: six byte-identical, and the two that moved
+are both improvements.
+
+- `flex-b2`: same polygon counts, same total areas to 1e-6, four vertices
+  moved by **0.1 um** - the difference between clipping a shape with `?window`
+  before the AND and letting the AND clip it.
+- `my_test_board-a0`: `exposed` identical (84 polygons, 22.040155 mm2);
+  `bare.bottom` went from **5 polygons of area 0.000000 to none** - degenerate
+  three-vertex slivers the pre-clipping had been producing.
+
+Cheaper, too: the old loop re-converted the same pour once per opening.
+
+### Corrections to round 86c
+
+Round 86c says the re-recorded `circle-a0` intermediate "is identical to the
+one the user exported by hand". **It is not**, and the difference is exactly
+this bug: same `pcb`, same everything else, different `pads`. The comparison
+that reported no difference was run wrong and its result was believed without
+a second look; the numbers above come from re-reading both files key by key.
+
+### What the user has to do
+
+The fix is in the SKILL, so it changes nothing until the exporter is updated
+where Allegro loads it from - `d:/Projects/OrCAD/Scripts/Simple3D/skill/` - and
+the board is exported again. `input/circle-a0.json` on disk is the broken one.
+
+### The test
+
+`tests/test_pads.py` [8], with `s3dBoxesMeet` mirrored into
+`tests/skill_transliterations.py`: the box test itself (meeting, touching,
+containing, clear on each of the four sides, and an unreadable box kept rather
+than dropped), and the SKILL source read for the shape of the sweep - that it
+selects with `axlAddSelectAll`, that it no longer CALLS `s3dSelectInBox`, that
+it matches by bounding box, that it converts with no window, and that the
+console carries the found count and the empty-sweep warning.
+
+### The lesson
+
+A sweep that runs in a headless test and an interactive session is two
+different programs, and the exporter had one call that could tell them apart.
+The corpus could not catch it: `skill_export.py` runs headless, which is the
+session the bug does not happen in. What did catch it was the user's own
+`allegro.jrl`, which prints the exporter's console into the journal - worth
+asking for whenever an export differs from one made here.
+
+## Update 2026-09-14 (round 86) — the holes with plugs in them: a boolean's tool must not interfere with itself
+
+The report: on `circle-a0` — a round board broken out of its panel by six
+break-off tabs, each tab's holes drawn as ordinary cutouts — some holes were
+not cut in the model, "but the walls are visible there".
+
+Both halves of that sentence are exactly right, and together they name the
+defect. The holes *were* cut: the board body came out at 183.06917 mm3, the
+full fifteen mouse bites gone. What was also in the file was three loose
+**plugs** — separate solids of 0.16540 mm3 each, sitting precisely in three of
+those holes. So the viewer drew a filled hole with the hole's own wall running
+through it.
+
+### What the geometry is
+
+`pcb.edges` for that board: the outline, a circle R7.5 at (7.5, 7.5), then
+twenty-one cutouts. Six are the tabs — R1.0 circles at 8.5 mm from the centre,
+i.e. **tangent to the outline from outside**, which is how a break-off tab is
+drawn: the circle shapes the panel and takes nothing off the board. Fifteen are
+the mouse bites — R0.25 circles at 7.375 mm, straddling the outline, each
+removing a 0.1654 mm3 lens.
+
+And six of those bites **overlap the tab circle beside them**: centres 1.1322
+mm apart against 1.25 mm of combined radius, an overlap of 0.1178 mm. That is
+not pathological, it is what a mouse bite next to a tab looks like.
+
+### What was wrong
+
+`make_board_geometry` (and `_cut_out`, its twin on the per-layer path) put every
+cutout prism into one `TopoDS_Compound` and handed that compound to
+`BRepAlgoAPI_Cut` as the tool. **A boolean's arguments must not interfere with
+themselves.** OCC intersects the arguments against one another; it never
+intersects the members of ONE argument against each other. A compound holding
+prisms that overlap is a self-interfering argument, and where two of them met
+the result is undefined.
+
+Undefined, and demonstrably arbitrary: three of the six overlapping bites came
+back as plugs and three did not, and the pairs are not distinguishable. Tab #2
+and tab #15 are mirror images of each other across the board — the same
+distance to a part in 1e-9, the same overlap to six figures — and #15's bite
+was plugged while #2's was not.
+
+### The fix
+
+The prisms go in as separate **tools**, through
+`SetArguments` / `SetTools` / `Build` on a `TopTools_ListOfShape`, instead of as
+one compound. Then OCC intersects them pairwise and the answer is right.
+Measured on that board:
+
+| tool form | solids | volume | time |
+|---|---|---|---|
+| one compound (was) | **4** — the board and three plugs | 183.56546 | 0.30 s |
+| separate tools (is) | **1** | 183.06917 | 0.32 s |
+| fuse the tools first, then cut | 1 | 183.06917 | 0.36 s |
+| one cut per hole, in sequence | 1 | 183.06917 | 0.39 s |
+| compound + `SetFuzzyValue(1e-5)` | 4 | 183.56546 | 0.27 s |
+
+So the list is right and free. Fusing first is right and slower; the sequential
+loop is right and is the quadratic one round 26 measured at ~11x on 120 holes;
+fuzzy does not touch it, because the trouble is not tolerance.
+
+`make_board_geometry` had inlined a second copy of `_cut_out`'s loop, so the
+bug had to be found in two places; it calls `_cut_out` now.
+
+### It also disarms the round-32 landmine
+
+`board_cutouts` drops cutouts that repeat another one EXACTLY, because two
+coincident prisms in the tool compound made `Cut` return an empty compound with
+`IsDone()` true — 8231-a2 built with no board in it at all. That is the same
+self-interference in its most degenerate form. Measured with the list: a
+duplicated cutout now gives 1 solid and the correct volume, where the compound
+gave 5 solids and the wrong one. The dedup stays — it is cheap, it keeps the
+warning that tells the user to re-export, and nothing is gained by finding out
+the hard way which OCC version stops being lucky.
+
+### Where else the pattern sits
+
+Two more places build a compound and hand it to a boolean as the tool, and both
+are the same hazard with no reproducer to hand:
+
+- `board._layer_region` — the `drawn` compound of a layer's shapes, cut from or
+  intersected with the zone face. Drawn shapes that overlap each other are
+  ordinary on a copper layer.
+- `bend/pieces.py:299` — `builder.MakeCompound(tools)` then
+  `BRepAlgoAPI_Cut(face, tools)`.
+
+Left alone deliberately: changing geometry that nothing measures is how a
+regression gets in. `bend/pieces.py:384` already uses the list form, so the
+idiom was in the tree before this round — it just was not everywhere.
+
+### The test
+
+`tests/test_overlapping_cutouts.py`, registered in `run_all.py`. Synthetic, not
+the user's board: an R7.5 disc with six tabs tangent at 8.5 and their bites
+straddling at 7.375, which is `circle-a0`'s arrangement with the numbers made
+round. Expected volumes are **analytic** — `_lens` is the area two discs share
+— so the suite says what the geometry should be rather than what it once
+measured. Under the compound that case gave 7 solids: the board and six plugs,
+all six of them, which is a sharper reproducer than the real board.
+
+It also checks the parts separately, because each is a claim in its own right: a
+tangent tab removes nothing; a bite alone removes its lens; two holes
+overlapping well inside the board remove their union and not their sum; and the
+per-layer build, which goes through `_cut_out` rather than
+`make_board_geometry`, comes out the same.
+
+### Reading the report
+
+"Not cut, but the walls are visible" is a description of a plug, not of a failed
+cut, and it took a volume to see that: `count_solids` on the result was the
+question worth asking, and 4 instead of 1 said the rest. A build that checks
+`IsDone()`, `IsNull()` and `has_solid()` passes all three on this — every one of
+them is satisfied by a board with three loose crumbs in it.
+
+### Round 86b, the same day — the other two compounds
+
+The same `compound as a boolean's tool` in the two other places the round found,
+and the gate that lets a crossing through. All three measured before and after.
+
+#### `_layer_region` — a layer's own shapes
+
+The shapes of one layer went into one compound, and it was used BOTH ways: as
+the tool of a `Cut` for a negative layer (coverlay, soldermask, pastemask: the
+shapes are openings) and as the first argument of a `Common` for a positive one
+(stiffener, adhesive: the shapes are the material).
+
+On faces this does not degrade, it deletes. A 20 x 20 zone, two r = 3 discs,
+moved together a step at a time:
+
+| centres apart | Cut, compound | Cut, list | want | Common, compound | Common, list | want |
+|---|---|---|---|---|---|---|
+| 6.001 (1 um apart) | 343.45133 | 343.45133 | 343.45133 | 56.54867 | 56.54867 | 56.54867 |
+| 6.000 (**touching**) | 371.72567 | 343.45133 | 343.45133 | **28.27433** | 56.54867 | 56.54867 |
+| 5.999 | 371.72567 | 343.45141 | 343.45141 | **28.27433** | 56.54859 | 56.54859 |
+| 5.0 | 371.72567 | 345.70211 | 345.70211 | **28.27433** | 54.29789 | 54.29789 |
+| 4.0 | 371.72567 | 349.64630 | 349.64630 | **28.27433** | 50.35370 | 50.35370 |
+| 2.0 | 371.72567 | 359.95175 | 359.95175 | **28.27433** | 40.04825 | 40.04825 |
+
+28.27433 is pi*3^2 - ONE disc. The second opening was never cut and the second
+patch of material never appeared, and the answer does not move with the overlap
+because the shape is not being mis-cut, it is being ignored. Bare tangency is
+enough: at 6.000 the two share no area at all.
+
+**No board on hand does this.** Every intermediate on disk, 37 layers carrying
+two or more shapes, 142 pairs: the closest two shapes on one layer are 0.600 mm
+apart. So this one is a trap for the next exporter change rather than a repair -
+worth the same five lines all the same, because what it would cost is a whole
+patch of coverlay or stiffener gone with nothing in the log.
+
+#### `_cut_into_pieces` — the bend strips
+
+The strips went into a compound too. Two bends CAN cross: `_readable` compares
+the RECTANGLES the bend lines draw (round 78 rewrote it to, and had to - see
+below), while the cut here uses a band reaching right across the outline, so two
+short perpendicular bend lines far apart pass the gate and still leave strips
+that share material.
+
+A 100 x 100 board, a bend line at y = 30 over x = 10..20 and another at x = 70
+over y = 10..20, both strips 6 mm wide, sharing the 36 mm2 where they cross:
+
+| tool | faces out of the cut | area |
+|---|---|---|
+| one compound | **1**, pinched - zero-width slits | 8800.000 |
+| separate tools | **4** - 1809, 729, 4489, 1809 | 8836.000 |
+| analytic | four corner pieces | 8836 = 10000 - 600 - 600 + 36 |
+
+The shared square was subtracted twice and the four corner pieces came out
+welded together. `_piece_face` then repaired that into four faces and dropped
+the 36 mm2 as a sliver, so the AREA came back - but all four corners stayed
+inside ONE `panels` entry, and a panel is what the fold moves as one rigid
+piece. The repair had been covering for the boolean.
+
+On Cadence's demo board the same thing happens between BEND_4 and BEND_6, which
+meet at a corner: 0.065042 mm2 of 118.99, too small to have left a mark.
+
+#### The gate: what was tried, and why it is a warning instead
+
+First attempt: ask the exact question - do the two strip FACES share material -
+and refuse the later bend the way `_readable` does. It works, and it is wrong.
+`test_bend.py` [7a] and [7b0] failed at once:
+
+- **[7a]** is Cadence's own corner reduced to a rectangle: B1 and B2, two 180
+  degree bends at right angles, which round 78 went to some trouble to stop
+  dropping. On that rectangle their strips genuinely share 352.894 mm2, 24.6% of
+  the smaller one - and the test requires both to fold.
+- **[7b0]** is the KeyError board: two bends on different arms, 135 mm apart,
+  strips sharing 328.808 mm2 on the wide rectangle the test uses.
+
+Both use a crude rectangle where the real board's outline separates the arms, so
+the shared material is an artefact of the test's own simplification - but the
+requirement behind them is not: **this model folds crossing strips rather than
+refusing them.** `double_claimed` is the existing statement of that policy: it
+measures material claimed twice and WARNS, above 2%.
+
+So the crossing is reported, not refused, beside `double_claimed` and in the
+units it cannot give. That check samples on a 2 mm grid - fine enough for a whole
+arm claimed twice, which is what round 63 wrote it for - and blind to a small
+crossing: on the 100 x 100 board above it reads 0.04% and says nothing, while
+`shared_strips` names the 15.4 mm2 exactly. (15.4 rather than 36 because
+`plan_fold` develops the strip width from radius + k x thickness; 36 is the
+6 mm strips the direct test uses.) The `seam_gap` check catches that board too,
+at 28.284 mm, so there are now two independent signals on it.
+
+`SHARED_STRIP_RATIO = 0.01`, of the SMALLER strip. The two measurements it sits
+between are three orders apart: the demo board's seam sliver is 5.5e-4 and a
+genuine crossing is 6e-2, so the threshold is 18.3x above the first and 6x below
+the second. Verified on every flex board on disk - Cadence's demo, flex2-a0,
+flex3-a0, flex-b2 - that nothing new is said.
+
+`trouble_at`, the neutral-factor ceiling search, deliberately does NOT ask about
+crossings: two perpendicular bends cross at every factor, so it would bisect to
+0.00 and blame a setting for a shape.
+
+#### Reading the failure
+
+The two failing tests were the design review. The exact test was more correct in
+isolation and contradicted a decision the project had already measured its way
+to, with the board and the round number written down beside it. Worth doing the
+strict thing first, and worth letting the suite overrule it.
+
+### Round 86c — the SKILL corpus re-recorded at format_version 12
+
+`tools/skill_export.py --check` had been failing on all seven boards since round
+85 and nothing had re-recorded it: the record was taken at `format_version 9`
+and the exporter is at 12, so every board differed by thousands of lines. A
+corpus that is always red is worse than none - it stops being read.
+
+**Checked before re-recording, not after.** Comparing the recorded JSON with a
+fresh one key by key, canonically (`json.dumps(sort_keys=True)`), on all seven:
+
+| | |
+|---|---|
+| `format_version` | 9 -> 12 |
+| keys added | `pads` |
+| keys removed | none |
+| `format`, `name`, `embedded_models`, `stackups`, `zones`, `bends`, `pcb`, `components`, `silkscreen` | **identical on every board** |
+
+So the whole drift is the pads work of rounds 85-86 arriving, and nothing that
+existed at v9 moved. The new section was looked at before it was frozen: every
+pin resolves to a padstack (0 misses across 5039 pins), no degenerate bounding
+box, and the figure mix is what the boards have - CIRCLE, RECTANGLE, SQUARE,
+OBLONG_X/Y, ROUNDED_RECTANGLE, N_SIDED_POLY, SHAPE. Then all seven fresh
+intermediates were built through `core.generate` with `exposed_copper` and
+`mask_openings` on, and all seven produced a STEP.
+
+`--record` now covers **eight** boards: `circle-A0.brd` is in `input/` since
+this round and is picked up like the rest, which is worth having - it is the
+only board in the corpus with break-off tabs, and it is what found the plugs.
+Its recorded intermediate is identical to the one the user exported by hand
+(the same 22 contours), and it builds to 191.85947 mm3 in 3 solids - the board
+and two silkscreen bodies, no plugs.
+
+`--check` after the re-record: no difference, 8 boards, exit 0.
+
+**One thing the check turned up and did not cause.** Building flex3-a0 with
+`exposed_copper` and `mask_openings` on logs "folding cut the shape away
+entirely; left flat" 2199 times. Not from this round's changes and not from the
+re-record: 2199 at HEAD in a clean worktree and 2199 with the changes, and 0 on
+the same board with the pads options off. It is the exposed-copper path meeting
+a folded flex, and it is worth a look of its own.
+
 ## Update 2026-09-07 (round 85) — copper pads, as surfaces; branch `feature/copper-pads`
 
 The request: for some models the copper of the pads has to be visible -
