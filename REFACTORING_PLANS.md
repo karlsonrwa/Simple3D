@@ -28,8 +28,9 @@ loader, with one export-state table and one join deciding the JSON's commas).
    with a compatibility import, or a fix that a test already pins. A step that
    changes what a STEP file contains is not a refactoring step and does not
    belong in these plans.
-2. **Green before, green after.** `python tests/run_all.py` (23 jobs, ~5 min
-   under Python 3.12 — the only interpreter here with OCP) before the step and
+2. **Green before, green after.** `python tests/run_all.py` (23 jobs when this
+   was written, 30 since round 88 — 4 mechanical checks + 26 suites, about
+   4 min; Python 3.12 and 3.14 both carry OCP on this machine) before the step and
    after it. `--quick` (the non-OCCT suites, under a minute) is for iterating,
    not for closing a step.
 3. **A golden corpus beside the suite.** Before the first move, build the
@@ -287,8 +288,9 @@ README then documents the single `load("…/simple3d.il")`.
 throwaway copy (`allegro -nograph -s <absolute .scr> <copy>`, the exporter
 loaded alone, `makeVariant3dIntermediates(dir, color, config)` called the way
 `s3dExportCommand` calls it) into `build/skill_golden/`; `--check` after the
-step exports again and diffs. Seven boards, one intermediate each, about
-132 s for the set; the export of `Cadence_Demo.brd` is byte-identical to the
+step exports again and diffs. Seven boards at the time, eight since round 86c
+(`circle-A0.brd`), one intermediate each, about 132 s for the seven; the
+export of `Cadence_Demo.brd` is byte-identical to the
 one the user made from the menu. So the "user verification" rows below
 shrink to what a script cannot see: the menu item, the meter and the Python
 launch in `simple3d.il` - and D6's loader is exercised by the same check,

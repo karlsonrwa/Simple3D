@@ -63,6 +63,18 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   piece lying over the **origin** — put whatever should stay flat there, or name
   another point in `gui.foldAnchor`. If the log says two bends claim the same
   material, set `gui.foldNeutral` to `0` (README, *The K factor*).
+- **Exposed copper (as surfaces)** — the copper of every pin's pad on the outer
+  faces, as copper-coloured surfaces two microns above the mask (the mask
+  openings take the first micron). Off by default;
+  needs a JSON exported with this version (`format_version` 12). Only what
+  the mask exposes: a mask-defined pad shows its opening, a covered pad
+  nothing; untented vias and the copper under openings drawn on the
+  `SOLDERMASK` layers are drawn too (README, *Exposed copper*).
+- **Mask openings (as surfaces)** — the windows in the solder mask as
+  surfaces in the dielectric's colour: every padstack's opening and every
+  opening drawn on the `SOLDERMASK` layers. With *Exposed copper* on, what the
+  copper leaves of them — the ring around a pad, a label cut into the mask;
+  alone, the openings whole. Off by default (README, *Mask openings*).
 
 **Silk options**
 - **Top**/**Bottom** tickboxes, **White/Black** for the ink, and on its own line
@@ -197,6 +209,19 @@ builds it.
   плоским, или укажите другую точку в `gui.foldAnchor`. Если в логе написано,
   что два сгиба претендуют на один материал, поставьте `gui.foldNeutral` в `0`
   (README, *K-фактор*).
+- **Exposed copper (as surfaces)** — медь площадок всех выводов на наружных
+  гранях, поверхностями цвета меди на два микрона над маской (первый микрон
+  занимают вскрытия маски). По умолчанию
+  выключено; нужен JSON, экспортированный этой версией (`format_version` 12).
+  Рисуется только то, что открыто маской: mask-defined площадка показывает
+  своё вскрытие, закрытая — ничего; незакрытые переходные отверстия и медь под
+  вскрытиями, нарисованными на слоях `SOLDERMASK`, рисуются тоже (README,
+  *Открытая медь*).
+- **Mask openings (as surfaces)** — окна в паяльной маске поверхностями цвета
+  диэлектрика: вскрытие каждого падстека и каждое вскрытие, нарисованное на
+  слоях `SOLDERMASK`. Вместе с *Exposed copper* — то, что от них оставляет медь:
+  кольцо вокруг площадки, надпись, прорезанная в маске; сами по себе —
+  вскрытия целиком. По умолчанию выключено (README, *Вскрытия маски*).
 
 **Silk options**
 - Галочки **Top**/**Bottom**, цвет **White/Black**, отдельной строкой

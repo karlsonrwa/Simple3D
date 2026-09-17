@@ -23,12 +23,12 @@ fixed below.
 Allegro PCB Editor (SKILL, one global namespace, loads once per session)
   simple3d.il                     menu item, install-folder resolution, ALWAYS_STEP_EXPORT,
                                   progress meter, Python pre-flight, GUI launch
-  makeVariant3dIntermediates.il   loads skill/s3d_*.il - nine parts (round 77, D6):
-                                  util, json, props, variants, geometry, stackup, bends,
-                                  silk, export - which read the database and write
-                                  <design>[_<variant>].json
+  makeVariant3dIntermediates.il   loads skill/s3d_*.il - ten parts (nine since round 77, D6,
+                                  the pads since round 85): util, json, props, variants,
+                                  geometry, stackup, bends, silk, pads, export - which read
+                                  the database and write <design>[_<variant>].json
         │
-        │   the intermediate JSON  ("format": "simple3d", format_version 9)
+        │   the intermediate JSON  ("format": "simple3d", format_version 12)
         ▼
 Python 3.10+ / cadquery-ocp  (package stepbuilder, runs OUTSIDE Allegro)
   __main__.py   entry: window / --gui prefilled window / headless CLI, one parser
@@ -48,7 +48,7 @@ deliberate and load-bearing — see PROJECT_NOTES rounds 10b, 14 and 27.
 
 Both halves read the same settings file pair: `simple3d_config.json` (tracked,
 shipped defaults) with `simple3d_config.local.json` (gitignored, this
-installation) merged over it key by key. SKILL reads `allegro`, `silkscreen`,
+installation) merged over it key by key. SKILL reads `allegro`, `silkscreen`, `soldermask`,
 `settings`; Python reads `gui`. The window writes only the local file, and only
 the keys that differ from the default.
 
@@ -60,57 +60,56 @@ the keys that differ from the default.
 
 | file | lines | procedures / defs | what it holds |
 |---|---:|---:|---|
-| `makeVariant3dIntermediates.il` | 83 | 2 | the loader (round 77, D6): finds its folder (`S3D_ExporterDir`, else where it was loaded from, else `SIMPLE3D_DIR`) and `load()`s the nine parts below in order |
+| `makeVariant3dIntermediates.il` | 85 | 2 | the loader (round 77, D6): finds its folder (`S3D_ExporterDir`, else where it was loaded from, else `SIMPLE3D_DIR`) and `load()`s the ten parts below in order |
 | `skill/s3d_util.il` | 211 | 9 | console messages, folders beside the board, indentation, the subclass sweep |
 | `skill/s3d_json.il` | 421 | 18 | `s3dJsonQuote`, the JSON reader, the config pair (shipped + local) |
-| `skill/s3d_props.il` | 293 | 7 | `NO_STEP_EXPORT` / `ALWAYS_STEP_EXPORT`, embedded models, what has a STEP model |
+| `skill/s3d_props.il` | 288 | 7 | `NO_STEP_EXPORT` / `ALWAYS_STEP_EXPORT`, embedded models, what has a STEP model |
 | `skill/s3d_variants.il` | 558 | 7 | `Variants.lst` (the upstream parser), which symbols a variant exports |
-| `skill/s3d_geometry.il` | 473 | 10 | segments, arcs, circles, slots, the board contour, pin holes |
-| `skill/s3d_stackup.il` | 604 | 13 | board thickness, stackups, zones, per-layer shapes |
+| `skill/s3d_geometry.il` | 495 | 13 | segments, arcs, circles, slots (`makeSlotAt` since round 85, so the padstack library can draw the drill at its own origin), the board contour, pin holes; `s3dSegmentPrimJson` / `s3dArcPrimJson`, the one string builder each that the geometry and the pad outlines share |
+| `skill/s3d_stackup.il` | 553 | 12 | board thickness, stackups, zones, per-layer shapes |
 | `skill/s3d_bends.il` | 236 | 8 | bend lines and bend areas |
-| `skill/s3d_silk.il` | 733 | 15 | the silkscreen: config, collection, clipping, the streamed writer |
-| `skill/s3d_export.il` | 630 | 4 | `symbolReturn3DElements`, `makePcb`, the JSON writer, `makeVariant3dIntermediates` |
+| `skill/s3d_silk.il` | 760 | 15 | the silkscreen: config (plus `settings.exportPads`, the one config read per export), collection, clipping, the streamed writer |
+| `skill/s3d_pads.il` | 735 | 15 | the copper pads (round 85): `s3dPathContourJson` (a pad's axlPath as the primitive vocabulary, a closing arc as a circle), `s3dPadFigureJson`, `s3dIsPadCopperOrMask` (ETCH pads and SOLDERMASK openings alike), `s3dHoleAtOrigin` (the drill at the padstack origin, through `makeSlotAt`), `s3dPadstackJson`, `s3dPadRowJson`, `s3dViaLayers` (every VIA CLASS subclass, for the one-pass via sweep), `s3dCollectPads` (every pin of every placed symbol, every via, the padstack library sorted, and the drawn openings' contents), `s3dBoxesMeet` / `s3dCopperPolys` / `s3dCollectExposed` (the DRAWN openings - lines, shapes and rectangles, text - as polygons; the side's copper swept ONCE with `axlAddSelectAll` over ETCH + PIN + VIA CLASS of that side and the find filter on lines AND clines - copper drawn with no net is a "line" to it -, each object converted once with no window and matched to each opening by bounding box: round 87, after `axlAddSelectBox`, Allegro's interactive find, left a pour out in the user's live session; `s3dSelectInBox` stays for `probe_openings.il` only; `axlPolyOperation AND` for the copper under the opening and `ANDNOT` for the bare laminate it shows, a FAILED operation - nil, not (nil) - counted, named with `axlPolyErrorGet` and the opening kept whole as laminate since round 89; the console line carries the copper objects FOUND and warns when a side with openings finds none), `s3dWritePads` (streamed: padstacks, rows, `exposed` and `bare` in the legend's form; told whether the silkscreen follows) |
+| `skill/s3d_export.il` | 657 | 4 | `symbolReturn3DElements`, `makePcb`, the JSON writer, `makeVariant3dIntermediates` |
 | `simple3d.il` | 922 | 17 | settings from config, install-folder resolution, loads `makeVariant3dIntermediates.il` when it has not been loaded (so one `load()` is enough), `pcb → cad` folder rule, `ALWAYS_STEP_EXPORT` dictionary entry + `open` trigger, Allegro progress meter, the export command, Python pre-flight, the launcher |
-| `stepbuilder/core.py` | 762 | 12 | the build as a sequence: `_prepare_stackups` → `_Stack`, `_plan_fold`, `_build_board`, `_build_legend`, `_place_components`, then `generate()` (90 lines with its docstring) that calls them in order and writes; `BuildResult`, `total_board_thickness`; and the re-exports that keep every `core.<name>` a caller ever used |
-| `stepbuilder/build.py` | 173 | 3 | `BuildOptions`: the nineteen options of one build as one frozen dataclass, with the meaning of each; `from_settings` (the window's snapshot) and `from_args` (the CLI). Round 73, plan A8 |
+| `stepbuilder/core.py` | 940 | 17 | the build as a sequence: `_prepare_stackups` → `_Stack`, `_plan_fold`, `_build_board`, `_build_legend`, `_build_pads` (round 85: the pads and the windows through `pads.build_pads`, the drawn openings' copper and laminate through `build_exposed`, at three heights a `silk_flat_height` apart), `_place_components`, then `generate()` (90 lines with its docstring) that calls them in order and writes; `BuildResult`, `board_thickness_parts` (round 79, E2), `_compound_of`, `total_board_thickness`; and the re-exports that keep every `core.<name>` a caller ever used |
+| `stepbuilder/build.py` | 204 | 3 | `BuildOptions`: the twenty-one options of one build as one frozen dataclass, with the meaning of each (nineteen until round 85 added `exposed_copper` and `mask_openings`); `from_settings` (the window's snapshot) and `from_args` (the CLI). Round 73, plan A8 |
 | `stepbuilder/defaults.py` | 25 | 0 | the three default numbers the window shows before a config is read; no imports, so the window's side (settings, gui, build, the worker's module level) imports no OpenCASCADE. Round 80, G5 |
 | `stepbuilder/stepdoc.py` | 89 | 6 | `StepDocument`: the XCAF app/doc, shape and colour tools, the root assembly, `set_name`, `set_color`, and `write(path, minimize_size)` with the one writer setting that halves the file, set after the writer is constructed. Round 73, plan A7 |
 | `stepbuilder/models.py` | 359 | 14 | component models: `StepFileIndex` (an ordered search path over the model folders, case-folded as the last resort), `ModelCache` (each distinct STEP read once into the document; `labels_for` says "missing" or "unreadable" once per file), `component_transform`, `_report_embedded_only`, `_sanitize`. Round 73, plan A6 |
 | `stepbuilder/legend.py` | 544 | 13 | the silkscreen legend: the arc conventions and `_pick_convention` (settled by the board's own areas), `_wire_from_vertices`, `_silk_face`, `build_silkscreen`, `_merge_coplanar`, `clip_silk_to_zones`, `DEFAULT_FLAT_HEIGHT` / `DEFAULT_SILK_THICKNESS`. Round 73, plan A5 |
-| `stepbuilder/board.py` | 633 | 14 | the board body: `make_board_geometry` (a plain board and the zone paths), `layer_solids` (THE zones×layers walk: `_layer_region` turns a drawn shape into material or an opening, each layer extruded at its own height, cutouts per layer when asked), `make_board_layer_parts` + `fuse_keeping_faces` (the inspect and layer-coloured builds), `_stackup_board` + `fuse_and_unify`, `_zone_solid`, `board_cutouts` (repeats dropped), `has_solid`, `_rim_faces`. Round 73, plan A4 |
-| `stepbuilder/stackup.py` | 223 | 8 | the stackup arithmetic, no OCC: `restack`, `drop_soldermask`, `align_stackups`, `stackup_levels`, `zone_levels`, the soldermask / conductor matchers. Round 73, plan A3 |
+| `stepbuilder/pads.py` | 1012 | 35 | the copper pads (round 85): `pin_sides` (which outer face(s) of the pin's zone its span reaches, which pad - a surface padstack's one pad, a through padstack's by layer, backwards when mirrored - and which mask opening: `mask_pads`, `_mask_for`, `has_mask_data` for a v10 library), `_pad_wire` (the outline's pieces chained end to end, each arc through its two exact ends and the exported arc's midpoint - the centre is rounded to the design's resolution), `figure_face` (that wire as a face at the origin, the donut's hole at the OUTLINE's own centre - at the declared box's it stood the whole offset away from its ring, round 89; `_settle_offset` checks bbox + offset against the outline - the outline already stands at the offset, measured on the Dell board), `pad_face` (the copper figure, the drill cut out, clipped to the mask opening's figure - `BRepAlgoAPI_Common`, one per figure - mirrored x -> -x, the normals facing out; a face or a compound of faces), `_placement` (turn, move, fold), `mask_sides` (does a stackup carry a soldermask outside its outer conductors, per side - a flex stackup has coverlay there and none), `_Zones` (point -> outer conductors + faces; `mask_at`, `mask_zones` for the windows: only where the zone has a mask), `opening_face` (the mask figure as the window in the mask, the drill out of it, minus the copper pad when both are drawn - nothing left for a solder-mask-defined pad; `_finish` mirrors and orients for both), `build_pads` (one shared face per (padstack, layer, mirrored, side), instanced per pin and per via under `pads_top` / `pads_bot` for the copper and `openings_top` / `openings_bot` for the windows, either or both; covered, hidden, all-hole, filled and v10 files told apart), `build_exposed` (the copper under drawn openings - `section="exposed"` - or the bare laminate they show - `"bare"` - through `legend.build_silkscreen`, flat, per zone level, a micron above the pads; only on the zones with a mask - a polygon across a zone boundary is built whole and clipped to each masked zone with `BRepAlgoAPI_Common` at that zone's face, one on no masked zone left out; on a plain board the outline is the one masked zone, so a polygon across the edge is clipped to it instead of standing half in the air - round 89; the two go into one laminate part when the copper is off), `PadsResult` |
+| `stepbuilder/board.py` | 693 | 15 | the board body: `make_board_geometry` (a plain board and the zone paths; since round 86 through `_cut_out`, which hands the cutout prisms to `BRepAlgoAPI_Cut` as SEPARATE tools - one compound of overlapping prisms left plugs in the holes), `layer_solids` (THE zones×layers walk: `_layer_region` turns a drawn shape into material or an opening, the shapes as separate tools too since round 86b - as one compound a merely touching pair dropped the second shape -, each layer extruded at its own height, cutouts per layer when asked), `make_board_layer_parts` + `fuse_keeping_faces` (the inspect and layer-coloured builds), `_stackup_board` + `fuse_and_unify`, `_zone_solid`, `board_cutouts` (repeats dropped), `has_solid`, `_rim_faces`. Round 73, plan A4; round 86 |
+| `stepbuilder/stackup.py` | 250 | 10 | the stackup arithmetic, no OCC: `restack`, `drop_soldermask`, `align_stackups`, `stackup_levels`, `zone_levels`, the soldermask / conductor matchers. Round 73, plan A3 |
 | `stepbuilder/reporting.py` | 29 | 2 | `LogFn`, `ProgressFn` and the two no-ops — every stage module needs them and none may import core for them. Round 73 |
-| `stepbuilder/intermediate.py` | 353 | 18 | `Intermediate` (one parse: `is_simple3d`, `is_full_board`, `components`, `metadata`, `warnings`, `validate`, `silkscreen_layers`), `RESERVED`, `resolve_jobs` (+ the path-shaped `resolve_json_jobs`), `batch_jobs` (the whole-board rule, for the window and the CLI alike), the old probe names as thin wrappers, `output_stem` / `dated_output_name`. Rounds 72–73, plans A2, A10 |
+| `stepbuilder/intermediate.py` | 353 | 21 | `Intermediate` (one parse: `is_simple3d`, `is_full_board`, `components`, `metadata`, `warnings`, `validate`, `silkscreen_layers`), `RESERVED`, `resolve_jobs` (+ the path-shaped `resolve_json_jobs`), `batch_jobs` (the whole-board rule, for the window and the CLI alike), the old probe names as thin wrappers, `output_stem` / `dated_output_name`. Rounds 72–73, plans A2, A10 |
 | `stepbuilder/bend/__init__.py` | 86 | 0 | the module docstring (what a bend is and how the fold is built) and the re-exports that keep `from stepbuilder.bend import X` working - the public names, the `DEFAULT_*`, and the underscored ones the tests import; nothing is defined here |
-| `stepbuilder/bend/constants.py` | 116 | 1 | `EPS`, `MIN_ANGLE`, `DEFAULT_*`, `CUTTER_MARGIN` (round 84), `LogFn` — each number with its reason; plan B7 brings the rest here |
+| `stepbuilder/bend/constants.py` | 136 | 1 | `EPS`, `MIN_ANGLE`, `DEFAULT_*`, `CUTTER_MARGIN` (round 84), `SHARED_STRIP_RATIO` (round 86b: the share of the smaller strip two crossing bends may claim before the log says so), `LogFn` — each number with its reason; plan B7 brings the rest here |
 | `stepbuilder/bend/info.py` | 187 | 9 | `IDX_BEND_TYPE_INFO` parser, `Bend`, `bend_from_dict`, `bends_from_json` |
 | `stepbuilder/bend/regions.py` | 183 | 11 | `_Piece` (one `face_box`/`holds`/`cutter_face` for both), `_Region`, `_Strip` (each with its exact `face` and, since round 84, the `cutter` it is cut with), `_slice_trsf`, the OCC plumbing (`_bbox`, `_extent`, `_is_empty`) |
-| `stepbuilder/bend/pieces.py` | 414 | 11 | cutting the flat outline into the pieces that fold: `_cut_into_pieces`, `_piece_face` (the pinch repair), `_face_poly`, `_band_face`, `_polygon_face`, `_faces_of`, `_touching`, `_closest_point`; and what a layer is cut WITH: `_cutters` (each face grown `CUTTER_MARGIN` along the outline, the other pieces' exact faces taken back out - so a cutter never shares a wall with a layer, round 84), `_grown` |
+| `stepbuilder/bend/pieces.py` | 496 | 13 | cutting the flat outline into the pieces that fold: `_cut_into_pieces` (the strips as separate boolean tools since round 86b - one compound welded four corner pieces into one panel where two bends crossed), `shared_strips` (round 86b: the material two strips share, in mm², reported above `SHARED_STRIP_RATIO`), `_piece_face` (the pinch repair), `_face_poly`, `_band_face`, `_polygon_face`, `_faces_of`, `_touching`, `_closest_point`; and what a layer is cut WITH: `_cutters` (each face grown `CUTTER_MARGIN` along the outline, the other pieces' exact faces taken back out - so a cutter never shares a wall with a layer, round 84), `_grown` |
 | `stepbuilder/bend/cut.py` | 154 | 4 | cutting a shape down to one piece: `_cut_to_region` (every skippable boolean skipped; the prism is the piece's `cutter_face()`), `_crosses`, the cutters `_slab` and `_plane_face` sized from the shape's own box |
 | `stepbuilder/bend/strip_revolve.py` | 227 | 4 | the exact construction: `_revolve_strip` (a straight strip is its section revolved), `_spans_alike`, `_prism_of`, `PRISM_*` |
 | `stepbuilder/bend/strip_wrap.py` | 485 | 13 | the general construction, in its parts since round 73 (B5): `_Frame` (the cylinder and the map into its parameter space), `_edge_curves` / `_sampled` (a flat edge as 2-D curves - a line stays a line, an arc becomes an ellipse, the rest a fitted spline), `_wire_on` (the outline as a wire on a surface, corners shared by topology), `_face_on` and `_walls`, `_sewn_solid` and `_expected_volume`; `_map_strip` is the sequence and keeps `give_up`'s first-reason rule; `MAP_VOLUME_TOLERANCE` |
-| `stepbuilder/bend/plan.py` | 905 | 27 | `FoldPlan` and how it is built: `plan_fold` (which also hands every piece its cutter), `plan_from_json`, the chain, the k-ceiling, `_seam_gap`, `_double_claimed`, the anchor |
-| `stepbuilder/bend/apply.py` | 179 | 2 | `apply_plan` — cut region by region, bend each strip (revolve, else wrap, else facets), fuse — and `_fuse_all` |
+| `stepbuilder/bend/plan.py` | 932 | 27 | `FoldPlan` and how it is built: `plan_fold` (which also hands every piece its cutter, and says so when two strips cross - round 86b), `plan_from_json`, the chain, the k-ceiling, `seam_gap` and `double_claimed` (public since round 80, G3; both seen reporting a failure by the fold suite since rounds 88 and 89), the anchor |
+| `stepbuilder/bend/apply.py` | 192 | 2 | `apply_plan` — cut region by region, bend each strip (revolve, else wrap, else facets), fuse — and `_fuse_all`; a `fuse=False` COMPOUND is folded child by child, and only a compound: descending into a FACE reaches its wires, and a face with a hole came back as its own flat edges (round 89) |
 | `stepbuilder/contour.py` | 290 | 8 | a JSON contour as a wire (`build_contour`, `WIRE_TOLERANCE`) and as a flat polygon (`contour_points`, `polygon_area`, `clip_halfplane`, `point_in_polygon`, `point_on_polygon`); the arc convention lives here; `_face_from_wires` (wires → a planar face with holes, used by the board and the legend alike) since A4. Round 72, plan A1 |
 | `stepbuilder/errors.py` | 13 | 1 | `StepBuilderError`, so that contour, bend and core raise one class without importing each other. Round 72 |
-| `stepbuilder/gui.py` | 1250 | 59 | one `tk.Tk` subclass: widget layout, the hand-over between widgets and `settings.GuiSettings`, freeze/thaw, log colouring, the Tk-side reactions to a build (`_on_progress/_on_done/_on_error/_on_crash`), `set_theme`; placement through `winplace`, the layer list through `widgets.layers_panel`, the child process through `worker_bridge` |
+| `stepbuilder/gui.py` | 1278 | 63 | one `tk.Tk` subclass: widget layout, the hand-over between widgets and `settings.GuiSettings`, freeze/thaw, log colouring, the Tk-side reactions to a build (`_on_progress/_on_done/_on_error/_on_crash`), `set_theme`; placement through `winplace`, the layer list through `widgets.layers_panel`, the child process through `worker_bridge` |
 | `stepbuilder/widgets/layers_panel.py` | 178 | 9 | `LayersPanel(ttk.LabelFrame)`: the scrolled Top/Bottom checkbox list - `refresh(found, layers_off)`, `current_layers_off`, `set_all` (live sides only), `update_sides`, wheel grab/release. Round 74, plan C4 |
 | `stepbuilder/winplace.py` | 138 | 6 | window placement for any `tk.Tk`: the virtual desk, `geometry_is_reachable`, `parse_geometry`, centre / restore / the normal-geometry filter; no tkinter import. Round 74, plan C3 |
-| `stepbuilder/settings.py` | 404 | 18 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`; then the `gui` section as ONE table, `GUI_KEYS` (name, field, default, load, save), `GuiSettings`, `load_gui_settings` (both migrations live in the `load` of the key that superseded them) and `save_gui_settings` (only what differs from the shipped default). Round 72, plans C1–C2 |
-| `stepbuilder/__main__.py` | 390 | 5 | one argparse parser (`build_parser`) for the headless CLI and the `--gui` window, `_open_window` with the crash log under `pythonw`; the build's options go through `BuildOptions.from_args` since A8. Round 74, plan C6 |
-| `stepbuilder/worker.py` | 176 | 2 | frozen `BuildSettings`; `run_jobs` = resolve jobs, `intermediate.batch_jobs` for the full-board file, per-job isolation, progress slicing; the build's options go through `BuildOptions.from_settings` since A8 |
+| `stepbuilder/settings.py` | 413 | 18 | the settings pair without a widget in sight: `merge_config` (the twin of SKILL's `s3dJsonMerge`), `read_config_file` (a problem is never an empty file), `local_config_path`; then the `gui` section as ONE table, `GUI_KEYS` (name, field, default, load, save), `GuiSettings`, `load_gui_settings` (both migrations live in the `load` of the key that superseded them) and `save_gui_settings` (only what differs from the shipped default). Round 72, plans C1–C2 |
+| `stepbuilder/__main__.py` | 410 | 5 | one argparse parser (`build_parser`) for the headless CLI and the `--gui` window, `_open_window` with the crash log under `pythonw`; the build's options go through `BuildOptions.from_args` since A8. Round 74, plan C6 |
+| `stepbuilder/worker.py` | 196 | 4 | frozen `BuildSettings`; `run_jobs` = resolve jobs, `intermediate.batch_jobs` for the full-board file, per-job isolation, progress slicing; the build's options go through `BuildOptions.from_settings` since A8 |
 | `stepbuilder/worker_bridge.py` | 143 | 9 | `WorkerBridge`: the window's half of the child process - `start`, `drain_once` (queue to five callbacks), `check_alive` (a death is a crash unless `cancelled`), `cancel`, `close`; `crash_advice(code)` is the text. No tkinter. Round 74, plan C5 |
-| `stepbuilder/colors.py` | 160 | 5 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
-| `tests/` (28 files) | ~5200 | — | 22 suites + `run_all.py` + `_support.py` + `skill_transliterations.py` (the Python copies of SKILL procedures the suites test against, round 80) + `fixtures/` |
-| `tools/` | ~1100 | — | five mechanical SKILL checks (`skill_checks.py` — parens, strings, calls, prog locals, undeclared assignments since round 76 — and `check_arity.py`, both over `skill_lex.py`'s comment/string/group handling since round 80), the docs audit, the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), the SKILL exporter run headless and its own golden corpus (`skill_export.py`, round 75), a hand test that writes a property, 11 read-only Allegro probes |
-| `simple3d_config.json` | 86 | — | four sections: `allegro`, `gui`, `silkscreen`, `settings`; `_comment_*` keys as documentation |
+| `stepbuilder/colors.py` | 154 | 4 | Allegro's eight themes, cream rim, two inks, seven layer kinds + classifier |
+| `tests/` (37 files) | ~7800 | — | 27 suites + `run_all.py` + `_support.py` + `skill_transliterations.py` (the Python copies of SKILL procedures the suites test against, round 80) + `mutations.json` (round 89: the 48 deliberate faults the suite has been shown to catch, one file / old / new / suites each; `test_mutations.py` checks in a fraction of a second that every pattern still matches its file exactly once, `tools/mutate.py` applies them) + `fixtures/` (`rigidflex.json`, the fold suite's rigid-flex board and four of the seven golden cases; `demo_v8.json` / `demo_v9.json`, round 79: the demo's components both ways, read to the same placements; `pads_demo.json`, round 85: a sample of the demo board's pins with the pad boxes Allegro reports; `silk_demo.json`, round 88: its arc-bearing legend polygons with the areas Allegro reports for them; `skill_answers.json`, round 88: what Allegro's own interpreter answered for the five copied SKILL procedures over 59 cases, written by `tools/skill_answers.py` from a `probe_translit.il` run and compared against the copies in `test_skill_pins.py`) |
+| `tools/` | ~1800 | — | five mechanical SKILL checks (`skill_checks.py` — parens, strings, calls, prog locals, undeclared assignments since round 76 — and `check_arity.py`, both over `skill_lex.py`'s comment/string/group handling since round 80), the docs audit (since round 88 also the suite count against `run_all.py`, in both directions), the Python name check (`python_names.py`, round 72), the golden corpus (`golden.py`, round 71), the SKILL exporter run headless and its own golden corpus (`skill_export.py`, round 75), the headless probe runner (`run_probe.py`, round 85; it resolves `-o`, because a relative `-s` hangs Allegro), the mutation harness (`mutate.py`, round 89: the `test-audit` skill's, copied in so the repository is self-contained), a hand test that writes a property, the recorder of the SKILL side's own answers (`skill_answers.py`, round 88), 20 Allegro probes - 18 read-only, two (`probe_masktext.il`, `probe_maskrect.il`) that draw a test object into the runner's scratch copy and never save it |
+| `simple3d_config.json` | 103 | — | five sections: `allegro`, `gui`, `silkscreen`, `soldermask` (round 85, the drawn mask openings), `settings`; `_comment_*` keys as documentation |
 
-Counts for `core.py`, `bend/`, `contour.py`, `errors.py`, `intermediate.py`,
-`gui.py`, `settings.py`, `stackup.py`, `reporting.py`, `board.py`, `legend.py`,
-`models.py`, `stepdoc.py`, `build.py`, `worker.py`, `__main__.py`,
-`winplace.py`, `widgets/layers_panel.py` and `worker_bridge.py` are as of round
-74 (after plans A, B, C1–C5); the other rows are as of round 70. The defs column counts
-every `def` and `class` line, nested ones included.
+Counts are as of round 89 (2026-09-17), re-measured after the pads work:
+`wc -l` for lines, every `def` and `class` line (nested ones included) for
+the Python column, every `procedure(` at the start of a line for SKILL.
 
 ### 2.2 Dependencies
 
@@ -147,6 +146,11 @@ graph TD
         BOARD --> CONTOUR
         CORE --> LEGEND[legend.py]
         LEGEND --> CONTOUR
+        CORE --> PADS[pads.py]
+        PADS --> CONTOUR
+        PADS --> STACK
+        PADS -->|"build_silkscreen"| LEGEND
+        PADS --> OCP
         CORE --> MODELS[models.py]
         MODELS --> OCP
         CORE --> STEPDOC[stepdoc.py]
@@ -231,7 +235,7 @@ flowchart TD
         H --> H1[make the export state<br/>shapes, bend lines, silk warnings, mech sequence]
         H1 --> H2[s3dBoardThickness<br/>the board's own stackup, by position]
         H2 --> H3[makePcbContour<br/>outline + CUTOUT shapes → primitives]
-        H3 --> H4[s3dSilkConfig + s3dMakeSilkscreen<br/>collect per layer, clip to board, ONCE per design]
+        H3 --> H4[s3dSilkConfig + s3dMakeSilkscreen<br/>collect per layer, clip to board, ONCE per design<br/>+ s3dCollectPads: every pin and via with its padstack - ETCH pads + SOLDERMASK openings -<br/>+ s3dCollectExposed per side: opening AND copper, opening ANDNOT copper - ONCE per design]
         H4 --> H5{"Variants.lst<br/>beside the .brd?"}
         H5 -- yes --> H6[gdsysGetVariantInfo → s3dVariantFit<br/>refuse a stub or a foreign file]
         H6 --> H7[per variant: s3dSymbolsToExport<br/>NO_STEP_EXPORT → list → ALWAYS_STEP_EXPORT]
@@ -241,7 +245,7 @@ flowchart TD
         H5 -- no --> H10[s3dSymbolsToExport nil nil] --> H8
         H8 --> H8a[copy the cutout list, symbolReturn3DElements per symbol,<br/>symbolReturnPinHoles with s3dDrillXY]
         H8a --> H8b[header: embedded_models, stackups + per-layer shapes,<br/>zones, bends raw IDX_BEND_TYPE_INFO]
-        H8b --> H8c[makePcb; strcat body; stream silkscreen; close; isFile check]
+        H8b --> H8c[makePcb; strcat body; stream pads, then silkscreen; close; isFile check]
     end
 
     H8c --> I["s3dPreflight<br/>python -u -c import stepbuilder.core, tkinter — split sentinel"]
@@ -268,7 +272,8 @@ flowchart TD
         Q5 -- inspect --> Q9[make_board_layer_parts → fold each → one named part per layer]
         Q6 & Q7 & Q8 & Q9 --> R["rim faces in the flat frame — board colour"]
         R --> S["silkscreen: clip_silk_to_zones → layers off → build_silkscreen<br/>arc convention scored against the areas Allegro reported → fold piece by piece"]
-        S --> T["components: read each model once, share the part,<br/>component_transform × fold.transform_at"]
+        S --> S2["exposed copper / mask openings, when ticked: pin_sides by span against the zone's outer copper,<br/>pad_face clipped to the mask opening, opening_face minus the copper - one face per figure,<br/>instanced per pin and per via × fold.transform_at, windows only on zones with a mask;<br/>build_exposed: the drawn openings' copper and laminate, flat like the legend, clipped to the masked zones<br/>or to the outline; heights h / 2h / 3h"]
+        S2 --> T["components: read each model once, share the part,<br/>component_transform × fold.transform_at"]
         T --> U["STEPCAFControl_Writer, write.surfacecurve.mode"]
         U --> V([STEP file, BuildResult → queue → window log])
     end
@@ -283,17 +288,19 @@ flowchart TD
 | `python -m stepbuilder` | no arguments | the window, standalone |
 | `python -m stepbuilder --gui …` | the launcher's form; `parse_known_args` | the window, prefilled |
 | `python -m stepbuilder STEP_DIR JSON OUT [flags]` | headless; `--batch` for a folder | `core.generate` per file, exit 1 on any failure |
-| `python tests/run_all.py [--quick]` | | the 4 checks + 22 suites as subprocesses |
+| `python tests/run_all.py [--quick]` | | the 4 checks + 27 suites as subprocesses |
+| `python tools/run_probe.py [--with-exporter] PROBE.il PROC BOARD.brd` | Allegro | one probe against a scratch copy of a board, headless, the console to `build/probe-out/` (round 85); `--with-exporter` preloads `makeVariant3dIntermediates.il` for the ten probes that call into it |
+| `python tools/mutate.py tests/mutations.json [id ...]` | | the mutation table applied one fault at a time to a COPY of the tree (never the working tree: it restores a byte snapshot after every fault), the suites each names run, CAUGHT / SURVIVED / REFUSED per entry (round 89; 20-30 minutes for the whole table) |
 | `python tools/skill_checks.py` / `check_arity.py` / `audit_docs.py` | | the mechanical checks, also run by `run_all` |
 | `python tools/skill_export.py --record` / `--check` | Allegro | the SKILL exporter on every `input/*.brd`, headless (`allegro -nograph -s <abs .scr> <copy>`), recorded into `build/skill_golden/` and compared after every Plan D step - the golden corpus of the SKILL half (round 75). One board with `-o` |
-| `load("…/tools/probes/probe_*.il")` | in Allegro, by hand | read-only diagnostics; `probe_variants.il` calls into the exporter |
-| `load("…/tools/s3d_userprop_test.il")` | in Allegro, by hand | the one file that writes to a design |
+| `load("…/tools/probes/probe_*.il")` | in Allegro, by hand (or through `run_probe.py`) | diagnostics; ten of the twenty carry `REQUIRES: makeVariant3dIntermediates.il` and call into the exporter, two (`probe_masktext`, `probe_maskrect`) draw a test object into the runner's scratch copy, the rest are read-only |
+| `load("…/tools/s3d_userprop_test.il")` | in Allegro, by hand | the one file that writes to the user's own design (the two mask probes write only into the runner's throwaway copy) |
 
-### 3.2 The intermediate (format_version 9), as the reader sees it
+### 3.2 The intermediate (format_version 12), as the reader sees it
 
 ```
 {
-  "format": "simple3d", "format_version": 9, "name": "<design>[_<variant>]",
+  "format": "simple3d", "format_version": 12, "name": "<design>[_<variant>]",
   "full_board": true,                       optional, only ever true
   "warnings": [ "..." ],                    optional (2026-09-03): the exporter's lines for the window's log - a variant naming components the board lacks
   "embedded_models": ["X.step", …],          v4+
@@ -308,6 +315,12 @@ flowchart TD
            "color": {r,g,b}, "edges": [ outline, cutout, cutout, … ] },
   "components": { "<refdes or NAME_MECHn>": { step_mapping:{step_name, rotation_xyz, offset_xyz},
                                                zone, is_mirrored, x, y, angle }, … },   v9; {} when none
+  "pads": { "padstacks": { "<name>": { usage, drill: null | [prim…] (at the padstack origin, unrotated),
+                                       pads: { "ETCH/<layer>": {figure, bbox, offset, inside, outline:[prim…] | null},
+                                               "PIN/SOLDERMASK_<side>": {…the same, the opening…} … } } … },   masks v11
+            "pins": [ [x, y, rotation, mirrored, "<padstack>", "<start layer>", "<end layer>", "pin"|"via"] … ],   v10 (round 85), the kind v12
+            "exposed": { top:[poly…], bottom:[poly…] },     v12: the copper under the DRAWN mask openings, in the silk poly form
+            "bare":    { top:[poly…], bottom:[poly…] } },   v12: the laminate those openings show where no copper is (opening ANDNOT copper)
   "silkscreen": { thickness, warnings:[…], top:[poly…], bottom:[poly…] }   v2+
 }
 ```
@@ -338,7 +351,8 @@ reader older than it would misread, as one component called `components`.
 | `S3D_NegativeLayers`, `S3D_ExportFullBoard` | `s3dSilkConfig`, defaults restored first | yes (round 61) | layer polarity, the whole-board file |
 | ~~`S3D_RigidFlexShapes`, `S3D_BendLines`~~ | — | — | since round 77 (D7) the export state's `'shapes` (per file) and `'bendLines` (per design), a table `makeVariant3dIntermediates` makes and hands down |
 | ~~`S3D_SilkWarnings`~~ | — | — | since round 77 (D7) the export state's `'silkWarnings`, cleared by `s3dMakeSilkscreen` |
-| `S3D_SilkDefaultTop/Bottom/Thickness`, `S3D_JsonNumChars` | load | constants | config fallback, JSON reader |
+| `S3D_SilkDefaultTop/Bottom/Thickness`, `S3D_MaskDefaultTop/Bottom` (round 85), `S3D_NegativeLayersDefault`, `S3D_JsonNumChars` | load | constants | config fallback, JSON reader |
+| `S3D_ExporterParts`, `S3D_ExporterLoaded`, `S3D_ExporterLoadedFrom` | load of the loader (round 77) | constants | `makeVariant3dIntermediates.il`; `simple3d.il` loads the exporter only while `S3D_ExporterLoaded` is unset |
 
 The accidental ones are gone since round 76 (D1–D2): several upstream
 procedures used to assign names they never declared (`gdsysGetVariantInfo`:
@@ -362,7 +376,8 @@ Every one is declared in its own `let` now, `makePcb` builds `colorJson`, and
   attribute, `_layers_off`, `_frozen`/`_dimmed` (the pre-build widget states),
   `_bridge` (the `WorkerBridge`), `_paths_from_launcher`, the saved geometry.
 - `BuildSettings` is the one frozen, picklable snapshot that crosses the
-  process boundary; `core.generate` takes it apart into 22 keyword arguments.
+  process boundary; the child turns it into a `BuildOptions` (`from_settings`,
+  21 fields) and hands `core.generate` that one object (round 73, A8).
 
 ---
 
@@ -378,7 +393,7 @@ it is.
 
 | unit | lines | verdict | why |
 |---|---:|---|---|
-| `makeVariant3dIntermediates.il` as a file | 4048 in 9 parts | **was monolith (M5)** — split in round 77 (D6) | ten concerns in one load unit until then; now `skill/s3d_*.il`, one concern each (91 procedures), cut mechanically with every comment in place and the file itself a loader. Every part still shares the one SKILL namespace, so the `s3d` prefix discipline is what keeps them apart |
+| `makeVariant3dIntermediates.il` as a file | 4915 in 10 parts | **was monolith (M5)** — split in round 77 (D6) | ten concerns in one load unit until then; now `skill/s3d_*.il`, one concern each (108 procedures; `s3d_pads.il` joined in round 85), cut mechanically with every comment in place and the file itself a loader. Every part still shares the one SKILL namespace, so the `s3d` prefix discipline is what keeps them apart |
 | `create3dIntermediateFormat` | 172 | monolith core | string assembly with hand-managed commas, per-export resets, file I/O and the `full_board` rule in one procedure |
 | `makeVariant3dIntermediates` | 168 | orchestration | the variant loop; fine once the pieces are separable |
 | `s3dJson*` reader, `s3dJsonMerge`, `s3dJsonQuote`, `s3dConfigRead`, `s3dLocalConfigFile` | ~400 | **reusable** | a self-contained JSON subset reader/merger/escaper for SKILL; nothing Allegro-specific |
@@ -390,7 +405,7 @@ it is.
 | `s3dBendsJson`, `s3dBendParts`, `s3dPathEnds`, `s3dSpanAcross`, `s3dBendAreaAt`, `s3dSweepBendLines` | ~210 | reusable readers | bends via the group; the sweep duplicates the visibility idiom |
 | `s3dSilkConfig`, `s3dPolysFromDbid`, `s3dZeroWidth`, `s3dDescribeObject`, `s3dCollectSilkByLayer`, `s3dBoardPoly`, `s3dClipPolys`, `s3dClipGroups`, `s3dMakeSilkscreen` | ~600 | **reusable** | "every figure on these layers as filled polygons, clipped to the board" is useful far beyond STEP; already the model for the rigid-flex dump in a sibling repo |
 | `s3dWriteVertexList`, `s3dWriteSilkPolys`, `s3dWriteSilkscreen`, `makePcb`, `symbolReturn3DElements` | ~260 | format-bound | the streaming writer half; the only place the silk JSON shape exists |
-| `simple3d.il` | 897 | glue with two reusable pieces | `s3dResolveScriptDir`/`s3dFolderOf` (install-folder discovery with no path in source) and `s3dPreflight`/`s3dLaunch` (the cmd quoting rules, tested) are worth lifting; the rest is this menu item |
+| `simple3d.il` | 922 | glue with two reusable pieces | `s3dResolveScriptDir`/`s3dFolderOf` (install-folder discovery with no path in source) and `s3dPreflight`/`s3dLaunch` (the cmd quoting rules, tested) are worth lifting; the rest is this menu item |
 
 ### 5.2 Python
 
@@ -409,9 +424,9 @@ it is.
 | `bend` pieces (`_polygon_face`, `_band_face`, `_face_poly`, `_piece_face`, `_touching`, `_closest_point`, `_cut_into_pieces`, `_grown`, `_cutters`, `_slab`, `_plane_face`) | ~430 | reusable | "cut a planar outline by strips and hand back valid pieces with their polygons, and the grown cutter each is cut with"; carries the pinch repair, the sliver rule and the cutter margin (round 84) |
 | `bend` strip constructions (`_spans_alike`, `_revolve_strip`, `_prism_of`) and `_fuse_all` | ~230 | reusable | exact revolve with the two prism tests |
 | `_Region`, `_Strip`, `FoldPlan` | ~350 | data + apply | `face_box`/`holds` duplicated between the two dataclasses; `FoldPlan.apply` is the second-largest method |
-| `gui.StepBuilderApp` | ~1300 | **monolith (M4)** | one class: layout, placement, the layer panel, the worker bridge, freeze/thaw, log. The two hand-written key lists became `settings.GUI_KEYS` in round 72 (C1–C2); what is left in the class is one `var.set` per field on load and one `var.get` per field on save |
-| `gui._merge_config`, `_read_config_file`, `local_config_path` | ~60 | reusable | the settings-pair rule in Python |
-| `gui` placement (`_virtual_screen`, `_geometry_is_reachable`, `_center_on_primary`, `_restore_geometry`, `_remember_geometry`) | ~95 | reusable | multi-monitor placement for any Tk window |
+| `gui.StepBuilderApp` | 1278 | **was M4 — split in round 74 (C1–C6)** | one class of its own concerns: layout, the hand-over to `settings.GuiSettings`, freeze/thaw, log colouring; placement is `winplace.py`, the layer list `widgets/layers_panel.py`, the child process `worker_bridge.py`, the settings pair and the key table `settings.py` (the two hand-written key lists became `settings.GUI_KEYS` in round 72) |
+| `settings.merge_config`, `read_config_file`, `local_config_path` (C1, round 72) | ~60 | reusable | the settings-pair rule in Python |
+| `winplace.py` (`virtual_screen`, `geometry_is_reachable`, `parse_geometry`, `center_on_primary`, `restore_geometry`, `normal_geometry`; C3, round 74) | 138 | reusable | multi-monitor placement for any Tk window, no tkinter import |
 | `worker_bridge.py` (was the `gui` worker bridge: `_run_in_worker`, `_drain_queue`, `_drain_once`, `_check_worker_alive`, `on_cancel`) | ~150 | reusable | "build in a child process, survive an access violation, cancel" — already copied by hand into step2html; since round 74 (C5) a class with no tkinter in it, so the copy can become an import |
 | `worker.py` | 204 | glue, reusable pattern | the batch rule lives here and only here (the CLI has no equivalent) |
 | `__main__.py` | ~370 | glue | was two parsers for overlapping flags — since round 74 (C6) one `build_parser()` with a `--gui` mode, an unknown launcher flag an error; the `generate(...)` argument list used to appear here, in `worker._run` and in `gui._snapshot` — since round 73 (A8) it is `build.BuildOptions`, built once per caller |
@@ -421,12 +436,12 @@ it is.
 
 | unit | verdict | why |
 |---|---|---|
-| `tests/*.py` | 21 scripts, one shape | since round 71 every file imports `tests/_support.py` (the paths, `fails`, `check`, `rect`, `read_step`, `volume`, `bbox`, `count_solids`, `entity_count`) instead of its own copy; `run_all` still greps stdout (plan F3). Before that, `test_regression_geometry.py` printed MATCH/DRIFT and never set an exit code |
-| SKILL transliterations in tests (`s3dJsonQuote`, `s3dDrillXY`, `s3dDesignFolder`, the variant rule, `tconc`, `s3dBendsJson`, the layer filter, the negative matcher, the merge) | valuable, scattered | they are the only executable specification of the SKILL side; worth collecting under one name |
-| `tools/skill_checks.py`, `tools/check_arity.py` | reusable | a SKILL lexer and four checks; the lexer is duplicated between the two files |
-| `tools/audit_docs.py` | glue | matches names, not claims (PROJECT_NOTES round 60) |
+| `tests/*.py` | 27 suites, one shape | since round 71 every file imports `tests/_support.py` (the paths, `fails`, `check`, `rect`, `read_step`, `volume`, `bbox`, `count_solids`, `entity_count`, `free_edges`) instead of its own copy; `run_all` decides by the exit code and prints a failing job's FAIL lines and tail (F3, round 80). Before that, `test_regression_geometry.py` printed MATCH/DRIFT and never set an exit code. Since round 88 the suite has been audited by mutation and since round 89 the faults it catches are a table in the tree, `tests/mutations.json` (48 entries, all caught), with a sentinel suite that fails the round a refactor breaks a pattern |
+| SKILL transliterations, `tests/skill_transliterations.py` (F2, round 80) | valuable, pinned | the executable specification of the SKILL side; since round 88 `test_skill_pins.py` ties five of them to the `.il` statement by statement and to 59 answers recorded from a headless Allegro (`fixtures/skill_answers.json`), since round 89 also the copper sweep's decisions, and refuses a copy whose `# mirrors` line names no real procedure; the other eleven are pinned by name only |
+| `tools/skill_checks.py`, `tools/check_arity.py` over `tools/skill_lex.py` | reusable | one SKILL lexer (G2, round 80) and five checks: parens, strings, calls, prog locals, undeclared assignments (D1, round 76), plus arity |
+| `tools/audit_docs.py` | glue | matches names, not claims (PROJECT_NOTES round 60); since round 88 also the suite count against `run_all.py`'s job list, in both directions, and since round 89 it says so when a count phrase drifts out of its regex |
 | `tools/python_names.py` | glue | pyflakes, kept to undefined names and redefinitions; exists because two moves in round 72 left a name behind and nothing but a name check could see it |
-| `tools/probes/*.il` | record | read-only diagnostics; three attachment probes are a closed investigation kept as history |
+| `tools/probes/*.il` | record | diagnostics, read-only bar the two mask probes that draw a test object into the runner's scratch copy; ten call into the exporter; three attachment probes are a closed investigation kept as history |
 
 ---
 

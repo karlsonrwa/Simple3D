@@ -56,6 +56,8 @@ class BuildSettings:
     fold_anchor: tuple[float, float] | str | None
     fold_neutral: float
     fold_slice_angle: float
+    exposed_copper: bool
+    mask_openings: bool
     brd_name: str | None
     dated_name: bool
     build_full_board: bool
@@ -163,6 +165,10 @@ def _run(settings: BuildSettings, channel) -> None:
         if result.silkscreen_solids:
             channel.put(("log", f"{result.output.name}: silkscreen "
                                 f"{result.silkscreen_solids} solid(s)"))
+        if result.pads_placed:
+            channel.put(("log", f"{result.output.name}: copper pads "
+                                f"{result.pads_placed} placed, "
+                                f"{result.pads_figures} distinct figure(s)"))
         if result.missing_step_files:
             warnings.append(f"{result.output.name}: "
                             f"{len(result.missing_step_files)} STEP missing")

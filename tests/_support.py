@@ -99,12 +99,34 @@ def count_solids(shape) -> int:
     return n
 
 
+def free_edges(shape) -> int:
+    """Edges of *shape* that belong to no face of it - a wireframe.
+
+    A face the fold cut away came back as its own flat edges with no face
+    between them (round 89): 733 of them in one STEP file, and count_solids,
+    volume and area all read the same as before. This is the question that
+    sees it.
+    """
+    from OCP.TopAbs import TopAbs_ShapeEnum
+    from OCP.TopExp import TopExp
+    from OCP.TopTools import (TopTools_IndexedDataMapOfShapeListOfShape,
+                              TopTools_IndexedMapOfShape)
+    owners = TopTools_IndexedDataMapOfShapeListOfShape()
+    TopExp.MapShapesAndAncestors_s(shape, TopAbs_ShapeEnum.TopAbs_EDGE,
+                                   TopAbs_ShapeEnum.TopAbs_FACE, owners)
+    edges = TopTools_IndexedMapOfShape()
+    TopExp.MapShapes_s(shape, TopAbs_ShapeEnum.TopAbs_EDGE, edges)
+    return sum(1 for i in range(1, edges.Extent() + 1)
+               if not owners.Contains(edges.FindKey(i))
+               or owners.FindFromKey(edges.FindKey(i)).Extent() == 0)
+
+
 def exporter_source() -> str:
-    """The SKILL exporter as one text: its nine parts under skill/, in load
-    order (round 76, D6). The suites that read the source for a rule read this,
-    so the split moved no assertion."""
+    """The SKILL exporter as one text: its ten parts under skill/, in load
+    order (round 76, D6; the pads since round 85). The suites that read the
+    source for a rule read this, so the split moved no assertion."""
     parts = ("s3d_util", "s3d_json", "s3d_props", "s3d_variants", "s3d_geometry",
-             "s3d_stackup", "s3d_bends", "s3d_silk", "s3d_export")
+             "s3d_stackup", "s3d_bends", "s3d_silk", "s3d_pads", "s3d_export")
     return "\n".join((ROOT / "skill" / f"{p}.il").read_text(encoding="utf-8", errors="replace")
                      for p in parts)
 

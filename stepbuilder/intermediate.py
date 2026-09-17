@@ -40,7 +40,7 @@ FORMAT_MARKER = "simple3d"
 # exporter adds in future.
 RESERVED = ("name", "pcb", "format", "format_version", "silkscreen",
             "embedded_models", "zones", "stackups", "bends", "full_board",
-            "components", "warnings")
+            "components", "warnings", "pads")
 
 
 # What Allegro's SKILL writes when a name is not ASCII: the bytes it holds,

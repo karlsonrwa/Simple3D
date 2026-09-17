@@ -11,6 +11,347 @@ to use the tool.
 
 ---
 
+- **2026-09-17** — **The exposed-copper work is on `main`, after a review
+  that fixed a fold and kept the proof of the tests in the tree.** Three
+  things changed in the model. On a folded rigid-flex board, the bare
+  laminate a drawn mask opening shows AROUND copper - a ring - used to lose
+  its face in the fold: what came out was its outline as loose edges, part of
+  them left flat where the folded panel used to be, 43% of that part's area
+  gone on the board that showed it, and 2199 warnings that named none of it;
+  a ring folds whole now, and the file carries no loose edge. A DONUT pad
+  standing at an offset had its hole the whole offset away from its ring
+  (the area was right, only the hole was in the wrong place); it is at the
+  ring's centre. And on a plain board a mask opening drawn past the edge -
+  the board outline drawn as a stroke on the mask layer, as Cadence's demo
+  does it - was built half in the air; it is clipped to the outline, and one
+  lying outside is left out with a word in the log. The exporter now also
+  says so when Allegro's polygon engine FAILS on an opening (a failure used
+  to read as "nothing under it", and the opening vanished from the file);
+  the opening is written whole as laminate and the console names it. One
+  question stays open and is written into *Known limitations*: a mirrored
+  pin on a padstack whose drill is offset from its pad - the pad's hole and
+  the board's hole follow different rules, no board here has such a padstack,
+  and which one Allegro means has not been measured. The tests: every fault
+  the audit of 15 September planted is now a table in the repository
+  (`tests/mutations.json`, 48 faults, all caught, 21 of them new to this
+  round), with the harness that applies them and a 27th suite that checks in
+  a fraction of a second that every entry still aims at the code it was
+  written for. The documentation was read against the code from end to end;
+  fifty stale statements were corrected. `python tests/run_all.py` is
+  31 of 31 in 225 s. /
+  **Работа с открытой медью влита в `main` после ревью, которое починило
+  свёртку и оставило в репозитории доказательство тестов.** В модели
+  изменились три вещи. На сложенной гибко-жёсткой плате голый текстолит,
+  который нарисованное вскрытие маски показывает ВОКРУГ меди — кольцо, —
+  терял при свёртке свою грань: на выходе был его контур россыпью рёбер,
+  часть их оставалась плоской там, где раньше стояла сложенная панель, 43 %
+  площади этой детали пропадало на плате, где это проявилось, и 2199
+  предупреждений, ни одно из которых этого не называло; теперь кольцо
+  складывается целиком, и в файле нет ни одного висячего ребра. У площадки
+  DONUT со смещением отверстие стояло на всё смещение в стороне от кольца
+  (площадь была верной, не на месте было только отверстие); теперь оно в
+  центре кольца. А на плоской плате вскрытие маски, нарисованное за край —
+  контур платы штрихом на слое маски, как это делает демо-плата Cadence, —
+  строилось наполовину в воздухе; теперь оно режется по контуру, а лежащее
+  снаружи пропускается со словом в логе. Экспортёр теперь ещё и говорит,
+  когда полигонный движок Allegro на вскрытии ОТКАЗЫВАЕТ (отказ читался как
+  «под ним ничего нет», и вскрытие исчезало из файла): вскрытие пишется
+  целиком как текстолит, а консоль его называет. Один вопрос остаётся
+  открытым и записан в *Известные ограничения*: зеркальный вывод на
+  падстеке, у которого сверло смещено относительно площадки, — отверстие в
+  площадке и отверстие в плате подчиняются разным правилам, такого падстека
+  здесь нет ни на одной плате, и какое из двух имеет в виду Allegro, не
+  измерено. Тесты: каждая поломка, которую аудит 15 сентября вносил в код,
+  теперь таблица в репозитории (`tests/mutations.json`, 48 поломок, все
+  ловятся, 21 из них новые в этом раунде), вместе с харнессом, который их
+  применяет, и 27-м набором, за долю секунды проверяющим, что каждая запись
+  по-прежнему целит в тот код, для которого написана. Документация прочитана
+  против кода от начала до конца; исправлено пятьдесят устаревших
+  утверждений. `python tests/run_all.py` — 31 из 31 за 225 с.
+
+- **2026-09-15** — **The tests were audited by breaking the code, and what
+  they missed was fixed.** Nothing about the tool changed; what changed is how
+  much its tests are worth. 27 deliberate faults were put into the code one at
+  a time to see whether any test noticed, and 11 went through unnoticed: the
+  silkscreen arc code had never run on an arc (every test polygon was a square
+  with no curve in it), the check that ten identical resistors cost one solid
+  instead of ten was printed and compared to nothing, the only measure of "did
+  the folded board join up" had never been seen reporting a gap, and four
+  faults planted in the Allegro half of the tool - among them "no layer is
+  negative any more" and "the drill offset is applied backwards" - passed the
+  whole suite, because what the tests check is a Python copy of those
+  procedures and nothing tied the copy to the original. All of it is closed.
+  The legend is now tested against six real polygons of Cadence's demo board
+  and the areas Allegro itself reports for them; the shared-part check
+  compares a board with two copies of a model against one with five; the seam
+  measure is handed a deliberately mis-stitched fold and has to report 23.8 mm
+  as 23.8 mm. The Allegro half is now both read and RUN: a new probe calls
+  those procedures inside a real headless Allegro over 59 cases, and the
+  Python copies are required to answer exactly as Allegro did - they do, all
+  59. The suite is 26 sets, 30 of 30 pass in 235 s, and the report of the
+  audit and its repair is in docs/test-audit.md. /
+  **Тесты проверены поломкой кода, и то, что они пропускали, починено.** В
+  самом инструменте не изменилось ничего; изменилось то, чего стоят его
+  тесты. В код по одной внесли 27 намеренных поломок, чтобы посмотреть,
+  заметит ли хоть один тест, — и 11 прошли незамеченными: код дуг
+  шелкографии ни разу не исполнялся на дуге (все тестовые полигоны —
+  квадраты без единой кривой), проверка «десять одинаковых резисторов стоят
+  одного солида, а не десяти» печаталась и ни с чем не сравнивалась,
+  единственная мера «сошлась ли сложенная плата» никогда не была замечена
+  сообщающей о зазоре, а четыре поломки в Allegro-половине инструмента —
+  среди них «негативных слоёв больше нет» и «смещение сверловки применяется
+  наоборот» — прошли весь набор, потому что тесты проверяют питоновскую
+  копию тех процедур, а с оригиналом её не связывало ничто. Всё это
+  закрыто. Легенда теперь проверяется на шести настоящих полигонах
+  демо-платы Cadence и площадях, которые сообщает про них сам Allegro;
+  проверка разделяемой детали сравнивает плату с двумя копиями модели и с
+  пятью; мере шва подсовывают заведомо неверно сшитый фолд, и она обязана
+  сообщить про 23.8 мм именно 23.8 мм. Allegro-половина теперь не только
+  читается, но и ЗАПУСКАЕТСЯ: новый зонд вызывает эти процедуры в настоящем
+  headless-Allegro на 59 случаях, и питоновские копии обязаны отвечать ровно
+  так же, как ответил Allegro, — отвечают, все 59. Набор вырос до 26
+  комплектов, 30 из 30 проходят за 235 с, а отчёт об аудите и о починке — в
+  docs/test-audit.ru.md.
+
+- **2026-09-14** — **Exposed copper: the pour comes back.** On a board whose
+  copper is opened by a shape drawn on the soldermask layer, *Exposed copper
+  (as surfaces)* showed the traces and the pads and no pour - the
+  polygon's area was written into the file as bare laminate instead. The
+  exporter looked for the copper under each opening with Allegro's
+  interactive box find, and what that returns depends on the session: run
+  from the menu in a live Allegro it left the pour out, run headless it did
+  not, and nothing in the log said a difference. It now sweeps the side's
+  copper once, the way the legend, the openings, the pins and the vias have
+  always been swept, and matches it to the openings itself. On the board
+  that showed it, 60.758 mm2 moved back from bare laminate to copper. The
+  console line now also says how many copper objects the sweep found, and
+  warns when a board with drawn openings turns up none - so the same kind of
+  fault cannot be silent again. **This lives in the Allegro side, so it
+  takes effect once the exporter is updated where Allegro loads it from and
+  the board is exported again; an intermediate written before that still has
+  the copper missing.** /
+  **Открытая медь: полигон вернулся.** На плате, медь которой вскрыта
+  фигурой, нарисованной на слое паяльной маски, *Exposed copper (as
+  surfaces)* показывал дорожки и площадки без полигона — его площадь попадала в
+  файл как голый ламинат. Экспортёр искал медь под каждым вскрытием
+  интерактивным поиском Allegro по рамке, а его результат зависит от сессии:
+  из меню в живом Allegro полигон в выборку не попадал, в headless-прогоне
+  попадал, и в логе об этом не было ни слова. Теперь медь стороны
+  обходится один раз — так же, как всегда обходились легенда, вскрытия,
+  выводы и переходные, — и сопоставляется со вскрытиями самим экспортёром. На
+  плате, где это проявилось, 60.758 мм² вернулись из голого ламината в медь.
+  В строке консоли теперь ещё и число найденных медных объектов, а если на
+  плате есть нарисованные вскрытия и меди не нашлось вовсе — предупреждение,
+  чтобы такая ошибка больше не могла пройти молча. **Правка в Allegro-части,
+  поэтому она заработает после обновления экспортёра там, откуда его грузит
+  Allegro, и повторного экспорта платы; в уже записанном интермедиате медь
+  по-прежнему отсутствует.**
+
+- **2026-09-14** — **The same compound in two more places, and a word when
+  two bend areas cross.** The holes-with-plugs fix below was one of three
+  places that handed a boolean a tool made of pieces that overlap each other.
+  A layer's own shapes were the second: two shapes on one coverlay or
+  stiffener layer that merely TOUCH, and one of them was silently gone -
+  the opening never cut, or the patch of material never built. No board we
+  have does that (the closest two shapes on one layer are 0.6 mm apart), so
+  nothing changes on today's designs; it would have been a whole patch
+  missing with nothing in the log. The bend strips were the third: two bends
+  whose areas cross on the board left the cut a single pinched piece instead
+  of four, and the repair that put it back quietly made four separate corners
+  into one panel - which is what the fold moves as one rigid piece. Both are
+  cut properly now. And when two bend areas really do cross, the log says so
+  in mm2 instead of leaving it to the coarse "claimed twice" figure, which
+  reads a small crossing as 0.04% and stays silent. Neither bend is dropped
+  for it: a board can have two bends at right angles and both must fold. /
+  **Тот же compound ещё в двух местах и сообщение о пересечении областей
+  гиба.** Правка «отверстий с пробками» ниже была одним из трёх мест, где
+  булевой операции отдавали инструмент из перекрывающихся кусков. Второе —
+  собственные фигуры слоя: две фигуры на одном коверлее или стиффенере,
+  просто КАСАЮЩИЕСЯ друг друга, и одна из них молча пропадала — вскрытие не
+  прорезалось, либо патч материала не появлялся. На имеющихся платах такого
+  нет (ближайшие две фигуры на одном слое разнесены на 0.6 мм), так что на
+  сегодняшних проектах ничего не меняется; но обошлось бы это в целый
+  пропавший патч без единой строки в логе. Третье — полосы гибов: два гиба,
+  области которых пересекаются на плате, оставляли после реза один
+  защемлённый кусок вместо четырёх, а чинящий код тихо сводил четыре
+  отдельных угла в одну панель — а панель это то, что фолд двигает как одно
+  жёсткое целое. Теперь режется правильно. И если области гиба
+  действительно пересекаются, лог говорит об этом в мм², а не оставляет это
+  грубой оценке «заявлено дважды», которая читает небольшое пересечение как
+  0.04% и молчит. Ни один гиб за это не выбрасывается: на плате могут быть
+  два гиба под прямым углом, и сложиться должны оба.
+
+- **2026-09-14** — **Holes with plugs in them: cutouts that overlap each
+  other are cut properly now.** On a round board broken out of its panel by
+  six break-off tabs, three of the mouse-bite holes looked uncut in the model
+  while the wall of the hole was plainly there. The hole *was* cut - what was
+  also in the file was a loose plug sitting in it, a separate little body of
+  0.1654 mm3. Every cutout prism went into one compound and that compound was
+  handed to the boolean as its tool, and OCC never intersects the members of
+  one argument against each other: where a tab's 1.0 mm circle overlapped the
+  0.25 mm bite beside it - by 0.118 mm, which is simply what a mouse bite next
+  to a tab looks like - the result was undefined. Which holes came out wrong
+  was arbitrary: two tabs that are mirror images of each other across the
+  board came out differently. The prisms are separate tools now; the board is
+  one body, every hole is open, and the build takes the same time. The same
+  change also survives the duplicated cutout that used to erase the whole
+  board body. / **Отверстия с пробками: пересекающиеся катауты теперь
+  прорезаются как надо.** На круглой плате, отделяемой от панели шестью
+  перемычками, три отверстия мышиного укуса выглядели непрорезанными, хотя
+  стенка отверстия была на месте. Отверстие прорезано - в файле рядом лежала
+  ещё и пробка, отдельное тельце в 0.1654 мм3 ровно в этом отверстии. Все
+  призмы катаутов складывались в один compound, и он отдавался булевой
+  операции как инструмент, а OCC никогда не пересекает между собой части
+  одного аргумента: там, где круг перемычки 1.0 мм накрывал соседний укус
+  0.25 мм - на 0.118 мм, то есть ровно так, как укус рядом с перемычкой и
+  выглядит, - результат был не определён. Какие именно отверстия выйдут
+  неверными, оказывалось делом случая: две зеркальные друг другу перемычки
+  повели себя по-разному. Теперь призмы идут отдельными инструментами: плата
+  - одно тело, все отверстия открыты, время сборки то же. Эта же правка
+  переживает и продублированный катаут, который раньше стирал тело платы
+  целиком.
+
+- **2026-09-07** — **Windows below the copper; *Copper pads* is now
+  *Exposed copper*.** In step2html the demo board showed the white window of
+  one through pin eating the copper ring of its neighbour: the windows and
+  the copper sat at one height, a micron above the mask, and where two
+  overlap a viewer draws whichever it drew last. Now there are three
+  heights, a `silkscreenFlatHeight` apart - the windows lowest, the copper
+  above them, the drawn openings' parts above both - so the copper is on top
+  by construction. And the first checkbox draws every copper feature the
+  mask exposes, not only the pads - the via rings, a pour or a label under a
+  drawn opening - so it is *Exposed copper (as surfaces)* now, with
+  `gui.exposedCopper` and `--exposed-copper` to match (`copperPads` and
+  `--copper-pads` lived one day, on a branch). Windows only where there is
+  a mask: a zone whose stackup has no soldermask on that side - a flex or
+  stiffener zone under coverlay - gets no windows for its pins and no drawn
+  openings, and an opening running across zones (the demo's outline is
+  drawn as strokes on the mask layers through every zone) is clipped to
+  the masked zones, each piece at its own zone's face, instead of floating
+  above the flex. / **Окна под медью;
+  *Copper pads* теперь *Exposed copper*.** В step2html на демо-плате белое
+  окно одного вывода «съедало» медное кольцо соседнего: окна и медь лежали
+  на одной высоте, на микрон над маской, а там, где две грани совпадают,
+  просмотрщик показывает ту, что нарисовал последней. Теперь высот три, через
+  `silkscreenFlatHeight`: окна ниже всех, медь над ними, детали нарисованных
+  вскрытий выше обоих — медь сверху по построению. А первая галочка рисует
+  всю медь, которую открывает маска, а не только площадки — кольца отверстий,
+  заливку или надпись под нарисованным вскрытием, — поэтому теперь она
+  *Exposed copper (as surfaces)*, с `gui.exposedCopper` и `--exposed-copper`
+  (`copperPads` и `--copper-pads` прожили один день, в ветке). Окна только
+  там, где маска есть: зона, чей стек не несёт паяльной маски с этой стороны
+  — флекс или стиффенер под коверлеем, — не получает ни окон для своих
+  выводов, ни нарисованных вскрытий, а вскрытие, пересекающее зоны (контур
+  демо-платы нарисован штрихами на слоях маски сквозь все зоны), обрезается
+  по зонам с маской, каждый кусок на грани своей зоны, вместо того чтобы
+  висеть над флексом.
+
+- **2026-09-07** — **Mask openings, as surfaces; copper drawn with no net.**
+  A second checkbox, *Mask openings (as surfaces)*, draws the windows in the
+  solder mask in the dielectric's colour: every pin's and via's opening from
+  its padstack, instanced like the pads, and every opening drawn on the mask
+  layers - a line, a shape or rectangle, a text - flat like the legend. With
+  *Exposed copper* on, what the copper leaves of each opening: the ring around
+  a copper-defined pad, the laminate a label cut into the mask shows (which
+  the copper pads drew on their own for a few hours and now leave to this
+  checkbox); alone, the openings whole. And a label written in copper with
+  *Add Line* on an etch layer - on no net, a "line" to Allegro's find filter
+  rather than a "cline" - is copper under its opening now: the sweep asks
+  for both, where it asked for clines alone and found none of the 51 strokes
+  of the user's label. / **Вскрытия маски поверхностями; медь без цепи.**
+  Вторая галочка, *Mask openings (as surfaces)*, рисует окна в паяльной
+  маске цветом диэлектрика: вскрытие каждого вывода и переходного отверстия
+  из его падстека, вхождениями как площадки, и каждое вскрытие,
+  нарисованное на слоях маски — линия, фигура или прямоугольник, текст, —
+  плоско, как легенда. Вместе с *Exposed copper* — то, что от вскрытия
+  оставляет медь: кольцо вокруг copper-defined площадки, текстолит, который
+  показывает прорезанная в маске надпись (несколько часов его рисовали сами
+  площадки, теперь он у этой галочки); сами по себе — вскрытия целиком. И
+  надпись, нарисованная медью через *Add Line* на слое etch — без цепи, для
+  фильтра поиска Allegro «line», а не «cline», — теперь медь под своим
+  вскрытием: развёртка спрашивает и то и другое, а спрашивая одни clines, не
+  находила ни одного из 51 штриха надписи пользователя.
+
+- **2026-09-07** — **Copper pads, as surfaces.** A new checkbox, *Exposed
+  copper (as surfaces)* (named *Copper pads* for a few hours), draws the
+  copper of every pin's pad on the two outer faces
+  in the copper colour, a micron above the mask - so the model reads as a
+  board with its pads rather than as a plain slab. Nothing is cut into the
+  board and no boolean runs: each pad figure is built once from the outline
+  Allegro itself holds for it (every figure kind carries one - circle,
+  oblong, rounded rectangle, *Shape*) and instanced per pin, the way
+  component models are shared, so a pad costs a placement in the file and
+  not a body. Through-hole pads keep their drill; a mounting hole whose pad
+  is smaller than its drill draws nothing. Which face a pin reaches is its
+  own layer span against the outer copper of its zone, so the flex connector
+  on Cadence's demo board lands on the flex's top face and a part on an
+  inner layer of a rigid zone is counted, not drawn. Every placed pad on
+  five boards - 54 000 placements, offset, mirrored and turned padstacks
+  included - agrees with the polygon Allegro reports for that pin. A pad's
+  corner arc is built through its two end points, because Allegro keeps an
+  arc's centre only to the design's resolution and an arc rebuilt on its
+  radius can miss the next line by a fraction of a micron - which is how
+  four rounded-rectangle padstacks first came out as nothing. Measured on
+  the demo: 2982 pads add 2.3 MB to a 94 MB file and five seconds to a
+  three-minute build. Only what the mask exposes is drawn: the padstack's
+  own mask opening travels beside the copper, and a solder-mask-defined
+  pad shows the opening's shape, a copper-defined one its copper, a pad
+  with no opening nothing (Dell: 621 mask-defined and 101 covered of
+  12 146 pins). Vias are rows like pins, so an untented via shows its ring
+  and a tented one draws nothing (the demo tents none: 2484 rings). An
+  opening drawn in the footprint or on the board - a line, a shape or a
+  text on a SOLDERMASK layer, the `soldermask` section of the config says which -
+  exposes the copper under it: computed in Allegro with `axlPolyOperation`
+  and built like a flat legend, one part per side (`copper_top_<board>`),
+  a micron above the pads - and the bare laminate it shows where there is
+  no copper (a label cut into the mask as strokes) comes the same way, in
+  the dielectric's colour (`bare_top_<board>`), so the label is in the
+  model. The exporter now writes `format_version` 12
+  with a `pads` object (`settings.exportPads`, on by default); an 11 file
+  has no vias and nothing under drawn openings, a 10 file draws the copper
+  whole and an older one none - the log says which. Off by default.
+  / **Медь площадок, поверхностями.** Новая галочка *Exposed copper (as
+  surfaces)* (несколько часов звалась *Copper pads*) рисует медь площадок
+  всех выводов на двух наружных гранях
+  цветом меди, на микрон над маской, — чтобы модель читалась как плата с
+  площадками, а не как гладкая пластина. В плату ничего не вырезается,
+  булевых операций нет: фигура площадки строится один раз по контуру,
+  который сам Allegro хранит для неё (он есть у каждого вида фигуры — круг,
+  овал, скруглённый прямоугольник, *Shape*), и ставится вхождением на
+  каждый вывод, как общие модели компонентов, так что площадка стоит в
+  файле как размещение, а не как тело. Сквозные площадки сохраняют
+  отверстие; крепёжное отверстие с площадкой меньше сверла не рисует ничего.
+  Какой грани достигает вывод, решает его собственный диапазон слоёв против
+  наружной меди его зоны: разъём на флексе демо-платы Cadence ложится на
+  верхнюю грань флекса, а деталь на внутреннем слое жёсткой зоны считается,
+  но не рисуется. Каждая поставленная площадка на пяти платах — 54 000
+  размещений, включая смещённые, зеркальные и повёрнутые падстеки —
+  совпадает с полигоном, который Allegro сообщает для этого вывода. Дуга
+  угла площадки строится через свои две концевые точки: центр дуги Allegro
+  хранит лишь с разрешением проекта, и дуга, восстановленная по радиусу,
+  может не дойти до соседнего отрезка на доли микрона — так четыре
+  падстека со скруглёнными прямоугольниками сначала не нарисовались вовсе.
+  Замер на демо: 2982 площадки добавляют 2.3 МБ к файлу в 94 МБ и пять
+  секунд к трёхминутной сборке. Рисуется только то, что открыто маской:
+  вскрытие из самого падстека едет рядом с медью, и mask-defined площадка
+  показывает форму вскрытия, copper-defined — свою медь, площадка без
+  вскрытия — ничего (Dell: 621 mask-defined и 101 закрытая из 12146).
+  Переходные отверстия — такие же строки, как выводы: незакрытое показывает
+  кольцо, закрытое не рисуется (демо не закрывает ни одного: 2484 кольца).
+  Вскрытие, нарисованное в посадочном месте или на плате — линия, фигура
+  или текст на слое SOLDERMASK, секция `soldermask` конфига говорит, на
+  каких, —
+  открывает медь под собой: считается в Allegro через `axlPolyOperation` и
+  строится как плоская легенда, одна деталь на сторону
+  (`copper_top_<плата>`), на микрон выше площадок, — а голый текстолит,
+  который оно показывает там, где меди нет (надпись, прорезанная в маске
+  штрихами), едет так же, цветом диэлектрика (`bare_top_<плата>`), и
+  надпись есть в модели. Экспорт теперь пишет
+  `format_version` 12 с объектом `pads` (`settings.exportPads`, по
+  умолчанию включено); файл 11 не несёт отверстий и меди под нарисованными
+  вскрытиями, файл 10 рисует медь целиком, более старый — ничего, лог
+  говорит, что именно. По умолчанию выключено.
+
 - **2026-09-06** — **A flex layer no longer loses a corner where its zone
   contour carries a hairline.** On flex2-a0 the FLEX zone's outline, as
   Allegro writes it, runs out along the round stiffener's arc and back on a

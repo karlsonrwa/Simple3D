@@ -1,0 +1,552 @@
+[
+ {
+  "id": "board-dedup-off",
+  "file": "stepbuilder/board.py",
+  "old": "        if key in seen:\n            dropped += 1\n            continue",
+  "new": "        if False:\n            dropped += 1\n            continue",
+  "suites": [
+   "test_dupcuts.py",
+   "test_overlapping_cutouts.py"
+  ],
+  "why": "a repeated cutout is no longer dropped - the board should come out empty"
+ },
+ {
+  "id": "has-solid-always-true",
+  "file": "stepbuilder/board.py",
+  "old": "    return TopExp_Explorer(shape, TopAbs_SOLID).More()",
+  "new": "    return True",
+  "suites": [
+   "test_dupcuts.py",
+   "test_zones.py"
+  ],
+  "why": "the guard that says a boolean left nothing now always says it is fine"
+ },
+ {
+  "id": "restack-above-zero",
+  "file": "stepbuilder/stackup.py",
+  "old": "    above = sum(float(lay[\"thickness\"]) for lay in layers[:first])",
+  "new": "    above = 0.0",
+  "suites": [
+   "test_nomask.py",
+   "test_layers.py",
+   "test_zones.py"
+  ],
+  "why": "the stack no longer hangs off the conductor - every z is wrong"
+ },
+ {
+  "id": "soldermask-unrecognised",
+  "file": "stepbuilder/stackup.py",
+  "old": "    return SOLDERMASK_MARKER in \"\".join(c for c in probe if c.isalnum())",
+  "new": "    return False",
+  "suites": [
+   "test_nomask.py",
+   "test_modes.py"
+  ],
+  "why": "no layer is a soldermask any more, so none is ever dropped"
+ },
+ {
+  "id": "zone-levels-no-shift",
+  "file": "stepbuilder/stackup.py",
+  "old": "    shift = -board_top if z_datum == \"top\" else -board_bottom\n\n    levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}",
+  "new": "    shift = 0.0\n\n    levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}",
+  "suites": [
+   "test_zones.py",
+   "test_layers.py"
+  ],
+  "why": "the datum face no longer lands on z=0"
+ },
+ {
+  "id": "arc-steps-3",
+  "file": "stepbuilder/contour.py",
+  "old": "def contour_points(contour, arc_steps: int = 8)",
+  "new": "def contour_points(contour, arc_steps: int = 3)",
+  "suites": [
+   "test_overlapping_cutouts.py",
+   "test_zones.py",
+   "test_pads.py",
+   "test_bend.py"
+  ],
+  "why": "arcs sampled three times instead of eight - containment gets coarse"
+ },
+ {
+  "id": "merge-config-flat",
+  "file": "stepbuilder/settings.py",
+  "old": "        if isinstance(value, dict) and isinstance(out.get(key), dict):\n            out[key] = merge_config(out[key], value)\n        else:\n            out[key] = value",
+  "new": "        out[key] = value",
+  "suites": [
+   "test_config_merge.py",
+   "test_settings.py",
+   "test_gui.py"
+  ],
+  "why": "nested sections are replaced whole - the local file wipes the defaults"
+ },
+ {
+  "id": "reachable-always",
+  "file": "stepbuilder/winplace.py",
+  "old": "    return visible_w >= MIN_VISIBLE_WIDTH and visible_h >= MIN_VISIBLE_HEIGHT",
+  "new": "    return True",
+  "suites": [
+   "test_geom.py",
+   "test_gui.py"
+  ],
+  "why": "a window remembered on a monitor that is gone is restored there anyway"
+ },
+ {
+  "id": "pads-mask-data-ignored",
+  "file": "stepbuilder/pads.py",
+  "old": "    masks_known = has_mask_data(library)",
+  "new": "    masks_known = False",
+  "suites": [
+   "test_pads.py"
+  ],
+  "why": "the mask data in the file is ignored, so every pad draws whole"
+ },
+ {
+  "id": "silk-arc-side",
+  "file": "stepbuilder/legend.py",
+  "old": "    left_candidate_sits_left = nx < 0.0",
+  "new": "    left_candidate_sits_left = nx > 0.0",
+  "suites": [
+   "test_silk.py"
+  ],
+  "why": "every silkscreen arc bulges the wrong way under the AXIS reading"
+ },
+ {
+  "id": "pads-never-built",
+  "file": "stepbuilder/core.py",
+  "old": "    pads = _build_pads(data, stack, fold, options, document, json_stem, log)",
+  "new": "    pads = None",
+  "suites": [
+   "test_pads.py",
+   "test_mech.py"
+  ],
+  "why": "the whole copper-pad path is severed"
+ },
+ {
+  "id": "legend-never-built",
+  "file": "stepbuilder/core.py",
+  "old": "    silk_built, silk_skipped = _build_legend(data, stack, fold, options, document,\n                                             json_stem, log)",
+  "new": "    silk_built, silk_skipped = (0, 0)",
+  "suites": [
+   "test_silk.py",
+   "test_mech.py"
+  ],
+  "why": "the whole silkscreen path is severed"
+ },
+ {
+  "id": "strips-never-overlap",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "def _strips_overlap(a, b) -> bool:",
+  "new": "def _strips_overlap(a, b): return False\ndef _strips_overlap_unused(a, b) -> bool:",
+  "suites": [
+   "test_bend.py"
+  ],
+  "why": "two bends that share material are no longer seen to"
+ },
+ {
+  "id": "seam-gap-zero",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "    worst = 0.0\n    panels = [r for r in plan.regions if r.kind == \"panel\" and r.poly]",
+  "new": "    worst = 0.0\n    return worst\n    panels = [r for r in plan.regions if r.kind == \"panel\" and r.poly]",
+  "suites": [
+   "test_bend.py"
+  ],
+  "why": "the measure the fold suite judges a plan by always says perfect"
+ },
+ {
+  "id": "skill-nothing-is-negative",
+  "file": "skill/s3d_stackup.il",
+  "old": "                    when( substring( probe i strlen( key ) ) == upperCase( key )\n                        neg = t",
+  "new": "                    when( substring( probe i strlen( key ) ) == upperCase( key )\n                        neg = nil",
+  "suites": [
+   "test_neg.py",
+   "skill_checks.py",
+   "check_arity.py",
+   "audit_docs.py",
+   "test_skill_pins.py"
+  ],
+  "why": "the exporter now calls no layer negative - coverlay would come out inverted"
+ },
+ {
+  "id": "skill-drill-offset-sign",
+  "file": "skill/s3d_geometry.il",
+  "old": "            rotateXY( xy list( xCoord( xy ) + dx  yCoord( xy ) + dy ) rotation )",
+  "new": "            rotateXY( xy list( xCoord( xy ) - dx  yCoord( xy ) - dy ) rotation )",
+  "suites": [
+   "test_drill_offset.py",
+   "skill_checks.py",
+   "test_skill_pins.py"
+  ],
+  "why": "the drill offset is applied backwards in the exporter"
+ },
+ {
+  "id": "skill-boxes-meet-inverted",
+  "file": "skill/s3d_pads.il",
+  "old": "            !( (ax1 < bx0) || (bx1 < ax0) || (ay1 < by0) || (by1 < ay0) )",
+  "new": "            ( (ax1 < bx0) || (bx1 < ax0) || (ay1 < by0) || (by1 < ay0) )",
+  "suites": [
+   "test_pads.py",
+   "skill_checks.py",
+   "test_skill_pins.py"
+  ],
+  "why": "boxes that meet are reported as apart and the other way round"
+ },
+ {
+  "id": "skill-control-chars-kept",
+  "file": "skill/s3d_json.il",
+  "old": "                        ( scan && pcreMatchp( pattern c )  \" \" )",
+  "new": "                        ( nil  \" \" )",
+  "suites": [
+   "test_quote.py",
+   "test_emit.py",
+   "skill_checks.py",
+   "test_skill_pins.py"
+  ],
+  "why": "a control character is written raw, and the whole intermediate stops parsing"
+ },
+ {
+  "id": "skill-launcher-flag-renamed",
+  "file": "simple3d.il",
+  "old": "            \"--brd-name \\\"\" designName \"\\\" \"",
+  "new": "            \"--board-name \\\"\" designName \"\\\" \"",
+  "suites": [
+   "test_launcher.py",
+   "test_launch_cmd.py",
+   "test_variant_path.py",
+   "test_gui.py",
+   "skill_checks.py",
+   "check_arity.py",
+   "audit_docs.py"
+  ],
+  "why": "the SKILL launcher now passes a flag the Python parser refuses"
+ },
+ {
+  "id": "skill-config-not-read",
+  "file": "simple3d.il",
+  "old": "s3dConfigRead( S3D_ConfigFile )",
+  "new": "s3dConfigReadX( S3D_ConfigFile )",
+  "suites": [
+   "test_config_merge.py",
+   "skill_checks.py",
+   "check_arity.py"
+  ],
+  "why": "the launcher no longer reads the settings file"
+ },
+ {
+  "id": "model-cache-off",
+  "file": "stepbuilder/models.py",
+  "old": "        if step_name in self._labels:\n            return self._labels[step_name], None",
+  "new": "        if False:\n            return self._labels[step_name], None",
+  "suites": [
+   "test_mech.py",
+   "test_regression_geometry.py",
+   "test_embedded.py",
+   "test_index.py"
+  ],
+  "why": "a model is re-imported per refdes, so the part is no longer shared - test_mech prints the solid count and says it proves sharing"
+ },
+ {
+  "id": "dupcut-warning-silenced",
+  "file": "stepbuilder/board.py",
+  "old": "    if dropped:\n        log(",
+  "new": "    if False:\n        log(",
+  "suites": [
+   "test_dupcuts.py",
+   "test_gui.py"
+  ],
+  "why": "the cutout-repeat warning is never logged"
+ },
+ {
+  "id": "pad-offset-ignored",
+  "file": "stepbuilder/pads.py",
+  "old": "def _settle_offset(face: TopoDS_Face, pad: dict) -> tuple[TopoDS_Face, str | None]:",
+  "new": "def _settle_offset(face, pad): return face, None\ndef _settle_offset_unused(face: TopoDS_Face, pad: dict) -> tuple[TopoDS_Face, str | None]:",
+  "suites": [
+   "test_pads.py"
+  ],
+  "why": "a pad's offset is no longer settled against its own bounding box"
+ },
+ {
+  "id": "skill-merge-not-recursive",
+  "file": "skill/s3d_json.il",
+  "old": "                out = cons( list( car( entry )\n                                  s3dJsonMerge( cadr( entry ) cadr( hit ) ) ) out )",
+  "new": "                out = cons( hit out )",
+  "suites": [
+   "test_config_merge.py",
+   "test_settings.py",
+   "skill_checks.py",
+   "check_arity.py",
+   "audit_docs.py",
+   "test_skill_pins.py"
+  ],
+  "why": "the SKILL config merge stops being recursive - the local file's gui section would wipe the shipped one"
+ },
+ {
+  "id": "silk-arcs-as-chords",
+  "file": "stepbuilder/legend.py",
+  "old": "        if abs(radius) > 1.0e-9:\n            left = _arc_bulges_left(p0, p1, radius, rule, positive_is_first)\n            return _arc_edge(p0, p1, radius, z, left)",
+  "new": "        if False:\n            left = _arc_bulges_left(p0, p1, radius, rule, positive_is_first)\n            return _arc_edge(p0, p1, radius, z, left)",
+  "suites": [
+   "test_silk.py",
+   "test_regression_geometry.py"
+  ],
+  "why": "every silkscreen arc is replaced by its chord - the built area no longer matches the one Allegro reported"
+ },
+ {
+  "id": "silk-area-comparison-off",
+  "file": "stepbuilder/legend.py",
+  "old": "                if ratio > AREA_TOLERANCE:",
+  "new": "                if False:",
+  "suites": [
+   "test_silk.py"
+  ],
+  "why": "the area comparison can no longer disagree - the suite reads its verdict"
+ },
+ {
+  "id": "model-cache-off-everything",
+  "file": "stepbuilder/models.py",
+  "old": "        if step_name in self._labels:\n            return self._labels[step_name], None",
+  "new": "        if False:\n            return self._labels[step_name], None",
+  "suites": [
+   "test_silk.py",
+   "test_mech.py",
+   "test_regression_geometry.py",
+   "test_zones.py",
+   "test_layers.py",
+   "test_modes.py",
+   "test_plain_modes.py",
+   "test_nomask.py",
+   "test_neg.py",
+   "test_dupcuts.py",
+   "test_overlapping_cutouts.py",
+   "test_pads.py",
+   "test_embedded.py",
+   "test_index.py"
+  ],
+  "why": "one part per distinct STEP model, severed - every refdes re-imports"
+ },
+ {
+  "id": "cutout-compound-back",
+  "file": "stepbuilder/board.py",
+  "old": "        tools.Append(BRepPrimAPI_MakePrism(face.Face(), direction).Shape())",
+  "new": "        if tools.IsEmpty():\n            tools.Append(_compound([]))\n        BRep_Builder().Add(tools.First(), BRepPrimAPI_MakePrism(face.Face(), direction).Shape())",
+  "suites": [
+   "test_overlapping_cutouts.py",
+   "test_dupcuts.py"
+  ],
+  "why": "Round 86: every cutout prism went back into ONE compound handed to BRepAlgoAPI_Cut as a single tool (the self-interfering argument that left plugs in circle-a0's mouse bites). Works through TopTools_ListOfShape.First(), which shares the TShape (probed: 3 children both ways). MEASURED on a HEAD copy: CAUGHT by test_overlapping_cutouts.py, 8 assertions ('six tabs, six bites: ONE solid' reads 7 solids; volumes 176.7146 against 175.7695)."
+ },
+ {
+  "id": "layer-region-compound-back",
+  "file": "stepbuilder/board.py",
+  "old": "    for face in faces:",
+  "new": "    for face in [_compound(faces)]:",
+  "suites": [
+   "test_overlapping_cutouts.py",
+   "test_layers.py",
+   "test_neg.py"
+  ],
+  "why": "Round 86b: a layer's drawn shapes handed to the Cut/Common as one compound instead of one argument each - on faces this drops all but one shape. MEASURED: CAUGHT by test_overlapping_cutouts.py [6]/[7], 8 assertions (the one-disc numbers 371.7257 / 28.2743 come back at every spacing, the touching row included). Single-line old because the working tree is CRLF (see notes)."
+ },
+ {
+  "id": "pieces-compound-back",
+  "file": "stepbuilder/bend/pieces.py",
+  "old": "    for _, part in strips:",
+  "new": "    _c = TopoDS_Compound(); BRep_Builder().MakeCompound(_c)\n    for _s in strips: BRep_Builder().Add(_c, _s[1])\n    for _, part in [(None, _c)]:",
+  "suites": [
+   "test_bend.py"
+  ],
+  "why": "Round 86b: the bend strips back into one compound as the Cut's tool; two crossing strips then subtract their shared square twice and weld the corners through zero-width slits. MEASURED: CAUGHT by test_bend.py [7b3], 4 assertions (1 panel instead of 4, 4489 mm2, 'pinch' and a 36.0000 mm2 sliver dropped); 168 s beside the other job."
+ },
+ {
+  "id": "shared-strips-zero",
+  "file": "stepbuilder/bend/pieces.py",
+  "old": "            shared = _area_of(common.Shape())",
+  "new": "            shared = 0.0",
+  "suites": [
+   "test_bend.py"
+  ],
+  "why": "Round 86b: shared_strips never reports a crossing (the plan_fold warning goes silent). MEASURED: CAUGHT by test_bend.py [7b3] 'shared_strips finds the one crossing pair <- []' - and the suite then aborts with IndexError at :482 (smell listed), so only one FAIL line is printed."
+ },
+ {
+  "id": "double-claimed-always-zero",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "    if not outline or not plan.regions:",
+  "new": "    if outline or not plan.regions:",
+  "suites": [
+   "test_bend.py"
+  ],
+  "why": "double_claimed answers 0.0 for every board: test_bend [7d] makes one panel of the Z fold claim the whole outline and requires the fraction the other pieces hold (round 89)."
+ },
+ {
+  "id": "mask-sides-always-both",
+  "file": "stepbuilder/pads.py",
+  "old": "    if not layers or not conductors:",
+  "new": "    if layers or not conductors:",
+  "suites": [
+   "test_pads.py"
+  ],
+  "why": "mask_sides returns (True, True) for every stackup - windows drawn over coverlay-only flex zones again (the demo's floating openings). MEASURED: CAUGHT by test_pads.py [7], 5 assertions (FLEX reads (True, True); 2 windows instead of 1; 3 bare polygons built, 14 mm2; the flex-only board gets 5 windows)."
+ },
+ {
+  "id": "no-mask-zone-inverted",
+  "file": "stepbuilder/pads.py",
+  "old": "            if not (mask_top if face_side == \"top\" else mask_bottom):",
+  "new": "            if (mask_top if face_side == \"top\" else mask_bottom):",
+  "suites": [
+   "test_pads.py"
+  ],
+  "why": "The no_mask_zone gate inverted: windows drawn only where the zone has NO soldermask. MEASURED: CAUGHT by test_pads.py, 8 assertions ([6] 0 openings placed on the plain board, the heights check reads [-1.106, 0.002], [7] the F2 pin gets the window)."
+ },
+ {
+  "id": "drawn-openings-unclipped",
+  "file": "stepbuilder/pads.py",
+  "old": "                faces = _faces_of(common.Shape()) if common.IsDone() else []",
+  "new": "                faces = _faces_of(compound)",
+  "suites": [
+   "test_pads.py"
+  ],
+  "why": "build_exposed keeps a straddling drawn-opening polygon whole instead of clipping it to the masked zone's contour. MEASURED: CAUGHT by test_pads.py [7], 1 assertion (10.0 mm2 and a box reaching y = 13 instead of 6.76 mm2 ending at 11.38)."
+ },
+ {
+  "id": "copper-at-window-height",
+  "file": "stepbuilder/core.py",
+  "old": "        fold=fold, lift=2.0 * abs(options.silk_flat_height),",
+  "new": "        fold=fold, lift=1.0 * abs(options.silk_flat_height),",
+  "suites": [
+   "test_pads.py"
+  ],
+  "why": "Two of the three heights collapse: copper and windows both at h, the coplanar overlap that ate the demo's rings in step2html. MEASURED: CAUGHT by test_pads.py [6], 1 assertion ('the windows sit one clearance above the face and the copper two' <- [-1.105, 0.001])."
+ },
+ {
+  "id": "drawn-parts-at-copper-height",
+  "file": "stepbuilder/core.py",
+  "old": "            lift=3.0 * abs(options.silk_flat_height), section=section, log=log)",
+  "new": "            lift=2.0 * abs(options.silk_flat_height), section=section, log=log)",
+  "suites": [
+   "test_pads.py"
+  ],
+  "why": "The third height collapses onto the second: the drawn openings' copper and laminate parts land coplanar with the pads. test_pads [6] reads the lift handed to build_exposed (round 89)."
+ },
+ {
+  "id": "pick-convention-first-wins",
+  "file": "stepbuilder/legend.py",
+  "old": "    best_error, best = min(scores, key=lambda s: s[0])",
+  "new": "    best_error, best = scores[0]",
+  "suites": [
+   "test_silk.py",
+   "test_pads.py"
+  ],
+  "why": "The convention search stops searching and returns the first candidate. test_silk [10] feeds the sample with every radius negated and requires the mirror reading to win (round 89)."
+ },
+ {
+  "id": "skill-sweep-box-select-back",
+  "file": "skill/s3d_pads.il",
+  "old": "            when( errset( axlAddSelectAll() t )",
+  "new": "            when( errset( axlAddSelectBox( list( 0:0 1000:1000 ) ) t )",
+  "suites": [
+   "test_pads.py",
+   "skill_checks.py",
+   "check_arity.py"
+  ],
+  "why": "Round 87 undone textually: the copper sweep goes back to Allegro's interactive box select. MEASURED: CAUGHT by test_pads.py [8], exactly one assertion (the token 'axlAddSelectAll()'); skill_checks.py and check_arity.py pass. Shows the seam is pinned by a word, see the next two."
+ },
+ {
+  "id": "skill-sweep-finds-nothing",
+  "file": "skill/s3d_pads.il",
+  "old": "                found = axlGetSelSet()",
+  "new": "                found = nil",
+  "suites": [
+   "test_pads.py",
+   "test_skill_pins.py",
+   "skill_checks.py"
+  ],
+  "why": "The sweep selects with axlAddSelectAll and then throws the selection away - every opening becomes bare laminate, the exact symptom of the round-87 bug, with all six [8] tokens still present. MEASURED: SURVIVED test_pads.py, test_skill_pins.py, skill_checks.py. Pinned statement by statement in test_skill_pins [5b] since round 89."
+ },
+ {
+  "id": "skill-boxes-meet-callsite-inverted",
+  "file": "skill/s3d_pads.il",
+  "old": "                    when( s3dBoxesMeet( cadr( entry )->bBox p->bBox )",
+  "new": "                    unless( s3dBoxesMeet( cadr( entry )->bBox p->bBox )",
+  "suites": [
+   "test_pads.py",
+   "test_skill_pins.py",
+   "skill_checks.py"
+  ],
+  "why": "The box match applied backwards at its call site: each opening is ANDed against every polygon whose box does NOT meet it. The procedure body is pinned (next mutation) but the decision that uses it is not. MEASURED: SURVIVED all three suites. Pinned statement by statement in test_skill_pins [5b] since round 89."
+ },
+ {
+  "id": "skill-filter-no-lines",
+  "file": "skill/s3d_pads.il",
+  "old": "            filter = list( \"noall\" \"lines\" \"clines\" \"shapes\" \"pins\" \"vias\" )",
+  "new": "            filter = list( \"noall\" \"clines\" \"shapes\" \"pins\" \"vias\" )",
+  "suites": [
+   "test_pads.py",
+   "test_skill_pins.py",
+   "skill_checks.py"
+  ],
+  "why": "Round 85's 'copper drawn with no net is copper' (Add Line on an ETCH subclass is a \"line\" to the find filter, the user's 51-stroke label) undone. No test names the filter. MEASURED: SURVIVED all three suites. Pinned statement by statement in test_skill_pins [5b] since round 89."
+ },
+ {
+  "id": "readme-count-23",
+  "file": "README.md",
+  "old": "27 test suites",
+  "new": "23 test suites",
+  "suites": [
+   "audit_docs.py"
+  ],
+  "why": "The audit's finding 5 re-made. MEASURED: CAUGHT by audit_docs.py in 0.2 s ('[stale suite count] README.md says 23 test suites; run_all.py runs 26'). Note README.md is modified in the working tree by another job; the count is 1 at HEAD and 1 in the working tree."
+ },
+ {
+  "id": "readme-count-unstated",
+  "file": "README.md",
+  "old": "27 test suites",
+  "new": "twenty-seven test suites",
+  "suites": [
+   "audit_docs.py"
+  ],
+  "why": "The English count phrase drifts out of the audit regex: README then states the count once instead of once per language, which the docs audit reports as a check that ran on less than it should (round 89)."
+ },
+ {
+  "id": "fold-descends-into-faces",
+  "file": "stepbuilder/bend/apply.py",
+  "old": "    if not fuse and shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_COMPOUND:",
+  "new": "    if not fuse:",
+  "suites": [
+   "test_pads.py",
+   "test_silk.py"
+  ],
+  "why": "Round 89: the piece-by-piece fold descends into a FACE again - a face with a hole comes back as its flat edges with no face between them (48 of 112 mm2 of bare laminate on flex3-a0, 733 loose edges). test_pads [9] folds three rings."
+ },
+ {
+  "id": "donut-hole-at-box-centre",
+  "file": "stepbuilder/pads.py",
+  "old": "        x0, y0, x1, y1 = _tight_box(outer)",
+  "new": "        (x0, y0), (x1, y1) = pad[\"bbox\"]",
+  "suites": [
+   "test_pads.py"
+  ],
+  "why": "Round 89: a DONUT's hole built at the declared box's centre again, the whole offset away from its ring. test_pads [2] classifies points of a donut at an offset."
+ },
+ {
+  "id": "plain-board-openings-unclipped",
+  "file": "stepbuilder/pads.py",
+  "old": "            if polygon:\n                xs = [p[0] for p in polygon]",
+  "new": "            if False:\n                xs = [p[0] for p in polygon]",
+  "suites": [
+   "test_pads.py"
+  ],
+  "why": "Round 89: a plain board's drawn openings are no longer clipped to its outline - one across the edge is built half in the air. test_pads [7] builds one across the edge and one outside."
+ },
+ {
+  "id": "skill-polyop-failure-silent",
+  "file": "skill/s3d_pads.il",
+  "old": "                    if( null( res ) then",
+  "new": "                    if( nil then",
+  "suites": [
+   "test_skill_pins.py",
+   "skill_checks.py"
+  ],
+  "why": "Round 89: a FAILED axlPolyOperation (nil, not (nil)) is read as an empty result again and the opening vanishes from both lists in silence. Pinned by test_skill_pins [5b]; no board reaches the failure, so a source pin is the only link."
+ }
+]

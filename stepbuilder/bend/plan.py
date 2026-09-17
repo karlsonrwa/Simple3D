@@ -20,7 +20,7 @@ from ..contour import clip_halfplane, contour_points, point_in_polygon, point_on
 from .apply import apply_plan
 from .constants import CLAIM_GRID, CUTTER_MARGIN, DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, DOUBLE_CLAIM_WARN, DRAWN_AREA_TOL_ABS, DRAWN_AREA_TOL_REL, EPS, FLAT_FRAME_MARGIN, LogFn, SEAM_TOL, SEAM_WARN, SLICE_OVERLAP_MIN, _noop_log
 from .info import Bend, bends_from_json
-from .pieces import _closest_point, _cut_into_pieces, _cutters, _touching
+from .pieces import _closest_point, _cut_into_pieces, _cutters, _touching, shared_strips
 from .regions import _Region, _slice_trsf, _Strip
 
 
@@ -433,6 +433,10 @@ def _neutral_ceiling(plan: FoldPlan, ordered: list, chain: list, kept: list,
             if len(good) < len(trial):
                 return True
             seen: list[str] = []
+            # Strips that CROSS are deliberately not asked about here: two
+            # perpendicular bends cross at every factor, so the search would
+            # bisect its way to 0.00 and blame a setting for a shape. That
+            # pair is reported where it is measured, beside double_claimed.
             return (_cut_into_pieces(outline, good, seen.append,
                                      outline_curves) is None
                     or any("pinch" in m for m in seen))
@@ -631,6 +635,29 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
             f"than one piece, so that material will be built more than once. "
             f"This should not happen - please report the board. Exporting flat "
             f"(Fold flex bends off) avoids it.")
+
+    # The same fault asked of the strip FACES, which is the one place it can be
+    # measured exactly. double_claimed samples on a 2 mm grid - fine enough for
+    # a whole arm claimed twice, which is what it was written for, and blind to
+    # a small crossing: two bends crossing on a 100 x 100 board share 15.4 mm2
+    # of material and the grid reads 0.04%, well under the threshold above.
+    #
+    # And _readable cannot have caught it either: it compares the RECTANGLES
+    # the bend lines draw, while the cut uses a band that reaches across the
+    # whole outline, so two short perpendicular bend lines far apart pass it
+    # and still leave strips that cross. That is not a reason to refuse a bend
+    # - Cadence's demo board has two perpendicular bends on one arm and both
+    # must fold, which is what _strips_overlap was rewritten for - so this
+    # says so rather than dropping one, the way double_claimed does.
+    for i, j, shared in shared_strips(
+            [(strip.poly, strip.face) for strip in plan.strips]):
+        plan.notes.append(
+            f"  warning: the bend strips of {plan.strips[i].bend.name} and "
+            f"{plan.strips[j].bend.name} cross: {shared:.3f} mm2 of board lies "
+            f"in both, and that material is folded twice, onto both bends' "
+            f"cylinders. Their bend lines do not overlap - the areas they fold "
+            f"across the board do. Exporting flat (Fold flex bends off) avoids "
+            f"it.")
 
     # The other invariant, and the one that showed: a fold is CONTINUOUS. Both
     # edges of every strip have to land exactly where the piece on that side

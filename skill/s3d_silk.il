@@ -48,23 +48,44 @@ S3D_SilkDefaultBottom = list(
 ; Ink thickness in mm. 25 um is a typical cured screen-printed legend.
 S3D_SilkDefaultThickness = 0.025
 
+; The layers whose drawn objects are mask OPENINGS (format_version 12): a
+; line or a shape here exposes the copper under it. The padstacks' own
+; openings are not here - they travel with the padstack.
+S3D_MaskDefaultTop = list(
+    "BOARD GEOMETRY/SOLDERMASK_TOP"
+    "PACKAGE GEOMETRY/SOLDERMASK_TOP"
+)
+S3D_MaskDefaultBottom = list(
+    "BOARD GEOMETRY/SOLDERMASK_BOTTOM"
+    "PACKAGE GEOMETRY/SOLDERMASK_BOTTOM"
+)
+
 ;---------------------------------------------------------------------
 ;  Silkscreen configuration
 ;---------------------------------------------------------------------
 
 ; Read the config file and return
-;   list( l_topLayers l_bottomLayers f_thickness g_clip s_endCap g_export )
+;   list( l_topLayers l_bottomLayers f_thickness g_clip s_endCap g_export g_pads
+;         l_maskTop l_maskBottom )
 ; Any missing piece falls back to the built-in default, and a file that cannot
 ; be read or parsed degrades to all defaults with a message - a broken config
 ; must never cost the user the whole export.
+;
+; g_pads (settings.exportPads, round 85) and the two mask lists (the
+; "soldermask" section, format_version 12) are not silkscreen settings; they
+; ride along because this is the one read of the config pair per export and
+; the copper pads are collected right after the legend.
 procedure( s3dSilkConfig( @optional ( t_file nil ) )
-    let( ( cfg silk settings top bottom thickness clip endCap doExport )
+    let( ( cfg silk settings mask top bottom thickness clip endCap doExport doPads maskTop maskBottom )
         top = S3D_SilkDefaultTop
         bottom = S3D_SilkDefaultBottom
         thickness = S3D_SilkDefaultThickness
         clip = t
         endCap = 'ROUND
         doExport = t
+        doPads = t
+        maskTop = S3D_MaskDefaultTop
+        maskBottom = S3D_MaskDefaultBottom
 
         ; The two settings that live in GLOBALS get their defaults back here,
         ; with the locals above and before anything is read - these files load
@@ -87,9 +108,12 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
                 printf( "Simple 3D: silkscreen config: %s\n" t_file )
                 silk = s3dJsonGet( cfg "silkscreen" )
                 settings = s3dJsonGet( cfg "settings" )
+                mask = s3dJsonGet( cfg "soldermask" )
 
                 when( s3dJsonList( silk "top" )     top = s3dJsonList( silk "top" ) )
                 when( s3dJsonList( silk "bottom" )  bottom = s3dJsonList( silk "bottom" ) )
+                when( s3dJsonList( mask "top" )     maskTop = s3dJsonList( mask "top" ) )
+                when( s3dJsonList( mask "bottom" )  maskBottom = s3dJsonList( mask "bottom" ) )
 
                 when( s3dJsonGet( settings "silkscreenThickness" )
                     thickness = s3dJsonGet( settings "silkscreenThickness" )
@@ -99,6 +123,9 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
                 )
                 when( s3dJsonHas( settings "exportSilkscreen" )
                     doExport = s3dJsonGet( settings "exportSilkscreen" )
+                )
+                when( s3dJsonHas( settings "exportPads" )
+                    doPads = s3dJsonGet( settings "exportPads" )
                 )
 
                 ; Which stackup layers are drawn as openings. Read here rather
@@ -138,7 +165,7 @@ procedure( s3dSilkConfig( @optional ( t_file nil ) )
         else
             printf( "Simple 3D: no silkscreen config at %s; using built-in defaults.\n" t_file )
         )
-        list( top bottom thickness clip endCap doExport )
+        list( top bottom thickness clip endCap doExport doPads maskTop maskBottom )
     )
 )
 

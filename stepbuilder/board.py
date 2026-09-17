@@ -26,6 +26,7 @@ from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
+from OCP.TopTools import TopTools_ListOfShape
 from OCP.gp import gp_Vec
 
 from .contour import _face_from_wires, build_contour
@@ -90,26 +91,65 @@ def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
     # any use above this line would have raised UnboundLocalError.
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
 
-    builder = BRep_Builder()
-    drawn = TopoDS_Compound()
-    builder.MakeCompound(drawn)
+    # The shapes go in ONE PER ARGUMENT, never as a compound of all of them.
+    # A boolean's argument must not interfere with itself, and OCC does not
+    # intersect the members of one argument against each other - so a compound
+    # of shapes that touch is undefined input, and here it does not degrade
+    # gracefully: it drops all but one of them outright. Measured on a 20x20
+    # zone with two 3 mm discs, moved together a step at a time:
+    #
+    #   gap 1 um : cut leaves 343.451 mm2, clip keeps 56.549 - both right
+    #   TOUCHING : cut leaves 371.726 mm2, clip keeps 28.274 - ONE disc
+    #   overlap 4 mm: the same 371.726 / 28.274, whatever the overlap is
+    #
+    # 28.274 is pi*3^2, one disc: the second opening was never cut and the
+    # second patch of material never appeared. Bare tangency is enough, and
+    # the answer does not vary with the overlap because the shape is not
+    # being mis-cut, it is being ignored. As separate arguments every row
+    # above is exact.
+    #
+    # No board on hand does this - 37 layers with two or more shapes across
+    # the sample boards, 142 pairs, the closest 0.600 mm apart - so this is a
+    # trap set for the next exporter change rather than a repair. The board
+    # cutouts were the same mistake and did fire; see `_cut_out`.
+    drawn = TopTools_ListOfShape()
     for face in faces:
-        builder.Add(drawn, face)
+        drawn.Append(face)
+
+    zone = TopTools_ListOfShape()
+    zone.Append(zone_face)
 
     if layer.get("negative"):
-        cut = BRepAlgoAPI_Cut(zone_face, drawn)
+        cut = BRepAlgoAPI_Cut()
+        cut.SetArguments(zone)
+        cut.SetTools(drawn)
+        cut.Build()
         if not cut.IsDone():
             log(f"warning: could not open layer {layer.get('name')} in its zone; "
                 f"leaving it solid")
             return zone_face
         return cut.Shape()
 
-    common = BRepAlgoAPI_Common(drawn, zone_face)
+    common = BRepAlgoAPI_Common()
+    common.SetArguments(drawn)
+    common.SetTools(zone)
+    common.Build()
     if not common.IsDone():
         log(f"warning: could not clip layer {layer.get('name')} to zone; "
             f"using it unclipped")
-        return drawn
+        return _compound(faces)
     return common.Shape()
+
+
+def _compound(shapes: list) -> TopoDS_Compound:
+    """Several shapes as one compound - what a caller returns when it has to
+    hand back the pieces unprocessed."""
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for shape in shapes:
+        builder.Add(compound, shape)
+    return compound
 
 
 def layer_solids(stackups: dict, zones: list[dict], shift: float,
@@ -270,17 +310,47 @@ def board_cutouts(contours: list, log: LogFn = _noop_log) -> list:
 
 def _cut_out(shape: TopoDS_Shape, contours: list, cut_z: float,
              direction: gp_Vec) -> TopoDS_Shape:
-    """Remove every contour in *contours* from *shape*, in one boolean."""
-    builder = BRep_Builder()
-    compound = TopoDS_Compound()
-    builder.MakeCompound(compound)
+    """Remove every contour in *contours* from *shape*, in one boolean.
+
+    **The prisms go in as SEPARATE TOOLS, not as one compound**, and that is
+    the whole point of the list. OCC requires every argument of a boolean to
+    be free of self-interference, and a compound holding prisms that overlap
+    EACH OTHER is exactly that: OCC intersects the arguments against one
+    another but never the members of one argument against each other, so
+    wherever two cutouts overlap the answer is undefined. Handed over as
+    separate tools they are intersected pairwise and the answer is right.
+
+    Cutouts that overlap are ordinary, not pathological. Measured on
+    circle-a0, a round board broken out of its panel by six break-off tabs:
+    each tab is a 1.0 mm cutout tangent to the outline and the 0.25 mm
+    mouse-bite drill beside it overlaps that circle by 0.118 mm. As one
+    compound, three of those six drills came back not as holes but as loose
+    0.1654 mm3 plugs - separate solids sitting exactly in the hole, so the
+    viewer showed a filled hole with the hole's own wall drawn through it -
+    while the body itself was cut correctly. Which three was arbitrary: two
+    tabs that are mirror images of each other across the board came out
+    differently. As separate tools all fifteen drills cut, the result is one
+    solid of 183.069 mm3 against the compound's 183.565, and the boolean
+    costs the same 0.3 s.
+
+    The same change also survives the exact-duplicate cutout that used to
+    erase the entire board (see `board_cutouts`): 1 solid, correct volume,
+    where the compound form returned 5 solids and the wrong one.
+    """
+    tools = TopTools_ListOfShape()
     for i, contour in enumerate(contours, start=1):
         wire = build_contour(contour, cut_z)
         face = BRepBuilderAPI_MakeFace(wire, True)
         if not face.IsDone():
             raise StepBuilderError(f"Cutout #{i} is not planar or self-intersects")
-        builder.Add(compound, BRepPrimAPI_MakePrism(face.Face(), direction).Shape())
-    cut = BRepAlgoAPI_Cut(shape, compound)
+        tools.Append(BRepPrimAPI_MakePrism(face.Face(), direction).Shape())
+
+    arguments = TopTools_ListOfShape()
+    arguments.Append(shape)
+    cut = BRepAlgoAPI_Cut()
+    cut.SetArguments(arguments)
+    cut.SetTools(tools)
+    cut.Build()
     if not cut.IsDone():
         raise StepBuilderError("Boolean cut of board cutouts failed")
     return cut.Shape()
@@ -532,21 +602,11 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0,
 
     cutouts = board_cutouts(contours, log)
     if cutouts:
-        builder = BRep_Builder()
-        compound = TopoDS_Compound()
-        builder.MakeCompound(compound)
-        for i, cutout in enumerate(cutouts, start=1):
-            cut_wire = build_contour(cutout, cut_z)
-            cut_face = BRepBuilderAPI_MakeFace(cut_wire, True)
-            if not cut_face.IsDone():
-                raise StepBuilderError(f"Cutout #{i} is not planar or self-intersects")
-            builder.Add(compound,
-                        BRepPrimAPI_MakePrism(cut_face.Face(), cut_direction).Shape())
-
-        cut = BRepAlgoAPI_Cut(board, compound)
-        if not cut.IsDone():
-            raise StepBuilderError("Boolean cut of board cutouts failed")
-        board = cut.Shape()
+        # _cut_out, not a second copy of it: this inlined the same loop as
+        # the layer path, so the compound-as-tool bug had to be found and
+        # fixed twice. One boolean, every prism its own tool - see _cut_out
+        # for what a compound does to cutouts that overlap each other.
+        board = _cut_out(board, cutouts, cut_z, cut_direction)
         if board.IsNull():
             raise StepBuilderError("Board geometry is empty after cutting")
         # IsDone() and IsNull() both pass on a boolean that produced NOTHING -

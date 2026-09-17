@@ -13,6 +13,7 @@ from __future__ import annotations
 from OCP.BRep import BRep_Builder
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+from OCP.TopAbs import TopAbs_ShapeEnum
 from OCP.TopTools import TopTools_ListOfShape
 from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator, TopoDS_Shape
 
@@ -47,7 +48,19 @@ def apply_plan(plan, shape: TopoDS_Shape, fuse: bool = True,
     # every other on its bounding box, and needs no boolean at all unless it
     # straddles a bend. Only for fuse=False, which is what the legend uses -
     # a board body is one solid and has nothing to gain here.
-    if not fuse:
+    #
+    # And only for a COMPOUND (round 89). TopoDS_Iterator walks whatever a
+    # shape is made of: on a FACE it yields the face's WIRES, on a wire its
+    # edges, on an edge its vertices - none of which can be cut to a region.
+    # A face with a hole in it has two wires, so it was descended into and
+    # came back as its own flat edges with no face between them, three
+    # warnings per edge and the area gone: 48 of 112 mm2 of the bare
+    # laminate under flex3-a0's drawn mask openings, 733 loose edges in the
+    # file, the ones on a moved panel left where the flat board used to be.
+    # The legend never met this - a solid glyph has one shell, a flat legend
+    # comes as one merged child - and the drawn openings' parts were the
+    # first caller to hand over a compound of bare faces with holes.
+    if not fuse and shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_COMPOUND:
         children = []
         it = TopoDS_Iterator(shape)
         while it.More():

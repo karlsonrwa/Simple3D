@@ -1,0 +1,1015 @@
+{
+ "_comment": "What Allegro's own SKILL interpreter answered, run by tools/probes/probe_translit.il on demo.s3dProbeTranslit.txt and turned into this file by tools/skill_answers.py. The oracle for the Python copies in tests/skill_transliterations.py, compared against it in test_skill_pins [7]. `inputs` are this repository's; `answer` is Allegro's.",
+ "source": "demo.s3dProbeTranslit.txt",
+ "skipped": [
+  "s3dJsonQuote | control 0x01 | sprintf %c is not available here",
+  "s3dJsonQuote | control 0x08 | sprintf %c is not available here",
+  "s3dJsonQuote | control 0x0b | sprintf %c is not available here",
+  "s3dJsonQuote | control 0x0c | sprintf %c is not available here",
+  "s3dJsonQuote | control 0x0e | sprintf %c is not available here",
+  "s3dJsonQuote | control 0x1f | sprintf %c is not available here"
+ ],
+ "cases": [
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=COVERLAY_TOP",
+   "inputs": {
+    "name": "COVERLAY_TOP",
+    "func": null,
+    "keys": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=COVERLAY_BOTTOM",
+   "inputs": {
+    "name": "COVERLAY_BOTTOM",
+    "func": null,
+    "keys": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=SOLDERMASK_TOP",
+   "inputs": {
+    "name": "SOLDERMASK_TOP",
+    "func": null,
+    "keys": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=SOLDERMASK_BOTTOM",
+   "inputs": {
+    "name": "SOLDERMASK_BOTTOM",
+    "func": null,
+    "keys": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=PASTEMASK_TOP",
+   "inputs": {
+    "name": "PASTEMASK_TOP",
+    "func": null,
+    "keys": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=STIFFENER_TOP",
+   "inputs": {
+    "name": "STIFFENER_TOP",
+    "func": null,
+    "keys": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=STIFFENER_TOP2",
+   "inputs": {
+    "name": "STIFFENER_TOP2",
+    "func": null,
+    "keys": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=ADHESIVE_TOP",
+   "inputs": {
+    "name": "ADHESIVE_TOP",
+    "func": null,
+    "keys": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=ADHESIVE_TOP2",
+   "inputs": {
+    "name": "ADHESIVE_TOP2",
+    "func": null,
+    "keys": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=ADHESIVE_BOTTOM",
+   "inputs": {
+    "name": "ADHESIVE_BOTTOM",
+    "func": null,
+    "keys": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=TOP",
+   "inputs": {
+    "name": "TOP",
+    "func": null,
+    "keys": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=BOTTOM",
+   "inputs": {
+    "name": "BOTTOM",
+    "func": null,
+    "keys": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=MASK_7 function=Coverlay",
+   "inputs": {
+    "name": "MASK_7",
+    "func": "Coverlay",
+    "keys": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=nil function=nil",
+   "inputs": {
+    "name": null,
+    "func": null,
+    "keys": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "keys=(EPOXY) name=EPOXY_TOP",
+   "inputs": {
+    "name": "EPOXY_TOP",
+    "func": null,
+    "keys": [
+     "EPOXY"
+    ]
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "keys=(EPOXY) name=COVERLAY_TOP",
+   "inputs": {
+    "name": "COVERLAY_TOP",
+    "func": null,
+    "keys": [
+     "EPOXY"
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "keys=() name=COVERLAY_TOP",
+   "inputs": {
+    "name": "COVERLAY_TOP",
+    "func": null,
+    "keys": []
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "rot=0 off=(0.375 0)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 0.0,
+    "offset": [
+     0.375,
+     0.0
+    ]
+   },
+   "answer": [
+    2.565,
+    0.375
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "rot=90 off=(0.375 0)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 90.0,
+    "offset": [
+     0.375,
+     0.0
+    ]
+   },
+   "answer": [
+    2.19,
+    0.75
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "rot=180 off=(0.375 0)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 180.0,
+    "offset": [
+     0.375,
+     0.0
+    ]
+   },
+   "answer": [
+    1.815,
+    0.375
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "rot=270 off=(0.375 0)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 270.0,
+    "offset": [
+     0.375,
+     0.0
+    ]
+   },
+   "answer": [
+    2.19,
+    0.0
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "rot=90 off=(0 0.25)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 90.0,
+    "offset": [
+     0.0,
+     0.25
+    ]
+   },
+   "answer": [
+    1.94,
+    0.375
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "rot=45 off=(0.5 0.5)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 45.0,
+    "offset": [
+     0.5,
+     0.5
+    ]
+   },
+   "answer": [
+    2.19,
+    1.082107
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "rot=90 off=nil",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 90.0,
+    "offset": null
+   },
+   "answer": [
+    2.19,
+    0.375
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "rot=270 off=(0 0)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 270.0,
+    "offset": [
+     0.0,
+     0.0
+    ]
+   },
+   "answer": [
+    2.19,
+    0.375
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "rot=nil off=(0.375 0)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": null,
+    "offset": [
+     0.375,
+     0.0
+    ]
+   },
+   "answer": [
+    2.565,
+    0.375
+   ]
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "apart in x and y",
+   "inputs": {
+    "a": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ],
+    "b": [
+     [
+      2,
+      2
+     ],
+     [
+      3,
+      3
+     ]
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "apart in x and y reversed",
+   "inputs": {
+    "a": [
+     [
+      2,
+      2
+     ],
+     [
+      3,
+      3
+     ]
+    ],
+    "b": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "apart in x only",
+   "inputs": {
+    "a": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ],
+    "b": [
+     [
+      2,
+      0
+     ],
+     [
+      3,
+      1
+     ]
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "apart in x only reversed",
+   "inputs": {
+    "a": [
+     [
+      2,
+      0
+     ],
+     [
+      3,
+      1
+     ]
+    ],
+    "b": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "apart in y only",
+   "inputs": {
+    "a": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ],
+    "b": [
+     [
+      0,
+      2
+     ],
+     [
+      1,
+      3
+     ]
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "apart in y only reversed",
+   "inputs": {
+    "a": [
+     [
+      0,
+      2
+     ],
+     [
+      1,
+      3
+     ]
+    ],
+    "b": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "touching at a corner",
+   "inputs": {
+    "a": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ],
+    "b": [
+     [
+      1,
+      1
+     ],
+     [
+      2,
+      2
+     ]
+    ]
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "touching at a corner reversed",
+   "inputs": {
+    "a": [
+     [
+      1,
+      1
+     ],
+     [
+      2,
+      2
+     ]
+    ],
+    "b": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ]
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "overlapping",
+   "inputs": {
+    "a": [
+     [
+      0,
+      0
+     ],
+     [
+      2,
+      2
+     ]
+    ],
+    "b": [
+     [
+      1,
+      1
+     ],
+     [
+      3,
+      3
+     ]
+    ]
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "overlapping reversed",
+   "inputs": {
+    "a": [
+     [
+      1,
+      1
+     ],
+     [
+      3,
+      3
+     ]
+    ],
+    "b": [
+     [
+      0,
+      0
+     ],
+     [
+      2,
+      2
+     ]
+    ]
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "one inside the other",
+   "inputs": {
+    "a": [
+     [
+      0,
+      0
+     ],
+     [
+      4,
+      4
+     ]
+    ],
+    "b": [
+     [
+      1,
+      1
+     ],
+     [
+      2,
+      2
+     ]
+    ]
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "one inside the other reversed",
+   "inputs": {
+    "a": [
+     [
+      1,
+      1
+     ],
+     [
+      2,
+      2
+     ]
+    ],
+    "b": [
+     [
+      0,
+      0
+     ],
+     [
+      4,
+      4
+     ]
+    ]
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "no box on the left",
+   "inputs": {
+    "a": null,
+    "b": [
+     [
+      1,
+      1
+     ],
+     [
+      2,
+      2
+     ]
+    ]
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dBoxesMeet",
+   "case": "no box on the left reversed",
+   "inputs": {
+    "a": [
+     [
+      1,
+      1
+     ],
+     [
+      2,
+      2
+     ]
+    ],
+    "b": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dJsonQuote",
+   "case": "plain",
+   "inputs": {
+    "value": "abc"
+   },
+   "answer": "\"abc\""
+  },
+  {
+   "procedure": "s3dJsonQuote",
+   "case": "a quote",
+   "inputs": {
+    "value": "a\"b"
+   },
+   "answer": "\"a\\\"b\""
+  },
+  {
+   "procedure": "s3dJsonQuote",
+   "case": "a backslash",
+   "inputs": {
+    "value": "a\\b"
+   },
+   "answer": "\"a\\\\b\""
+  },
+  {
+   "procedure": "s3dJsonQuote",
+   "case": "a tab",
+   "inputs": {
+    "value": "a\tb"
+   },
+   "answer": "\"a\\tb\""
+  },
+  {
+   "procedure": "s3dJsonQuote",
+   "case": "a newline",
+   "inputs": {
+    "value": "a\nb"
+   },
+   "answer": "\"a\\nb\""
+  },
+  {
+   "procedure": "s3dJsonQuote",
+   "case": "a return",
+   "inputs": {
+    "value": "a\rb"
+   },
+   "answer": "\"a\\rb\""
+  },
+  {
+   "procedure": "s3dJsonQuote",
+   "case": "not a string",
+   "inputs": {
+    "value": 7
+   },
+   "answer": "null"
+  },
+  {
+   "procedure": "s3dJsonQuote",
+   "case": "control 0x08 (escape \\b)",
+   "inputs": {
+    "value": "a\bb"
+   },
+   "answer": "\"a b\""
+  },
+  {
+   "procedure": "s3dJsonQuote",
+   "case": "control 0x0c (escape \\f)",
+   "inputs": {
+    "value": "a\fb"
+   },
+   "answer": "\"a b\""
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "silk.top",
+   "inputs": {
+    "base": {
+     "silk": {
+      "top": true,
+      "bottom": true,
+      "flat": false
+     },
+     "pads": true
+    },
+    "over": {
+     "silk": {
+      "flat": true
+     }
+    },
+    "path": [
+     "silk",
+     "top"
+    ],
+    "ask": "value"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "silk.top present",
+   "inputs": {
+    "base": {
+     "silk": {
+      "top": true,
+      "bottom": true,
+      "flat": false
+     },
+     "pads": true
+    },
+    "over": {
+     "silk": {
+      "flat": true
+     }
+    },
+    "path": [
+     "silk",
+     "top"
+    ],
+    "ask": "present"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "silk.bottom",
+   "inputs": {
+    "base": {
+     "silk": {
+      "top": true,
+      "bottom": true,
+      "flat": false
+     },
+     "pads": true
+    },
+    "over": {
+     "silk": {
+      "flat": true
+     }
+    },
+    "path": [
+     "silk",
+     "bottom"
+    ],
+    "ask": "value"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "silk.bottom present",
+   "inputs": {
+    "base": {
+     "silk": {
+      "top": true,
+      "bottom": true,
+      "flat": false
+     },
+     "pads": true
+    },
+    "over": {
+     "silk": {
+      "flat": true
+     }
+    },
+    "path": [
+     "silk",
+     "bottom"
+    ],
+    "ask": "present"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "silk.flat",
+   "inputs": {
+    "base": {
+     "silk": {
+      "top": true,
+      "bottom": true,
+      "flat": false
+     },
+     "pads": true
+    },
+    "over": {
+     "silk": {
+      "flat": true
+     }
+    },
+    "path": [
+     "silk",
+     "flat"
+    ],
+    "ask": "value"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "silk.flat present",
+   "inputs": {
+    "base": {
+     "silk": {
+      "top": true,
+      "bottom": true,
+      "flat": false
+     },
+     "pads": true
+    },
+    "over": {
+     "silk": {
+      "flat": true
+     }
+    },
+    "path": [
+     "silk",
+     "flat"
+    ],
+    "ask": "present"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "pads",
+   "inputs": {
+    "base": {
+     "silk": {
+      "top": true,
+      "bottom": true,
+      "flat": false
+     },
+     "pads": true
+    },
+    "over": {
+     "silk": {
+      "flat": true
+     }
+    },
+    "path": [
+     "pads"
+    ],
+    "ask": "value"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "a scalar over an object",
+   "inputs": {
+    "base": {
+     "a": {
+      "b": 1
+     }
+    },
+    "over": {
+     "a": 2
+    },
+    "path": [
+     "a"
+    ],
+    "ask": "value"
+   },
+   "answer": 2.0
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "a key only the base has",
+   "inputs": {
+    "base": {
+     "a": 1
+    },
+    "over": {
+     "b": 2
+    },
+    "path": [
+     "a"
+    ],
+    "ask": "value"
+   },
+   "answer": 1.0
+  },
+  {
+   "procedure": "s3dJsonMerge",
+   "case": "a key only the override has",
+   "inputs": {
+    "base": {
+     "a": 1
+    },
+    "over": {
+     "b": 2
+    },
+    "path": [
+     "b"
+    ],
+    "ask": "value"
+   },
+   "answer": 2.0
+  }
+ ]
+}
