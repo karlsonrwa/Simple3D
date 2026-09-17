@@ -64,7 +64,8 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   another point in `gui.foldAnchor`. If the log says two bends claim the same
   material, set `gui.foldNeutral` to `0` (README, *The K factor*).
 - **Exposed copper (as surfaces)** — the copper of every pin's pad on the outer
-  faces, as copper-coloured surfaces a micron above the mask. Off by default;
+  faces, as copper-coloured surfaces two microns above the mask (the mask
+  openings take the first micron). Off by default;
   needs a JSON exported with this version (`format_version` 12). Only what
   the mask exposes: a mask-defined pad shows its opening, a covered pad
   nothing; untented vias and the copper under openings drawn on the
@@ -209,7 +210,8 @@ builds it.
   что два сгиба претендуют на один материал, поставьте `gui.foldNeutral` в `0`
   (README, *K-фактор*).
 - **Exposed copper (as surfaces)** — медь площадок всех выводов на наружных
-  гранях, поверхностями цвета меди на микрон над маской. По умолчанию
+  гранях, поверхностями цвета меди на два микрона над маской (первый микрон
+  занимают вскрытия маски). По умолчанию
   выключено; нужен JSON, экспортированный этой версией (`format_version` 12).
   Рисуется только то, что открыто маской: mask-defined площадка показывает
   своё вскрытие, закрытая — ничего; незакрытые переходные отверстия и медь под

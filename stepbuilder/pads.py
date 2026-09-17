@@ -78,7 +78,7 @@ from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Face, TopoDS_Shape, TopoD
 from OCP.gp import gp_Ax1, gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
 from .contour import (WIRE_TOLERANCE, _face_from_wires, _open_wire_detail, build_contour,
-                      contour_points, point_in_polygon)
+                      contour_points, point_in_polygon, point_on_polygon)
 from .errors import StepBuilderError
 from .reporting import LogFn, _noop_log
 from .stackup import _is_conductor, _is_soldermask, board_stackup
@@ -444,8 +444,16 @@ def figure_face(pad: dict) -> tuple[TopoDS_Face | None, str | None]:
     outer = _pad_wire(outline)
     inner = []
     inside = float(pad.get("inside") or 0.0)
-    if inside > 0.0 and pad.get("bbox"):
-        (x0, y0), (x1, y1) = pad["bbox"]
+    if inside > 0.0:
+        # A DONUT's hole sits at the centre of the OUTLINE, not of the
+        # declared box: the outline already stands at the padstack's offset
+        # while the box is the figure's own, about its centre (the rule
+        # _settle_offset measured on the Dell board) - so a donut with an
+        # offset had its hole built the whole offset away from its ring, with
+        # nothing said while the hole still fell inside the ring (review of
+        # 2026-09-17, round 89). Taken from the outer wire, the hole follows
+        # the outline whichever way _settle_offset then reads the figure.
+        x0, y0, x1, y1 = _tight_box(outer)
         inner.append(build_contour([{"type": "circle", "x": (x0 + x1) / 2.0,
                                      "y": (y0 + y1) / 2.0, "radius": inside / 2.0}], 0.0))
     face = _face_from_wires(outer, inner)
@@ -894,6 +902,23 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                 f"carries no soldermask on the {side}")
             out[side] = (None, 0, len(polygons))
             continue
+        plain = not where.entries
+        if plain:
+            # A plain board has no zone to clip to, but it has an outline -
+            # and Cadence's demo draws its outline as 1 mm strokes on the
+            # mask layers, so an opening reaching past the edge was built
+            # half in the air (review of 2026-09-17, round 89). The board is
+            # its one masked "zone" here and the rule below is the same:
+            # inside, built at the face; across the edge, clipped to it;
+            # outside, left out.
+            edges = (data.get("pcb") or {}).get("edges") or []
+            polygon = contour_points(edges[0]) if edges else []
+            if polygon:
+                xs = [p[0] for p in polygon]
+                ys = [p[1] for p in polygon]
+                masked = [("the board outline", polygon, edges[0],
+                           (min(xs), min(ys), max(xs), max(ys)),
+                           where.default[1][0] if side == "top" else where.default[1][1])]
 
         # A drawn opening is a window in the mask, so it exists only where
         # the zone under it has one: a flex zone has coverlay instead, and
@@ -915,9 +940,12 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                 z = where.default[1][0] if side == "top" else where.default[1][1]
                 whole.setdefault(z, []).append(polygon)
                 continue
+            # A vertex ON the boundary is at home there: an opening drawn up
+            # to the board's edge is whole, not clipped to the edge it touches.
             homes = set()
             for v in verts:
-                homes.add(next((name for name, poly, _c, _b, _z in masked if point_in_polygon(v, poly)), None))
+                homes.add(next((name for name, poly, _c, _b, _z in masked
+                                if point_in_polygon(v, poly) or point_on_polygon(v, poly)), None))
             if len(homes) == 1 and None not in homes:
                 z = next(zf for name, _p, _c, _b, zf in masked if name in homes)
                 whole.setdefault(z, []).append(polygon)
@@ -961,7 +989,11 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                     log(f"warning: {tag}_{side}: {len(group)} drawn-opening polygon(s) could not be "
                         f"clipped to zone {name} and are left out")
             built += len({id(p) for p, _t in straddling})
-        if dropped or straddling:
+        if (dropped or straddling) and plain:
+            log(f"{tag}_{side}: {len(straddling)} drawn-opening polygon(s) reach past the board "
+                f"outline and are clipped to it"
+                + (f", {dropped} lie outside it and are left out" if dropped else ""))
+        elif dropped or straddling:
             log(f"{tag}_{side}: the mask is only on "
                 + ", ".join(name for name, *_r in masked)
                 + f" - {len(straddling)} drawn-opening polygon(s) clipped to it"

@@ -11,6 +11,64 @@ to use the tool.
 
 ---
 
+- **2026-09-17** — **The exposed-copper work is on `main`, after a review
+  that fixed a fold and kept the proof of the tests in the tree.** Three
+  things changed in the model. On a folded rigid-flex board, the bare
+  laminate a drawn mask opening shows AROUND copper - a ring - used to lose
+  its face in the fold: what came out was its outline as loose edges, part of
+  them left flat where the folded panel used to be, 43% of that part's area
+  gone on the board that showed it, and 2199 warnings that named none of it;
+  a ring folds whole now, and the file carries no loose edge. A DONUT pad
+  standing at an offset had its hole the whole offset away from its ring
+  (the area was right, only the hole was in the wrong place); it is at the
+  ring's centre. And on a plain board a mask opening drawn past the edge -
+  the board outline drawn as a stroke on the mask layer, as Cadence's demo
+  does it - was built half in the air; it is clipped to the outline, and one
+  lying outside is left out with a word in the log. The exporter now also
+  says so when Allegro's polygon engine FAILS on an opening (a failure used
+  to read as "nothing under it", and the opening vanished from the file);
+  the opening is written whole as laminate and the console names it. One
+  question stays open and is written into *Known limitations*: a mirrored
+  pin on a padstack whose drill is offset from its pad - the pad's hole and
+  the board's hole follow different rules, no board here has such a padstack,
+  and which one Allegro means has not been measured. The tests: every fault
+  the audit of 15 September planted is now a table in the repository
+  (`tests/mutations.json`, 48 faults, all caught, 21 of them new to this
+  round), with the harness that applies them and a 27th suite that checks in
+  a fraction of a second that every entry still aims at the code it was
+  written for. The documentation was read against the code from end to end;
+  fifty stale statements were corrected. `python tests/run_all.py` is
+  31 of 31 in 225 s. /
+  **Работа с открытой медью влита в `main` после ревью, которое починило
+  свёртку и оставило в репозитории доказательство тестов.** В модели
+  изменились три вещи. На сложенной гибко-жёсткой плате голый текстолит,
+  который нарисованное вскрытие маски показывает ВОКРУГ меди — кольцо, —
+  терял при свёртке свою грань: на выходе был его контур россыпью рёбер,
+  часть их оставалась плоской там, где раньше стояла сложенная панель, 43 %
+  площади этой детали пропадало на плате, где это проявилось, и 2199
+  предупреждений, ни одно из которых этого не называло; теперь кольцо
+  складывается целиком, и в файле нет ни одного висячего ребра. У площадки
+  DONUT со смещением отверстие стояло на всё смещение в стороне от кольца
+  (площадь была верной, не на месте было только отверстие); теперь оно в
+  центре кольца. А на плоской плате вскрытие маски, нарисованное за край —
+  контур платы штрихом на слое маски, как это делает демо-плата Cadence, —
+  строилось наполовину в воздухе; теперь оно режется по контуру, а лежащее
+  снаружи пропускается со словом в логе. Экспортёр теперь ещё и говорит,
+  когда полигонный движок Allegro на вскрытии ОТКАЗЫВАЕТ (отказ читался как
+  «под ним ничего нет», и вскрытие исчезало из файла): вскрытие пишется
+  целиком как текстолит, а консоль его называет. Один вопрос остаётся
+  открытым и записан в *Известные ограничения*: зеркальный вывод на
+  падстеке, у которого сверло смещено относительно площадки, — отверстие в
+  площадке и отверстие в плате подчиняются разным правилам, такого падстека
+  здесь нет ни на одной плате, и какое из двух имеет в виду Allegro, не
+  измерено. Тесты: каждая поломка, которую аудит 15 сентября вносил в код,
+  теперь таблица в репозитории (`tests/mutations.json`, 48 поломок, все
+  ловятся, 21 из них новые в этом раунде), вместе с харнессом, который их
+  применяет, и 27-м набором, за долю секунды проверяющим, что каждая запись
+  по-прежнему целит в тот код, для которого написана. Документация прочитана
+  против кода от начала до конца; исправлено пятьдесят устаревших
+  утверждений. `python tests/run_all.py` — 31 из 31 за 225 с.
+
 - **2026-09-15** — **The tests were audited by breaking the code, and what
   they missed was fixed.** Nothing about the tool changed; what changed is how
   much its tests are worth. 27 deliberate faults were put into the code one at
@@ -56,8 +114,8 @@ to use the tool.
   docs/test-audit.ru.md.
 
 - **2026-09-14** — **Exposed copper: the pour comes back.** On a board whose
-  copper is opened by a shape drawn on the soldermask layer, *Exported bare
-  copper not under mask* showed the traces and the pads and no pour - the
+  copper is opened by a shape drawn on the soldermask layer, *Exposed copper
+  (as surfaces)* showed the traces and the pads and no pour - the
   polygon's area was written into the file as bare laminate instead. The
   exporter looked for the copper under each opening with Allegro's
   interactive box find, and what that returns depends on the session: run
@@ -73,8 +131,8 @@ to use the tool.
   the board is exported again; an intermediate written before that still has
   the copper missing.** /
   **Открытая медь: полигон вернулся.** На плате, медь которой вскрыта
-  фигурой, нарисованной на слое паяльной маски, *Экспорт голой меди не под
-  маской* показывал дорожки и площадки без полигона — его площадь попадала в
+  фигурой, нарисованной на слое паяльной маски, *Exposed copper (as
+  surfaces)* показывал дорожки и площадки без полигона — его площадь попадала в
   файл как голый ламинат. Экспортёр искал медь под каждым вскрытием
   интерактивным поиском Allegro по рамке, а его результат зависит от сессии:
   из меню в живом Allegro полигон в выборку не попадал, в headless-прогоне

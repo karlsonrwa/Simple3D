@@ -13,7 +13,7 @@ The method, written down for reuse, is the memory note `test-audit-playbook`
 
 | | |
 |---|---|
-| Tree | branch `feature/copper-pads` at `cbba9f7`, with the uncommitted working-tree changes in place |
+| Tree | commit `cbba9f7` (then the tip of `feature/copper-pads`, merged into `main` on 2026-09-17), with the uncommitted working-tree changes in place |
 | Baseline | `python tests/run_all.py` — **29/29 jobs pass in 218 s** (25 test suites + 4 mechanical SKILL/docs checks); `test_bend.py` is 158 s of that |
 | Assertions | **1198** PASS/FAIL lines across the 25 suites, measured by running each one (`test_bend` 220, `test_gui` 144, `test_variant_path` 137, `test_pads` 95, `test_emit` 90; `test_mech` produces none) |
 | Mutations | **27 distinct**, each matched exactly once in the source, applied to bytes, restored in a `finally` and the file's SHA-256 compared afterwards. The tree was byte-identical to its backup after every round. |
@@ -247,3 +247,80 @@ Said plainly, because a list of repairs reads as a clean bill otherwise.
   the last hand run.
 - `silk-area-check-silenced` remains what it was: a mutation aimed at something
   no suite claims.
+
+## The second pass, 17 September 2026 (round 89)
+
+The day after the repair above, another project found two faults in the
+harness the audit had run with: Python validates a `.pyc` by the source's
+(mtime, size), so a replacement of the same length written in the same
+second can leave healthy bytecode answering for a broken source - or broken
+bytecode outliving the restore; and a mutation that shadows a line with an
+early `return` above it applies correctly but leaves the original in place,
+invisible to any leftover check. Both are handled by the shared harness
+now (`~/.claude/skills/test-audit/mutate.py`, purged caches, `-B`, a refusal
+of any replacement containing its original), and the whole audit was run
+again with it, on a copy of the tree, before the branch was merged.
+
+| | |
+|---|---|
+| Tree | `03bc47e` (the round-88 tree) for the 27, the round-89 tree for the 21 new; the whole table once more at the merge |
+| Harness | the shared one, copied into the repository as `tools/mutate.py` (lock under `build/`, otherwise as shared) |
+| Refused at once | 3 - `strips-never-overlap`, `seam-gap-zero`, `pad-offset-ignored`: each shadowed its line with an early `return` above it. Rewritten so the replacement removes the original |
+| The 27, first run | 20 caught, 7 "survived" |
+| Of the 7 | 6 were the spec, not the tests: the five SKILL mutations and `arc-steps-3` named suites written before `test_skill_pins.py` existed (the five) or left `test_bend.py` out (the one). Against the suites that claim them: all 6 caught, `test_skill_pins` in 0.2 s. The 7th, `silk-area-check-silenced`, was never a finding and is dropped; `arc-steps-3-bend` is folded into `arc-steps-3` |
+| New mutations | 21: 19 from a reading of rounds 86-88's code and tests (11 caught on the first run, 8 survived - `double-claimed-always-zero`, `drawn-parts-at-copper-height`, `pick-convention-first-wins`, `skill-sweep-finds-nothing`, `skill-boxes-meet-callsite-inverted`, `skill-filter-no-lines`, `readme-count-unstated`, and `audit-count-never-stale`, which measures a tool property no suite claims and is not in the table), plus one per fix of the round |
+| Result | **48 entries, 48 caught** |
+
+What the eight survivors said, and what closed each:
+
+- **`double_claimed` had never been seen failing** - the same shape as
+  `seam_gap` in finding 4: five uses in `test_bend [7b2]`, every one
+  `== 0.0`. [7d] now makes one panel of the Z fold claim the whole outline
+  and requires 80% back, past the 2% threshold.
+- **The third height was measured by nothing.** `test_pads [6]` read the
+  windows' and the copper's z through `_placement`; the drawn openings'
+  parts do not go through it, so 3h collapsed onto 2h passed. The lift
+  handed to `build_exposed` is read now.
+- **The convention search never had to move.** The measured reading is
+  first in the list on purpose, and every sample let it win, so a "search"
+  returning the first candidate passed `test_silk [10]`. The sample with
+  every radius negated has to move the winner to the mirror reading.
+- **The copper sweep was pinned by its tokens.** `found = nil` (the
+  selection thrown away), the box match applied backwards at its call site,
+  and "lines" dropped from the find filter all survived with every token of
+  `test_pads [8]` in place. `test_skill_pins [5b]` pins the statements that
+  decide; the behaviour itself is the SKILL golden corpus, which needs
+  Allegro.
+- **The docs audit's count loop had no floor.** A phrase drifting out of its
+  regex left one fewer thing to compare and said nothing; README must state
+  the count once per language now.
+
+Two more smells were fixed without a mutation to show for them: `test_mech`
+derived the model's solid count from the build under test (it comes from the
+model file now), and `test_bend [7b3]` indexed a list that a failure empties,
+so the suite raised instead of failing. And three were left as they are, with
+the reason on record: `silk_demo.json`'s six polygons are the ones that tell
+the readings apart, a bias in the sample and not in the oracle; the
+`check(..., True)` in `test_dupcuts` is the except-arm of a must-raise pair;
+the two bounds on `SHARED_STRIP_RATIO` restate a measurement, and the
+behaviour beside them is pinned.
+
+The table is permanent: `tests/mutations.json`, one `{id, file, old, new,
+suites, why}` per fault, applied by `tools/mutate.py` to a copy of the tree
+(20-30 minutes for all 48), and `tests/test_mutations.py` - the 27th suite in
+`run_all` - asks in a fraction of a second whether each entry could still be
+applied: the file exists, `old` occurs exactly once, `new` differs and does
+not contain `old`, no entry is left applied, every suite it names exists. A
+refactor that breaks a pattern fails the round it happens in, not at the end
+of the next full pass.
+
+### What is still not covered, after the second pass
+
+- The eleven transliterations pinned by name only, and `run_all` running
+  neither golden corpus, are as they were on 15 September.
+- The failure branch of `s3dCollectExposed`'s polygon operations (round 89)
+  has never executed: no board reaches it. Its statements are pinned.
+- A mirrored pin on a padstack with a drill offset: the pad's hole and the
+  board's hole follow different rules and no test can say which is
+  Allegro's, because no board on hand has such a padstack (README, *Known
+  limitations*).

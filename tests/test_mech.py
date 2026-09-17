@@ -110,11 +110,16 @@ check(f"nor do their shells ({shells2}, {shells5})", shells2 == shells5,
 # really does carry five components and not two. One board body plus the
 # model's own solids per placement.
 solids2, solids5 = count_solids(read_step(step)), count_solids(read_step(step5))
-per = (solids2 - 1) // 2
+# How many solids the model is made of is read from the model FILE, not from
+# the build under test: taken from the two-copy build it could only ever
+# agree with itself (review of 2026-09-17).
+per = count_solids(read_step(ROOT / "demo/step_files" / MODEL))
+check(f"the model itself is {per} solid(s)", per >= 1, per)
 check(f"the instances do grow ({solids2} solids for two, {solids5} for five)",
       solids5 > solids2, (solids2, solids5))
-check(f"five placements of a {per}-solid model on one board body give "
-      f"{1 + 5 * per}", solids5 == 1 + 5 * per, (solids2, solids5, per))
+check(f"two placements of the {per}-solid model on one board body give {1 + 2 * per}",
+      solids2 == 1 + 2 * per, (solids2, per))
+check(f"and five give {1 + 5 * per}", solids5 == 1 + 5 * per, (solids2, solids5, per))
 
 occ2, occ5 = (txt.count("NEXT_ASSEMBLY_USAGE_OCCURRENCE"),
               txt5.count("NEXT_ASSEMBLY_USAGE_OCCURRENCE"))

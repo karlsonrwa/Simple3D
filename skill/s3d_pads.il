@@ -374,13 +374,15 @@ procedure( s3dCollectPads( @optional ( l_maskTop nil ) ( l_maskBottom nil ) ( s_
 ;  fingers, a test area, a pour. That copper is computed HERE, where the
 ;  polygon engine is: every opening becomes polygons (s3dPolysFromDbid, the
 ;  silkscreen's converter, so a line opening is the line widened with round
-;  caps), the copper on the side's outer ETCH layer inside the opening's
-;  box is selected and converted - a pour only through its window, which is
-;  what ?window is for - and axlPolyOperation AND keeps what is under the
-;  opening. Written in the silkscreen's vertex form so the reader builds it
-;  with the legend's own machinery, area-checked. Measured on the user's
-;  board: two shapes expose 1.03 and 1.01 mm2 of 1.18 and 1.16 mm2 openings,
-;  in well under a second each.
+;  caps); the side's copper - pins, vias, shapes, lines AND clines - is swept
+;  ONCE with axlAddSelectAll over the visibility set (since 2026-09-14, see
+;  s3dSelectInBox for what the per-opening box select did instead), each
+;  object converted once and whole, matched to the openings by bounding box
+;  (s3dBoxesMeet), and axlPolyOperation AND keeps what is under each opening,
+;  ANDNOT the bare laminate around it. Written in the silkscreen's vertex
+;  form so the reader builds it with the legend's own machinery,
+;  area-checked. Measured on the user's board: two shapes expose 1.03 and
+;  1.01 mm2 of 1.18 and 1.16 mm2 openings, in well under a second each.
 ;
 ;  Where an opening lies over a pin's pad, that pad is written twice - once
 ;  here, once through its padstack. The reader lifts the exposed copper a
@@ -480,7 +482,7 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
     let( ( elems openings key polys etch pinLayer viaLayer saveVis saveEnabled saveOn
            found copper res groups order out ( nOpen 0 ) ( nOut 0 ) ( nBad 0 ) filter zero
            bareGroups bareOrder bare ( nBare 0 ) bareOut
-           all one ( nFound 0 ) ( nNoPoly 0 ) )
+           all one ( nFound 0 ) ( nNoPoly 0 ) ( nFailed 0 ) )
         etch = strcat( "ETCH/" t_side )
         pinLayer = strcat( "PIN/" t_side )
         viaLayer = strcat( "VIA CLASS/" t_side )
@@ -595,20 +597,42 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
                 copper = reverse( copper )
                 bare = list( cadr( entry ) )
                 when( copper
+                    ; axlPolyOperation answers two nil-shaped things, and they
+                    ; are not the same: (nil) is an EMPTY result - nothing
+                    ; under this opening - and a bare nil is a FAILED
+                    ; operation ("rare dense geometrical situations", the
+                    ; message in axlPolyErrorGet). Read as one, a failure
+                    ; dropped the opening from both lists with nothing said -
+                    ; the silence round 87 removed, back by another door. So:
+                    ; a failure is counted, named, and the opening is written
+                    ; whole as laminate, because there IS a window in the mask
+                    ; there whatever lies under it (round 89).
                     res = nil
-                    errset( res = axlPolyOperation( list( cadr( entry ) ) copper 'AND ) )
-                    foreach( p remd( nil res )
-                        when( p && !p->isHole
-                            nOut = nOut + 1
-                            unless( groups[key]
-                                groups[key] = tconc( nil nil )
-                                tconc( order key )
+                    errset( res = axlPolyOperation( list( cadr( entry ) ) copper 'AND ) t )
+                    if( null( res ) then
+                        nFailed = nFailed + 1
+                        s3dWarn( sprintf( nil "Simple 3D: the polygon operation failed on a mask opening on the %s (%s); the opening is written whole as bare laminate."
+                                          t_side (axlPolyErrorGet() || "no message") ) )
+                        bare = list( cadr( entry ) )
+                    else
+                        foreach( p remd( nil res )
+                            when( p && !p->isHole
+                                nOut = nOut + 1
+                                unless( groups[key]
+                                    groups[key] = tconc( nil nil )
+                                    tconc( order key )
+                                )
+                                tconc( groups[key] p )
                             )
-                            tconc( groups[key] p )
+                        )
+                        bare = nil
+                        errset( bare = axlPolyOperation( list( cadr( entry ) ) copper 'ANDNOT ) t )
+                        when( null( bare )
+                            nFailed = nFailed + 1
+                            s3dWarn( sprintf( nil "Simple 3D: the polygon operation failed on the laminate around a mask opening on the %s (%s); the copper under it is written, the laminate around it is not."
+                                              t_side (axlPolyErrorGet() || "no message") ) )
                         )
                     )
-                    bare = nil
-                    errset( bare = axlPolyOperation( list( cadr( entry ) ) copper 'ANDNOT ) )
                 )
                 foreach( p remd( nil bare )
                     when( p && !p->isHole
@@ -642,6 +666,10 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
         )
         printf( "Simple 3D: exposed copper %s - %d drawn opening(s), %d copper object(s), %d polygon(s) of copper under them, %d of bare laminate\n"
                 t_side nOpen nFound nOut nBare )
+        when( nFailed > 0
+            s3dWarn( sprintf( nil "Simple 3D: %d polygon operation(s) FAILED on the %s - see the messages above; the model will show those openings as bare laminate or without their laminate rim."
+                              nFailed t_side ) )
+        )
         out = tconc( nil nil )
         foreach( key cdr( car( order ) )
             tconc( out list( key cdr( car( groups[key] ) ) ) )

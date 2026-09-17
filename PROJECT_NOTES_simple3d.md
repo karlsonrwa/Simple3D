@@ -5,14 +5,20 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-07
+## READ THIS FIRST — state as of 2026-09-17 (round 89, on `main`)
 
-**Branch `feature/copper-pads` (round 85, 2026-09-07) is where the copper
-pads live until the user has tried them**: a checkbox that draws every pin's
-pad on the outer faces as copper-coloured surfaces, from a `pads` library the
-exporter now writes (`format_version` 11: the copper and, since part 1 of
-the exposed-copper work, each padstack's mask openings). `main` is at round 84. Read round
-85 for the construction, the measurements and what is still unverified.
+**The exposed-copper work of rounds 85–89 (2026-09-07 … 2026-09-17, developed
+on `feature/copper-pads`, merged into `main` on 2026-09-17)**: two checkboxes,
+*Exposed copper (as surfaces)* and *Mask openings (as surfaces)*, drawn from
+the `pads` library the exporter writes (`format_version` 12: each padstack's
+ETCH pads and SOLDERMASK openings, one row per pin and per via, and the copper
+(`exposed`) and bare laminate (`bare`) under the openings drawn on the mask
+layers). Read round 85 for the construction and the measurements, 86 for the
+rule that a boolean's tool must not interfere with itself, 87 for the
+interactive-find bug in the exporter's copper sweep, 88 for the test audit
+and its repair, 89 for the pre-merge review (a fold that ate holed faces, the
+mutation table now kept in the tree) and the 'Not verified' list at the end
+of round 85 for what the user has not yet seen.
 
 The rest of this memo is a round-by-round record, oldest first, and it is long.
 Everything needed to pick the work up is here. Read a dated round only when you
@@ -28,8 +34,9 @@ one settled.
 | Allegro SKILL reference | `D:\Projects\AI\Claude\SKILL\skill_doc\` — `skill/DOC/FUNCS/*.txt` is the useful part, plus `skill_db_attributes.txt` |
 | `exportJson` (reference implementation) | `D:\Projects\AI\Claude\exportJson` — juulsA's ibom exporter; its silkscreen traversal and text handling were the model for ours |
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
-| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 77 (2026-09-03): Step 0, Plans A, B, C and D - all five monoliths split; each row says what it left. Next: E (format_version 9), then F4 and G |
-| The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd`; `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
+| The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 80 (2026-09-03): Step 0, Plans A, B, C, D, E1–E2 (`format_version` 9), F1–F3, F5 and G1–G5 - each row says what it left. Left: the optional F4 (pytest) and E3 (deleting `intermediate.RESERVED` once a release has shipped v9). Rounds 85–89 added features and tests and touched no plan row |
+| The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd` (eight since round 86c); `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
+| The mutation table | `tests/mutations.json` (round 89): 48 deliberate faults the suite has been shown to catch, applied by `tools/mutate.py` to a COPY of the tree (20–30 min for the whole table; never the working tree - it restores a byte snapshot after every fault); `tests/test_mutations.py` in `run_all` checks in a fraction of a second that every pattern still matches its file exactly once. The audit and its repairs: `docs/test-audit.md` |
 
 Three tools grew out of this project and now have repositories of their own.
 Nothing here depends on them, and no copy of their code belongs in this tree:
@@ -41,14 +48,16 @@ Nothing here depends on them, and no copy of their code belongs in this tree:
 | `checkBase` | `D:\Projects\AI\Claude\checkBase` — cross-checks the CIS component tables against the 3D, OLB and PDF files. Written 2026-08-02 as `tools/check_base.py` in this repo by mistake, moved out the same day |
 
 Three pieces ship: `makeVariant3dIntermediates.il` (since round 77 a loader for
-the exporter's nine parts under `skill/`, which read Allegro and write JSON),
+the exporter's ten parts under `skill/` - nine until round 85 added
+`s3d_pads.il` - which read Allegro and write JSON),
 `simple3d.il` (menu item + launcher; loads the exporter itself), `stepbuilder/` (Python + OpenCASCADE,
 writes the STEP — since round 73 `core.py` is the sequence of a build's
 stages and `contour.py`, `errors.py`, `intermediate.py`, `settings.py`,
-`stackup.py`, `board.py`, `legend.py`, `models.py`, `stepdoc.py`, `build.py`,
-`reporting.py`, the `bend/` package and - since round 74, beside `gui.py` -
-`winplace.py`, `widgets/layers_panel.py` and `worker_bridge.py` hold the
-rest; `ARCHITECTURE.md` has the file table). Plus `simple3d_config.json`, the shipped defaults, and the
+`stackup.py`, `board.py`, `legend.py`, `pads.py` (round 85: the exposed
+copper and the mask openings), `models.py`, `stepdoc.py`, `build.py`,
+`defaults.py` (round 80), `reporting.py`, the `bend/` package and - since
+round 74, beside `gui.py` - `winplace.py`, `widgets/layers_panel.py` and
+`worker_bridge.py` hold the rest; `ARCHITECTURE.md` has the file table). Plus `simple3d_config.json`, the shipped defaults, and the
 gitignored `simple3d_config.local.json` beside it, which is the only one the
 window writes; both halves read the pair merged. **No absolute path is left in
 any tracked file** (round 59): where the tool is installed comes from the
@@ -71,12 +80,19 @@ from, and `S3D_ScriptDir` is now `""` in source.
 - Mechanical components and `NO_STEP_EXPORT`, both by rule rather than by
   special case: the export list comes from the design and the variant table only
   subtracts from it.
-- **Copper pads** (round 85, branch `feature/copper-pads`), `format_version:
-  10`: the pad of every pin as a copper-coloured face a micron above the outer
-  face of its zone, one shared face per figure instanced per pin; the outline
-  is the padstack's own axlPath, the face is the pin's own layer span. Checked
-  against `axlPolyFromDB` per pin on three boards; not yet looked at by the
-  user in their CAD.
+- **Exposed copper and mask openings** (rounds 85–89), `format_version: 12`:
+  every pin's and via's pad, clipped to its padstack's mask opening, as a
+  copper-coloured face two `silkscreenFlatHeight`s above the outer face of its
+  zone, one shared face per figure instanced per pin; the windows in the mask
+  one step below it (*Mask openings*, dielectric colour), the copper and
+  laminate under openings drawn on the mask layers one step above, as one flat
+  part per side, clipped to the masked zones - or, on a plain board, to the
+  outline (round 89); windows only on zones whose stackup carries a
+  soldermask. The outline is the padstack's own axlPath, the face is the pin's
+  own layer span. Checked against `axlPolyFromDB` per pin on five boards
+  (54 000 placements); the pads, the mask-clipped pads, the via rings and the
+  exposed copper were seen by the user in Inventor - the copper label with its
+  laminate rims and the openings checkbox not yet (round 85, 'Not verified').
 
 ### Load-bearing decisions that look like they could be simplified, but cannot
 
@@ -133,7 +149,31 @@ from, and `S3D_ScriptDir` is now `""` in source.
   that a real board no longer reaches. Both bends of flex-b2 wrap; all five of
   flex3-a0 do since round 41.
 
-### Eight traps that cost a round each — do not rediscover them
+### Ten traps that cost a round each — do not rediscover them
+
+- **A boolean's tool must not interfere with itself** (round 86). OCC
+  intersects its arguments against one another and never the members of ONE
+  argument against each other, so a compound of cutout prisms that overlap -
+  a mouse bite beside a break-off tab - handed to `BRepAlgoAPI_Cut` as one
+  tool is undefined where they meet: three of six such holes came back as
+  loose plugs on circle-A0, and on faces a merely TOUCHING pair deletes the
+  second shape outright. Hand the pieces as separate tools (`SetArguments` /
+  `SetTools` on a `TopTools_ListOfShape`; `board._cut_out`,
+  `board._layer_region` and `bend/pieces._cut_into_pieces` all do now);
+  `SetFuzzyValue` does not touch it, and `IsDone`, `IsNull` and `has_solid`
+  are all satisfied by a board with three crumbs in it - `count_solids` is
+  the question.
+
+- **`TopoDS_Iterator` walks INTO a face** (round 89). It yields whatever a
+  shape is made of: a compound's children, but a face's wires, a wire's
+  edges, an edge's vertices. The piece-by-piece fold descended into any
+  shape with more than one child, so a face with a hole - two wires - came
+  back as its own flat edges with no face between them: 43% of the bare
+  laminate under flex3-a0's drawn openings gone, 733 loose edges in the
+  file, the ones on a moved panel left flat where the board used to be, and
+  2199 warnings that named none of it. Explode a COMPOUND, never a face;
+  `_support.free_edges` is the measure that sees a wireframe, which area,
+  volume and `count_solids` do not.
 
 - **A boolean cutter must never share a wall with the shape it cuts**
   (round 84). Allegro's zone contours carry hairline spikes - arcs out and
@@ -2974,6 +3014,269 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+## Update 2026-09-17 (round 89) — the pre-merge review: a fold that ate holed faces, and the mutation table kept in the tree
+
+The ask: look at where the branch stands, whether the tests are worth what
+they claim in the light of the mutation lessons written down since round 88,
+fix what needs fixing, bring every document up to date and merge into
+`main`. Everything below was measured; the numbers are the evidence.
+
+### Where it stood
+
+`feature/copper-pads` was 15 commits ahead of `main` (49e0357, round 84),
+working tree clean. `tests/run_all.py`: 30/30 in 228 s. `tools/golden.py
+--check`: 7 STEP cases, no difference. `tools/skill_export.py --check`: the
+eight boards through headless Allegro 25.1, 18-23 s each, no difference. No
+Python or SKILL had changed since round 87's commit; round 88 was tests and
+docs only.
+
+### The audit's mutations, re-run with the harness that handles the traps
+
+Round 88's audit ran with the harness of 2026-09-15; the day after, in
+BaroSim, that harness was found to execute stale bytecode when a replacement
+has the same length as its original (`a-mutation-of-equal-length-hides-in-the-pyc`),
+and to let a shadowing early `return` leave the original in place. So the 27
+mutations of the audit were re-run first, on a copy of the tree under
+`D:\Projects\AI\Claude\_tmp\` (never on the working tree: the harness restores
+a byte snapshot after every fault, and would have reverted every edit made
+meanwhile), with the shared harness of the `test-audit` skill:
+
+- it REFUSED three at once - `strips-never-overlap`, `seam-gap-zero`,
+  `pad-offset-ignored` all shadowed the line with an early `return` above it,
+  so a killed run would have left them in the tree unseen. Rewritten so the
+  replacement removes the original (`def f(...): return X` followed by the
+  renamed original), and a `return worst` after `worst = 0.0`;
+- 20 were caught outright and 7 "survived" - and six of the seven were the
+  spec's suite lists, not the tests: the five SKILL mutations named
+  `test_neg.py`, `test_pads.py`, `test_quote.py` and the mechanical checks,
+  and `test_skill_pins.py`, the suite round 88 wrote to catch exactly them,
+  did not exist when the spec was written; `arc-steps-3` named three suites
+  and not `test_bend.py`, while its twin `arc-steps-3-bend` (the same fault
+  against the fold suite) was caught. Re-run against the right suites: all
+  six caught, `test_skill_pins` in 0.2 s each. The seventh,
+  `silk-area-check-silenced`, was never a finding (round 88) and is dropped;
+  the twin is folded into `arc-steps-3`. **27 entries, 27 caught.**
+
+That lists' problem is what round 88's report called out in the abstract - a
+mutation "survived by too few suites" is not an answer - and here it produced
+five false alarms in one run. The table in the tree (below) carries the right
+suites, and the sentinel checks that every suite it names exists.
+
+### The review
+
+Five readers were sent over the branch (Python, SKILL, docs, test adequacy,
+and the 2199-warning observation from round 86c), each with the rule to
+measure before claiming; the adversarial verification that was to follow
+them died twice at the session limit (56 agents the first time, 35 the
+second), so their claims were verified by hand below. The user's word at
+that point: many agents burn the limit fast, continue alone.
+
+**1. The fold explodes a FACE (the 2199 warnings, round 86c).** Confirmed,
+and the worst of the five. `bend/apply.py` folds a `fuse=False` shape piece
+by piece: `TopoDS_Iterator` over the shape, recurse into every child when
+there is more than one. Written in round 63 for the legend - thousands of
+glyph SOLIDS, one shell each - and never given anything else. The drawn
+openings' `bare` part of a folded board is the first compound of bare FACES
+it met, and bare laminate around copper is a RING: two wires. So the face was
+descended into - wires, then edges, then vertices - and a vertex is nothing
+to `_is_empty`, so every region "cut it away": one warning per vertex at
+`apply.py:108`, one per edge at `:63`, and the face came back as its own flat
+edges with no face between them. Measured on flex3-a0 with both options on:
+
+| | before | after |
+|---|---|---|
+| warnings "folding cut the shape away entirely" | **2199** = 733 edges × 3 | 0 |
+| `bare_bot_flex3-a0` faces / area | 115 / **63.9688 mm²** (85 / 112.1113 went in) | 119 / 112.1113 |
+| edges belonging to no face (`_support.free_edges`) | **733** | 0 |
+| the part's bounding box in y | to **45.35** (the folded board ends at 19.84) | 12.05 |
+
+Two faces went: 15.4896 mm² on the panel after BEND_3 and 32.6529 on the
+held panel, 48.1425 together - the whole bare-laminate plate of each
+stiffener zone under its big opening - and 350 of the 733 loose edges stood
+at the FLAT position of a panel that had been folded away, so a viewer shows
+outlines floating in empty space. The copper part (71.2349 mm², single-wire
+faces) and all 184 pad and opening instances were right; the whole-zone
+groups were spared only because `build_silkscreen` hands its merged result
+back as ONE child, which the descent skips.
+
+The fix is one condition: descend only into a `TopAbs_COMPOUND`. A face then
+reaches the region cuts whole, which already handle holes. `test_pads [9]`
+folds three rings on the rigid-flex fixture with a third masked zone beyond
+the bend: 27.52 mm² and 3 faces in, the same out, no loose edge, and the
+ring beyond the bend standing up with its panel - before the fix 48
+warnings, 12.0 mm², 1 face, 16 loose edges. `free_edges` is in `_support`
+now: area, volume and `count_solids` all read a wireframe as nothing wrong.
+
+**2. A DONUT's hole was built at the declared box's centre.** `figure_face`
+placed the inside-diameter circle at the centre of `pad["bbox"]`, and the
+rule `_settle_offset` measured on the Dell board says the outline already
+stands at the padstack's offset while the box is the figure's own about its
+centre - so a donut with an offset had its hole the whole offset away from
+its ring, with nothing said while the hole still fell inside the ring (the
+tight box is then the ring's and the check is satisfied). The hole is built
+at the outer wire's own centre now; `test_pads [2]` classifies points of a
+donut at (0.2, 0): the ring's area is right either way (2.858849 mm²), and
+only the classifier tells the two apart. No board on disk has a DONUT pad;
+the Dell board is the only one with offsets.
+
+**3. A mirrored pin on a padstack with a drill offset - NOT settled.**
+`pad_face` cuts the drill in the padstack frame and `_finish` mirrors the
+whole figure, so the pad's hole lands at (-dx, dy); `s3dDrillXY`, which
+places the board's hole, adds (dx, dy) rotated and never looks at
+`isMirrored`. At most one of the two is Allegro's behaviour; round 69
+confirmed the offset on bone-a2's unmirrored header only, no board in the
+corpus has an off-origin drill at all, and there is nothing to measure it
+on here. Written into README's limitations in both languages, with how to
+settle it: a bottom-side header with an offset drill, `pcb.cutouts` against
+`axlPolyFromDB`.
+
+**4. SKILL: a FAILED polygon operation read as an empty one.**
+`axlPolyOperation`'s own contract (`FUNCS/axlPolyOperation.txt`): `(nil)` is
+an empty result, a bare `nil` is a failure, message in `axlPolyErrorGet()`.
+`s3dCollectExposed` ran both through `remd( nil res )`, so a failed AND
+dropped the opening from `exposed` AND `bare` with nothing said - the silence
+round 87 removed, back by another door. Now: `errset( ... t )`, a failure is
+counted (`nFailed`), named with the message, the opening written whole as
+laminate (there IS a window in the mask there), and a summary line on the
+console. No board reaches the branch - the corpus is byte-identical on all
+eight boards after the change - so `test_skill_pins [5b]` pins the
+statements, and that is the only link.
+
+**5. Drawn openings on a PLAIN board were never clipped to the outline.**
+On the demo, 26 of 37 `bare.top` polygons and all 26 of `bare.bottom` have
+vertices up to 0.500 mm outside the design outline - the outline itself,
+drawn as strokes on `BOARD GEOMETRY/SOLDERMASK_*` - and the demo's zones
+clipped them (round 85's rule). A plain board took the plain branch of
+`build_exposed`: one level, no clipping, laminate half in the air. The
+outline is the plain board's one masked zone now, so the same rule applies
+- inside, built; across the edge, clipped; outside, left out - with a vertex
+ON the boundary at home there (an opening drawn up to the edge is whole, not
+clipped to the edge it touches; the copper polygon of the pads test board
+lies on y = 10 exactly). `test_pads [7]`: 8 mm² across x = 20 comes back as
+4, the one outside is left out, the log says so.
+
+The Python reader also confirmed, measured, everything that was NOT wrong:
+option names and defaults agree across gui / settings / config / CLI /
+BuildOptions, every JSON key `s3d_pads.il` writes is read under the same name,
+the mirror is x → -x and the placement rotate-then-move, `mask_sides` on the
+demo gives (True, True) for MAIN_PCB and (False, False) for the six flex and
+stiffener zones. The SKILL reader ran three exports in one headless session
+(silkscreen off, pads off, defaults) and found the comma logic right in both
+silk states and no per-session state leaking between configs.
+
+### The tests, against the nine smells
+
+The test reader ran 19 mutations of its own over rounds 86-88 (11 caught, 8
+survived) and read the changed suites for the playbook's nine shapes. What
+changed, each proved by the mutation that now bites:
+
+- `test_pads [6]`: the THIRD height was measured by nothing - `build_exposed`
+  does not go through `_placement`, which the check records - so collapsing
+  3h onto 2h passed. The lift handed to `build_exposed` is read now
+  (`drawn-parts-at-copper-height` caught). The "filled window" line was
+  vacuous (no figure on the board fills its window, 0.64-0.92 mm² left in
+  each): a padstack whose opening IS its copper is built and
+  `openings_filled == 1` asserted - `BuildResult.openings_filled` exists for
+  it.
+- `test_silk [10]`: the measured reading is `_CONVENTIONS[0]` on purpose, so
+  a search that returned the first candidate passed everything. The sample
+  with every radius negated must move the winner to the mirror reading
+  `(AXIS, False, True)` at zero error, while the measured one is off by more
+  than 5% there (`pick-convention-first-wins` caught).
+- `test_bend [7d]`: `double_claimed` was the other oracle asked only one
+  way (five `== 0.0`, `if outline` in place of `if not outline` survived).
+  One panel of the Z fold made greedy - its polygon the whole outline - has
+  to be reported at the share the other pieces hold: 80%, against
+  `DOUBLE_CLAIM_WARN` 2% (`double-claimed-always-zero` caught). And [7b3]'s
+  `shared_strips(...)[0][2]` raised IndexError instead of failing when the
+  pair was missing, ending the suite at its first FAIL line; guarded.
+- `test_mech`: `per` (the model's solid count) was read from the two-copy
+  build and could only agree with itself; it comes from the model FILE now,
+  and both builds are checked against it.
+- `test_skill_pins [5b]` (new): the sweep's decisions - the find filter with
+  "lines", `found = axlGetSelSet()` under `axlAddSelectAll`, the box match
+  at its call site, `s3dCopperPolys` with no window, the AND / ANDNOT and
+  their failure branches - pinned statement by statement, since `found =
+  nil`, `when → unless` at the call site and the filter without "lines" had
+  survived every suite with all of `test_pads [8]`'s tokens in place. [6]'s
+  floor of 15 named procedures (19 exist) is the exact count now.
+- `tools/audit_docs.py`: the suite-count loop had no floor, so a phrase
+  drifting out of its regex ("twenty-six suites") silently left one fewer
+  thing to compare; README must state the count once per language and
+  ARCHITECTURE once, or it says the check ran on less than it should.
+
+Left as they are, with the reason: `silk_demo.json`'s six polygons were
+picked for being the ones that tell the readings apart, which is a bias in
+the sample and not in the oracle (the areas are Allegro's, the other readings
+miss by 63% or more); `test_dupcuts`'s `check(..., True)` is the except-arm
+of a must-raise pair; the two bounds on `SHARED_STRIP_RATIO` restate round
+86b's numbers and the behaviour beside them is pinned.
+
+### The mutation table, in the tree
+
+`tests/mutations.json`: the 27 entries above and 21 new ones - the test
+reader's 19 (less the duplicate of `skill-boxes-meet-inverted` and
+`audit-count-never-stale`, which measures a tool property no suite claims)
+plus one per fix of this round: `fold-descends-into-faces`,
+`donut-hole-at-box-centre`, `plain-board-openings-unclipped`,
+`skill-polyop-failure-silent`. Every entry names the suites that catch it.
+`tools/mutate.py` is the skill's harness copied in (the lock under `build/`,
+the rest as shared), so the repository needs nothing outside itself;
+`tests/test_mutations.py` is the 27th suite, in `run_all`: it applies nothing
+and runs no mutant, only asks per entry whether the harness could - the file
+exists, `old` occurs exactly once, `new` differs and does not contain `old`,
+nothing is left applied, every suite named exists - in a fraction of a
+second, so a refactor that breaks a pattern is a finding in the same round
+(`a-broken-mutation-pattern-is-a-rule-with-no-proof`).
+
+Run it on a COPY: `robocopy <repo> D:\...\copy /E /XD .git build input failed
+__pycache__ /XF *.pyc` (from PowerShell - Git Bash rewrites `/E` into a
+path), never under a folder called `build`, `work` or `dist`, because the
+harness's bytecode purge skips those names. The whole table takes 20-30
+minutes; the fold suite is 160 s of every entry that names it.
+
+**Measured at the tree merged: 48 of 48 caught.** Run twice: the 27 at the
+round-88 tree with the corrected suite lists, the 21 at the round-89 tree
+after the fixes, and the whole table once more at the merge.
+
+### The documents
+
+The docs reader found 50 stale statements, every one checked against the
+code before it was changed: this section's own head (state as of
+2026-09-07, `main` at round 84, format_version 10/11, nine parts, eight
+traps); README's explanation of what version 12 added, its description of
+the copper sweep (still the per-opening box find round 87 removed, in both
+languages), the probes called read-only when two draw; QUICKSTART's "a micron
+above the mask" where the copper stands at two; CHANGELOG naming a control
+that does not exist ("Exported bare copper not under mask"); ARCHITECTURE's
+file table (30 rows of counts from rounds 70-74, `pads.py` absent from the
+dependency graph and the pipeline, `gui` rows still calling it a monolith
+after round 74 split it, the tests row at 21 scripts); REFACTORING_PLANS'
+"23 jobs" and "seven boards"; the config's comment and `s3d_pads.il`'s own
+header, both describing the sweep as it was. All applied; `audit_docs` is
+clean; the ARCHITECTURE counts are re-measured as of this round.
+
+### State at the merge
+
+`tests/run_all.py`: 31/31 in 225 s (4 mechanical checks + 27
+suites; `test_bend` 229 assertions, was 220). `golden.py --check` 7 cases
+and `skill_export.py --check` 8 boards, no difference, both run again after
+the code changes. Mutation table 48/48. Merged into `main` with a merge
+commit, as the earlier feature branches were.
+
+### Not verified
+
+- The mirrored pin with a drill offset (finding 3) - which of the two rules
+  Allegro means.
+- The failed-polygon-operation branch of `s3dCollectExposed` has never
+  executed: no board reaches it. Its statements are pinned, its behaviour is
+  a reading of the reference.
+- The user's own view of the openings checkbox, the copper label with its
+  laminate rims (round 85's list) - and now the folded `bare` part on a real
+  rigid-flex, which this round measured in the file and not in a viewer.
+- `silk_demo.json` stays the best six polygons for the readings, not a
+  random sample.
+
 ## Update 2026-09-15 (round 88) — the test audit, repaired: the SKILL side is executed now
 
 Round 87's work was committed and then the suite was audited by mutation

@@ -51,8 +51,10 @@ is in the file, so the model can be rebuilt — differently — without touching
 the board again.
 
 The exporter writes `format_version: 12` (10 added the optional `pads` object
-the *Exposed copper* are drawn from; 11 adds each padstack's mask openings to it,
-so a pad shows only what its opening exposes). Every earlier version still builds —
+the *Exposed copper* is drawn from; 11 added each padstack's mask openings to it,
+so a pad shows only what its opening exposes; 12 added the vias as rows and, under
+the openings drawn on the mask layers, the copper (`exposed`) and the bare
+laminate (`bare`)). Every earlier version still builds —
 each version only ever *added* something optional — so an intermediate you kept
 from an older release does not have to be re-exported to be used. The other
 way round is new with 9: it keeps the components under one `"components"`
@@ -533,10 +535,12 @@ default) exposes whatever copper lies under it: a thermal pad drawn as a
 shape, a row of fingers, a test area, a pour, a part number cut into the mask.
 The exporter computes that copper **in Allegro**: each opening becomes
 polygons (a line opening is the line widened with round caps and a text its
-strokes, as the legend does it), the copper on that side's outer layer
-inside the opening's box is selected — pins and vias by their pads, a pour only
-through the opening's window — and `axlPolyOperation` keeps what is under the
-opening. The result travels in the legend's own polygon form, with Allegro's
+strokes, as the legend does it), the copper on that side's outer layer — pins
+and vias by their pads, shapes and lines whole — is swept once for the whole
+side with Allegro's select-all (never its interactive box find, which in a live
+session once left a 66 mm² pour out of the file), each object converted once
+and matched to the openings by bounding box, and `axlPolyOperation` keeps what
+is under each opening. The result travels in the legend's own polygon form, with Allegro's
 area beside each polygon, and is built the way a flat legend is: one
 copper-coloured part per side, `copper_top_<board>` / `copper_bot_<board>`,
 faces unioned, a micron above the pads so a pad that lies under a drawn opening
@@ -734,7 +738,12 @@ zone (a part mounted on an inner layer of a rigid zone) draws nothing and is
 counted in the log, and a trace entering a pad's opening is not drawn inside
 it — with *Mask openings* on, its place in the ring is laminate. A
 legend printed over a pad — a design-rule violation in Allegro — lands in
-the same plane as a flat legend and may flicker there.
+the same plane as a flat legend and may flicker there. **Not measured on any
+board yet:** a mirrored pin on a padstack whose drill is offset from the pad.
+The pad's hole is mirrored with the pad, the board's hole (the cutout) is
+not; no board on hand has such a padstack, so which of the two Allegro means
+is an open question — look at a bottom-side header with an offset drill
+before trusting either.
 
 ## Command line (without Allegro)
 
@@ -789,7 +798,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 26 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), read-only probes and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 27 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, applied by tools/mutate.py to a copy of the tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -846,8 +855,10 @@ SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE �
 поэтому модель можно пересобрать иначе, не открывая плату заново.
 
 Экспорт пишет `format_version: 12` (10 добавил необязательный объект `pads`,
-из которого рисуется *медь площадок*; 11 добавил в него вскрытия маски каждого
-падстека, так что площадка показывает только то, что открыто). Все предыдущие версии по-прежнему
+из которого рисуется *открытая медь*; 11 добавил в него вскрытия маски каждого
+падстека, так что площадка показывает только то, что открыто; 12 — переходные
+отверстия строками и, под вскрытиями, нарисованными на слоях маски, медь
+(`exposed`) и голый текстолит (`bare`)). Все предыдущие версии по-прежнему
 собираются — каждая версия только *добавляла* необязательное, — так что
 интермедиат, оставшийся от старого релиза, переэкспортировать не обязательно.
 Обратное с версией 9 стало новостью: компоненты лежат под одним ключом
@@ -1331,9 +1342,12 @@ Allegro, где его набирают руками, а файл на диск�
 область, заливку, номер платы, прорезанный в маске. Экспорт считает эту медь
 **в Allegro**: каждое вскрытие становится полигонами (вскрытие-линия — линия,
 раздутая до ширины со скруглёнными концами, текст — его штрихи, как в
-легенде), медь наружного слоя этой стороны в габарите вскрытия
-выбирается — выводы и отверстия своими площадками, заливка только через окно
-вскрытия — и `axlPolyOperation` оставляет то, что под вскрытием. Результат
+легенде), медь наружного слоя этой стороны — выводы и отверстия своими
+площадками, фигуры и линии целиком — обходится один раз на всю сторону штатным
+select-all Allegro (не интерактивным поиском по рамке, который в живой сессии
+однажды потерял заливку в 66 мм²), каждый объект преобразуется один раз и
+сопоставляется со вскрытиями по габариту, а `axlPolyOperation` оставляет то,
+что под каждым вскрытием. Результат
 едет в форме полигонов легенды, с площадью от Allegro у каждого, и строится
 как плоская легенда: одна деталь цвета меди на сторону, `copper_top_<плата>` /
 `copper_bot_<плата>`, грани слиты, на микрон выше площадок, чтобы площадка,
@@ -1532,7 +1546,12 @@ Allegro построена при `k = 0`. На плате с запасом р�
 а дорожка, входящая во вскрытие площадки, внутри него не рисуется — с
 *Mask openings* её место в кольце занимает текстолит. Легенда
 поверх площадки — в Allegro это нарушение правил — попадает в одну плоскость с
-плоской легендой и может там мерцать.
+плоской легендой и может там мерцать. **Ни на одной плате пока не измерено:**
+зеркальный вывод на падстеке, у которого сверло смещено относительно
+площадки. Отверстие в площадке зеркалится вместе с ней, отверстие в плате
+(вырез) — нет; такого падстека нет ни на одной плате под рукой, и что из двух
+имеет в виду Allegro — открытый вопрос: прежде чем верить любому из них,
+посмотрите на разъём с нижней стороны со смещённым сверлом.
 
 ## Командная строка (без Allegro)
 
@@ -1587,7 +1606,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 26 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), зонды и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 27 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, применяется tools/mutate.py к копии дерева), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

@@ -108,6 +108,7 @@ class BuildResult:
     pads_skipped: int = 0
     openings_placed: int = 0
     opening_figures: int = 0
+    openings_filled: int = 0        # windows their copper fills: counted, not placed
     # MFRPN reporting DISABLED (property attachment unreliable); kept for future:
     # missing_mfr_pn: list[str] = field(default_factory=list)
 
@@ -925,6 +926,7 @@ def generate(
         result.pads_skipped = pads.no_outer_face + pads.no_padstack + pads.unbuildable
         result.openings_placed = pads.openings_placed
         result.opening_figures = pads.opening_figures
+        result.openings_filled = pads.openings_filled
 
     # ---- write ----------------------------------------------------------- #
     # FIX: the C++ version hardcoded a backslash separator, which produced a

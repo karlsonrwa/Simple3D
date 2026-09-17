@@ -49,6 +49,7 @@ JOBS = [
     ("JSON emission: every string quoted",      TESTS / "test_emit.py", False),
     ("drill offset: the hole is not the pad",   TESTS / "test_drill_offset.py", False),
     ("SKILL: every Python copy pinned",         TESTS / "test_skill_pins.py", False),
+    ("mutation table: every pattern matches",   TESTS / "test_mutations.py", False),
     ("launcher command shape",                  TESTS / "test_launch_cmd.py", False),
     ("launcher: one parser, the --gui mode",    TESTS / "test_launcher.py", False),
     ("where Variants.lst is looked for",        TESTS / "test_variant_path.py", False),

@@ -2,7 +2,7 @@
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
 from _support import (ROOT, out_dir, fails, check, rect, read_step, count_solids,
-                      exporter_source)
+                      exporter_source, bbox, free_edges)
 
 """The copper pads (round 85): which face a pin reaches, what its figure
 looks like, where it lands - against the pad polygons Allegro itself reports
@@ -38,6 +38,17 @@ def area(face) -> float:
 
 def circle(r, cx=0.0, cy=0.0):
     return [{"type": "circle", "x": cx, "y": cy, "radius": r}]
+
+
+def inside(shape, x, y) -> bool:
+    """Is the flat point on the copper of *shape* (a face, or the first face
+    of a compound) - the question an area cannot answer, because a hole in
+    the wrong place has the same area as a hole in the right one."""
+    from OCP.BRepClass import BRepClass_FaceClassifier
+    from OCP.TopAbs import TopAbs_State
+    from OCP.gp import gp_Pnt
+    face = P._first_face(shape)
+    return BRepClass_FaceClassifier(face, gp_Pnt(x, y, 0.0), 1e-7).State() == TopAbs_State.TopAbs_IN
 
 
 def pad(outline, bbox, figure="RECTANGLE", offset=(0.0, 0.0), inside=0.0):
@@ -120,6 +131,19 @@ donut = pad(circle(1.0), [[-1, -1], [1, 1]], "DONUT", inside=1.0)
 face, note = P.pad_face(donut, None, False, True)
 check("a donut's inside diameter is a hole", face is not None
       and abs(area(face) - math.pi * (1.0 - 0.25)) < 1e-6, note or (face and area(face)))
+# A donut standing at an offset. The outline (the ring's outer circle) already
+# stands at the offset and the declared box is the figure's own about its
+# centre - the rule measured on the Dell board below - so the hole belongs at
+# the OUTLINE's centre. It was built at the box's, the whole offset away from
+# its ring, and the area was right all the same (review of 2026-09-17).
+shifted = pad(circle(1.0, 0.2, 0.0), [[-1.0, -1.0], [1.0, 1.0]], "DONUT", offset=(0.2, 0.0), inside=0.6)
+face, note = P.pad_face(shifted, None, False, True)
+check("a donut at an offset keeps its ring's area", face is not None and note is None
+      and abs(area(face) - math.pi * (1.0 - 0.09)) < 1e-6, (note, face and area(face)))
+check("and its hole is at the ring's centre, not at the declared box's",
+      face is not None and not inside(face, 0.2, 0.0) and not inside(face, 0.45, 0.0)
+      and inside(face, -0.2, 0.0) and inside(face, 0.9, 0.0),
+      face and [inside(face, x, 0.0) for x in (0.2, 0.45, -0.2, 0.9)])
 face, note = P.pad_face(DISC, circle(0.4), False, True)
 check("a through pad keeps its drill hole (annular ring)", face is not None
       and abs(area(face) - math.pi * (0.64 - 0.16)) < 1e-6, note or (face and area(face)))
@@ -468,10 +492,26 @@ check("both on: the pads as before, the windows beside them, the laminate under 
       and any("Exposed copper under drawn openings, top: 1 polygon(s)" in m for m in logs_b)
       and not any("Drawn openings, whole" in m for m in logs_b),
       (res_b.pads_placed, res_b.openings_placed, [m for m in logs_b if "opening" in m]))
-check("a window the copper fills is counted, not placed",
-      res_b.openings_placed + sum(1 for m in logs_b if "filled by their copper" in m) >= 1
-      and res_b.openings_placed <= res_o.openings_placed,
-      (res_b.openings_placed, [m for m in logs_b if "Mask openings" in m]))
+# A window the copper fills - a padstack whose opening IS its copper - is
+# counted, not placed. None of the board's figures fills its window (0.64 to
+# 0.92 mm2 of ring is left in each), so the count is asked on a board with
+# one that does: the same pins plus one such pad.
+filled = json.loads(json.dumps(board))
+filled["pads"]["padstacks"]["FILL"] = {"usage": "Smd", "drill": None,
+                                       "pads": {"ETCH/TOP": RECT, "PIN/SOLDERMASK_TOP": RECT}}
+filled["pads"]["pins"].append([12.0, 8.0, 0.0, False, "FILL", "ETCH/TOP", "ETCH/TOP"])
+jf.write_text(json.dumps(filled))
+res_f, logs_f, text_f = build("filled_on", exposed_copper=True, mask_openings=True)
+jf.write_text(json.dumps(board))
+check("a window the copper fills is counted, not placed: one more pad, no more windows, and said",
+      res_f.pads_placed == res_b.pads_placed + 1 and res_f.openings_placed == res_b.openings_placed
+      and res_f.openings_filled == 1 and "opening_FILL" not in text_f
+      and any("1 filled by their copper" in m for m in logs_f),
+      (res_f.pads_placed, res_f.openings_placed, res_f.openings_filled,
+       [m for m in logs_f if "Mask openings" in m]))
+check("and on the board where none fills, none is counted",
+      res_b.openings_filled == 0 and not any("filled by their copper" in m for m in logs_b),
+      (res_b.openings_filled, [m for m in logs_b if "Mask openings" in m]))
 
 # Three heights, a flat-silkscreen clearance apart: the windows lowest, the
 # copper one step up - so where the windows of two neighbouring through pins
@@ -480,17 +520,27 @@ check("a window the copper fills is counted, not placed",
 # step2html when both sat at one height). Measured through the placements.
 from stepbuilder.defaults import DEFAULT_FLAT_HEIGHT as H
 placed_z = []
+drawn_lifts = []
 _orig_placement = P._placement
+_orig_exposed = core.build_exposed
 P._placement = lambda x, y, z, rotation, fold: (placed_z.append(round(z, 6)), _orig_placement(x, y, z, rotation, fold))[1]
+core.build_exposed = lambda *a, **kw: (drawn_lifts.append(kw.get("lift")), _orig_exposed(*a, **kw))[1]
 try:
     build("both_on_heights", exposed_copper=True, mask_openings=True)
 finally:
     P._placement = _orig_placement
+    core.build_exposed = _orig_exposed
 top_face, bottom_face = 0.0, -1.104            # z_datum top: the mask's top face at 0, the stack 1.104 down
 check("the windows sit one clearance above the face and the copper two, on both sides",
       sorted(set(z for z in placed_z if z > 0)) == [round(top_face + H, 6), round(top_face + 2 * H, 6)]
       and sorted(set(z for z in placed_z if z < 0)) == [round(bottom_face - 2 * H, 6), round(bottom_face - H, 6)],
       sorted(set(placed_z)))
+# The third height does not go through _placement: the drawn openings' parts
+# are built flat like a legend, lifted by what _build_pads hands build_exposed.
+# Collapsing 3h onto 2h - the copper part coplanar with the pads - passed the
+# check above (review of 2026-09-17), so the lift is read where it is given.
+check("and the drawn openings' copper and laminate stand a third step up, above the copper",
+      len(drawn_lifts) >= 2 and all(abs(lift - 3 * H) < 1e-12 for lift in drawn_lifts), drawn_lifts)
 check("off: no openings node, nothing said", "openings_top" not in text2
       and not any("Mask openings" in m for m in logs2))
 
@@ -572,6 +622,38 @@ check("a plain board without a soldermask gets its copper and no window anywhere
               for m in logs_fo),
       (res_fo.pads_placed, res_fo.openings_placed, [m for m in logs_fo if "soldermask" in m]))
 
+# A plain board WITH a mask has no zone to clip to, but it has an edge, and
+# Cadence's demo draws its outline as 1 mm strokes on the mask layers: the
+# demo's zones clipped those, a plain board built them half in the air
+# (review of 2026-09-17). The outline is the plain board's one masked zone.
+over = json.loads(json.dumps(board))
+over["pads"]["bare"]["top"] = [
+    {"layer": "BOARD GEOMETRY/SOLDERMASK_TOP", "area": 8.0,        # across the right edge x = 20
+     "vertices": [[18, 4, 0], [22, 4, 0], [22, 6, 0], [18, 6, 0]]},
+    {"layer": "BOARD GEOMETRY/SOLDERMASK_TOP", "area": 4.0,        # outside the board altogether
+     "vertices": [[25, 4, 0], [27, 4, 0], [27, 6, 0], [25, 6, 0]]},
+    {"layer": "BOARD GEOMETRY/SOLDERMASK_TOP", "area": 1.0,        # inside, as before
+     "vertices": [[1, 1, 0], [2, 1, 0], [2, 2, 0], [1, 2, 0]]}]
+logs_over = []
+comp_over, built_over, _ = P.build_exposed(over, stackups=over["stackups"], zones=[], levels={},
+                                           board_top_z=0.0, board_bottom_z=-1.104, lift=0.003,
+                                           section="bare", log=logs_over.append)["top"]
+check("on a plain board a drawn opening across the edge is clipped to the outline, one outside it left out",
+      built_over == 2 and comp_over is not None and abs(P.shape_area(comp_over) - 5.0) < 1e-6
+      and abs(P._tight_box(comp_over)[2] - 20.0) < 1e-6,
+      (built_over, comp_over is not None and P.shape_area(comp_over),
+       comp_over is not None and P._tight_box(comp_over)))
+check("and the log says so",
+      any("1 drawn-opening polygon(s) reach past the board outline and are clipped to it, "
+          "1 lie outside it and are left out" in m for m in logs_over), logs_over)
+jf.write_text(json.dumps(over))
+res_over, logs_ov, text_ov = build("plain_clip", exposed_copper=False, mask_openings=True)
+jf.write_text(json.dumps(board))
+check("through the build: the part is there and the clip is in the log",
+      "bare_top_plain_clip" in text_ov and any("clipped to it" in m for m in logs_ov)
+      and any("Drawn openings, whole, top: 3 polygon(s)" in m for m in logs_ov),
+      [m for m in logs_ov if "bare_top" in m or "Drawn" in m])
+
 print()
 print("[8] the exposed-copper sweep finds the copper the same way everything else does")
 
@@ -624,6 +706,75 @@ check("the console says how much copper the sweep FOUND, not only what survived"
       "%d copper object(s)" in src)
 check("and warns when a board with openings turns up no copper at all",
       "found NO copper at all" in src)
+
+print()
+print("[9] a drawn opening with a hole in it folds as a face, not as a wireframe")
+
+# Round 86c's 2199 warnings on flex3-a0, found in the review of 2026-09-17.
+# The bare laminate under a mask opening is a RING - the opening less the
+# copper - so its face has more than one wire. FoldPlan.apply folds a
+# fuse=False shape piece by piece through TopoDS_Iterator, and on a FACE that
+# iterator yields WIRES: each wire's edges, then each edge's vertices, were
+# "folded" and cut away (a vertex is empty to _is_empty), three warnings per
+# edge, and the face came back as its flat edges with no face between them -
+# 48.14 of 112.11 mm2 of bare laminate gone, 733 loose edges in the file, 350
+# of them left flat where the panel after BEND_3 used to be. The rigid-flex
+# fixture with a third masked zone beyond the bend reproduces both halves:
+# the ring on the held panel loses its face, the ring beyond the bend is left
+# flat as well.
+from stepbuilder.bend import plan_from_json
+
+rf9 = json.loads((ROOT / "tests/fixtures/rigidflex.json").read_text())
+rf9.update({"format_version": 12, "name": "rfpads", "components": {}})
+rf9["zones"][1]["contour"] = rect(0, 11.38, 41, 21.5)                       # F2, shortened
+rf9["zones"].append({"name": "S3", "stackup": "STIFFENER2", "contour": rect(0, 21.5, 41, 26.5)})
+
+
+def ring(x0, y0, x1, y1, hx0, hy0, hx1, hy1):
+    """A drawn opening showing bare laminate around a copper island: an
+    outer rectangle with a rectangular hole, Allegro's area beside it."""
+    return {"layer": "BOARD GEOMETRY/SOLDERMASK_TOP",
+            "area": (x1 - x0) * (y1 - y0) - (hx1 - hx0) * (hy1 - hy0),
+            "vertices": [[x0, y0, 0], [x1, y0, 0], [x1, y1, 0], [x0, y1, 0]],
+            "holes": [[[hx0, hy0, 0], [hx1, hy0, 0], [hx1, hy1, 0], [hx0, hy1, 0]]]}
+
+
+rf9["pads"] = {"padstacks": {"SMD": smd},
+               "pins": [[8.0, 5.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"]],
+               "exposed": {"top": [], "bottom": []},
+               "bare": {"top": [ring(2, 2, 6, 6, 3, 3, 5, 5),                 # inside S2: 12 mm2
+                                ring(2, 9, 6, 13, 3, 10, 5, 11),              # across y = 11.38 into F2: 9.52 - 2 = 7.52 on S2
+                                ring(10, 20.5, 14, 24, 11, 22, 13, 23)],      # across y = 21.5 into S3, beyond the bend: 10 - 2 = 8
+                        "bottom": []}}
+levels9 = {"S2": (0.0, -2.44), "F2": (-2.05, -2.415), "S3": (0.0, -2.44)}
+plan9 = plan_from_json(rf9, 0.0, -2.44, zones=rf9["zones"], levels=levels9)
+check("the fixture's bend is read and the origin's panel is held",
+      len(plan9.bends) == 1 and plan9.region_at(3.0, 3.0) == "held" and plan9.region_at(12.0, 25.0) != "held",
+      (len(plan9.bends), plan9.region_at(3.0, 3.0), plan9.region_at(12.0, 25.0)))
+comp9, built9, _ = P.build_exposed(rf9, stackups=rf9["stackups"], zones=rf9["zones"], levels=levels9,
+                                   board_top_z=0.0, board_bottom_z=-2.44, lift=0.003, section="bare")["top"]
+flat_area = 12.0 + 7.52 + 8.0
+check("flat: three rings, two of them clipped at a zone boundary, 27.52 mm2",
+      built9 == 3 and abs(P.shape_area(comp9) - flat_area) < 1e-6 and len(P._faces_of(comp9)) == 3,
+      (built9, P.shape_area(comp9), len(P._faces_of(comp9))))
+logs9 = []
+folded9 = plan9.apply(comp9, fuse=False, note=False, log=logs9.append)
+check("folding a ring does not cut it away", not any("folding cut the shape away" in m for m in logs9),
+      f"{sum(1 for m in logs9 if 'cut the shape away' in m)} warning(s)")
+check("the rings keep their faces and their area through the fold, and leave no loose edge",
+      abs(P.shape_area(folded9) - flat_area) < 1e-6 and len(P._faces_of(folded9)) == 3 and free_edges(folded9) == 0,
+      (P.shape_area(folded9), len(P._faces_of(folded9)), free_edges(folded9)))
+fb9 = bbox(folded9)
+check("the ring beyond the bend stands up with its panel; nothing is left flat past the bend line",
+      fb9[5] > 1.0 and fb9[4] < 21.0, tuple(round(v, 3) for v in fb9))
+
+jf.write_text(json.dumps(rf9))
+res9, logs9, text9 = build("rf_fold", exposed_copper=True, mask_openings=True)
+jf.write_text(json.dumps(board))
+check("through the build, folded: the bare part is there, nothing was cut away, and the file has no wireframe",
+      "bare_top_rf_fold" in text9 and not any("folding cut the shape away" in m for m in logs9)
+      and free_edges(read_step(OUT / "rf_fold.step")) == 0,
+      (sum(1 for m in logs9 if "cut the shape away" in m), free_edges(read_step(OUT / "rf_fold.step"))))
 
 print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")

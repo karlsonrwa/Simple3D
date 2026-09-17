@@ -173,9 +173,17 @@ run_all = (ROOT / "tests/run_all.py").read_text(encoding="utf-8")
 n_suites = len(re.findall(r'TESTS\s*/\s*"test_\w+\.py"', run_all))
 n_checks = len(re.findall(r'TOOLS\s*/\s*"\w+\.py"', run_all))
 arch = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
-for doc, text in (("README.md", readme), ("ARCHITECTURE.md", arch)):
-    for stated, what in re.findall(
-            r"(\d+) (test suites|suites|наборов тестов|набора тестов)", text):
+# The loop below runs over what the regex finds, so a phrase drifting out of
+# it ("twenty-six suites") silently left one fewer thing to compare (review of
+# 2026-09-17). README states the count once per language and ARCHITECTURE at
+# least once; fewer matches is a finding, like the other "ran on nothing" checks.
+for doc, text, floor in (("README.md", readme, 2), ("ARCHITECTURE.md", arch, 1)):
+    stated_counts = re.findall(
+        r"(\d+) (test suites|suites|наборов тестов|набора тестов)", text)
+    if len(stated_counts) < floor:
+        note("suite count", f"{doc} states the suite count {len(stated_counts)} time(s), "
+             f"{floor} expected - the check ran on less than it should")
+    for stated, what in stated_counts:
         if int(stated) != n_suites:
             note("stale suite count",
                  f"{doc} says {stated} {what}; run_all.py runs {n_suites}")

@@ -475,12 +475,13 @@ check("and no piece was dropped as a sliver",
 
 # The overlap itself: real, and named in mm2 rather than left to the 2 mm grid
 # double_claimed samples on - which reads this board as 0.04% and says nothing.
+cx_pairs = shared_strips(cx_strips)
 check("shared_strips finds the one crossing pair",
-      [(i, j) for i, j, _ in shared_strips(cx_strips)] == [(0, 1)],
-      shared_strips(cx_strips))
+      [(i, j) for i, j, _ in cx_pairs] == [(0, 1)], cx_pairs)
+# Guarded, not indexed: with the pair missing this line used to raise and
+# stop the suite at its first FAIL line (review of 2026-09-17).
 check("and measures it at the 36 mm2 the two bands really share",
-      abs(shared_strips(cx_strips)[0][2] - 36.0) < 1e-6,
-      shared_strips(cx_strips))
+      len(cx_pairs) == 1 and abs(cx_pairs[0][2] - 36.0) < 1e-6, cx_pairs)
 
 plan_cx = plan_fold([cx_a, cx_b], SQ, 0.0, -T, anchor=(0.0, 0.0),
                     outline_curves=SQ_CURVES)
@@ -896,6 +897,32 @@ for region in plan2.regions:
 swap_gap = seam_gap(_dc.replace(plan2, regions=swapped))
 check(f"two panels with each other's transform come apart by "
       f"{swap_gap:.3f} mm", swap_gap > 1.0, swap_gap)
+
+# The other oracle of [7b2], seen reporting too. Every call there wants 0.0,
+# so a double_claimed that answered 0.0 for every board left the suite green
+# (measured, review of 2026-09-17). One panel of the Z fold made greedy - its
+# polygon the whole outline, its bounds dropped - claims every point the
+# other pieces claim, and the fraction has to come back as their share of
+# the board, past the threshold plan_fold warns at.
+from stepbuilder.bend.constants import DOUBLE_CLAIM_WARN
+
+greedy_regions = []
+greedy_label = next(r.label for r in plan2.regions if r.kind == "panel" and r.moved and r.poly)
+for region in plan2.regions:
+    if region.label == greedy_label:
+        greedy_regions.append(_dc.replace(region, poly=outline, polys=None, bounds=[]))
+    else:
+        greedy_regions.append(region)
+greedy = _dc.replace(plan2, regions=greedy_regions)
+own = next(r.poly for r in plan2.regions if r.label == greedy_label)
+others_share = 1.0 - polygon_area(own) / polygon_area(outline)
+greedy_claim = double_claimed(greedy, outline)
+check(f"a panel claiming the whole board is reported: {greedy_claim * 100:.0f}% claimed twice "
+      f"(the other pieces hold {others_share * 100:.0f}%)",
+      abs(greedy_claim - others_share) < 0.1 and greedy_claim > DOUBLE_CLAIM_WARN,
+      (greedy_claim, others_share, DOUBLE_CLAIM_WARN))
+check("while the fold it was made from claims nothing twice",
+      double_claimed(plan2, outline) == 0.0, double_claimed(plan2, outline))
 
 print("\n[8] where a component ends up")
 

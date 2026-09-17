@@ -261,6 +261,31 @@ check("any other control character becomes a space",
       T.s3dJsonQuote("a\x01b\x1fc") == '"a b c"', T.s3dJsonQuote("a\x01b\x1fc"))
 check("a non-string is null", T.s3dJsonQuote(7) == "null")
 
+print("\n[5b] s3dCollectExposed - the decisions of the copper sweep")
+
+# Round 87's fix is a SWEEP, not a procedure a Python copy can run: it reads
+# the design. test_pads [8] greps its tokens, and the review of 2026-09-17
+# measured what that is worth - `found = nil` (the selection thrown away),
+# the box match applied backwards at its call site, and "lines" dropped from
+# the find filter all survived every suite while the tokens stayed in place.
+# The behaviour is proved by the SKILL golden corpus (tools/skill_export.py
+# --check, circle-A0's 24 polygons of copper at 73.832 mm2), which needs
+# Allegro; what can run here is the pin on the statements that decide.
+pin("s3dCollectExposed",
+    'filter = list( "noall" "lines" "clines" "shapes" "pins" "vias" )',
+    'when( errset( axlAddSelectAll() t ) found = axlGetSelSet() )',
+    'one = s3dCopperPolys( o etch nil s_endCap )',
+    'when( s3dBoxesMeet( cadr( entry )->bBox p->bBox )',
+    "errset( res = axlPolyOperation( list( cadr( entry ) ) copper 'AND ) t )",
+    'if( null( res ) then nFailed = nFailed + 1',
+    "errset( bare = axlPolyOperation( list( cadr( entry ) ) copper 'ANDNOT ) t )",
+    'when( null( bare ) nFailed = nFailed + 1')
+sweep_body = normalise(body("s3dCollectExposed") or "")
+check("the sweep never calls the interactive box select",
+      "s3dSelectInBox(" not in sweep_body and "axlAddSelectBox(" not in sweep_body)
+check("and the selection it takes is the one it asked for, once",
+      sweep_body.count("found = axlGetSelSet()") == 1 and sweep_body.count("found = nil") == 1)
+
 print("\n[6] every copy is pinned, and pins something that exists")
 
 # The loop the audit's finding is really about: a transliteration added later
@@ -290,15 +315,25 @@ for line in src.splitlines():
 
 check("every `# mirrors` line names bare procedures, so this can be read at all",
       not malformed, malformed)
-check(f"the copies name {len(named)} SKILL procedures", len(named) >= 15, sorted(named))
+# The exact counts, not a floor well under them: with a floor of 15, four
+# `# mirrors` lines could go before anything said so (review of 2026-09-17).
+# Update both numbers when a copy is added - a drop is the finding.
+mirror_lines = sum(1 for line in src.splitlines() if line.startswith("# mirrors skill/"))
+check(f"the copies name {len(named)} SKILL procedures on {mirror_lines} `# mirrors skill/` lines "
+      f"(19 on 15 when this was written)", len(named) >= 19 and mirror_lines >= 15,
+      (len(named), mirror_lines, sorted(named)))
 missing = sorted(p for p in named if body(p) is None)
 check("every procedure a copy names exists in the SKILL source", not missing, missing)
 
 # The five the audit measured, plus rotateXY which s3dDrillXY is built on.
 MUST_PIN = {"s3dLayerIsNegative", "s3dDrillXY", "rotateXY", "s3dBoxesMeet",
             "s3dJsonMerge", "s3dJsonQuote"}
+# And the sweep of round 87, pinned by its source alone: it reads a design,
+# so no recorded Allegro answer can stand in for it (see [5b]).
+MUST_PIN_SOURCE_ONLY = {"s3dCollectExposed"}
 check("every procedure the audit found unpinned is pinned here",
-      MUST_PIN <= set(PINNED), sorted(MUST_PIN - set(PINNED)))
+      (MUST_PIN | MUST_PIN_SOURCE_ONLY) <= set(PINNED),
+      sorted((MUST_PIN | MUST_PIN_SOURCE_ONLY) - set(PINNED)))
 check(f"and every pin found its procedure ({len(PINNED)} pinned)",
       all(body(p) is not None for p in PINNED),
       [p for p in PINNED if body(p) is None])

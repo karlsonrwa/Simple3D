@@ -225,6 +225,23 @@ picked = legend._pick_convention(SAMPLE, 0.0, lambda m: None, "top")
 check(f"the search picks the reading measured on a real board {RIGHT}",
       tuple(picked) == RIGHT, picked)
 
+# And the search has to be seen MOVING. RIGHT is listed first on purpose, so
+# a "search" that returned the first candidate without scoring would pass
+# every check above (measured, review of 2026-09-17). The same polygons with
+# every radius negated are a board that means the opposite polarity, and the
+# winner has to follow them there - the mirror reading, at zero error.
+FLIPPED = [{**p, "vertices": [[v[0], v[1], -float(v[2])] for v in p["vertices"]],
+            **({"holes": [[[v[0], v[1], -float(v[2])] for v in h] for h in p["holes"]]}
+               if p.get("holes") else {})}
+           for p in SAMPLE]
+MIRROR = (legend.RULE_AXIS, False, True)
+flipped_pick = legend._pick_convention(FLIPPED, 0.0, lambda m: None, "top")
+check(f"with every radius negated the search moves to the mirror reading {MIRROR}",
+      tuple(flipped_pick) == MIRROR and legend._CONVENTIONS.index(MIRROR) > 0, flipped_pick)
+check("which reproduces those areas exactly while the measured reading no longer does",
+      worst_error(MIRROR, FLIPPED) < 1.0e-4 and worst_error(RIGHT, FLIPPED) > 0.05,
+      (worst_error(MIRROR, FLIPPED), worst_error(RIGHT, FLIPPED)))
+
 # And the oracle has to be able to say no: every other reading is wrong by far
 # more than AREA_TOLERANCE on this sample, which makes the win above a
 # measurement rather than list order.
