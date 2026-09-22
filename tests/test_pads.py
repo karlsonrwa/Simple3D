@@ -860,5 +860,207 @@ check("through the build, folded: the bare part is there, nothing was cut away, 
       (sum(1 for m in logs9 if "cut the shape away" in m), free_edges(read_step(OUT / "rf_fold.step"))))
 
 print()
+print("[10] at the board's edge: pads and openings clipped to the outline and the cutouts")
+
+# The user's 5988-a1 (2026-09-22, round 91): sixteen mouse-bite holes 0.2 mm
+# inside the edge, drill r 0.3, mask opening r 0.35 - and the opening, a
+# shared annulus instanced per via, reached 0.15 mm into the air on all 32
+# placements. A copper pad at the edge would have done the same. So a
+# placement whose figure reaches the outline or a cutout is clipped to the
+# board's face and becomes a face of its own; the rest stay instances.
+EDGES = [rect(0, 0, 20, 10), circle(0.4, 5, 5)]
+bd = P._Boundary(EDGES)
+check("the edge is read: outline and cutout, five exact pieces on a grid",
+      bd.ok and len(bd.pieces) == 5 and bd.cutouts == [circle(0.4, 5, 5)], (bd.ok, len(bd.pieces)))
+check("a figure well inside reaches nothing; one at the edge reaches the outline, one over the cutout the cutout",
+      bd.reaches(10.0, 5.0, 1.0) == set() and bd.reaches(19.5, 5.0, 1.0) == {0} and bd.reaches(5.0, 5.9, 1.0) == {1}
+      and bd.reaches(5.0, 6.5, 1.0) == set(),
+      (bd.reaches(10.0, 5.0, 1.0), bd.reaches(19.5, 5.0, 1.0), bd.reaches(5.0, 5.9, 1.0), bd.reaches(5.0, 6.5, 1.0)))
+# A cutout that repeats the pin's own drill takes nothing off a figure the
+# drill is already out of: the cutouts script leaves one on every through
+# pin (270 of the demo's 274 cutouts), and each was a 40 ms boolean for
+# nothing. The drill's offset turns and mirrors with the pin.
+check("a cutout inside the pin's drill is known as such - by size, centre, offset, mirror and turn",
+      bd.within_drill(1, 5.0, 5.0, circle(0.4), False, 0.0) and bd.within_drill(1, 5.0, 5.0, circle(0.5), False, 0.0)
+      and not bd.within_drill(1, 5.0, 5.0, circle(0.3), False, 0.0)          # the cutout is larger than the drill
+      and not bd.within_drill(1, 5.0, 5.5, circle(0.4), False, 0.0)          # off the pin
+      and bd.within_drill(1, 4.5, 5.0, circle(0.4, 0.5, 0.0), False, 0.0)    # an offset drill lands on it
+      and not bd.within_drill(1, 4.5, 5.0, circle(0.4, 0.5, 0.0), True, 0.0)  # mirrored, it lands the other way
+      and bd.within_drill(1, 5.5, 5.0, circle(0.4, 0.5, 0.0), False, 180.0)  # turned half round, on it again
+      and not bd.within_drill(1, 5.0, 5.0, None, False, 0.0))                # no drill: a real hole in the copper
+check("on_board: inside yes, outside no, in the cutout no, beside the edge yes, past it no",
+      bd.on_board(10.0, 5.0) and not bd.on_board(25.0, 5.0) and not bd.on_board(5.0, 5.0)
+      and bd.on_board(19.9, 9.9) and not bd.on_board(20.1, 5.0),
+      (bd.on_board(10.0, 5.0), bd.on_board(25.0, 5.0), bd.on_board(5.0, 5.0), bd.on_board(19.9, 9.9),
+       bd.on_board(20.1, 5.0)))
+# The reach test is exact against the arc, not against a chord: a pad
+# 0.05 mm clear of a round edge does not reach it, one 0.05 mm short does.
+# contour_points samples a circle in eight chords, whose sag on r 0.4 is
+# 0.03 mm - so a chord would have put the clear pad over the hole.
+check("the distance to a circle is measured to the circle",
+      not bd.reaches(5.0, 5.0 + 0.4 + 1.0 + 0.05, 1.0) and bd.reaches(5.0, 5.0 + 0.4 + 1.0 - 0.05, 1.0))
+bf = P.board_face(EDGES[0], EDGES[1:], 0.0)
+check("the board's face is the outline less the cutout",
+      abs(P.shape_area(bf) - (200.0 - math.pi * 0.16)) < 1e-6, P.shape_area(bf))
+disc, _ = P.pad_face(DISC, None, False, True)                       # r 0.8
+rim, hole = bd.outline_face(), bd.cutout_face(1)
+check("the outline's face and the cutout's are built on demand, once each",
+      rim is not None and hole is not None and rim is bd.outline_face() and hole is bd.cutout_face(1)
+      and abs(P.shape_area(rim) - 200.0) < 1e-9 and abs(P.shape_area(hole) - math.pi * 0.16) < 1e-9)
+half, whole_h, note_h = P.clip_to_board(disc, 20.0, 5.0, 0.0, rim, [])
+check("a disc centred on the right edge: half of it stays, ending at x = 20",
+      half is not None and not whole_h and note_h is None and abs(P.shape_area(half) - math.pi * 0.32) < 1e-6
+      and abs(P._tight_box(half)[2] - 20.0) < 1e-9, (whole_h, note_h, half is not None and P.shape_area(half)))
+over_cut, whole_c, _ = P.clip_to_board(disc, 5.0, 5.0, 0.0, rim, [hole])
+check("a disc over the cutout loses the hole", over_cut is not None and not whole_c
+      and abs(P.shape_area(over_cut) - math.pi * (0.64 - 0.16)) < 1e-6,
+      over_cut is not None and P.shape_area(over_cut))
+over_only, whole_o, _ = P.clip_to_board(disc, 5.0, 5.0, 0.0, None, [hole])
+check("and the same with no outline given - a figure that reaches only the cutout",
+      over_only is not None and not whole_o and abs(P.shape_area(over_only) - math.pi * (0.64 - 0.16)) < 1e-6)
+inside_d, whole_i, _ = P.clip_to_board(disc, 10.0, 5.0, 0.0, rim, [])
+check("a disc well inside comes back whole", whole_i and abs(P.shape_area(inside_d) - math.pi * 0.64) < 1e-9)
+check("a disc off the board is nothing, and not a failure",
+      P.clip_to_board(disc, 30.0, 5.0, 0.0, rim, []) == (None, False, None))
+check("a disc inside a cutout of its own size is nothing too",
+      P.clip_to_board(disc, 5.0, 5.0, 0.0, None, [P._face_from_wires(P.build_contour(circle(0.8, 5, 5), 0.0), [])])
+      == (None, False, None))
+# The coincident wall. The THRU pin at (5, 5) has its drill r 0.4 cut out
+# already and the board's cutout there is the same circle - which is what
+# the cutouts script leaves on 5988-a1 at every mounting hole and every
+# mouse bite. The boolean has to hand the ring back whole, to the last
+# digit, or every such pin would get a face of its own for nothing.
+ring_t, _ = P.pad_face(TOPPAD, circle(0.4), False, True)
+ring_c, whole_r, _ = P.clip_to_board(ring_t, 5.0, 5.0, 0.0, rim, [hole])
+check("a ring whose hole IS the cutout comes back whole",
+      whole_r and abs(P.shape_area(ring_c) - P.shape_area(ring_t)) < 1e-9,
+      (whole_r, P.shape_area(ring_c), P.shape_area(ring_t)))
+# Mirrored and turned: the 2 x 1 rectangle at 90 degrees stands x 19.5..20.5
+# on the right edge; the inner half stays, its normals still facing down.
+rect_m, _ = P.pad_face(RECT, None, True, False)
+strip, whole_s, _ = P.clip_to_board(rect_m, 20.0, 5.0, 90.0, rim, [], face_up=False)
+check("a turned, mirrored pad on the edge keeps its inner half, normals facing down",
+      strip is not None and not whole_s and abs(P.shape_area(strip) - 1.0) < 1e-9
+      and abs(P._tight_box(strip)[0] - 19.5) < 1e-9 and abs(P._tight_box(strip)[2] - 20.0) < 1e-9
+      and all(P._normal_up(f) is False for f in P._faces_of(strip)),
+      (strip is not None and P.shape_area(strip), strip is not None and P._tight_box(strip)))
+# The fold: a clipped face already stands at its pin in the flat frame, so
+# it takes only the lift and the fold - and has to land exactly where
+# _placement puts the shared figure. The stub of [3] stands the panel up.
+from OCP.gp import gp_Pnt as _Pnt
+p_whole = _Pnt(0.7, 0.2, 0.0).Transformed(P._placement(10.0, 20.0, 0.5, 30.0, _Bend()))
+p_clip = (_Pnt(0.7, 0.2, 0.0).Transformed(P._placement(10.0, 20.0, 0.0, 30.0, None))
+          .Transformed(P._lift(10.0, 20.0, 0.5, _Bend())))
+check("_lift after the flat placement is _placement with the fold, to the last digit",
+      p_whole.Distance(p_clip) < 1e-9, p_whole.Distance(p_clip))
+check("and without a fold it is the lift alone",
+      abs(P._lift(1.0, 2.0, 0.5, None).TranslationPart().Z() - 0.5) < 1e-12)
+
+# The mouse bite of 5988-a1 itself: drill r 0.3, copper r 0.025 (all hole),
+# opening r 0.35, the hole 0.2 mm inside the edge and, after the cutouts
+# script, a cutout of the drill's own size on it. Its window is the annulus
+# less the part past the edge: 0.0726 of 0.1021 mm2, ending at y = 0.
+TAB = {"usage": "Via", "drill": circle(0.3),
+       "pads": {"ETCH/TOP": pad(circle(0.025), [[-0.025, -0.025], [0.025, 0.025]], "CIRCLE"),
+                "ETCH/BOTTOM": pad(circle(0.025), [[-0.025, -0.025], [0.025, 0.025]], "CIRCLE"),
+                "PIN/SOLDERMASK_TOP": pad(circle(0.35), [[-0.35, -0.35], [0.35, 0.35]], "CIRCLE"),
+                "PIN/SOLDERMASK_BOTTOM": pad(circle(0.35), [[-0.35, -0.35], [0.35, 0.35]], "CIRCLE")}}
+BITE = circle(0.3, 14.0, 0.2)
+
+
+def segment_area(r, d):
+    """The part of a disc of radius r beyond a chord d from its centre."""
+    return r * r * math.acos(d / r) - d * math.sqrt(r * r - d * d)
+
+
+tab_win, _ = P.opening_face(TAB["pads"]["PIN/SOLDERMASK_TOP"], TAB["drill"], False, True, copper=TAB["pads"]["ETCH/TOP"])
+bd_tab = P._Boundary(EDGES + [BITE])
+check("the bite's window reaches the outline and its own cutout, and that cutout is its drill",
+      bd_tab.reaches(14.0, 0.2, 0.35) == {0, 2} and bd_tab.within_drill(2, 14.0, 0.2, TAB["drill"], False, 0.0),
+      bd_tab.reaches(14.0, 0.2, 0.35))
+# Clipped by both, as if the cutout were not its drill: the coincident
+# circle must take nothing, the outline the part past the edge.
+tab_clip, tab_whole, _ = P.clip_to_board(tab_win, 14.0, 0.2, 0.0, bd_tab.outline_face(), [bd_tab.cutout_face(2)])
+tab_expected = math.pi * (0.35 ** 2 - 0.3 ** 2) - (segment_area(0.35, 0.2) - segment_area(0.3, 0.2))
+check("the mouse bite's window is the annulus less its part past the edge, ending at y = 0",
+      tab_clip is not None and not tab_whole and abs(P.shape_area(tab_clip) - tab_expected) < 1e-9
+      and abs(P._tight_box(tab_clip)[1]) < 1e-9,
+      (tab_whole, tab_clip is not None and P.shape_area(tab_clip), tab_expected))
+
+# Through the build: three more surface pins - across the right edge, over
+# the cutout, off the board - and the mouse bite with its cutout.
+edge_board = json.loads(json.dumps(board))
+edge_board["pads"]["padstacks"]["TAB"] = TAB
+edge_board["pads"]["pins"] += [
+    [20.0, 5.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],           # across the right edge: half stays
+    [5.0, 5.5, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],            # over the cutout: the hole's upper half goes
+    [25.0, 5.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],           # off the board: nothing
+    [14.0, 0.2, 0.0, False, "TAB", "ETCH/TOP", "ETCH/BOTTOM", "via"]]  # the mouse bite
+edge_board["pcb"]["edges"].append(BITE)
+jf.write_text(json.dumps(edge_board))
+res_e, logs_e, text_e = build("edge", exposed_copper=True, mask_openings=True)
+jf.write_text(json.dumps(board))
+check("two pads clipped, one off the board, the rest instances as before",
+      res_e.pads_placed == 7 and res_e.pads_clipped == 2 and res_e.pads_off_board == 1 and res_e.pads_figures == 5,
+      (res_e.pads_placed, res_e.pads_clipped, res_e.pads_off_board, res_e.pads_figures))
+check("four openings clipped - the two pins' and the bite's two - one off the board",
+      res_e.openings_placed == 9 and res_e.openings_clipped == 4 and res_e.openings_off_board == 1,
+      (res_e.openings_placed, res_e.openings_clipped, res_e.openings_off_board))
+check("a clipped placement is a part of its own, named after the figure",
+      "'pad_SMD_TOP_clipped'" in text_e and "'opening_SMD_SOLDERMASK_TOP_clipped'" in text_e
+      and "'opening_TAB_SOLDERMASK_TOP_clipped'" in text_e and "'opening_TAB_SOLDERMASK_BOTTOM_clipped'" in text_e)
+check("the pins that are clear of the edge still share their figure",
+      "'pad_SMD_TOP'" in text_e and "'opening_SMD_SOLDERMASK_TOP'" in text_e)
+check("a figure every placement of which is clipped is not left loose at the origin",
+      "'opening_TAB_SOLDERMASK_TOP'" not in text_e and "'opening_TAB_SOLDERMASK_BOTTOM'" not in text_e
+      and "'pad_TAB" not in text_e)
+check("the log counts them",
+      any("2 pad(s) reach the board's edge or a cutout and are clipped to it" in m for m in logs_e)
+      and any("1 pad(s) lie off the board and draw nothing" in m for m in logs_e)
+      and any("4 opening(s) reach the board's edge or a cutout and are clipped to it" in m for m in logs_e)
+      and any("1 opening(s) lie off the board and draw nothing" in m for m in logs_e),
+      [m for m in logs_e if "edge" in m or "off the board" in m])
+check("the board is still one solid, with the bite in it",
+      count_solids(read_step(OUT / "edge.step")) == 1)
+check("and the board of [5], every pin of which is clear of the edge, builds exactly as before",
+      res.pads_placed == 5 and res.pads_clipped == 0 and res.pads_off_board == 0
+      and "_clipped" not in text and not any("clipped" in m for m in logs),
+      (res.pads_placed, res.pads_clipped, [m for m in logs if "clipped" in m]))
+
+# A file with no outline clips nothing and places every pad as it did.
+no_edge = json.loads(json.dumps(edge_board))
+no_edge["pcb"]["edges"] = []
+check("no outline: the edge is not read, nothing is clipped", not P._Boundary([]).ok and not P._Boundary([[]]).ok)
+
+# The drawn openings' parts are clipped to the cutouts the same way: a
+# 2 x 2 opening drawn over the hole at (5, 5) loses it.
+cut_over = json.loads(json.dumps(board))
+cut_over["pads"]["bare"]["top"] = [
+    {"layer": "BOARD GEOMETRY/SOLDERMASK_TOP", "area": 4.0,
+     "vertices": [[4, 4, 0], [6, 4, 0], [6, 6, 0], [4, 6, 0]]}]
+logs_c = []
+comp_c, built_c, _ = P.build_exposed(cut_over, stackups=cut_over["stackups"], zones=[], levels={},
+                                     board_top_z=0.0, board_bottom_z=-1.104, lift=0.003,
+                                     section="bare", log=logs_c.append)["top"]
+check("a drawn opening over a cutout loses the hole, and the log says so",
+      built_c == 1 and comp_c is not None and abs(P.shape_area(comp_c) - (4.0 - math.pi * 0.16)) < 1e-6
+      and any("1 drawn-opening polygon(s) reach past the board outline or over a cutout and are clipped to it"
+              in m for m in logs_c),
+      (built_c, comp_c is not None and P.shape_area(comp_c), logs_c))
+# and on a zoned board, inside a masked zone: the square of [7] with a hole under it
+rf_cut = json.loads(json.dumps(rf))
+rf_cut["pcb"]["edges"] = rf_cut["pcb"]["edges"] + [circle(0.5, 3, 3)]
+logs_rc = []
+comp_rc, built_rc, _ = P.build_exposed(rf_cut, stackups=rf_cut["stackups"], zones=rf_cut["zones"],
+                                       levels={"S2": (0.0, -2.44), "F2": (-2.05, -2.415)},
+                                       board_top_z=0.0, board_bottom_z=-2.44, lift=0.003,
+                                       section="bare", log=logs_rc.append)["top"]
+check("on a zoned board a cutout inside a masked zone is taken out of the drawn opening over it",
+      built_rc == 2 and comp_rc is not None and abs(P.shape_area(comp_rc) - (6.76 - math.pi * 0.25)) < 1e-3
+      and any("2 drawn-opening polygon(s) clipped to it (1 of them over a cutout), 1 left out" in m
+              for m in logs_rc),
+      (built_rc, comp_rc is not None and P.shape_area(comp_rc), logs_rc))
+
+print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

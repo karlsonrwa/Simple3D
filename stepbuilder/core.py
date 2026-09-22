@@ -109,6 +109,12 @@ class BuildResult:
     openings_placed: int = 0
     opening_figures: int = 0
     openings_filled: int = 0        # windows their copper fills: counted, not placed
+    # At the board's edge (round 91): placements clipped to the outline or a
+    # cutout, and placements off the board altogether, not drawn.
+    pads_clipped: int = 0
+    openings_clipped: int = 0
+    pads_off_board: int = 0
+    openings_off_board: int = 0
     # MFRPN reporting DISABLED (property attachment unreliable); kept for future:
     # missing_mfr_pn: list[str] = field(default_factory=list)
 
@@ -633,6 +639,10 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
         log(f"Copper pads: {result.placed} placed on {result.pins} pin(s)"
             + (f" (of them {result.vias} via(s), {result.via_placed} untented and drawn)" if result.vias else "")
             + f", {result.figures} distinct figure(s), RGB {rgb[0]},{rgb[1]},{rgb[2]}")
+        if result.clipped:
+            log(f"  {result.clipped} pad(s) reach the board's edge or a cutout and are clipped to it")
+        if result.off_board:
+            log(f"  {result.off_board} pad(s) lie off the board and draw nothing")
     if options.mask_openings:
         log(f"Mask openings: {result.openings_placed} placed on {result.pins} pin(s)"
             + (f" (of them {result.vias} via(s))" if result.vias else "")
@@ -645,6 +655,14 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
         if result.no_mask_zone:
             log(f"  {result.no_mask_zone} opening(s) not drawn: their zone carries no soldermask "
                 f"on that side ({', '.join(sorted(result.no_mask_zone_names))})")
+        if result.openings_clipped:
+            log(f"  {result.openings_clipped} opening(s) reach the board's edge or a cutout and are "
+                f"clipped to it")
+        if result.openings_off_board:
+            log(f"  {result.openings_off_board} opening(s) lie off the board and draw nothing")
+    if result.clip_failed:
+        log(f"warning: {result.clip_failed} placement(s) at the board's edge could not be clipped "
+            f"and are drawn whole (see above)")
 
     # What the drawn openings show (format_version 12): with the copper pads
     # on, the copper under them in the copper colour; with the openings on,
@@ -927,6 +945,10 @@ def generate(
         result.openings_placed = pads.openings_placed
         result.opening_figures = pads.opening_figures
         result.openings_filled = pads.openings_filled
+        result.pads_clipped = pads.clipped
+        result.openings_clipped = pads.openings_clipped
+        result.pads_off_board = pads.off_board
+        result.openings_off_board = pads.openings_off_board
 
     # ---- write ----------------------------------------------------------- #
     # FIX: the C++ version hardcoded a backslash separator, which produced a

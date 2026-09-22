@@ -11,6 +11,47 @@ to use the tool.
 
 ---
 
+- **2026-09-22** — **Pads and mask openings are clipped at the board's edge
+  and at cutouts.** A mouse-bite hole standing 0.2 mm inside the edge of the
+  user's 5988-a1 carries a 0.35 mm mask opening, and its window — one shared
+  annulus instanced per via — reached 0.15 mm past the board on all 32
+  placements; a copper pad at the edge would have done the same. Now every
+  placement is asked whether its figure can reach the outline or a cutout at
+  all, and those that can are clipped to the board and become a face of their
+  own (`..._clipped` in the file); a pin off the board draws nothing; the log
+  counts both; the drawn openings' copper and laminate are clipped to the
+  cutouts as well as to the outline. The check is cheap where it does not
+  apply — exact distances through a grid, a boolean only against the
+  outline's face and the cutouts actually reached, and a cutout that repeats
+  the pin's own drill (a cutouts script leaves one on every through pin: 270
+  of the demo board's 274) costs nothing: the demo's 7 546 placements take
+  1.46 s instead of 0.95 s, where a first version that clipped against the
+  board's face with all its holes took 42 s. Measured on 5988-a1: 32 windows
+  clipped, each to 0.0726 of its 0.1021 mm², nothing past the outline; on the
+  demo and circle-A0 nothing changes. Nine rows added to the mutation table
+  (239), and the 77 rows the change touches were all caught on copies of the
+  tree. /
+  **Площадки и вскрытия маски обрезаются по кромке платы и по вырезам.**
+  Отверстие mouse-bite в 0,2 мм от кромки платы 5988-a1 пользователя несёт
+  вскрытие маски 0,35 мм, и его окно — одно общее кольцо, вхождениями на
+  каждое отверстие — выходило за плату на 0,15 мм во всех 32 размещениях;
+  медная площадка на кромке повела бы себя так же. Теперь у каждого
+  размещения спрашивается, может ли его фигура вообще дотянуться до контура
+  или выреза, и те, что могут, обрезаются по плате и становятся отдельной
+  гранью (`..._clipped` в файле); вывод вне платы не рисуется; лог считает и
+  то и другое; медь и текстолит нарисованных вскрытий обрезаются по вырезам
+  так же, как по контуру. Там, где обрезка не нужна, проверка почти ничего
+  не стоит — точные расстояния через сетку, булева операция только по грани
+  контура и по тем вырезам, до которых фигура дотянулась, а вырез,
+  повторяющий сверло самого вывода (скрипт вырезов оставляет такой на каждом
+  сквозном выводе: 270 из 274 на демо-плате), не стоит ничего: 7 546
+  размещений демо-платы занимают 1,46 с вместо 0,95 с, тогда как первая
+  версия, резавшая по грани платы со всеми отверстиями, занимала 42 с. Замер
+  на 5988-a1: 32 окна обрезаны, каждое до 0,0726 из своих 0,1021 мм², за
+  контур не выходит ничего; на демо-плате и circle-A0 ничего не меняется. В
+  таблицу мутаций добавлено девять строк (239), и все 77 строк, которых
+  касается правка, пойманы на копиях дерева.
+
 - **2026-09-22** — **Runs on cadquery-ocp 8.0 as well as 7.9, and the tests
   are proved on copies of the tree.** Since September a bare `pip install
   cadquery-ocp` brings OpenCASCADE 8.0, and Simple 3D died at its first import

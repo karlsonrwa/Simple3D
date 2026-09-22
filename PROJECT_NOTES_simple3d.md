@@ -5,7 +5,17 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-22 (round 90, on `main`)
+## READ THIS FIRST — state as of 2026-09-22 (round 91, on `main`)
+
+**Round 91 (2026-09-22)**: a pad or a mask window that reaches the board
+outline or a cutout is clipped to the board and becomes a face of its own
+(`_Boundary`, `clip_to_board` in `pads.py`); a pin off the board draws
+nothing; the drawn openings' parts are clipped to the cutouts as well. The
+user's 5988-a1 showed it: 32 mouse-bite windows 0.15 mm past the edge. A
+first version cost 42 s on the demo board (booleans against the board's face
+with all 274 holes, 270 of them the pins' own drills as cutouts); the
+shipped one adds 0.5 s there (1.46 s against 0.95 s for the pads stage).
+Read round 91 for the numbers and the trap.
 
 **Round 90 (2026-09-21/22)**: the exporter runs on cadquery-ocp 8.0
 (OpenCASCADE 8.0) as well as 7.9 - the names 8.0 renamed are bound once in
@@ -46,7 +56,7 @@ one settled.
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
 | The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 80 (2026-09-03): Step 0, Plans A, B, C, D, E1–E2 (`format_version` 9), F1–F3, F5 and G1–G5 - each row says what it left. Left: the optional F4 (pytest) and E3 (deleting `intermediate.RESERVED` once a release has shipped v9). Rounds 85–89 added features and tests and touched no plan row |
 | The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd` (eight since round 86c); `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
-| The mutation table | `tests/mutations.json` (round 89, grown in round 90): 230 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
+| The mutation table | `tests/mutations.json` (round 89, grown in rounds 90 and 91): 239 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
 
 Three tools grew out of this project and now have repositories of their own.
 Nothing here depends on them, and no copy of their code belongs in this tree:
@@ -103,6 +113,9 @@ from, and `S3D_ScriptDir` is now `""` in source.
   (54 000 placements); the pads, the mask-clipped pads, the via rings and the
   exposed copper were seen by the user in Inventor - the copper label with its
   laminate rims and the openings checkbox not yet (round 85, 'Not verified').
+  Since round 91 a pad or a window that reaches the outline or a cutout is
+  clipped to the board as a face of its own, a pin off the board draws
+  nothing, and the drawn openings' parts are clipped to the cutouts too.
 
 ### Load-bearing decisions that look like they could be simplified, but cannot
 
@@ -3024,6 +3037,145 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+## Update 2026-09-22 (round 91) — pads and mask windows clipped at the board's edge and at cutouts
+
+The user put `5988-a1.brd` and its export in `input/` and said the mask
+openings are not clipped to the board outline; asked whether copper that
+reaches past the outline is clipped, then to clip both, cutouts included.
+
+### Measured before anything was touched
+
+- 5988-a1 is a plain 56 x 20 board (one stackup, no zones) with 26 pins and
+  16 vias; the vias are `MILLTAB_HOLE_0P6`, mouse bites at y = 0.2 and
+  y = 19.8: drill r 0.3, copper r 0.025 (inside the drill: all hole, draws
+  nothing), mask opening r 0.35 on both sides - so the window reaches
+  y = -0.15 and 20.15. Read back from the user's own STEP with XCAF, names
+  and placements (`build/scratch/step_edges.py`, kept for the next time): all
+  32 instances of `opening_MILLTAB_HOLE_0P6_SOLDERMASK_TOP/BOTTOM` past the
+  outline, 0 of the 36 pad instances, 0 of the 74 drawn-opening polygons (23
+  `exposed`, 51 `bare`).
+- Nothing in `build_pads` knew the outline: a figure is built once at the
+  origin and instanced, and a shared instance cannot be clipped to where it
+  stands. `build_exposed` clipped the drawn openings to the outline (plain
+  board) or to the zones, never to a cutout. The SKILL side clips the
+  silkscreen only. So the copper was safe on this board only because the
+  bites' copper is all hole; a pad at the edge would have gone the way of
+  the windows.
+- After the user's «add ncpr cutouts» script the file carries 28 cutouts,
+  every one a circle of the pin's own drill at the pin: the 16 bites, the 8
+  MILLMAX holes, the 2 mounting holes twice (`board_cutouts` drops the
+  repeats and says so).
+- Feasibility, on the real board: the board face (outline less 28 cutouts)
+  builds in 30 ms; a Common of a placed figure against it 6.6-8.1 ms; the
+  coincident-wall case - a ring whose drill IS the cutout - comes back exact
+  (area difference 1e-14, three padstacks); the bite's window clipped to the
+  outline is 0.072610 mm² of 0.102102 (the annulus less the segment past
+  y = 0, checked against the closed form), box y 0..0.55.
+
+### The construction (pads.py)
+
+- `_Boundary`: the outline and the cutouts as exact pieces (segment, arc,
+  circle, each with its bounding box - nothing sampled, so a pad beside a
+  round edge is judged against the arc and not against a chord up to
+  0.076 r inside it) on a 64 x 64 grid over the outline's box.
+  `reaches(x, y, r)` names the contours any piece of which lies within r of
+  the pin (0 the outline, i the cutouts); `within_drill` recognises a
+  circular cutout inside the pin's own drill (the drill's offset turned and
+  mirrored with the pin); `on_board` classifies a pin clear of the edge
+  against the outline's face alone - once per cell the outline does not
+  cross, remembered - and against the nearby cutouts' own faces;
+  `outline_face` / `cutout_face` are built on demand.
+- `clip_to_board`: the figure placed in the flat frame (turn, move, z = 0),
+  a Common with the outline's face when it reaches the outline, a Cut by the
+  reached cutouts as separate tools; the normals re-oriented (measured: the
+  boolean kept them in all four mirror/side cases; the guard stays, and no
+  mutation row is aimed at it because it would be equivalent); whole within
+  1e-6 of the area → the shared instance. `_lift`: the lift and the fold for
+  a face already at its pin - `_placement` less the turn and the move,
+  checked to the last digit against it through the fold stub of test [3].
+- `_Figure`: the shared figure and the part it becomes on its FIRST whole
+  placement; a figure clipped everywhere never becomes a part, so nothing
+  stands loose at the origin in the file (the bite's windows on 5988-a1 are
+  exactly that case).
+- `place()` in `build_pads`: reach → clip → a face of its own named
+  `<figure>_clipped`, or «off» (counted, nothing drawn), or the instance as
+  before; the same for the copper and the windows. `PadsResult` gained
+  `clipped`, `off_board`, `openings_clipped`, `openings_off_board`,
+  `clip_failed`; `core._build_pads` logs them and copies them into
+  `BuildResult`.
+- `build_exposed`: a polygon whose box meets a cutout's goes the straddling
+  way and is clipped to the region less the cutouts that meet it
+  (`board_face`, separate tools); the log says «or over a cutout».
+
+### The trap: 42 s on the demo board
+
+The first version clipped against ONE board face - the outline less every
+cutout - for every placement that reached any piece, and classified points
+on that face. Cadence's demo (`build/skill_golden/Cadence_Demo`: 3962 pins
+→ 7 546 placements, 274 cutouts, 270 of them circles of the pins' own
+drills at the pins): the pads stage went from 0.95 s to 42.05 s with nothing
+clipped. Profiled: 937 booleans × 40.3 ms = 37.8 s, 830 classifications ×
+2.2 ms = 1.8 s. Measured alternatives: a Common against the outline's face
+alone 3.8 ms (37 ms against the holed face), a classification 0.31 ms
+(0.76), against one cutout's face 0.07 ms. Hence the design above. After it:
+demo 1.46 s (15 booleans, all whole, 776 classifications), circle-A0 0.03 s,
+5988-a1 0.21 s (52 booleans, 32 clipped). The lesson is the memory note
+`a-cutout-that-repeats-the-drill-costs-a-boolean-for-nothing`.
+
+### Verified
+
+- 5988-a1 rebuilt with both checkboxes: 32 openings clipped, 0 pads, 0 off
+  the board, nothing past the outline in the STEP read back (97 placed
+  shapes); the log says «32 opening(s) reach the board's edge or a cutout
+  and are clipped to it».
+- `tests/test_pads.py` [10]: the boundary (pieces, reach by contour, within
+  the drill by size, centre, offset, mirror and turn, on_board in and out
+  and in a cutout, the distance to a circle measured to the circle), the
+  faces on demand, the clip (half a disc at the edge ending at x = 20, a
+  disc over a cutout, one inside whole, one off the board nothing, one
+  inside a cutout of its own size nothing, the coincident ring whole, a
+  turned mirrored pad's inner half with its normals down, the bite's window
+  to the closed form), `_lift` against `_placement` through a fold, the
+  build (two pads clipped, four windows, one pin off the board, the parts
+  named, the shared figures still shared, nothing loose, the log, one
+  solid, the board of [5] untouched), no outline, a drawn opening over a
+  cutout on a plain board and inside a masked zone.
+- `run_all`: 31/31 in 226 s; `golden.py --check`: 7 cases, no difference
+  (the corpus builds without the pad options). `audit_docs`: no findings.
+- Nine rows in the mutation table (230 → 239): `pads-edge-never-reached`,
+  `pads-off-board-drawn`, `pads-clip-never-whole`,
+  `pads-clipped-figure-left-loose`, `pads-every-cutout-taken-as-the-drill`,
+  `board-face-keeps-cutouts`, `lift-forgets-the-fold`,
+  `exposed-cutouts-ignored`, `exposed-region-without-cutouts`;
+  `pads-everything-under-pads-top` re-aimed at the new placement line. The
+  run on copies with `--changed` (77 rows: everything the four changed files
+  touch): **caught 77 of 77**, 392 s of wall for 861 s of suite runs on four
+  copies; each of the ten new or re-aimed rows fails `test_pads` within 6 s.
+  One of them says something about the design: `pads-edge-never-reached`
+  fails [5] before [10], because the THRU pin of the pads board sits over a
+  cutout of its own drill's size - with nothing reached, `on_board` is asked
+  and answers «in a cutout». That is why `on_board` is consulted only for a
+  pin that reaches NOTHING: a pin over its own hole reaches the cutout,
+  `within_drill` waves it through, and it is placed as an instance.
+
+### Verified by the user, and one round trip that was avoidable
+
+The user looked at a build first and said the problem was not solved - the
+picture showed full rings on the top face and the bottom windows' outer
+halves hanging under the rim. That STEP (`input/5988-a1_simple_22_09_2026
+.step`, 22:54) carries 0 `_clipped` parts against 32 in the repo's build:
+it was built from the install at `D:/Projects/OrCAD/Scripts/Simple3D`, the
+hand copy, which still had the old `pads.py` and `core.py`. Then: «Ты прав,
+я ошибся, всё работает». So a report of a change in `stepbuilder/` names
+the files to copy into the install, or the user tests the old code.
+
+### Not verified
+
+- A non-circular cutout (a slot) over a pin goes through the boolean and is
+  right by construction, but no board with one was built; a cutout inside a
+  masked zone of a rigid-flex board is covered by `build_exposed`'s unit
+  case only; no board laid out in mils was built.
+
 ## Update 2026-09-22 (round 90) — the exporter on OpenCASCADE 8.0, and the mutation table proved on copies
 
 Two asks. Bring the tests in line with what the mutation work in BaroSim and

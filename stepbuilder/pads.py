@@ -54,6 +54,23 @@ it, and minus the copper pad when the pads are drawn too, so the two never
 overlap - shared per figure and instanced per pin like the pads, under
 `openings_top` / `openings_bot`; the drawn openings' laminate (and, with
 the copper off, their copper area as laminate too) is the `bare` part.
+
+A pad or an opening at the board's edge is clipped to the board (round
+91): a mouse-bite hole on the user's 5988-a1 stands 0.2 mm inside the
+edge with a 0.35 mm mask opening, and its window - the whole annulus,
+instanced - reached 0.15 mm into the air on 32 placements. A shared face
+cannot be clipped to where it stands, so `_Boundary` asks, per placement,
+whether the figure's bounding circle reaches the outline or a cutout at
+all (exact distances to the primitives, through a grid), and only those
+that do pay a boolean - a `BRepAlgoAPI_Common` against the outline's face,
+a `BRepAlgoAPI_Cut` by the cutouts reached, never against the board's
+face with every hole in it (274 on Cadence's demo: 40 ms a boolean, and a
+cutout that merely repeats the pin's own drill, as a cutouts script leaves
+one on every through pin, costs nothing) - and become a face of their
+own; a figure the boolean hands back whole keeps its instance, one that
+lies off the board altogether is left out and counted. The drawn
+openings' parts are clipped to the cutouts the same way, through
+`build_exposed` and `board_face`.
 """
 
 from __future__ import annotations
@@ -66,17 +83,19 @@ from OCP.BRepAdaptor import BRepAdaptor_Surface
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Common, BRepAlgoAPI_Cut
 from OCP.BRepBndLib import BRepBndLib
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_Transform
+from OCP.BRepClass import BRepClass_FaceClassifier
 from OCP.Bnd import Bnd_Box
 from OCP.GC import GC_MakeArcOfCircle
 from OCP.GeomAbs import GeomAbs_SurfaceType
 from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
-from OCP.TopAbs import TopAbs_FACE, TopAbs_Orientation
+from OCP.TopAbs import TopAbs_FACE, TopAbs_Orientation, TopAbs_State
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopLoc import TopLoc_Location
-from ._occt import TopTools_HSequenceOfShape, box_limits
+from ._occt import TopTools_HSequenceOfShape, TopTools_ListOfShape, box_limits
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Face, TopoDS_Shape, TopoDS_Wire
 from OCP.gp import gp_Ax1, gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
+from .board import board_cutouts
 from .contour import (WIRE_TOLERANCE, _face_from_wires, _open_wire_detail, build_contour,
                       contour_points, point_in_polygon, point_on_polygon)
 from .errors import StepBuilderError
@@ -101,6 +120,17 @@ BOX_TOLERANCE = 0.02
 # THROUGH its two ends and the midpoint of the exported arc (`_pad_wire`),
 # and this is how close a neighbour's start has to be to count as that end.
 JOIN_TOLERANCE = 1.0e-3
+
+# How much beyond a figure's bounding circle the board's edge still counts
+# as reached, as a fraction of the board's span (0.6 um on a 56 mm board).
+# The reach test only decides who PAYS for the exact boolean - the boolean
+# says whether anything is cut - so this covers its own rounding and no more.
+EDGE_MARGIN = 1.0e-5
+
+# A clipped figure whose area is this close to the whole figure's was not
+# cut at all (a pin whose cutout coincides with its own drill, a pad that
+# touches the edge): it keeps its shared instance.
+WHOLE_TOLERANCE = 1.0e-6
 
 
 # --------------------------------------------------------------------------- #
@@ -563,11 +593,17 @@ def _finish(faces: list, mirrored: bool, face_up: bool) -> TopoDS_Shape:
         mirror.SetMirror(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)))
         faces = [TopoDS.Face(BRepBuilderAPI_Transform(f, mirror, True).Shape()) for f in faces]
 
+    return _assemble(_oriented(faces, face_up))
+
+
+def _oriented(faces: list, face_up: bool) -> list:
+    """The faces with their normals turned to face out of the side they lie
+    on (up for the top, down for the bottom)."""
     oriented = []
     for f in faces:
         up = _normal_up(f)
         oriented.append(TopoDS.Face(f.Reversed()) if up is not None and up != face_up else f)
-    return _assemble(oriented)
+    return oriented
 
 
 def shape_area(shape: TopoDS_Shape | None) -> float:
@@ -580,6 +616,337 @@ def shape_area(shape: TopoDS_Shape | None) -> float:
     props = GProp_GProps()
     BRepGProp.SurfaceProperties_s(shape, props)
     return props.Mass()
+
+
+# --------------------------------------------------------------------------- #
+# the board's edge: what a pad standing on it is clipped to (round 91)
+# --------------------------------------------------------------------------- #
+
+def _pieces_of(contour) -> list[tuple]:
+    """A contour's primitives as pieces a distance can be measured to, each
+    with its bounding box: ("seg", x0, y0, x1, y1, box), ("arc", cx, cy, r,
+    a0, sweep, box) with a0 in [0, 360) and the sweep counter-clockwise
+    from it, ("circle", cx, cy, r, box). Exact - nothing is sampled - so a
+    pad beside a round edge is judged against the arc itself and not
+    against a chord that may lie a tenth of a millimetre inside it."""
+    pieces = []
+    for prim in contour or []:
+        kind = prim.get("type", "segment")
+        if kind == "segment":
+            x0, y0 = float(prim["start"][0]), float(prim["start"][1])
+            x1, y1 = float(prim["end"][0]), float(prim["end"][1])
+            pieces.append(("seg", x0, y0, x1, y1,
+                           (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))))
+        elif kind == "circle":
+            cx, cy, r = float(prim["x"]), float(prim["y"]), float(prim["radius"])
+            pieces.append(("circle", cx, cy, r, (cx - r, cy - r, cx + r, cy + r)))
+        elif kind == "arc":
+            cx, cy, r = float(prim["center"][0]), float(prim["center"][1]), float(prim["radius"])
+            # alpha..beta bound the arc counter-clockwise (contour.py has
+            # the reading); which end the contour enters by is not a
+            # distance's concern.
+            a0 = float(prim["alpha"]) % 360.0
+            sweep = (float(prim["beta"]) - float(prim["alpha"])) % 360.0 or 360.0
+            angles = [a0, a0 + sweep] + [q for q in (0.0, 90.0, 180.0, 270.0, 360.0, 450.0, 540.0, 630.0)
+                                         if a0 <= q <= a0 + sweep]
+            xs = [cx + r * math.cos(math.radians(a)) for a in angles]
+            ys = [cy + r * math.sin(math.radians(a)) for a in angles]
+            pieces.append(("arc", cx, cy, r, a0, sweep, (min(xs), min(ys), max(xs), max(ys))))
+    return pieces
+
+
+def _distance(piece: tuple, x: float, y: float) -> float:
+    """From a point to one piece of the edge."""
+    kind = piece[0]
+    if kind == "seg":
+        _, x0, y0, x1, y1, _box = piece
+        dx, dy = x1 - x0, y1 - y0
+        length = dx * dx + dy * dy
+        t = 0.0 if length <= 0.0 else max(0.0, min(1.0, ((x - x0) * dx + (y - y0) * dy) / length))
+        return math.hypot(x - (x0 + t * dx), y - (y0 + t * dy))
+    if kind == "circle":
+        _, cx, cy, r, _box = piece
+        return abs(math.hypot(x - cx, y - cy) - r)
+    _, cx, cy, r, a0, sweep, _box = piece
+    angle = math.degrees(math.atan2(y - cy, x - cx)) % 360.0
+    if (angle - a0) % 360.0 <= sweep:
+        return abs(math.hypot(x - cx, y - cy) - r)
+    return min(math.hypot(x - (cx + r * math.cos(math.radians(a))), y - (cy + r * math.sin(math.radians(a))))
+               for a in (a0, a0 + sweep))
+
+
+def _contour_box(contour) -> tuple[float, float, float, float]:
+    """The exact bounding box of a contour, arcs included."""
+    boxes = [piece[-1] for piece in _pieces_of(contour)]
+    if not boxes:
+        return 0.0, 0.0, 0.0, 0.0
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes),
+            max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
+def _boxes_meet(a, b) -> bool:
+    """Do two bounding boxes overlap or touch?"""
+    return not (a[2] < b[0] or a[0] > b[2] or a[3] < b[1] or a[1] > b[3])
+
+
+def board_face(outline, cutouts: list, z: float) -> TopoDS_Shape:
+    """The board's area at height *z* as a face (or a compound of faces): the
+    outline less every cutout, the cutouts handed to `BRepAlgoAPI_Cut` as
+    SEPARATE tools, because a compound of tools that overlap one another
+    is undefined to the boolean (board._cut_out measured it on the mouse
+    bites of circle-a0). Raises StepBuilderError when nothing can be built."""
+    face = _face_from_wires(build_contour(outline, z), [])
+    if not cutouts:
+        return face
+    tools = TopTools_ListOfShape()
+    for contour in cutouts:
+        tools.Append(_face_from_wires(build_contour(contour, z), []))
+    arguments = TopTools_ListOfShape()
+    arguments.Append(face)
+    cut = BRepAlgoAPI_Cut()
+    cut.SetArguments(arguments)
+    cut.SetTools(tools)
+    cut.Build()
+    if not cut.IsDone():
+        raise StepBuilderError("the cutouts could not be taken out of the board outline")
+    faces = _faces_of(cut.Shape())
+    if not faces:
+        raise StepBuilderError("taking the cutouts out of the board outline left nothing")
+    return _assemble(faces)
+
+
+class _Boundary:
+    """The board's edge - the outline and every cutout of `pcb.edges` - for
+    the questions a placement asks: which contours a figure of bounding
+    radius r about (x, y) reaches at all (`reaches`), whether (x, y) is on
+    the board (`on_board`), whether a cutout a figure reaches lies inside
+    the pin's own drill hole and so takes nothing off it (`within_drill`);
+    and the faces to clip to - the outline's (`outline_face`) and each
+    cutout's (`cutout_face`), each built once, on first need.
+
+    The pieces of the edge go into a grid over the board's box, so a reach
+    test touches the few pieces near the pin and not the whole outline:
+    Cadence's demo asks 7 546 times against 344 pieces. `on_board` is exact
+    (OpenCASCADE's classifier), but on the OUTLINE's face alone and on the
+    cutouts' own small faces, never on the board's face with every hole in
+    it - a classification against the demo's 274-hole face cost 2.2 ms -
+    and a cell the outline does not pass through is all on one side of it,
+    so that answer is asked once per such cell and remembered. With no
+    outline in the file (`ok` False) nothing is clipped and every pad is
+    placed as it was.
+    """
+
+    CELLS = 64                      # per axis, over the outline's box
+
+    def __init__(self, edges: list, log: LogFn = _noop_log):
+        self.ok = False
+        self.log = log
+        self.contours: list = []
+        self.pieces: list[tuple[int, tuple]] = []            # (contour index, piece)
+        self.grid: dict[tuple[int, int], list[tuple[int, tuple]]] = {}
+        self._outline_face = None
+        self._outline_tried = False
+        self._cutout_faces: dict[int, object] = {}
+        self._cell_inside: dict[tuple[int, int], bool] = {}
+        if not edges or not edges[0]:
+            return
+        self.outline = edges[0]
+        # Repeats are dropped as the board stage drops them; it has already
+        # warned about them, so this pass says nothing.
+        self.cutouts = board_cutouts(edges, _noop_log)
+        self.contours = [self.outline, *self.cutouts]
+        for index, contour in enumerate(self.contours):
+            for piece in _pieces_of(contour):
+                self.pieces.append((index, piece))
+        if not self.pieces:
+            return
+        boxes = [piece[-1] for _index, piece in self.pieces]
+        self.x0, self.y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+        self.x1, self.y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+        span = max(self.x1 - self.x0, self.y1 - self.y0) or 1.0
+        self.cell = span / self.CELLS
+        self.margin = EDGE_MARGIN * span
+        for index, piece in self.pieces:
+            bx0, by0, bx1, by1 = piece[-1]
+            for i in range(self._index(bx0, self.x0), self._index(bx1, self.x0) + 1):
+                for j in range(self._index(by0, self.y0), self._index(by1, self.y0) + 1):
+                    self.grid.setdefault((i, j), []).append((index, piece))
+        self.ok = True
+
+    def _index(self, value: float, origin: float) -> int:
+        return int(math.floor((value - origin) / self.cell))
+
+    def reaches(self, x: float, y: float, r: float) -> set[int]:
+        """The contours any piece of which lies within *r* of (x, y): 0 for
+        the outline, i for `cutouts[i - 1]`. Empty when the figure is clear
+        of the edge."""
+        r += self.margin
+        found: set[int] = set()
+        for i in range(self._index(x - r, self.x0), self._index(x + r, self.x0) + 1):
+            for j in range(self._index(y - r, self.y0), self._index(y + r, self.y0) + 1):
+                for index, piece in self.grid.get((i, j), ()):
+                    if index not in found and _distance(piece, x, y) <= r:
+                        found.add(index)
+        return found
+
+    def within_drill(self, index: int, x: float, y: float, drill, mirrored: bool,
+                     rotation: float) -> bool:
+        """Is cutout *index* a circle lying inside the pin's own drill - the
+        hole its figure already has? A cutouts script that draws every hole
+        as a cutout puts one on every through pin (270 of the demo's 274,
+        every one of 5988-a1's 28), and such a cutout takes nothing off a
+        figure the drill is already cut out of - so it is not worth a
+        boolean. The drill is at the padstack origin, unturned; a circle
+        turns into itself, and its offset turns with the pin."""
+        contour = self.contours[index]
+        if (len(contour) != 1 or contour[0].get("type") != "circle"
+                or not drill or len(drill) != 1 or drill[0].get("type") != "circle"):
+            return False
+        cx, cy, cr = float(contour[0]["x"]), float(contour[0]["y"]), float(contour[0]["radius"])
+        dx, dy = float(drill[0].get("x") or 0.0), float(drill[0].get("y") or 0.0)
+        dr = float(drill[0]["radius"])
+        if mirrored:
+            dx = -dx
+        c, s = math.cos(math.radians(rotation)), math.sin(math.radians(rotation))
+        hx, hy = x + c * dx - s * dy, y + s * dx + c * dy
+        return math.hypot(cx - hx, cy - hy) + cr <= dr + self.margin
+
+    def on_board(self, x: float, y: float) -> bool:
+        """Is the point on the board - inside the outline and in no cutout?
+        Asked of a pin whose figure does not reach the edge, so the answer
+        holds for the whole figure."""
+        if x < self.x0 or x > self.x1 or y < self.y0 or y > self.y1:
+            return False
+        key = (self._index(x, self.x0), self._index(y, self.y0))
+        here = self.grid.get(key, ())
+        if any(index == 0 for index, _piece in here):
+            inside = self._inside_outline(x, y)
+        else:
+            inside = self._cell_inside.get(key)
+            if inside is None:
+                inside = self._cell_inside[key] = self._inside_outline(x, y)
+        if not inside:
+            return False
+        return not any(self._in_cutout(index, x, y) for index in {i for i, _piece in here if i > 0})
+
+    def _inside_outline(self, x: float, y: float) -> bool:
+        face = self.outline_face()
+        if face is None:
+            return True                 # cannot say: placed as it was
+        state = BRepClass_FaceClassifier(face, gp_Pnt(x, y, 0.0), 1e-7).State()
+        return state in (TopAbs_State.TopAbs_IN, TopAbs_State.TopAbs_ON)
+
+    def _in_cutout(self, index: int, x: float, y: float) -> bool:
+        face = self.cutout_face(index)
+        if face is None:
+            return False
+        return BRepClass_FaceClassifier(face, gp_Pnt(x, y, 0.0), 1e-7).State() == TopAbs_State.TopAbs_IN
+
+    def outline_face(self) -> TopoDS_Face | None:
+        """The outline as a face at z = 0, built once; None when it cannot
+        be, and the log says so once - the pads at the edge are then drawn
+        whole."""
+        if self._outline_face is None and not self._outline_tried:
+            self._outline_tried = True
+            try:
+                self._outline_face = _face_from_wires(build_contour(self.outline, 0.0), [])
+            except (StepBuilderError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+                self.log(f"warning: the board outline could not be built as a face to clip "
+                         f"the pads to ({exc}); pads at the edge are drawn whole")
+        return self._outline_face
+
+    def cutout_face(self, index: int) -> TopoDS_Face | None:
+        """Cutout *index* (1-based, as `reaches` counts them) as a face at
+        z = 0, built once; None when it cannot be, said once."""
+        if index not in self._cutout_faces:
+            try:
+                self._cutout_faces[index] = _face_from_wires(build_contour(self.contours[index], 0.0), [])
+            except (StepBuilderError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+                self._cutout_faces[index] = None
+                self.log(f"warning: cutout #{index} could not be built as a face to clip the "
+                         f"pads to ({exc}); pads over it are drawn whole")
+        return self._cutout_faces[index]
+
+
+def clip_to_board(shape: TopoDS_Shape, x: float, y: float, rotation: float, outline,
+                  cutouts: list, face_up: bool = True) -> tuple[TopoDS_Shape | None, bool, str | None]:
+    """*shape* - a figure at the origin, mirrored and oriented already -
+    placed at (x, y) and turned by *rotation* in the flat frame, then kept
+    to *outline* (the board outline's face at z = 0, or None when the
+    figure does not reach the outline) and cut by *cutouts* (the faces of
+    the cutouts it reaches, handed to the boolean as separate tools).
+
+    Returns (clipped, whole, note): the placed figure less what lies off
+    the board, with its normals facing *face_up* again (a boolean does not
+    promise to keep them; measured on 2026-09-22 it did, in all four
+    mirror/side cases, and the guard stays) - None when nothing of it is
+    on the board; `whole` True when the booleans handed all of it back, so
+    the caller keeps the shared instance; and a note when a boolean failed
+    (the shape is None then, and the caller draws the figure whole).
+    """
+    placed = BRepBuilderAPI_Transform(shape, _placement(x, y, 0.0, rotation, None), True).Shape()
+    result = placed
+    if outline is not None:
+        common = BRepAlgoAPI_Common(result, outline)
+        if not common.IsDone():
+            return None, False, "could not be clipped to the board outline"
+        faces = _faces_of(common.Shape())
+        if not faces:
+            return None, False, None
+        result = _assemble(faces)
+    if cutouts:
+        arguments = TopTools_ListOfShape()
+        arguments.Append(result)
+        tools = TopTools_ListOfShape()
+        for face in cutouts:
+            tools.Append(face)
+        cut = BRepAlgoAPI_Cut()
+        cut.SetArguments(arguments)
+        cut.SetTools(tools)
+        cut.Build()
+        if not cut.IsDone():
+            return None, False, "could not be clipped to a cutout"
+        faces = _faces_of(cut.Shape())
+        if not faces:
+            return None, False, None
+        result = _assemble(faces)
+    clipped = _assemble(_oriented(_faces_of(result), face_up))
+    whole = shape_area(clipped) >= (1.0 - WHOLE_TOLERANCE) * shape_area(placed)
+    return clipped, whole, None
+
+
+def _lift(x: float, y: float, z: float, fold) -> gp_Trsf:
+    """Where a face that already stands at its pin in the flat frame goes:
+    up to its height, then wherever the fold takes it - the product
+    `_placement` forms, less the turn and the move a clipped face has had."""
+    move = gp_Trsf()
+    move.SetTranslation(gp_Vec(0.0, 0.0, z))
+    return fold.transform_at(x, y) * move if fold is not None else move
+
+
+@dataclass
+class _Figure:
+    """One shared figure - a pad's copper or a padstack's opening - at the
+    origin, and the part it becomes in the document on the first pin that
+    places it whole. A figure every placement of which is clipped never
+    becomes a part, so nothing stands loose at the origin in the file."""
+    shape: TopoDS_Shape
+    name: str
+    colour: tuple
+    radius: float = 0.0             # bounding circle about the pin: how far the figure reaches under any turn
+    label: object = None
+
+    def __post_init__(self):
+        x0, y0, x1, y1 = _tight_box(self.shape)
+        self.radius = max(math.hypot(cx, cy) for cx in (x0, x1) for cy in (y0, y1))
+
+    def part(self, document, srgb: bool):
+        if self.label is None:
+            self.label = document.shape_tool.NewShape()
+            document.shape_tool.SetShape(self.label, self.shape)
+            document.set_name(self.label, self.name)
+            document.set_color(self.label, self.colour, srgb)
+        return self.label
 
 
 # --------------------------------------------------------------------------- #
@@ -607,6 +974,11 @@ class PadsResult:
     openings_filled: int = 0        # placements whose copper fills the opening: nothing left to draw
     no_mask_zone: int = 0           # openings not drawn: the pin's zone has no soldermask on that side
     no_mask_zone_names: set = field(default_factory=set)
+    clipped: int = 0                # pad placements clipped to the board's edge or a cutout (round 91)
+    off_board: int = 0              # pad placements lying off the board: nothing drawn
+    openings_clipped: int = 0       # opening placements clipped likewise
+    openings_off_board: int = 0     # opening placements off the board
+    clip_failed: int = 0            # placements whose clip failed: drawn whole, the note says so
     notes: list[str] = field(default_factory=list)
 
 
@@ -706,8 +1078,52 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
     masks_known = has_mask_data(library)
     result.no_mask_data = not masks_known
 
-    parts: dict[tuple, object] = {}       # (padstack, layer, mirrored, face) -> label or None
+    parts: dict[tuple, object] = {}       # (padstack, layer, mirrored, face[, "opening"]) -> _Figure, or why not
     noted_boxes: set[str] = set()
+    # The board's edge, for the placements that reach it (round 91): the
+    # outline and the cutouts of pcb.edges, once. A file with no outline
+    # clips nothing and places every pad as it did.
+    edge = _Boundary((data.get("pcb") or {}).get("edges") or [], log)
+
+    def place(fig: _Figure, x: float, y: float, z: float, rotation: float, mirrored: bool, drill,
+              face_up: bool, group: str, what: str) -> str:
+        """One figure at one pin: an instance of its shared part when it lies
+        clear of the board's edge, a face of its own clipped to the board
+        when it reaches the outline or a cutout, nothing when it lies off the
+        board. Returns "shared", "clipped" or "off"; a figure whose boolean
+        failed is placed whole as an instance, counted, and the notes say
+        so once per padstack."""
+        reached = edge.reaches(x, y, fig.radius) if edge.ok else set()
+        if reached:
+            outline = edge.outline_face() if 0 in reached else None
+            holes = []
+            for index in sorted(i for i in reached if i > 0):
+                if edge.within_drill(index, x, y, drill, mirrored, rotation):
+                    continue                # the hole the figure already has
+                face = edge.cutout_face(index)
+                if face is not None:
+                    holes.append(face)
+            if outline is not None or holes:
+                clipped, whole, cnote = clip_to_board(fig.shape, x, y, rotation, outline, holes, face_up)
+                if cnote:
+                    result.clip_failed += 1
+                    if what not in noted_boxes:
+                        noted_boxes.add(what)
+                        result.notes.append(f"{what}: {cnote} - drawn whole")
+                elif clipped is None:
+                    return "off"
+                elif not whole:
+                    label = shape_tool.NewShape()
+                    shape_tool.SetShape(label, clipped)
+                    document.set_name(label, fig.name + "_clipped")
+                    document.set_color(label, fig.colour, srgb)
+                    shape_tool.AddComponent(group_for(group), label, TopLoc_Location(_lift(x, y, z, fold)))
+                    return "clipped"
+        elif edge.ok and not edge.on_board(x, y):
+            return "off"
+        shape_tool.AddComponent(group_for(group), fig.part(document, srgb),
+                                TopLoc_Location(_placement(x, y, z, rotation, fold)))
+        return "shared"
 
     for row in rows:
         try:
@@ -745,7 +1161,7 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
             layer = next((lay for lay, p in (padstack.get("pads") or {}).items() if p is pad), "?")
             tag = "m" if mirrored else ""
             z = top_z + lift if face_side == "top" else bottom_z - lift
-            trsf = _placement(x, y, z, rotation, fold)
+            face_up = face_side == "top"
 
             if copper:
                 key = (name, layer, mirrored, face_side)
@@ -783,25 +1199,26 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
                         # it. Counted apart from a figure that failed (None).
                         parts[key] = empty
                     else:
-                        label = shape_tool.NewShape()
-                        shape_tool.SetShape(label, face)
-                        document.set_name(label, f"pad_{name}_{layer_subclass(layer)}{tag}")
-                        document.set_color(label, rgb01, srgb)
-                        parts[key] = label
+                        parts[key] = _Figure(face, f"pad_{name}_{layer_subclass(layer)}{tag}", rgb01)
                         result.figures += 1
-                label = parts[key]
-                if label is None:
+                fig = parts[key]
+                if fig is None:
                     result.unbuildable += 1
-                elif label == "hole":
+                elif fig == "hole":
                     result.all_hole += 1
-                elif label == "hidden":
+                elif fig == "hidden":
                     result.hidden += 1
                 else:
-                    shape_tool.AddComponent(group_for("pads_top" if face_side == "top" else "pads_bot"),
-                                            label, TopLoc_Location(trsf))
-                    result.placed += 1
-                    if is_via:
-                        result.via_placed += 1
+                    done = place(fig, x, y, z, rotation, mirrored, padstack.get("drill"), face_up,
+                                 "pads_top" if face_up else "pads_bot", f"padstack {name} ({layer})")
+                    if done == "off":
+                        result.off_board += 1
+                    else:
+                        result.placed += 1
+                        if done == "clipped":
+                            result.clipped += 1
+                        if is_via:
+                            result.via_placed += 1
 
             # The window in the mask, shared per figure like the copper: what
             # the copper leaves of it when the pads are drawn too (nothing
@@ -831,22 +1248,25 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
                     if window is None:
                         parts[okey] = None if onote else "filled"
                     else:
-                        label = shape_tool.NewShape()
-                        shape_tool.SetShape(label, window)
-                        document.set_name(label, f"opening_{name}_{layer_subclass(mask_layer)}{tag}")
-                        document.set_color(label, base01 or rgb01, srgb)
-                        parts[okey] = label
+                        parts[okey] = _Figure(window, f"opening_{name}_{layer_subclass(mask_layer)}{tag}",
+                                              base01 or rgb01)
                         result.opening_figures += 1
-                label = parts[okey]
-                if label is None:
+                fig = parts[okey]
+                if fig is None:
                     result.unbuildable += 1
-                elif label == "filled":
+                elif fig == "filled":
                     result.openings_filled += 1
                 else:
-                    oz = top_z + opening_lift if face_side == "top" else bottom_z - opening_lift
-                    shape_tool.AddComponent(group_for("openings_top" if face_side == "top" else "openings_bot"),
-                                            label, TopLoc_Location(_placement(x, y, oz, rotation, fold)))
-                    result.openings_placed += 1
+                    oz = top_z + opening_lift if face_up else bottom_z - opening_lift
+                    done = place(fig, x, y, oz, rotation, mirrored, padstack.get("drill"), face_up,
+                                 "openings_top" if face_up else "openings_bot",
+                                 f"padstack {name} ({mask_layer})")
+                    if done == "off":
+                        result.openings_off_board += 1
+                    else:
+                        result.openings_placed += 1
+                        if done == "clipped":
+                            result.openings_clipped += 1
 
     return result
 
@@ -902,6 +1322,12 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                 f"carries no soldermask on the {side}")
             out[side] = (None, 0, len(polygons))
             continue
+        edges = (data.get("pcb") or {}).get("edges") or []
+        # The cutouts, for a polygon lying over one: the mask ends at a
+        # hole's edge as it ends at the board's (round 91). An exact box per
+        # cutout answers "could this polygon lie over it"; the clip itself
+        # is against the region's face with the cutouts taken out.
+        cutouts = [(contour, _contour_box(contour)) for contour in board_cutouts(edges, _noop_log)]
         plain = not where.entries
         if plain:
             # A plain board has no zone to clip to, but it has an outline -
@@ -911,7 +1337,6 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
             # its one masked "zone" here and the rule below is the same:
             # inside, built at the face; across the edge, clipped to it;
             # outside, left out.
-            edges = (data.get("pcb") or {}).get("edges") or []
             polygon = contour_points(edges[0]) if edges else []
             if polygon:
                 xs = [p[0] for p in polygon]
@@ -940,23 +1365,25 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                 z = where.default[1][0] if side == "top" else where.default[1][1]
                 whole.setdefault(z, []).append(polygon)
                 continue
+            xs = [v[0] for v in verts]
+            ys = [v[1] for v in verts]
+            box = (min(xs), min(ys), max(xs), max(ys))
+            # A polygon whose box meets a cutout's may lie over the hole: it
+            # is clipped like one across a boundary, and the clip decides.
+            over_cutout = any(_boxes_meet(box, cbox) for _c, cbox in cutouts)
             # A vertex ON the boundary is at home there: an opening drawn up
             # to the board's edge is whole, not clipped to the edge it touches.
             homes = set()
             for v in verts:
                 homes.add(next((name for name, poly, _c, _b, _z in masked
                                 if point_in_polygon(v, poly) or point_on_polygon(v, poly)), None))
-            if len(homes) == 1 and None not in homes:
+            if len(homes) == 1 and None not in homes and not over_cutout:
                 z = next(zf for name, _p, _c, _b, zf in masked if name in homes)
                 whole.setdefault(z, []).append(polygon)
             else:
-                xs = [v[0] for v in verts]
-                ys = [v[1] for v in verts]
-                box = (min(xs), min(ys), max(xs), max(ys))
-                touches = [m for m in masked
-                           if not (box[2] < m[3][0] or box[0] > m[3][2] or box[3] < m[3][1] or box[1] > m[3][3])]
+                touches = [m for m in masked if _boxes_meet(box, m[3])]
                 if touches:
-                    straddling.append((polygon, touches))
+                    straddling.append((polygon, touches, over_cutout))
                 else:
                     dropped += 1
         for z, group in whole.items():
@@ -967,10 +1394,12 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
             if compound is not None:
                 pieces.append(compound)
         clipped = 0
+        over = sum(1 for _p, _t, o in straddling if o)
         if straddling:
-            # every masked zone any of them touches, each at its own face
+            # every masked zone any of them touches, each at its own face,
+            # less the cutouts that meet it
             for name, _poly, contour, _box, zf in masked:
-                group = [p for p, touches in straddling if any(t[0] == name for t in touches)]
+                group = [p for p, touches, _o in straddling if any(t[0] == name for t in touches)]
                 if not group:
                     continue
                 compound, n_built, n_skipped = build_silkscreen(
@@ -979,7 +1408,15 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                 skipped += n_skipped
                 if compound is None:
                     continue
-                region = _face_from_wires(build_contour(contour, zf + sign * abs(lift)), [])
+                region_z = zf + sign * abs(lift)
+                zone_box = _contour_box(contour)
+                try:
+                    region = board_face(contour, [c for c, cbox in cutouts if _boxes_meet(cbox, zone_box)],
+                                        region_z)
+                except (StepBuilderError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+                    log(f"warning: {tag}_{side}: the cutouts could not be taken out of {name} ({exc}); "
+                        f"its drawn openings are clipped to it without them")
+                    region = _face_from_wires(build_contour(contour, region_z), [])
                 common = BRepAlgoAPI_Common(compound, region)
                 faces = _faces_of(common.Shape()) if common.IsDone() else []
                 if faces:
@@ -988,15 +1425,16 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                 elif not common.IsDone():
                     log(f"warning: {tag}_{side}: {len(group)} drawn-opening polygon(s) could not be "
                         f"clipped to zone {name} and are left out")
-            built += len({id(p) for p, _t in straddling})
+            built += len({id(p) for p, _t, _o in straddling})
         if (dropped or straddling) and plain:
             log(f"{tag}_{side}: {len(straddling)} drawn-opening polygon(s) reach past the board "
-                f"outline and are clipped to it"
+                f"outline{' or over a cutout' if over else ''} and are clipped to it"
                 + (f", {dropped} lie outside it and are left out" if dropped else ""))
         elif dropped or straddling:
             log(f"{tag}_{side}: the mask is only on "
                 + ", ".join(name for name, *_r in masked)
                 + f" - {len(straddling)} drawn-opening polygon(s) clipped to it"
+                + (f" ({over} of them over a cutout)" if over else "")
                 + (f", {dropped} left out" if dropped else ""))
         if not pieces:
             out[side] = (None, built, skipped)

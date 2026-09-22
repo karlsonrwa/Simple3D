@@ -509,3 +509,21 @@ under `build/agents/<scope>/report.md`, outside the repository.
 - The mirrored pin with an offset drill, the never-executed failure branch
   of `s3dCollectExposed` and `run_all` running neither golden corpus are as
   they were.
+
+## 2026-09-22, round 91: the board's edge
+
+The pads and the mask windows are clipped at the outline and at the cutouts
+now (`_Boundary`, `clip_to_board`, `_lift`, `_Figure` in `pads.py`, and the
+cutouts in `build_exposed`). `test_pads` gained section [10]; the table gained
+nine rows and one re-aimed row (230 → 239): `pads-edge-never-reached`,
+`pads-off-board-drawn`, `pads-clip-never-whole`,
+`pads-clipped-figure-left-loose`, `pads-every-cutout-taken-as-the-drill`,
+`board-face-keeps-cutouts`, `lift-forgets-the-fold`,
+`exposed-cutouts-ignored`, `exposed-region-without-cutouts`, and
+`pads-everything-under-pads-top` moved to the new placement line. Run on
+copies with `--changed` - the 77 rows the four changed files touch: **77
+caught of 77**, 392 s of wall for 861 s of suite runs on four copies. One
+guard has no row on purpose: `clip_to_board` re-orients the faces a boolean
+hands back, and measured on 2026-09-22 the boolean kept their orientation in
+all four mirror/side cases, so a row removing the guard would be an
+equivalent mutant.

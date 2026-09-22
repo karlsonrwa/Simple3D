@@ -1492,8 +1492,8 @@
  {
   "id": "pads-everything-under-pads-top",
   "file": "stepbuilder/pads.py",
-  "old": "                    shape_tool.AddComponent(group_for(\"pads_top\" if face_side == \"top\" else \"pads_bot\"),\n                                            label, TopLoc_Location(trsf))",
-  "new": "                    shape_tool.AddComponent(group_for(\"pads_top\"),\n                                            label, TopLoc_Location(trsf))",
+  "old": "                                 \"pads_top\" if face_up else \"pads_bot\", f\"padstack {name} ({layer})\")",
+  "new": "                                 \"pads_top\", f\"padstack {name} ({layer})\")",
   "suites": [
    "tests/test_pads.py"
   ],
@@ -2465,5 +2465,95 @@
    "tests/test_bend.py"
   ],
   "why": "the material a bend consumes is the INNER arc, not the neutral one, so the neutral factor decides nothing and every bend eats what Allegro drew. MEASURED: caught by tests/test_bend.py, FAIL  the far panel stands up exactly as far as it is long  <- (20.214601986602553, 20.057522203923064)"
+ },
+ {
+  "id": "pads-edge-never-reached",
+  "file": "stepbuilder/pads.py",
+  "old": "        reached = edge.reaches(x, y, fig.radius) if edge.ok else set()",
+  "new": "        reached = set()",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "no placement is ever found to reach the edge, so nothing is clipped and the mouse bite's window floats past the edge again"
+ },
+ {
+  "id": "pads-off-board-drawn",
+  "file": "stepbuilder/pads.py",
+  "old": "        elif edge.ok and not edge.on_board(x, y):",
+  "new": "        elif False:",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a pin clear of the edge but off the board is placed as if it were on it"
+ },
+ {
+  "id": "pads-clip-never-whole",
+  "file": "stepbuilder/pads.py",
+  "old": "    whole = shape_area(clipped) >= (1.0 - WHOLE_TOLERANCE) * shape_area(placed)",
+  "new": "    whole = False",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a figure the boolean hands back whole - the ring over its own drill's cutout - gets a face of its own instead of its instance"
+ },
+ {
+  "id": "pads-clipped-figure-left-loose",
+  "file": "stepbuilder/pads.py",
+  "old": "                    label = shape_tool.NewShape()\n                    shape_tool.SetShape(label, clipped)",
+  "new": "                    label = shape_tool.NewShape()\n                    fig.part(document, srgb)\n                    shape_tool.SetShape(label, clipped)",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a figure every placement of which is clipped is still made a part, and stands loose at the origin in the file"
+ },
+ {
+  "id": "board-face-keeps-cutouts",
+  "file": "stepbuilder/pads.py",
+  "old": "    if not cutouts:\n        return face",
+  "new": "    if True:\n        return face",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the board's face is the outline alone, so a pad over a cutout keeps the hole's copper"
+ },
+ {
+  "id": "lift-forgets-the-fold",
+  "file": "stepbuilder/pads.py",
+  "old": "    return fold.transform_at(x, y) * move if fold is not None else move",
+  "new": "    return move",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a clipped face on a folded board is lifted but never folded, and lands where the flat board was"
+ },
+ {
+  "id": "exposed-cutouts-ignored",
+  "file": "stepbuilder/pads.py",
+  "old": "            over_cutout = any(_boxes_meet(box, cbox) for _c, cbox in cutouts)",
+  "new": "            over_cutout = False",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a drawn opening over a cutout is built whole, laminate across the hole"
+ },
+ {
+  "id": "exposed-region-without-cutouts",
+  "file": "stepbuilder/pads.py",
+  "old": "                    region = board_face(contour, [c for c, cbox in cutouts if _boxes_meet(cbox, zone_box)],",
+  "new": "                    region = board_face(contour, [],",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a drawn opening over a cutout is sent to the clip, but the region it is clipped to still has the hole filled"
+ },
+ {
+  "id": "pads-every-cutout-taken-as-the-drill",
+  "file": "stepbuilder/pads.py",
+  "old": "        return math.hypot(cx - hx, cy - hy) + cr <= dr + self.margin",
+  "new": "        return True",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "every circular cutout a figure reaches is taken for the pin's own drill and skipped, so a pad over a real hole keeps the hole's copper"
  }
 ]
