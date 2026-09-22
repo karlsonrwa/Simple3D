@@ -12,9 +12,10 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 `stepbuilder/_occt.py`, the suite, the golden corpus and the C++ regression
 give the same numbers under both, and README pins `>=7.7,<9`; the mutation
 harness breaks private copies of the tree under `build/mutants/` and never
-the working tree; the table is 220 rows (was 48), grown by four agents, with
-45 weak tests fixed and three defects in the checks themselves; `golden.py`
-reads its child's numbers from a file. Read round 90 for the measurements.
+the working tree; the table is 230 rows (was 48), grown by four agents, with
+47 weak tests fixed and three defects in the checks themselves; `golden.py`
+reads its child's numbers from a file. 3dproperties was brought onto 8.0 the
+same day. Read round 90 for the measurements.
 
 **The exposed-copper work of rounds 85–89 (2026-09-07 … 2026-09-17, developed
 on `feature/copper-pads`, merged into `main` on 2026-09-17)**: two checkboxes,
@@ -45,7 +46,7 @@ one settled.
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
 | The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 80 (2026-09-03): Step 0, Plans A, B, C, D, E1–E2 (`format_version` 9), F1–F3, F5 and G1–G5 - each row says what it left. Left: the optional F4 (pytest) and E3 (deleting `intermediate.RESERVED` once a release has shipped v9). Rounds 85–89 added features and tests and touched no plan row |
 | The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd` (eight since round 86c); `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
-| The mutation table | `tests/mutations.json` (round 89, grown in round 90): 220 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
+| The mutation table | `tests/mutations.json` (round 89, grown in round 90): 230 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
 
 Three tools grew out of this project and now have repositories of their own.
 Nothing here depends on them, and no copy of their code belongs in this tree:
@@ -3218,7 +3219,8 @@ progress; a SystemExit's last line instead of "exit 1") is ported with the
 repository's own lines, and a suite already red on the clean copy now makes
 the rows naming it UNPROVEN instead of silently "survived" (trap 8 in its
 docstring; the shared harness does not have this yet). `test_mutations`
-asks its questions about 220 rows in 945 checks; its floor is 200.
+asks its questions about 220 rows in 945 checks (230 rows, 985 checks by
+the evening, below); its floor is 200.
 
 **The whole table on copies, the final tree: 220 of 220 caught, 2 992 s of
 wall for 10 158 s of suite runs on four copies** (`build/mutation-runs-2026-09-22/full_220.log`):

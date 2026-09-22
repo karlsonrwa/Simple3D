@@ -454,7 +454,8 @@ The suites grew by about 1 000 lines: `test_skill_pins` 88 → 186 PASS
 lines, `test_mech` 20 → 29, `test_silk` 51 → 62, `test_pads` 108 → 112,
 `test_bend` 229 → 234, the board suites 195 → 210, `test_launch_cmd`
 25 → 35, `test_geom` 30 → 35; `tests/test_mutations.py` asks its questions
-about 220 rows in 945 checks. The four agents' full reports - the inventory
+about 220 rows in 945 checks (230 rows and 985 checks once the eleven fold
+rows below were run). The four agents' full reports - the inventory
 per suite, every row with its FAIL line, the equivalence measurements - are
 under `build/agents/<scope>/report.md`, outside the repository.
 
