@@ -1,7 +1,8 @@
 # Paths, the output folder, check() and the STEP measuring helpers come from
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
-from _support import ROOT, out_dir, fails, check, rect, volume, bbox, read_step
+from _support import (ROOT, out_dir, fails, check, rect, volume, bbox,
+                      count_solids, read_step)
 
 """Folding flex bends: the property parser, the plan, and the built geometry.
 
@@ -134,8 +135,14 @@ check("the board is not thinner or thicker where it is flat",
 check("volume is preserved to within the deliberate slice overlap",
       abs(volume(folded) - flat_volume) / flat_volume < 0.005,
       (volume(folded), flat_volume))
+# COUNTED, not merely "not null and it weighs something": a compound of the
+# folded pieces weighs the same and is not null either, so this line was
+# satisfied by exactly the heap it names. apply_plan hands the pieces back as a
+# compound whenever the fuse produces nothing - measured there, 3 solids where
+# the fused board has 1, and the old line passed.
 check("the fold is one solid, not a heap of slices",
-      volume(folded) > 0 and not folded.IsNull())
+      count_solids(folded) == 1 and volume(folded) > 0 and not folded.IsNull(),
+      count_solids(folded))
 
 # --------------------------------------------------------------------------- #
 print("\n[4] inner side decides which way it folds")
@@ -539,6 +546,18 @@ check("and the log blames the neutral factor, not the board",
 check("and names the value that would fit - 0.00, the inner arc",
       any("at 0.00 the two strips meet" in n for n in ring_half.notes),
       ring_half.notes)
+# The other half of that answer, and the one number a user can act on: the
+# largest neutral factor THIS board takes, found by a dozen trial cuts in
+# _neutral_ceiling. Nothing read it until now - measured
+# (bend-neutral-ceiling-never-noted), narrowing the condition that starts the
+# search from "a bend was refused OR a piece was pinched" to "AND" removes
+# the note for this board, whose cut log is empty, and left the suite green.
+check("and the board is told the largest neutral factor it can take",
+      any("takes foldNeutral up to 0.00" in n for n in ring_half.notes),
+      ring_half.notes)
+check("and that at the factor it was built with the strips reach each other",
+      any("At the current 0.50 the strips reach each other" in n
+          for n in ring_half.notes), ring_half.notes)
 ring_zero = plan_fold([ring_a, ring_b], ring_outline, 0.0, -T, anchor=(5.0, 0.0),
                       neutral_factor=0.0)
 check("at k = 0 both fold, and the flex closes into a ring",
@@ -629,7 +648,7 @@ def circles(face):
     n = 0
     walk = _TEE(face, _TAS.TopAbs_EDGE)
     while walk.More():
-        if (BRepAdaptor_Curve(_TDS.Edge_s(walk.Current())).GetType()
+        if (BRepAdaptor_Curve(_TDS.Edge(walk.Current())).GetType()
                 == GeomAbs_CurveType.GeomAbs_Circle):
             n += 1
         walk.Next()
@@ -842,6 +861,31 @@ plan_narrow = plan_fold([narrow], wide_hold, 0.0, -T, anchor=(5.0, 5.0))
 check("a wide board with a narrow arm folds where it should",
       plan_narrow.region_at(5.0, 5.0) == "held", plan_narrow.region_at(5.0, 5.0))
 check("and joins up", seam_gap(plan_narrow) < 1e-6, seam_gap(plan_narrow))
+
+# ...and the shape that actually needs the seam to be asked. `wide_hold` is
+# wide in X, across the arm - but a strip's band is infinite in the bend's OWN
+# direction, and the held piece there stops at the near edge of the band, so
+# its extent answers correctly by luck. Measured (bend-side-of-by-extent):
+# _side_of falling back on the extent leaves wide_hold at 0.000 mm and this
+# whole suite green. A SECOND arm, taller than the band (y = 73.403 .. 86.597)
+# and reaching y = 100, puts held material 13.4 mm past the far edge while the
+# piece still touches the strip on the near one - and then the extent says
+# "beyond" where the seam says "before": measured, 15.430 mm of daylight.
+two_arms = [(0, 0), (120, 0), (120, 60), (70, 60), (70, 100), (55, 100),
+            (55, 60), (25, 60), (25, 100), (10, 100), (10, 60), (0, 60)]
+narrow2 = Bend(name="N2", start=(55.0, 80.0), end=(70.0, 80.0), angle=180.0,
+               radius=4.0)
+plan_two = plan_fold([narrow2], two_arms, 0.0, -T, anchor=(5.0, 5.0))
+check("a board whose held piece reaches past the band on both sides still "
+      "holds it - the far arm's tip included",
+      plan_two.region_at(5.0, 5.0) == "held"
+      and plan_two.region_at(17.0, 95.0) == "held",
+      (plan_two.region_at(5.0, 5.0), plan_two.region_at(17.0, 95.0)))
+check("and only what is past the bend rides on it",
+      plan_two.region_at(62.0, 95.0) == "panel after N2",
+      plan_two.region_at(62.0, 95.0))
+check("and that fold joins up, judged at the seam and not by an extent",
+      seam_gap(plan_two) < 1e-6, seam_gap(plan_two))
 
 # And the oracle itself, seen reporting a gap. Every call above asks
 # `seam_gap(p) < 1e-6` and none of them ever wants a large answer, so
@@ -1492,7 +1536,7 @@ def surfaces(shape):
     kinds = {}
     exp = TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_FACE)
     while exp.More():
-        kind = BRepAdaptor_Surface(TopoDS.Face_s(exp.Current())).GetType()
+        kind = BRepAdaptor_Surface(TopoDS.Face(exp.Current())).GetType()
         kinds[kind] = kinds.get(kind, 0) + 1
         exp.Next()
     return kinds
@@ -1508,7 +1552,16 @@ exact = fresh.apply(strip, log=logs.append)
 kinds = surfaces(exact)
 cylinders = kinds.get(GeomAbs_SurfaceType.GeomAbs_Cylinder, 0)
 check("the bend is made of cylindrical faces", cylinders >= 2, kinds)
-check("and it says so once", any("true cylindrical" in m for m in logs), logs)
+# NAMED, not merely "cylindrical". The general wrap prints "true cylindrical
+# surfaces" too, so that phrase could not tell the two constructions apart -
+# and measured (bend-revolve-off), nothing else in this section can either:
+# with _revolve_strip severed the wrap builds this same strip to the same
+# bbox (1.8e-7 apart), the same 10 faces, the same 2 cylinders and the same
+# volume, and every other line of [17] passed.
+check("and it says so once, and says REVOLVED - the exact construction, which "
+      "the wrap's own 'true cylindrical' line cannot be told from",
+      sum("revolved" in m for m in logs) == 1
+      and not any("wrapped onto" in m for m in logs), logs)
 check("the exact bend is far lighter than the faceted one",
       sum(kinds.values()) < 20, sum(kinds.values()))
 check("volume is preserved better than by the facets - no slice overlap at all",
@@ -1582,6 +1635,29 @@ want = volume(thin) - in_bend + in_bend * ratio
 check("a layer above the neutral axis loses volume, by exactly r/rho",
       abs(volume(thin_folded) - want) / volume(thin) < 1e-5,
       (volume(thin_folded), want, ratio))
+
+# ...said of the WRAP, which is a different piece of code and the one this
+# section is named after. `thin` is a plain box, so the REVOLVE builds it and
+# strip_wrap._expected_volume - the wrap's own r/rho rule - never runs at all:
+# measured (bend-wrap-expects-flat-volume), making it ask for the FLAT volume
+# back left every line of this suite green, because the only wrapped pieces
+# here ([17b], [17e]) are symmetric about the neutral axis, where the two
+# answers are equal. A notch sends the same layer through the wrap.
+thin_notched = BRepAlgoAPI_Cut(thin, notch).Shape()
+band_box = BRepPrimAPI_MakeBox(gp_Pnt(arc_start, -1.0, -1.0),
+                               gp_Pnt(arc_end, 11.0, 1.0)).Shape()
+# measured, not computed: the notch takes a bite out of the bend area
+in_bend_n = volume(BRepAlgoAPI_Common(thin_notched, band_box).Shape())
+want_n = volume(thin_notched) - in_bend_n + in_bend_n * ratio
+wrap_logs = []
+thin_notched_folded = plan_fold([bend], outline, 0.0, -T).apply(
+    thin_notched, log=wrap_logs.append)
+check("a notched thin layer is WRAPPED rather than revolved, so it is the "
+      "wrap's own volume rule the next line measures",
+      any("wrapped onto" in m for m in wrap_logs), wrap_logs)
+check("and the wrap loses volume by exactly r/rho too",
+      abs(volume(thin_notched_folded) - want_n) / volume(thin_notched) < 1e-5,
+      (volume(thin_notched_folded), want_n, ratio))
 
 print("\n[17d] a piece that is not a prism still falls back to facets")
 

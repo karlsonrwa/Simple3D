@@ -79,11 +79,28 @@ il = "\n".join(q.read_text(encoding="utf-8", errors="replace")
 # escaped: \"format_version\": 7. Anchoring on a bare quote matched nothing and
 # this check silently never ran - found in round 60, left open, fixed in 61.
 m = re.search(r'\\?"format_version\\?"\s*:\s*(\d+)', il)
-if m:
+if not m:
+    note("format_version", "no `\"format_version\": N` line in skill/ - this check "
+                           "ran on nothing")
+else:
     written = m.group(1)
-    if f"format_version: {written}" not in readme and f"format_version` {written}" not in readme \
-       and f"format_version`: {written}" not in readme:
-        note("format_version", f"exporter writes {written}; README may not say so")
+    # The loose forms this used to accept ("`format_version` 11") are how the
+    # README describes the HISTORY - "11 has no vias", "10 draws the copper
+    # whole" - so any of them satisfied the check whatever the exporter wrote,
+    # and dropping the version to 11 passed (measured 2026-09-22).
+    #
+    # What the README has to say is which version the exporter writes NOW, in
+    # the one form it says it in: "The exporter writes `format_version: 12`",
+    # once per language. A floor, like the suite count above: a phrase drifting
+    # out of the regex must be a finding, not one fewer thing compared.
+    stated = re.findall(r"format_version:\s*(\d+)", readme)
+    if len(stated) < 2:
+        note("format_version", f"README states the version it is written with "
+                               f"{len(stated)} time(s), 2 expected (one per "
+                               f"language) - the check ran on less than it should")
+    for says in stated:
+        if says != written:
+            note("format_version", f"exporter writes {written}; README says {says}")
 
 # ---- assembly labels ------------------------------------------------------
 for label in ("symbols_top", "symbols_bot", "silkscreen_top", "silkscreen_bot"):

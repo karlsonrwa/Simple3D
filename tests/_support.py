@@ -83,9 +83,10 @@ def bbox(shape) -> tuple[float, float, float, float, float, float]:
     """(xmin, ymin, zmin, xmax, ymax, zmax), using the triangulation where there is one."""
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
+    from stepbuilder._occt import box_limits
     box = Bnd_Box()
     BRepBndLib.Add_s(shape, box, True)
-    return box.Get()
+    return box_limits(box)
 
 
 def count_solids(shape) -> int:
@@ -109,8 +110,8 @@ def free_edges(shape) -> int:
     """
     from OCP.TopAbs import TopAbs_ShapeEnum
     from OCP.TopExp import TopExp
-    from OCP.TopTools import (TopTools_IndexedDataMapOfShapeListOfShape,
-                              TopTools_IndexedMapOfShape)
+    from stepbuilder._occt import (TopTools_IndexedDataMapOfShapeListOfShape,
+                                   TopTools_IndexedMapOfShape)
     owners = TopTools_IndexedDataMapOfShapeListOfShape()
     TopExp.MapShapesAndAncestors_s(shape, TopAbs_ShapeEnum.TopAbs_EDGE,
                                    TopAbs_ShapeEnum.TopAbs_FACE, owners)

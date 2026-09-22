@@ -609,10 +609,24 @@ check("controls are usable again", states() == before)
 # check_alive runs on the next drain and must stay quiet: a deliberate kill
 # has a non-zero exit code, and reporting that as a crash would be a lie with
 # a traceback attached.
-app._bridge.process, app._bridge.finished, app._bridge.cancelled = fake, False, True
-app._bridge.check_alive()
+#
+# The dialog is stubbed for the length of this one call, and that is not
+# tidiness: _on_crash ends in messagebox.showerror, which is MODAL and waits
+# for a click nobody is going to give it. Measured 2026-09-22 - with the
+# bridge's `cancelled` test removed, this suite stopped answering instead of
+# failing, for 31 minutes, and the check below never ran. A test that hangs
+# is worse than one that passes wrongly: it says nothing at all.
+shown = []
+_real_showerror = gui_mod.messagebox.showerror
+gui_mod.messagebox.showerror = lambda *a, **k: shown.append(a)
+try:
+    app._bridge.process, app._bridge.finished, app._bridge.cancelled = fake, False, True
+    app._bridge.check_alive()
+finally:
+    gui_mod.messagebox.showerror = _real_showerror
 check("a cancelled build is not reported as a crash",
-      app.status.get() == "Cancelled" and app._bridge.process is None, app.status.get())
+      app.status.get() == "Cancelled" and app._bridge.process is None
+      and not shown, (app.status.get(), shown))
 check("the window no longer imports multiprocessing",
       not hasattr(gui_mod, "multiprocessing") and not hasattr(gui_mod, "queue"))
 

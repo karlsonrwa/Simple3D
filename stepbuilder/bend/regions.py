@@ -19,6 +19,8 @@ from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS_Shape
 from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
+from .._occt import box_limits
+
 from ..contour import point_in_polygon, point_on_polygon
 from .constants import EPS
 from .info import Bend
@@ -163,7 +165,7 @@ def _bbox(shape: TopoDS_Shape):
     BRepBndLib.Add_s(shape, box, True)
     if box.IsVoid():
         return None
-    return box.Get()          # (xmin, ymin, zmin, xmax, ymax, zmax)
+    return box_limits(box)    # (xmin, ymin, zmin, xmax, ymax, zmax)
 
 
 def _extent(box, nx: float, ny: float) -> tuple[float, float]:

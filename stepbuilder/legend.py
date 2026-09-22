@@ -23,7 +23,7 @@ from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
 from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCP.GC import GC_MakeArcOfCircle
 from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
-from OCP.TopTools import TopTools_HSequenceOfShape
+from ._occt import TopTools_HSequenceOfShape
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Wire
 from OCP.gp import gp_Pnt, gp_Vec
 
@@ -229,7 +229,7 @@ def _wire_from_vertices(vertices: list, z: float, convention: _Convention) -> To
         raise StepBuilderError(
             f"polygon edges formed {wires.Length()} wires, expected 1"
         )
-    wire = TopoDS.Wire_s(wires.Value(1))
+    wire = TopoDS.Wire(wires.Value(1))
     if not wire.Closed():
         raise StepBuilderError("polygon contour is open" + _open_wire_detail(wire))
     return wire
@@ -437,7 +437,7 @@ def _merge_coplanar(faces: list, log: LogFn, side: str):
     try:
         from OCP.BRepAlgoAPI import BRepAlgoAPI_BuilderAlgo
         from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain
-        from OCP.TopTools import TopTools_ListOfShape
+        from ._occt import TopTools_ListOfShape
 
         arguments = TopTools_ListOfShape()
         for face in faces:

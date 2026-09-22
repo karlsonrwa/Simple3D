@@ -26,7 +26,7 @@ from typing import Iterable
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeFace
 from OCP.GC import GC_MakeArcOfCircle
 from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
-from OCP.TopTools import TopTools_HSequenceOfShape
+from ._occt import TopTools_HSequenceOfShape
 from OCP.TopoDS import TopoDS, TopoDS_Wire
 from OCP.gp import gp_Ax2, gp_Circ, gp_Dir, gp_Pnt
 
@@ -106,7 +106,7 @@ def build_contour(contour: Iterable[dict], z_offset: float = 0.0) -> TopoDS_Wire
             f"wires (tolerance {WIRE_TOLERANCE}). Check for gaps in the outline."
         )
 
-    wire = TopoDS.Wire_s(wires.Value(1))
+    wire = TopoDS.Wire(wires.Value(1))
     if not wire.Closed():
         # A single but open wire: MakeFace would silently build garbage.
         # Report the actual gap and where it is: a large gap means the source
@@ -279,7 +279,7 @@ def _face_from_wires(outer: TopoDS_Wire, inner: list[TopoDS_Wire]):
     for wire in inner:
         # A hole wire has to run opposite to the outer one for MakeFace to read
         # it as a void; ShapeFix_Face below repairs whichever way it came.
-        maker.Add(TopoDS.Wire_s(wire.Reversed()))
+        maker.Add(TopoDS.Wire(wire.Reversed()))
     face = maker.Face()
     if inner:
         from OCP.ShapeFix import ShapeFix_Face

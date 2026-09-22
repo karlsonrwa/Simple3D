@@ -75,12 +75,19 @@ comes with the standard Windows installer.
 **2. One dependency:**
 
 ```
-pip install cadquery-ocp
+pip install "cadquery-ocp>=7.7,<9"
 ```
 
 That is the OpenCASCADE kernel with Python bindings, and it is the entire
 `requirements.txt` — but it is not small: with VTK, which it declares as a hard
-dependency, the three come to about **470 MB on disk**.
+dependency, the three come to about **470 MB on disk** with 7.9 (a venv with
+8.0 measured 617 MB). Both cadquery-ocp 7.9 and 8.0 — OpenCASCADE 7.9 and 8.0
+— work and are tested: the whole suite and the seven golden cases give the
+same numbers under both, and a STEP written by 8.0 differs from 7.9's only in
+how the colours are encoded, not in a single line of geometry (2026-09-22).
+Since September 2026 a bare `pip install cadquery-ocp` resolves to 8.0; the
+upper bound is there because 8.0 renamed bindings that 7.9 had, and the next
+major may again — it should not land before it has been tested.
 
 **If there is more than one Python on the machine**, know which one that `pip`
 belonged to. `python` and `pythonw` are *names*, and PATH decides what they mean
@@ -779,6 +786,7 @@ stepbuilder/
   core.py        geometry + assembly. No UI, no printing: reports via callbacks
   contour.py     a JSON contour as an OpenCASCADE wire, or as a flat polygon
   errors.py      the one exception the package raises
+  _occt.py       the OpenCASCADE names that cadquery-ocp 8.0 spells differently from 7.9, bound once; the geometry modules take them from here
   intermediate.py  one intermediate JSON, read once; which files to build; output naming
   settings.py    the settings pair: shipped defaults + the local file, merged key by key
   stackup.py     the stackup arithmetic: z from thickness, masks out, stackups on one datum, zone faces
@@ -798,7 +806,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 27 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, applied by tools/mutate.py to a copy of the tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 27 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 220 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -879,12 +887,19 @@ Python этого релиза (старый `stepbuilder` увидел бы о�
 **2. Одна зависимость:**
 
 ```
-pip install cadquery-ocp
+pip install "cadquery-ocp>=7.7,<9"
 ```
 
 Это ядро OpenCASCADE с привязками к Python, и это весь `requirements.txt` — но
 он немаленький: вместе с VTK, который объявлен жёсткой зависимостью, все трое
-занимают на диске **около 470 МБ**.
+занимают на диске **около 470 МБ** с версией 7.9 (venv с 8.0 намерен в
+617 МБ). Работают и проверены обе — cadquery-ocp 7.9 и 8.0, то есть
+OpenCASCADE 7.9 и 8.0: весь набор тестов и семь золотых случаев дают под ними
+одни и те же числа, а STEP, записанный 8.0, отличается от записанного 7.9
+только кодированием цветов, ни одной строкой геометрии (2026-09-22). С
+сентября 2026 голый `pip install cadquery-ocp` ставит 8.0; верхняя граница
+стоит потому, что 8.0 переименовал привязки, которые были в 7.9, и следующая
+мажорная может снова — ей не место у пользователя раньше, чем её проверили.
 
 **Если на машине больше одного Python**, помните, к какому из них относился этот
 `pip`. `python` и `pythonw` — это *имена*, и что они значат сегодня, решает PATH:
@@ -1587,6 +1602,7 @@ stepbuilder/
   core.py        геометрия и сборка. Без UI и печати: отчёт через колбэки
   contour.py     контур из JSON как проволока OpenCASCADE или как плоский полигон
   errors.py      единственное исключение пакета
+  _occt.py       имена OpenCASCADE, которые cadquery-ocp 8.0 пишет иначе, чем 7.9, привязанные один раз; геометрические модули берут их отсюда
   intermediate.py  промежуточный JSON, прочитанный один раз; что собирать; имена выходных файлов
   settings.py    пара настроек: штатные значения + локальный файл, слитые по ключам
   stackup.py     арифметика стека: z из толщин, маски долой, стеки на одном уровне, грани зон
@@ -1606,7 +1622,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 27 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, применяется tools/mutate.py к копии дерева), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 27 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 220 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

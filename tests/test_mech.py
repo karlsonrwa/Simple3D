@@ -131,5 +131,99 @@ check(f"three more placements cost {ents5 - ents2} entities, not another copy of
       f"the model ({ents2} -> {ents5})", ents5 - ents2 < ents2 // 10,
       (ents2, ents5))
 
+print("\n[3] the placement itself: mapping rotation, offset, flip, angle, zone")
+
+# Until 2026-09-22 this suite measured counts and names only, and every part
+# of `models.component_transform` could be broken without it noticing: six
+# mutations - the mapping rotation composed in the other order, the offset
+# applied before it instead of after, the symbol angle dropped, the 180-degree
+# flip of a bottom part removed, a mirrored part rested on the TOP face, and
+# the part's own zone surface ignored - all left [1] and [2] green, because a
+# part in the wrong place is still one shared part with the right name.
+#
+# The oracle is arithmetic anyone can do on paper, so it is not the code under
+# test restating itself. With rx = ry = 0 except rotation_x = rotation_z = 90:
+#
+#   rx(90): (u, v, w) -> (u, -w, v)        rz(90): (u, v, w) -> (-v, u, w)
+#
+# and `rotation = rz * ry * rx` is applied right to left, so the model's own
+# axis (0, 0, 10) goes (0, 0, 10) -> (0, -10, 0) -> (10, 0, 0): the cap ends up
+# lying along +x. Then the mapping offset is ADDED in that turned frame, the
+# 180-degree flip about Y (for a mirrored part) sends (u, v, w) -> (-u, v, -w),
+# the symbol angle turns about Z, and the position moves it to the pin.
+from OCP.gp import gp_Pnt
+from stepbuilder.models import component_transform
+
+MAP = {"rotation_x": 90.0, "rotation_y": 0.0, "rotation_z": 90.0,
+       "offset_x": 1.0, "offset_y": 2.0, "offset_z": 4.0}
+TOP_Z, BOT_Z = 0.0, -1.6
+AXIS = (0.0, 0.0, 10.0)                       # a point 10 mm up the model's z
+
+
+def comp(mirrored=False, angle=0.0, x=30.0, y=50.0, zone=None):
+    c = {"is_mirrored": mirrored, "angle": angle, "x": x, "y": y}
+    if zone is not None:
+        c["zone"] = zone
+    return c
+
+
+def place(trsf, point):
+    p = gp_Pnt(*point).Transformed(trsf)
+    return (p.X(), p.Y(), p.Z())
+
+
+def at(want, got, tol=1.0e-9):
+    return all(abs(a - b) <= tol for a, b in zip(want, got))
+
+
+# A top part, no symbol angle. The model origin carries the offset as it is;
+# the axis point carries it on top of the turned (10, 0, 0).
+t_top = component_transform(MAP, comp(), TOP_Z, BOT_Z)
+check("a top part: the model origin lands at the pin plus the mapping offset",
+      at(place(t_top, (0, 0, 0)), (30.0 + 1.0, 50.0 + 2.0, TOP_Z + 4.0)),
+      place(t_top, (0, 0, 0)))
+check("and the mapping rotation lays its z axis along +x before the offset is added",
+      at(place(t_top, AXIS), (30.0 + 11.0, 50.0 + 2.0, TOP_Z + 4.0)),
+      place(t_top, AXIS))
+
+# A mirrored part: flipped 180 about Y - x and z negated - and resting on the
+# BOTTOM face. Both are checked, because a flip with no face change and a face
+# change with no flip are two different defects.
+t_bot = component_transform(MAP, comp(mirrored=True), TOP_Z, BOT_Z)
+check("a mirrored part is flipped about Y: the offset's x and z change sign",
+      at(place(t_bot, (0, 0, 0)), (30.0 - 1.0, 50.0 + 2.0, BOT_Z - 4.0)),
+      place(t_bot, (0, 0, 0)))
+check("and it rests on the bottom face, its axis lying along -x",
+      at(place(t_bot, AXIS), (30.0 - 11.0, 50.0 + 2.0, BOT_Z - 4.0)),
+      place(t_bot, AXIS))
+
+# The symbol's own angle, applied AFTER the mapping - rz(90) sends (u, v) to
+# (-v, u), so the offset (1, 2) becomes (-2, 1) and the axis (11, 2) becomes
+# (-2, 11).
+t_90 = component_transform(MAP, comp(angle=90.0), TOP_Z, BOT_Z)
+check("the symbol's 90 degree angle turns the placed part about the pin",
+      at(place(t_90, (0, 0, 0)), (30.0 - 2.0, 50.0 + 1.0, TOP_Z + 4.0))
+      and at(place(t_90, AXIS), (30.0 - 2.0, 50.0 + 11.0, TOP_Z + 4.0)),
+      (place(t_90, (0, 0, 0)), place(t_90, AXIS)))
+
+# On a rigid-flex board the surface a part rests on is its ZONE's, not the
+# board's: 2.0 above the datum here against the board's 0.0, and -3.0 below
+# against -1.6. A part whose zone is unknown falls back to the board's.
+ZL = {"Z1": (2.0, -3.0)}
+t_zone = component_transform(MAP, comp(zone="Z1"), TOP_Z, BOT_Z, zone_levels=ZL)
+t_zone_m = component_transform(MAP, comp(mirrored=True, zone="Z1"), TOP_Z, BOT_Z,
+                               zone_levels=ZL)
+check("a part on a zone rests on THAT zone's top surface, not the board's",
+      at(place(t_zone, (0, 0, 0)), (31.0, 52.0, 2.0 + 4.0)), place(t_zone, (0, 0, 0)))
+check("and a mirrored one on that zone's bottom surface",
+      at(place(t_zone_m, (0, 0, 0)), (29.0, 52.0, -3.0 - 4.0)), place(t_zone_m, (0, 0, 0)))
+t_unknown = component_transform(MAP, comp(zone="NOSUCH"), TOP_Z, BOT_Z, zone_levels=ZL)
+check("a part whose zone is not in the level table falls back to the board surface",
+      at(place(t_unknown, (0, 0, 0)), (31.0, 52.0, TOP_Z + 4.0)),
+      place(t_unknown, (0, 0, 0)))
+check("and on a board with no zones at all nothing moves",
+      at(place(component_transform(MAP, comp(), TOP_Z, BOT_Z, zone_levels=None), (0, 0, 0)),
+         (31.0, 52.0, TOP_Z + 4.0)))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

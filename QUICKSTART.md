@@ -128,7 +128,8 @@ builds it.
   path at all — where the tool is installed comes from `set SIMPLE3D_DIR = …` in
   your own `pcbenv\env`, or from the folder `simple3d.il` was loaded from; the
   console says which.
-- Python 3.10 or newer and `cadquery-ocp` (OpenCASCADE) are required; the script
+- Python 3.10 or newer and `cadquery-ocp` (OpenCASCADE; 7.9 and 8.0 both work —
+  `pip install "cadquery-ocp>=7.7,<9"`) are required; the script
   checks the interpreter before opening the window, and the console names the
   interpreter that answered. If installing something else (node.js does this)
   puts a second Python ahead of yours on PATH, pin the one you meant by full
@@ -275,7 +276,8 @@ builds it.
   файлах путей нет вообще: где установлен инструмент, берётся из
   `set SIMPLE3D_DIR = …` в вашем `pcbenv\env` либо из папки, откуда загружен
   `simple3d.il`; консоль говорит, что сработало.
-- Нужен Python 3.10 или новее и пакет `cadquery-ocp` (OpenCASCADE); перед
+- Нужен Python 3.10 или новее и пакет `cadquery-ocp` (OpenCASCADE; работают и
+  7.9, и 8.0 — `pip install "cadquery-ocp>=7.7,<9"`); перед
   запуском GUI скрипт проверяет интерпретатор и печатает в консоль тот, который
   ответил. Если установка чего-то ещё (так делает node.js) поставила второй
   Python впереди вашего в PATH — закрепите нужный по полному пути в секции

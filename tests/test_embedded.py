@@ -94,5 +94,36 @@ s8, s9 = OUT / "shape_v8.step", OUT / "shape_v9.step"
 check("and the same STEP", abs(volume(read_step(s8)) - volume(read_step(s9))) < 1e-9
       and entity_count(s8) == entity_count(s9))
 
+print("\n[8] one absent model file is counted once, however many refdes use it")
+
+# ModelCache.labels_for reports a problem the FIRST time a name fails and None
+# on every later ask, so a caller counts each FILE once rather than once per
+# refdes. Dropping that line left every suite green (measured 2026-09-22):
+# every board here reaches a missing model from exactly one component, which is
+# the case where the two behave alike.
+d = json.loads(json.dumps(base))
+d["format"] = "simple3d"; d["format_version"] = 4
+d["embedded_models"] = ["MISSING_PART.step"]
+for ref in ("U1", "U2", "U3"):
+    d[ref] = {"step_mapping": {"step_name": "MISSING_PART.step",
+                               "rotation_x": 0.0, "rotation_y": 0.0, "rotation_z": 0.0,
+                               "offset_x": 0.0, "offset_y": 0.0, "offset_z": 0.0},
+              "is_mirrored": False, "x": 10.0, "y": 10.0, "angle": 0.0}
+jf8 = OUT / "case8.json"; jf8.write_text(json.dumps(d))
+logs8 = []
+res8 = core.generate(step_dir=ROOT / "demo/step_files", json_file=jf8, output_dir=OUT,
+                     output_name="case8", log=logs8.append)
+check("three refdes on one absent model: the FILE is listed once",
+      res8.missing_step_files == ["MISSING_PART.step"], str(res8.missing_step_files))
+check("and warned about once, not once per refdes",
+      len([m for m in logs8 if "could not find MISSING_PART.step" in m]) == 1,
+      [m for m in logs8 if "could not find" in m])
+check("while all three components are still skipped",
+      sorted(res8.components_skipped) == ["U1", "U2", "U3"], str(res8.components_skipped))
+check("the embedded-model name is not repeated either",
+      res8.embedded_not_on_disk == ["MISSING_PART.step"], str(res8.embedded_not_on_disk))
+check("and the good component is still placed", res8.components_placed == 1,
+      str(res8.components_placed))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

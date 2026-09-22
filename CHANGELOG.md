@@ -11,6 +11,79 @@ to use the tool.
 
 ---
 
+- **2026-09-22** — **Runs on cadquery-ocp 8.0 as well as 7.9, and the tests
+  are proved on copies of the tree.** Since September a bare `pip install
+  cadquery-ocp` brings OpenCASCADE 8.0, and Simple 3D died at its first import
+  there: 8.0 moved seven collection classes into one module under other
+  names, dropped the `_s` suffix from the `TopoDS` casts, and broke
+  `Bnd_Box.Get()` outright. All three are handled in one small module, and
+  the geometry modules read their collections from it; the suite, the seven
+  golden cases and the C++ regression give the same numbers under both
+  versions, and a STEP file written by 8.0 is line for line the one 7.9
+  writes except for the colour section, which 8.0 encodes in another
+  structure. The install line in README pins `>=7.7,<9`. The mutation harness
+  (`tools/mutate.py`) no longer writes into the working tree at all: each
+  worker breaks its own copy under `build/mutants/`, the copies run in
+  parallel, and the copy carries only what is under version control - the
+  honest form, since a test can borrow its power from a file only the
+  developer has. Measured on the 48 faults already in the table: 48 caught on
+  copies too, 878 s of wall for 2382 s of suite runs on four copies beside
+  other work (the in-place runner took 20-30 minutes alone). The sentinel suite
+  now also checks that a copy carries every file a row names and none of what
+  must stay out. And `tools/golden.py` reads each case's numbers from a file
+  instead of the child's last line of output, which under 8.0 was the STEP
+  writer's own "Write Done". Then the table itself was grown from 48 faults
+  to **220**, one per decision the suites claim, by four agents working on
+  disjoint suites: 179 mutations run, 51 survived their first run, 45 of
+  those were weak tests and every one was fixed the same day in the suite
+  that claims the behaviour (a component's whole placement arithmetic, the
+  datum's position, thirteen SKILL procedures pinned by name only, the
+  pcb → cad rule, a fold stub that could not tell the order of two
+  transforms, and more), six were dropped with the measurement that shows
+  them equivalent, one stays open (an arc through a wrapped bend is not
+  required to stay an arc); not one showed the code wrong. Three faults were
+  found in the checks themselves - a docs-audit check that could not fail, a
+  GUI test that hung on a modal box for 31 minutes, a launch deadline that
+  broke on a loaded machine - and fixed. The whole table, run once more on
+  four copies of the final tree: 220 of 220 caught, 50 minutes of wall for
+  2 h 49 min of suite runs. /
+  **Работает на cadquery-ocp 8.0 так же, как на 7.9, а тесты доказываются на
+  копиях дерева.** С сентября голый `pip install cadquery-ocp` приносит
+  OpenCASCADE 8.0, и Simple 3D падал там на первом же импорте: 8.0 перенёс
+  семь классов-коллекций в один модуль под другими именами, убрал суффикс
+  `_s` у приведений `TopoDS` и сломал `Bnd_Box.Get()` целиком. Все три случая
+  собраны в одном небольшом модуле, и геометрические модули берут коллекции
+  из него; набор тестов, семь золотых случаев и регрессия против C++ дают под
+  обеими версиями одни и те же числа, а STEP, записанный 8.0, строка в строку
+  повторяет записанный 7.9, кроме секции цветов, которую 8.0 кодирует другой
+  структурой. Строка установки в README закрепляет `>=7.7,<9`. Харнесс мутаций
+  (`tools/mutate.py`) больше вообще не пишет в рабочее дерево: каждый рабочий
+  ломает свою копию под `build/mutants/`, копии идут параллельно, и копия
+  несёт только то, что под версионным контролем, — честная форма, потому что
+  тест может брать силу из файла, который есть только у разработчика.
+  Измерено на 48 поломках, уже бывших в таблице: все 48 ловятся и на копиях,
+  878 с стены при 2382 с прогонов на четырёх копиях рядом с другой работой
+  (харнесс на месте тратил 20–30 минут в одиночестве). Набор-страж теперь
+  проверяет ещё и то, что копия несёт каждый файл, названный в строке, и ничего
+  из того, что должно остаться снаружи. А `tools/golden.py` читает числа
+  каждого случая из файла, а не из последней строки вывода ребёнка, которой
+  под 8.0 оказывалось «Write Done» самого писателя STEP. Затем сама таблица
+  выросла с 48 поломок до **220**, по одной на каждое решение, которое
+  объявляют наборы, силами четырёх агентов на непересекающихся наборах:
+  прогнано 179 мутаций, 51 пережила первый прогон, 45 из них оказались
+  слабыми тестами, и каждый починен в тот же день в наборе, который
+  объявляет это поведение (вся арифметика установки компонента, положение
+  датума, тринадцать процедур SKILL, закреплённых лишь по имени, правило
+  pcb → cad, заглушка свёртки, не различавшая порядок двух преобразований, и
+  другое), шесть отброшены с замером, показывающим их эквивалентность, одна
+  остаётся открытой (дуга через обёрнутый сгиб не обязана оставаться дугой);
+  ни одна не показала, что код неправ. Три дефекта нашлись в самих
+  проверках — проверка аудита документации, которая не могла упасть, тест
+  окна, зависший на модальном диалоге на 31 минуту, дедлайн запуска,
+  ломавшийся на загруженной машине, — и починены. Вся таблица, прогнанная
+  ещё раз на четырёх копиях итогового дерева: 220 из 220 поймано, 50 минут
+  стены при 2 ч 49 мин прогонов наборов.
+
 - **2026-09-17** — **The exposed-copper work is on `main`, after a review
   that fixed a fold and kept the proof of the tests in the tree.** Three
   things changed in the model. On a folded rigid-flex board, the bare

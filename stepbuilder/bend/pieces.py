@@ -82,7 +82,7 @@ def _faces_of(shape) -> list:
         return out
     exp = TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_FACE)
     while exp.More():
-        out.append(TopoDS.Face_s(exp.Current()))
+        out.append(TopoDS.Face(exp.Current()))
         exp.Next()
     return out
 
@@ -373,7 +373,7 @@ def _cut_into_pieces(outline: list[tuple[float, float]], chain: list,
     # refuses one of the pair for it; this is only about the boolean being
     # given input it is allowed to have.
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
-    from OCP.TopTools import TopTools_ListOfShape
+    from .._occt import TopTools_ListOfShape
 
     arguments = TopTools_ListOfShape()
     arguments.Append(face)
@@ -418,7 +418,7 @@ def _grown(face, margin: float):
                 return None
             exp = TopExp_Explorer(offset.Shape(), TopAbs_ShapeEnum.TopAbs_WIRE)
             while exp.More():
-                maker = BRepBuilderAPI_MakeFace(TopoDS.Wire_s(exp.Current()), True)
+                maker = BRepBuilderAPI_MakeFace(TopoDS.Wire(exp.Current()), True)
                 if maker.IsDone():
                     grown.append(maker.Face())
                 exp.Next()
@@ -464,7 +464,7 @@ def _cutters(faces: list, margin: float = CUTTER_MARGIN,
     says so.
     """
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
-    from OCP.TopTools import TopTools_ListOfShape
+    from .._occt import TopTools_ListOfShape
 
     out = []
     exact = 0

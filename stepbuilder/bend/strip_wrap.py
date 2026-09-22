@@ -34,7 +34,7 @@ from OCP.BRepAdaptor import BRepAdaptor_Curve
 from OCP.Geom2d import Geom2d_Ellipse, Geom2d_Line, Geom2d_TrimmedCurve
 from OCP.Geom2dAPI import Geom2dAPI_PointsToBSpline
 from OCP.GeomAbs import GeomAbs_CurveType
-from OCP.TColgp import TColgp_Array1OfPnt2d
+from .._occt import TColgp_Array1OfPnt2d
 from OCP.TopAbs import TopAbs_Orientation
 from OCP.gp import gp_Ax22d, gp_Dir2d, gp_Vec2d
 from OCP.Geom import Geom_CylindricalSurface
@@ -268,7 +268,7 @@ def _face_on(surface, mapped: list) -> tuple:
             # A hole. Its wire runs the opposite way round to the outer
             # one on the flat face, and it has to keep doing so here, or
             # the face comes out with the hole as its material.
-            maker = BRepBuilderAPI_MakeFace(built, TopoDS.Wire_s(wire.Reversed()))
+            maker = BRepBuilderAPI_MakeFace(built, TopoDS.Wire(wire.Reversed()))
         if not maker.IsDone():
             return None, "the wrapped outline did not close into a face"
         built = maker.Face()
@@ -311,7 +311,7 @@ def _sewn_solid(sewing) -> tuple:
     solid = None
     explorer = TopExp_Explorer(shell, TopAbs_ShapeEnum.TopAbs_SHELL)
     if explorer.More():
-        maker = BRepBuilderAPI_MakeSolid(TopoDS.Shell_s(explorer.Current()))
+        maker = BRepBuilderAPI_MakeSolid(TopoDS.Shell(explorer.Current()))
         if maker.IsDone():
             solid = maker.Solid()
     if solid is None or solid.IsNull():
@@ -328,7 +328,7 @@ def _sewn_solid(sewing) -> tuple:
     BRepGProp.VolumeProperties_s(solid, props, 1.0e-5, False, False)
     made = props.Mass()
     if made < 0:                            # sewn inside out
-        solid = TopoDS.Solid_s(solid.Reversed())
+        solid = TopoDS.Solid(solid.Reversed())
         made = -made
     return solid, made, None
 
@@ -442,7 +442,7 @@ def _map_strip(flat: TopoDS_Shape, strip: _Strip,
         wires = []
         explorer = TopExp_Explorer(face, TopAbs_ShapeEnum.TopAbs_WIRE)
         while explorer.More():
-            wire = TopoDS.Wire_s(explorer.Current())
+            wire = TopoDS.Wire(explorer.Current())
             wires.append((wire, wire.IsSame(outer)))
             explorer.Next()
 

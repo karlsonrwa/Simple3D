@@ -105,13 +105,18 @@ def build_all(cases: list[dict], step_dirs: list[str], timeout: float) -> dict:
             results[case["name"]] = {"timeout": timeout}
             print(f"  {case['name']:34} TIMEOUT after {timeout:.0f}s")
             continue
-        line = done.stdout.strip().splitlines()[-1] if done.stdout.strip() else ""
-        if done.returncode != 0 or not line.startswith("{"):
+        # The child's answer is a FILE, not its last line of stdout: OCCT's
+        # STEP writer prints "Write Done" to the process's C++ stdout, and
+        # under cadquery-ocp 8.0 that line lands AFTER Python's own output
+        # (the stream is flushed at exit), so every case read as a crash
+        # with rc=0 (round 90). stdout is for people, the file is for us.
+        answer = WORK / case["name"] / "result.json"
+        if done.returncode != 0 or not answer.is_file():
             results[case["name"]] = {"crash": done.returncode,
                                      "tail": (done.stderr or done.stdout)[-400:]}
             print(f"  {case['name']:34} CRASH rc={done.returncode}")
             continue
-        rec = json.loads(line)
+        rec = json.loads(answer.read_text(encoding="utf-8"))
         results[case["name"]] = rec
         what = (rec.get("error") or
                 f"V={rec['volume']:.6f} solids={rec['solids']} ents={rec['entities']} "
@@ -151,12 +156,18 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--with-local", action="store_true", help="also failed/ and input/")
     ap.add_argument("--step-dir", action="append", default=[], help="model folder (repeatable)")
     ap.add_argument("--timeout", type=float, default=900.0, help="seconds per case")
-    ap.add_argument("--case", help=argparse.SUPPRESS)   # internal: one case, JSON on stdout
+    ap.add_argument("--case", help=argparse.SUPPRESS)   # internal: one case, the answer in result.json
     args = ap.parse_args(argv)
     step_dirs = args.step_dir or [str(ROOT / "demo" / "step_files")]
 
     if args.case:
-        print(json.dumps(build_one(json.loads(args.case), step_dirs)))
+        case = json.loads(args.case)
+        answer = WORK / case["name"] / "result.json"
+        answer.unlink(missing_ok=True)          # never an older case's numbers
+        rec = build_one(case, step_dirs)
+        answer.parent.mkdir(parents=True, exist_ok=True)
+        answer.write_text(json.dumps(rec), encoding="utf-8")
+        print(json.dumps(rec))
         return 0
 
     cases = corpus(args.with_local)

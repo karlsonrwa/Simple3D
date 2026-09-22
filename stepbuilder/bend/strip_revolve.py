@@ -22,6 +22,8 @@ from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
 from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
+from .._occt import box_limits
+
 from .constants import EPS, MIN_ANGLE
 from .cut import _plane_face
 from .regions import _Strip, _bbox, _is_empty
@@ -62,7 +64,7 @@ def _spans_alike(flat: TopoDS_Shape, face: TopoDS_Shape, strip: _Strip) -> bool:
             BRepBuilderAPI_Transform(shape, turn, True).Shape(), box, False, False)
         if box.IsVoid():
             return None
-        xmin, _, zmin, xmax, _, zmax = box.Get()
+        xmin, _, zmin, xmax, _, zmax = box_limits(box)
         return xmin, xmax, zmin, zmax
 
     whole, section = extents(flat), extents(face)
@@ -197,7 +199,7 @@ def _prism_of(shape: TopoDS_Shape):
     flat: list[tuple[float, TopoDS_Shape, float]] = []
     explorer = TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_FACE)
     while explorer.More():
-        face = TopoDS.Face_s(explorer.Current())
+        face = TopoDS.Face(explorer.Current())
         surf = BRepAdaptor_Surface(face)
         kind = surf.GetType()
         if kind == GeomAbs_SurfaceType.GeomAbs_Plane:

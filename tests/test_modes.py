@@ -47,7 +47,7 @@ def inspect(path):
     from OCP.TCollection import TCollection_ExtendedString
     from OCP.XCAFApp import XCAFApp_Application
     from OCP.XCAFDoc import XCAFDoc_DocumentTool, XCAFDoc_ColorTool
-    from OCP.TDF import TDF_LabelSequence
+    from stepbuilder._occt import TDF_LabelSequence
     from OCP.Quantity import Quantity_Color
     app = XCAFApp_Application.GetApplication_s()
     doc = TDocStd_Document(TCollection_ExtendedString("d"))
@@ -63,6 +63,16 @@ def inspect(path):
             cols.add((round(c.Red(), 3), round(c.Green(), 3), round(c.Blue(), 3)))
     n = count_solids(read_step(path))
     return n, cols, path.stat().st_size
+
+def face_count(path) -> int:
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp_Explorer
+    exp = TopExp_Explorer(read_step(path), TopAbs_FACE)
+    n = 0
+    while exp.More():
+        n += 1
+        exp.Next()
+    return n
 
 print("\n[1] layer_kind classifies the real stackup")
 want = {"STIFFENER_TOP2": "stiffener", "ADHESIVE_TOP2": "adhesive",
@@ -91,6 +101,18 @@ for name, want_kind in (("STIFFNER_INNER1", "stiffener"),
 check("layerFunction still wins where it is set",
       layer_kind({"name": "EXPOXY_INNER1", "type": "MASK",
                   "function": "ADHESIVE"}) == "adhesive")
+# That check cannot fail on its own: EXPOXY_INNER1 lands in "adhesive" by its
+# NAME as well, so dropping the function from the probe altogether (mutation
+# board-layer-kind-ignores-function) changed nothing it looked at. These names
+# say nothing, so only the IPC function can classify them.
+for fn, want_kind in (("COVERLAY", "coverlay"), ("SOLDER_MASK", "soldermask"),
+                      ("ADHESIVE", "adhesive")):
+    got = layer_kind({"name": "LAYER_7", "type": "MASK", "function": fn})
+    check(f"a layer named LAYER_7 with function {fn} -> {want_kind}",
+          got == want_kind, got)
+check("and with no function at all it is 'other'",
+      layer_kind({"name": "LAYER_7", "type": "MASK", "function": None}) == "other",
+      layer_kind({"name": "LAYER_7", "type": "MASK", "function": None}))
 
 print("\n[2] the three modes")
 res = {}
@@ -109,6 +131,21 @@ check("layers >= 5 distinct colours", len(res["layers"][1]) >= 5, str(len(res["l
 check("layers is bigger than solid", res["layers"][2] > res["solid"][2])
 check("layers is smaller than inspect", res["layers"][2] < res["inspect"][2],
       f"{res['layers'][2]} vs {res['inspect'][2]}")
+
+# Solid and layers are both ONE solid, so the counts above cannot tell them
+# apart. The difference is that "solid" merges away the coplanar face every
+# layer interface leaves (ShapeUpgrade_UnifySameDomain in fuse_and_unify)
+# while "layers" deliberately keeps them, so the rim shows the stack.
+# Measured on this board: 12 faces against 69, 15,608 bytes against 88,350.
+# Until 2026-09-22 nothing read that - throwing the unify's answer away
+# (mutation board-coplanar-faces-not-merged) gave the solid board the layers
+# board's own 69 faces and 4.3x its file, with every check above green.
+f_solid, f_layers = face_count(OUT / "m_solid.step"), face_count(OUT / "m_layers.step")
+print(f"     faces: solid {f_solid}, layers {f_layers}")
+check("solid: every layer interface is merged away, a dozen faces at most",
+      f_solid <= 20, str(f_solid))
+check("layers: they are KEPT - several times as many faces",
+      f_layers > 3 * f_solid, f"{f_layers} vs {f_solid}")
 
 print("\n[3] the chosen colours are the ones written")
 custom = {"copper": (255, 0, 0), "stiffener": (0, 255, 0), "base": (0, 0, 255)}

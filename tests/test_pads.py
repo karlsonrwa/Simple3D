@@ -196,7 +196,14 @@ R130 = pad([seg(0.4501, 0.4, -0.4501, 0.4),
             seg(0.65, -0.2001, 0.65, 0.2001),
             arc(0.4501, 0.20015, 0.1999, 359.985669, 90.0)],
            [[-0.65, -0.4001], [0.65, 0.4]], "ROUNDED_RECTANGLE")
-face, note = P.pad_face(R130, None, False, True)
+# A wire that does not close RAISES out of pad_face rather than returning a
+# note, and an uncaught raise here costs every check below it - the suite dies
+# with a traceback instead of one FAIL line (measured 2026-09-22: breaking the
+# end-to-end join took the whole suite out that way).
+try:
+    face, note = P.pad_face(R130, None, False, True)
+except Exception as exc:
+    face, note = None, f"{exc.__class__.__name__}: {exc}"
 expected = 1.3 * 0.8 - (4 - math.pi) * 0.2 * 0.2
 check("a rounded rectangle whose arc centres are rounded still closes, through its end points",
       face is not None and abs(area(face) - expected) < 2e-4, (note, face and area(face), expected))
@@ -284,6 +291,43 @@ from OCP.BRepBndLib import BRepBndLib
 box = Bnd_Box()
 BRepBndLib.AddOptimal_s(placed, box, False, False)
 check("the fold's transform is applied last", abs(box.CornerMin().Z() - 100.5) < 1e-9, box.CornerMin().Z())
+
+
+class _Bend:
+    """A fold that is NOT a pure translation.
+
+    _Fold above translates along z, and a z translation commutes with both
+    factors of a pad's own placement - the move to the pin and the rotation
+    about z - so `fold.transform_at(x, y) * trsf` and `trsf *
+    fold.transform_at(x, y)` give the same shape and the check above cannot
+    fail (measured 2026-09-22). A real bend stands a panel UP, which does not
+    commute: 90 degrees about the x axis through the origin here.
+    """
+
+    def transform_at(self, x, y):
+        from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf
+        t = gp_Trsf()
+        t.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), math.pi / 2.0)
+        return t
+
+    def in_bend_area(self, x, y):
+        return None
+
+
+# By hand: the 2 x 1 pad lies x 0..2, y -0.5..0.5 at z 0; the move puts it at
+# x 10..12, y 19.5..20.5, z 0.5; then (x, y, z) -> (x, -z, y) stands it up at
+# x 10..12, y -0.5, z 19.5..20.5. Applied the other way round it would end up
+# at x 10..12, y 20, z 0..1 - the same pad, twenty millimetres away.
+stood = BRepBuilderAPI_Transform(face, P._placement(10.0, 20.0, 0.5, 0.0, _Bend()), True).Shape()
+box = Bnd_Box()
+BRepBndLib.AddOptimal_s(stood, box, False, False)
+stood_box = (box.CornerMin().X(), box.CornerMin().Y(), box.CornerMin().Z(),
+             box.CornerMax().X(), box.CornerMax().Y(), box.CornerMax().Z())
+check("a fold that stands the panel up is applied to the PLACED pad, not to the "
+      "figure at the origin",
+      all(abs(a - b) < 1e-9 for a, b in
+          zip(stood_box, (10.0, -0.5, 19.5, 12.0, -0.5, 20.5))),
+      tuple(round(v, 6) for v in stood_box))
 
 print("\n[4] against Allegro: the pad polygon it reports for each pin of the demo sample")
 fx = json.loads((ROOT / "tests/fixtures/pads_demo.json").read_text(encoding="utf-8"))
@@ -541,6 +585,31 @@ check("the windows sit one clearance above the face and the copper two, on both 
 # check above (review of 2026-09-17), so the lift is read where it is given.
 check("and the drawn openings' copper and laminate stand a third step up, above the copper",
       len(drawn_lifts) >= 2 and all(abs(lift - 3 * H) < 1e-12 for lift in drawn_lifts), drawn_lifts)
+
+
+# The line above reads the lift build_exposed was GIVEN, which is an argument
+# and not a height: a build_silkscreen that ignored flat_offset, and a
+# build_exposed that lifted the BOTTOM side into the board instead of away
+# from it, both passed it (measured 2026-09-22). So read the z of what was
+# actually built, on both sides.
+def zrange(shape):
+    b = Bnd_Box()
+    BRepBndLib.AddOptimal_s(shape, b, False, False)
+    return b.CornerMin().Z(), b.CornerMax().Z()
+
+
+flat_z = dict(stackups=board["stackups"], zones=[], levels={},
+              board_top_z=top_face, board_bottom_z=bottom_face, lift=3 * H)
+exp_top = P.build_exposed(board, section="exposed", **flat_z)["top"][0]
+bare_bot = P.build_exposed(board, section="bare", **flat_z)["bottom"][0]
+check(f"the copper under a drawn opening really lies at z = {top_face + 3 * H}, "
+      f"three clearances above the top face",
+      exp_top is not None and all(abs(z - (top_face + 3 * H)) < 1e-9 for z in zrange(exp_top)),
+      exp_top is not None and zrange(exp_top))
+check(f"and the bottom one at z = {bottom_face - 3 * H}, three BELOW the bottom "
+      f"face and not inside the board",
+      bare_bot is not None and all(abs(z - (bottom_face - 3 * H)) < 1e-9 for z in zrange(bare_bot)),
+      bare_bot is not None and zrange(bare_bot))
 check("off: no openings node, nothing said", "openings_top" not in text2
       and not any("Mask openings" in m for m in logs2))
 
@@ -588,6 +657,20 @@ check("mask_sides reads the stackups: STIFFENER2 both sides, FLEX neither, no la
       P.mask_sides(rf["stackups"]["STIFFENER2"]) == (True, True)
       and P.mask_sides(rf["stackups"]["FLEX"]) == (False, False)
       and P.mask_sides({"layers": []}) == (True, True))
+# Every stackup on hand is masked on both sides or on neither, so nothing said
+# which of the two answers belongs to which side: swapping them passed
+# (measured 2026-09-22). A stackup masked on ONE side is what tells them apart.
+ONE_SIDED = {"layers": [{"name": "SOLDERMASK_TOP", "type": "MASK"},
+                        {"name": "TOP", "type": "CONDUCTOR"},
+                        {"name": "", "type": "DIELECTRIC"},
+                        {"name": "BOTTOM", "type": "CONDUCTOR"},
+                        {"name": "COVERLAY_BOTTOM", "type": "MASK"}]}
+OTHER_SIDE = {"layers": [dict(lay, name=lay["name"].replace("SOLDERMASK_TOP", "COVERLAY_TOP")
+                              .replace("COVERLAY_BOTTOM", "SOLDERMASK_BOTTOM"))
+                         for lay in ONE_SIDED["layers"]]}
+check("a stackup masked on one side only is read on the right side of it",
+      P.mask_sides(ONE_SIDED) == (True, False) and P.mask_sides(OTHER_SIDE) == (False, True),
+      (P.mask_sides(ONE_SIDED), P.mask_sides(OTHER_SIDE)))
 jf.write_text(json.dumps(rf))
 res_rf, logs_rf, text_rf = build("rf_open", exposed_copper=True, mask_openings=True, fold_bends=False)
 check("both pins keep their copper, only the one on the masked zone gets a window",

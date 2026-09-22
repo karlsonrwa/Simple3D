@@ -286,6 +286,345 @@ check("the sweep never calls the interactive box select",
 check("and the selection it takes is the one it asked for, once",
       sweep_body.count("found = axlGetSelSet()") == 1 and sweep_body.count("found = nil") == 1)
 
+# --------------------------------------------------------------------------- #
+# [5c] - the eleven the audit left "pinned by name only"
+# --------------------------------------------------------------------------- #
+# docs/test-audit.md, "What is still not covered": [6] below required each copy
+# to NAME a procedure that exists, and nothing more - so `s3dVariantFit`,
+# `gdsysGetVariantInfo`'s states, `s3dSymbolsToExport`, the two path helpers,
+# the stackup body filter, the indenter and the four writers could all change
+# their minds in the .il while their copies, and every suite built on them,
+# stayed green. Each is pinned below the way [1]-[5] are: the statements that
+# carry the decision, and - wherever the decision can be READ out of the source
+# instead of restated here - the copy run against what the source says.
+
+print("\n[5c] the variant list: which token is a refdes, which file fits, who is exported")
+
+pin("s3dIsRefdesToken",
+    'stringp( t_token ) && rexMatchp( "[A-Za-z0-9]" t_token )')
+
+# Derived: the character class is read out of the SKILL and the copy is run
+# against it. The stray "\n" the parser leaves behind when a line ends in " )"
+# is the token this exists to drop - it can never match a refdes, but it did
+# land in "variant list covers N of M".
+cls = re.search(r'rexMatchp\( "\[([^"]+)\]" t_token \)',
+                normalise(body("s3dIsRefdesToken") or ""))
+check("the refdes character class is in the SKILL source", bool(cls),
+      normalise(body("s3dIsRefdesToken") or "")[:120])
+if cls:
+    wanted = re.compile("[" + cls.group(1) + "]")
+    TOKENS = ["R1", "C41", "\n", ")", "", "\t", "  ", "X", "1", "-", "_", "(+)"]
+    disagree = [t for t in TOKENS
+                if bool(T.is_refdes_token(t)) != bool(wanted.search(t))]
+    check(f"the copy keeps exactly the tokens [{cls.group(1)}] matches", not disagree,
+          disagree)
+check("a non-string is not a refdes token", not T.is_refdes_token(None))
+
+pin("s3dVariantFit",
+    'when( known[upperCase( refdes )]  onBoard = onBoard + 1 )',
+    'when( nKnown == 0',
+    'when( (nBoard > 0) && (onBoard == 0)')
+
+fit_body = normalise(body("s3dVariantFit") or "")
+# Derived: the two conditions decide between the three answers, and the copy
+# is run on boards that satisfy each in turn. The order matters as much as the
+# conditions - "installs nothing" is tested first, so a file with no refdes at
+# all is named rather than refused as another project's.
+check("the empty-list branch is tested before the foreign-file one",
+      0 <= fit_body.find("when( nKnown == 0") < fit_body.find("when( (nBoard > 0)"),
+      (fit_body.find("when( nKnown == 0"), fit_body.find("when( (nBoard > 0)")))
+check("the empty list warns and goes on rather than raising",
+      "s3dWarn(" in fit_body.split("when( nKnown == 0")[1].split("return( t )")[0]
+      and "error(" not in fit_body.split("when( nKnown == 0")[1].split("return( t )")[0])
+check("the foreign file raises", "error( strcat(" in
+      fit_body.split("when( (nBoard > 0) && (onBoard == 0)")[1][:400])
+check("the copy names an empty list rather than refusing it",
+      T.variant_fit([], ["C1", "R1"]) == "installs nothing")
+check("the copy refuses a list none of whose refdes is placed",
+      T.variant_fit(["C41", "R77"], ["C1", "R1"]) == "not this board")
+check("and counts the ones that are",
+      T.variant_fit(["C1", "R1", "R2"], ["C1", "R1", "X1"]) == "2 of 3")
+
+pin("s3dSymbolsToExport",
+    'when( s3dIsRefdesToken( refdes )',
+    '( s3dNoStepExport( sym )',
+    '( g_variantSymbolList && t_variant && refdes &&\n'
+    '                      !installed[upperCase( refdes )] &&\n'
+    '                      !s3dAlwaysStepExport( sym )')
+
+export_body = normalise(body("s3dSymbolsToExport") or "")
+# Derived: "never" outranks "always". NO_STEP_EXPORT is the first branch of the
+# cond and ALWAYS_STEP_EXPORT the last test of the second, so a symbol the
+# first excluded can never be rescued by the second - and the copy's cond has
+# to read the same way round.
+no_export = export_body.find("( s3dNoStepExport( sym )")
+always = export_body.find("!s3dAlwaysStepExport( sym )")
+check("NO_STEP_EXPORT is tested before ALWAYS_STEP_EXPORT",
+      0 <= no_export < always, (no_export, always))
+check("the copy lets NO_STEP_EXPORT outrank ALWAYS_STEP_EXPORT",
+      not T.exported(refdes="R1", installed=False, no_step_export=True,
+                     always_export=True))
+check("the copy drops a refdes this variant does not install",
+      not T.exported(refdes="R1", installed=False))
+check("ALWAYS_STEP_EXPORT rescues it",
+      T.exported(refdes="R1", installed=False, always_export=True))
+check("a symbol with no refdes is outside the list entirely",
+      T.exported(refdes=None, installed=False))
+check("and with no variant table everything is exported",
+      T.exported(refdes="R1", installed=False, has_table=False))
+
+print("\n[5d] gdsysGetVariantInfo - the three lines the state machine turns on")
+
+pin("gdsysGetVariantInfo",
+    'pattern = pcreCompile("[\\"\\t+\\\\()]")',
+    'propertyStart = pcreCompile( "^\\t\\t\\\\(.*" )',
+    'when( (state == "awaitStartCondition") && (strcmp( line "\\t\\t(base\\n" ) != 0) &&\n'
+    '                      ((strcmp( line "\\t)\\n" ) == 0) || pcreMatchp( propertyStart line ))',
+    'when( length( subStrings ) == 3',
+    'currentVariant = nth( 1 subStrings )',
+    'when( strcmp( line "\\t\\t(base\\n" ) == 0',
+    'if( strcmp( line "\\t\\t)\\n" ) == 0 then',
+    'symbols = nconc( symbols parseString( line ) )',
+    'if( strcmp( line "\\t)\\n" ) == 0 then',
+    'when( length( subStrings ) > 1',
+    'variantTable[currentVariant] = symbols')
+
+# Derived, and the strongest pin in this section: the three literal lines the
+# machine compares against are READ OUT OF THE SKILL, a Variants.lst is built
+# from exactly those, and the copy is asked to parse it. The copy spells them
+# out, so an edit to any one of the three in the .il makes the built file stop
+# parsing here - which is what "a state machine pinned to its own literals"
+# means. The strip class comes out of `pattern` the same way.
+parser_body = normalise(body("gdsysGetVariantInfo") or "")
+lits = re.findall(r'strcmp\( line "((?:[^"\\]|\\.)*)" \)', parser_body)
+# Three distinct lines, compared five times: "(base" opens the list from two
+# states, "\t)" closes the variant from two. A fourth literal, or one of the
+# three gone, is a state machine that no longer reads the file Capture writes.
+THREE = {"\\t\\t(base\\n", "\\t\\t)\\n", "\\t)\\n"}
+check(f"the machine turns on exactly three literal lines, found {sorted(set(lits))}",
+      set(lits) == THREE, lits)
+if set(lits) == THREE:
+    base_line, close_list, close_variant = "\t\t(base\n", "\t\t)\n", "\t)\n"
+    # Unescape what the source spells, so the text below is the SKILL's own.
+    unescape = {"\\t": "\t", "\\n": "\n"}
+    def unesc(text):
+        for k, v in unescape.items():
+            text = text.replace(k, v)
+        return text
+    base_line = unesc([l for l in lits if "(base" in l][0])
+    close_list = unesc([l for l in lits if l == "\\t\\t)\\n"][0])
+    close_variant = unesc([l for l in lits if l == "\\t)\\n"][0])
+    built = ('(\n\t("VAR_A"\n' + base_line + '\t\t\tR1 C2 X3\n' + close_list
+             + close_variant + '\t("VAR_B"\n' + base_line + '\t\t\tR9\n'
+             + close_list + close_variant + ')\n')
+    table = T.parse_variants(built)
+    check("the copy reads a file built from the SKILL's own three lines",
+          sorted(table) == ["VAR_A", "VAR_B"], sorted(table))
+    # .strip(): the parser's strip class is ["\t+\\()] and carries no "\n", so
+    # the last token of a line keeps the line end - which is exactly why
+    # s3dIsRefdesToken exists and why the counts once ran one too high.
+    check("and the symbols of each land where they belong",
+          [r.strip() for r in table.get("VAR_A", []) if T.is_refdes_token(r)] == ["R1", "C2", "X3"]
+          and [r.strip() for r in table.get("VAR_B", []) if T.is_refdes_token(r)] == ["R9"],
+          table)
+    # The 2026-09-03 case: a variant that closes before any (base installs
+    # nothing, and the file must still register it.
+    bare = '(\n\t("BARE"\n' + close_variant + ')\n'
+    check("a variant that closes before any base block is still registered",
+          list(T.parse_variants(bare)) == ["BARE"], T.parse_variants(bare))
+
+strip = re.search(r'pattern = pcreCompile\("\[((?:[^"\\]|\\.)*)\]"\)', parser_body)
+check("the strip class is in the SKILL source", bool(strip), parser_body[:120])
+if strip:
+    spelled = strip.group(1).replace('\\"', '"').replace("\\t", "\t").replace("\\\\", "\\")
+    check(f"the copy strips the same characters {spelled!r}",
+          set(T.STRIP) == set(spelled), (sorted(T.STRIP), sorted(spelled)))
+
+print("\n[5e] where Variants.lst is, and what the stackup body is")
+
+pin("s3dDesignFolder",
+    'when( (ch == "/") || (ch == "\\\\")  cut = i )',
+    'when( cut == 0  return( "" ) )',
+    'return( if( cut == 1 then "/" else substring( full 1 cut - 1 ) ) )')
+
+# Derived: the separators are read out of the SKILL, and the copy is run on a
+# path built with each of them. A .il that recognised "/" only would leave a
+# Windows path with no folder - Variants.lst opened by its bare name against
+# Allegro's working directory, which is the fault this helper exists for.
+seps = re.findall(r'\(ch == "((?:[^"\\]|\\.)*)"\)',
+                  normalise(body("s3dDesignFolder") or ""))
+check(f"the SKILL names its separators {seps}", len(seps) == 2, seps)
+for spelled in seps:
+    sep = spelled.replace("\\\\", "\\")
+    check(f"the copy cuts a path on {sep!r} too",
+          T.s3d_design_folder("d:" + sep + "boards" + sep + "b.brd")
+          == "d:" + sep + "boards",
+          T.s3d_design_folder("d:" + sep + "boards" + sep + "b.brd"))
+check("a name with no separator at all has no folder",
+      T.s3d_design_folder("flex2-a0.brd") == "")
+check("and the root keeps its one slash", T.s3d_design_folder("/b.brd") == "/")
+
+pin("s3dVariantFilePath",
+    'dir = s3dDesignFolder()',
+    'last = if( dir == "" then "" else substring( dir strlen( dir ) 1 ) )',
+    '( dir == ""                        "Variants.lst" )',
+    '( (last == "/") || (last == "\\\\")  strcat( dir "Variants.lst" ) )',
+    '( t                                strcat( dir "/Variants.lst" ) )')
+
+# Derived: the name and the separator the ordinary branch inserts are read out
+# of the SKILL, and the copy has to build the same path.
+tail = re.search(r'\( t strcat\( dir "((?:[^"\\]|\\.)*)" \) \)',
+                 normalise(body("s3dVariantFilePath") or ""))
+check("the SKILL's ordinary branch spells the whole tail", bool(tail),
+      normalise(body("s3dVariantFilePath") or "")[-140:])
+if tail:
+    check(f"the copy appends the same {tail.group(1)!r}",
+          T.s3d_variant_file_path("d:/boards/b.brd") == "d:/boards" + tail.group(1),
+          T.s3d_variant_file_path("d:/boards/b.brd"))
+check("a folder that already ends in a separator gets no second one",
+      T.s3d_variant_file_path("/b.brd") == "/Variants.lst",
+      T.s3d_variant_file_path("/b.brd"))
+check("and no folder at all falls back to the bare name",
+      T.s3d_variant_file_path("b.brd") == "Variants.lst")
+
+pin("s3dLayerInBody",
+    '!( s3dContains( probe "SILK" ) || s3dContains( probe "PASTE" ) )')
+
+# Derived: the markers are read out of the SKILL and the copy is run on a layer
+# name carrying each. Dropping one put the 0.025 mm paste sheets back into the
+# board body - 1.204 mm reported on a 1.104 mm board.
+markers = re.findall(r's3dContains\( probe "([^"]+)" \)',
+                     normalise(body("s3dLayerInBody") or ""))
+check(f"the SKILL names the markers it excludes {markers}", len(markers) == 2, markers)
+for marker in markers:
+    check(f"the copy keeps a layer named {marker} out of the body",
+          not T.in_body(marker + "_TOP", None), marker)
+check("and a conductor stays in", T.in_body("TOP", "CONDUCTOR"))
+check("the layer FUNCTION is read as well as the name",
+      not T.in_body("L7", "SOLDER_PASTE") and not T.in_body("L7", "SILKSCREEN"))
+body_src = normalise(body("s3dLayerInBody") or "")
+# The negation is the whole point: the body is what is NOT silk or paste. Drop
+# the "!" and the board becomes the two sheets it was built to leave out.
+check("the result is negated, and the negation is outside the or",
+      body_src.count("!( s3dContains(") == 1
+      and re.search(r'!\( s3dContains\( probe "\w+" \) \|\| s3dContains\( probe "\w+" \) \)',
+                    body_src), body_src[-140:])
+
+print("\n[5f] the writers: the indent, the version, the keys")
+
+pin("s3dAddIndent",
+    'pad = strcat( pad "\\t" )',
+    '( !t_string           nil )',
+    '( !stringp( t_string ) t_string )')
+
+# Derived: the character the indent is made of is read out of the SKILL. The
+# reference demo.json is tab-indented byte for byte, and every fragment in
+# skill_transliterations builds its own tabs - a space here would be invisible
+# to json.loads and visible in every diff of a re-exported board.
+padchar = re.search(r'pad = strcat\( pad "((?:[^"\\]|\\.)*)" \)',
+                    normalise(body("s3dAddIndent") or ""))
+check("the SKILL spells the indent character", bool(padchar),
+      normalise(body("s3dAddIndent") or "")[:140])
+if padchar:
+    one = padchar.group(1).replace("\\t", "\t")
+    check(f"the copy indents with the same {one!r}",
+          T.s3dAddIndent("a\nb", 2) == one * 2 + "a\n" + one * 2 + "b",
+          T.s3dAddIndent("a\nb", 2))
+
+pin("create3dIntermediateFormat",
+    '"\\"format_version\\": 12"',
+    'when( g_fullBoard\n            members = append( members list( "\\"full_board\\": true" ) )\n        )',
+    '"\\"components\\": {}"')
+
+# Derived: the version the exporter writes is read out of the SKILL and the
+# copy has to write the same number. tools/audit_docs.py compares it with the
+# docs; this compares it with the copy every suite's expectations are built on.
+version = re.search(r'"\\"format_version\\": (\d+)"',
+                    normalise(body("create3dIntermediateFormat") or ""))
+check("the SKILL states one format_version", bool(version),
+      normalise(body("create3dIntermediateFormat") or "")[:200])
+if version:
+    written = json.loads(T.create3dIntermediateFormat("b", False, ["{}"], None, [], False))
+    check(f"the copy writes format_version {version.group(1)}",
+          str(written.get("format_version")) == version.group(1),
+          written.get("format_version"))
+    check("the full-board key is optional and only ever true",
+          "full_board" not in written
+          and json.loads(T.create3dIntermediateFormat(
+              "b", True, ["{}"], None, [], False))["full_board"] is True)
+    check("and an export with no component writes an empty components object",
+          written.get("components") == {}, written.get("components"))
+
+pin("makePcb",
+    '"\\t\\"thickness\\": {\\n"',
+    'arrays = list( strcat( "[\\n" s3dAddIndent( buildString( car( edges ) ",\\n" ) ) "\\n]" ) )',
+    'when( cuts\n            arrays = append( arrays car( cuts ) )\n        )',
+    's3dAddIndent( buildString( arrays ",\\n" ) 2 )')
+
+# Derived: which of car/cadr/caddr each colour channel takes is read out of the
+# SKILL, and the copy is run with three values that tell them apart.
+pcb_body = normalise(body("makePcb") or "")
+channels = re.findall(r'"\\t\\"([rgb])\\": " sprintf\( nil "%f" (\w+)\( color \) \)', pcb_body)
+check("the SKILL names one accessor per colour channel",
+      [c for c, _ in channels] == ["r", "g", "b"], channels)
+if len(channels) == 3:
+    order = {"car": 0, "cadr": 1, "caddr": 2}
+    triple = (0.125, 0.25, 0.5)
+    got = json.loads("{" + T.makePcb(None, ["{}"], None, triple) + "}")["pcb"]["color"]
+    check("the copy reads the same element for each channel",
+          all(abs(got[name] - triple[order[acc]]) < 1e-9 for name, acc in channels),
+          (got, channels))
+check("a board with nothing to cut still writes one edges array",
+      len(json.loads("{" + T.makePcb(None, ["{}"], None, (0.0, 0.4, 0.0)) + "}")["pcb"]["edges"]) == 1)
+
+pin("symbolReturn3DElements",
+    's3dJsonQuote( sprintf( nil "%s" refDes ) ) ": {\\n"',
+    '"\\t\\"step_mapping\\": {\\n"',
+    '"\\t\\"zone\\": " s3dJsonQuote( zoneName ) ",\\n"')
+
+# Derived: every key the placement block writes is read out of the SKILL, and
+# the copy's block has to carry the same ones at the same depth. `zone` is the
+# one that decides which surface a part stands on: a part on a 2.44 mm
+# stiffener and one on 0.365 mm flex are placed differently.
+place_body = normalise(body("symbolReturn3DElements") or "")
+outer = set(re.findall(r'"\\t\\"(\w+)\\": ', place_body))
+inner = set(re.findall(r'"\\t\\t\\"(\w+)\\": ', place_body))
+check(f"the SKILL writes {sorted(outer)} beside step_mapping", "zone" in outer, sorted(outer))
+copy_block = json.loads("{" + T.placement("R1", "r.step", "FLEX") + "}")["R1"]
+check("the copy carries the same outer keys, step_mapping's own excepted",
+      outer - {"step_mapping"} <= set(copy_block) | {"is_mirrored", "y", "angle"},
+      (sorted(outer), sorted(copy_block)))
+check("and step_mapping's step_name is one of the inner keys on both sides",
+      "step_name" in inner and "step_name" in copy_block["step_mapping"],
+      (sorted(inner), sorted(copy_block["step_mapping"])))
+check("the zone reaches the file and a missing one is null",
+      copy_block["zone"] == "FLEX"
+      and json.loads("{" + T.placement("R1", "r.step", None) + "}")["R1"]["zone"] is None)
+
+pin("s3dWriteSilkPolys",
+    'fprintf( p_port "\\t\\t\\t\\t\\"layer\\": %s,\\n" s3dJsonQuote( layer ) )',
+    'fprintf( p_port "\\t\\t\\t\\t\\"vertices\\": [\\n" )')
+
+pin("s3dWriteSilkscreen",
+    'fprintf( p_port "\\t\\t\\"thickness\\": %f,\\n" thickness )',
+    'fprintf( p_port "\\t\\t\\"warnings\\": [\\n" )')
+
+# Derived: the layer line is written through a %s that takes the QUOTED name -
+# round 76's fix (plan D4) and what test_emit [4] guards from the other side.
+silk_body = normalise(body("s3dWriteSilkPolys") or "")
+check("the layer name goes through s3dJsonQuote, not between two quote characters",
+      re.search(r'\\"layer\\": %s,\\n" s3dJsonQuote\( layer \)', silk_body)
+      and '\\"layer\\": \\"%s\\"' not in silk_body, silk_body[:160])
+check("the copy quotes it the same way",
+      json.loads("[" + T.silk_poly('odd"name') + "]")[0]["layer"] == 'odd"name')
+warn_body = normalise(body("s3dWriteSilkscreen") or "")
+check("the warnings array is written only when there is something to say",
+      re.search(r'when\( warnings fprintf\( p_port "\\t\\t\\"warnings\\": \[\\n" \)', warn_body),
+      warn_body[:200])
+check("and the copy's warnings survive a quote and a backslash",
+      json.loads("{" + T.silk_warnings(['a "q"', "b\\c"]) + "}")["warnings"]
+      == ['a "q"', "b\\c"])
+
 print("\n[6] every copy is pinned, and pins something that exists")
 
 # The loop the audit's finding is really about: a transliteration added later
@@ -334,6 +673,13 @@ MUST_PIN_SOURCE_ONLY = {"s3dCollectExposed"}
 check("every procedure the audit found unpinned is pinned here",
       (MUST_PIN | MUST_PIN_SOURCE_ONLY) <= set(PINNED),
       sorted((MUST_PIN | MUST_PIN_SOURCE_ONLY) - set(PINNED)))
+# The rule the audit's "what is still not covered" asked for: NAMING a
+# procedure that exists was all [6] required, so eleven copies could drift
+# from their originals with nothing to say so. A copy is pinned or it is not
+# a copy - one `pin(...)` per name, or the name comes off the `# mirrors` line.
+unpinned = sorted(p for p in named if p not in PINNED)
+check(f"and every procedure a `# mirrors` line names is pinned by a statement "
+      f"({len(named)} named, {len(PINNED)} pinned)", not unpinned, unpinned)
 check(f"and every pin found its procedure ({len(PINNED)} pinned)",
       all(body(p) is not None for p in PINNED),
       [p for p in PINNED if body(p) is None])

@@ -17,7 +17,7 @@ def mk(spec):
     return core.restack([{"name":n,"type":t,"thickness":k,"z_top":0,"z_bottom":0,
                           "negative":False,"function":None,"shapes":None} for n,t,k in spec])
 base=json.loads((ROOT/"demo/ap-214/demo.json").read_text())
-def build(name, mode, with_stackups=True):
+def build(name, mode, with_stackups=True, z_datum="top"):
     d={"format":"simple3d","format_version":6,"name":name,
        "pcb":{"thickness":{"soldermask_top":0.025,"board":1.054,"soldermask_bottom":0.025},
               "color":base["pcb"]["color"],"edges":[rect(0,0,20,10)]}}
@@ -26,7 +26,7 @@ def build(name, mode, with_stackups=True):
     jf=OUT/f"{name}.json"; jf.write_text(json.dumps(d))
     logs=[]
     core.generate(step_dir=ROOT/"demo/step_files",json_file=jf,output_dir=OUT,
-                  output_name=name,board_mode=mode,log=logs.append)
+                  output_name=name,board_mode=mode,z_datum=z_datum,log=logs.append)
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
     s=read_step(OUT/f"{name}.step")
@@ -38,6 +38,19 @@ n,v,bb,lg=build("p_solid","solid")
 check("one solid", n==1, str(n))
 check("volume = outline x 1.104", abs(v-20*10*1.104)<0.01, f"{v:.3f}")
 check("no zone log", not [m for m in lg if "one zone" in m], str(lg[:4]))
+# WHERE the body sits, not only how big it is. Until 2026-09-22 no board suite
+# read a plain board's absolute z at all: flipping the datum test in
+# _prepare_stackups (mutation board-plain-board-datum-inverted) moved the
+# whole board a thickness up and every volume, extent and count stayed equal.
+# (1e-6, not tighter: Bnd_Box inflates its corners by Precision::Confusion.)
+check("datum top: the top face is on z=0 and the body hangs below it",
+      abs(bb.CornerMax().Z())<1e-6 and abs(bb.CornerMin().Z()+1.104)<1e-6,
+      f"{bb.CornerMin().Z():.4f} .. {bb.CornerMax().Z():.4f}")
+nb,vb,bbb,lgb=build("p_solid_bottom","solid",z_datum="bottom")
+check("datum bottom: the bottom face is on z=0 and the body stands above it",
+      abs(bbb.CornerMin().Z())<1e-6 and abs(bbb.CornerMax().Z()-1.104)<1e-6,
+      f"{bbb.CornerMin().Z():.4f} .. {bbb.CornerMax().Z():.4f}")
+check("and it is the same board either way", abs(vb-v)<0.01, f"{vb:.3f} vs {v:.3f}")
 
 print("\n[2] Not stitched on a plain board now separates the layers")
 n2,v2,bb2,lg2=build("p_inspect","inspect")

@@ -5,7 +5,16 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-17 (round 89, on `main`)
+## READ THIS FIRST — state as of 2026-09-22 (round 90, on `main`)
+
+**Round 90 (2026-09-21/22)**: the exporter runs on cadquery-ocp 8.0
+(OpenCASCADE 8.0) as well as 7.9 - the names 8.0 renamed are bound once in
+`stepbuilder/_occt.py`, the suite, the golden corpus and the C++ regression
+give the same numbers under both, and README pins `>=7.7,<9`; the mutation
+harness breaks private copies of the tree under `build/mutants/` and never
+the working tree; the table is 220 rows (was 48), grown by four agents, with
+45 weak tests fixed and three defects in the checks themselves; `golden.py`
+reads its child's numbers from a file. Read round 90 for the measurements.
 
 **The exposed-copper work of rounds 85–89 (2026-09-07 … 2026-09-17, developed
 on `feature/copper-pads`, merged into `main` on 2026-09-17)**: two checkboxes,
@@ -36,7 +45,7 @@ one settled.
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
 | The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 80 (2026-09-03): Step 0, Plans A, B, C, D, E1–E2 (`format_version` 9), F1–F3, F5 and G1–G5 - each row says what it left. Left: the optional F4 (pytest) and E3 (deleting `intermediate.RESERVED` once a release has shipped v9). Rounds 85–89 added features and tests and touched no plan row |
 | The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd` (eight since round 86c); `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
-| The mutation table | `tests/mutations.json` (round 89): 48 deliberate faults the suite has been shown to catch, applied by `tools/mutate.py` to a COPY of the tree (20–30 min for the whole table; never the working tree - it restores a byte snapshot after every fault); `tests/test_mutations.py` in `run_all` checks in a fraction of a second that every pattern still matches its file exactly once. The audit and its repairs: `docs/test-audit.md` |
+| The mutation table | `tests/mutations.json` (round 89, grown in round 90): 220 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
 
 Three tools grew out of this project and now have repositories of their own.
 Nothing here depends on them, and no copy of their code belongs in this tree:
@@ -3014,6 +3023,215 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+## Update 2026-09-22 (round 90) — the exporter on OpenCASCADE 8.0, and the mutation table proved on copies
+
+Two asks. Bring the tests in line with what the mutation work in BaroSim and
+step2html learned on 2026-09-21 - mutate COPIES of the tree, never the tree,
+and a copy has only what is under version control - and check whether Simple
+3D still runs on the cadquery-ocp that pip now installs, since step2html had
+died on it. Everything below was measured; the numbers are the evidence.
+
+### cadquery-ocp 8.0: what broke
+
+`pip install cadquery-ocp` resolves to **8.0.1.0.0** (OpenCASCADE 8.0) since
+September 2026; the machine's own Pythons still carry 7.9.3.1.1, so the check
+ran in step2html's venv `work\py80` (OCP 8.0.1.0, numpy 2.5.3). Before any
+change: `import stepbuilder.core` dies at `contour.py:29`
+(`TopTools_HSequenceOfShape` is not in `OCP.TopTools`), `run_all --quick`
+11/16, and no geometry suite can start. A probe of every OCP name the tree
+uses (stepbuilder, tests, tools; 26 distinct `_s` statics among them):
+
+| in 7.9 | in 8.0 | used by |
+|---|---|---|
+| `OCP.TopTools.TopTools_ListOfShape` | `OCP.collections.List_TopoDS_Shape` | board, legend, bend/apply, bend/pieces |
+| `TopTools_HSequenceOfShape` | `HSequence_TopoDS_Shape` | contour, legend, pads |
+| `TopTools_DataMapOfShapeInteger` | `DataMap_TopoDS_Shape_int_TopTools_ShapeMapHasher` | `fuse_keeping_faces` |
+| `TopTools_IndexedMapOfShape` | `IndexedMap_TopoDS_Shape_TopTools_ShapeMapHasher` | `_support.free_edges` |
+| `TopTools_IndexedDataMapOfShapeListOfShape` | `IndexedDataMap_TopoDS_Shape_List_TopoDS_Shape_TopTools_ShapeMapHasher` | `_support.free_edges` |
+| `OCP.TDF.TDF_LabelSequence` | `Sequence_TDF_Label` | models, test_modes |
+| `OCP.TColgp.TColgp_Array1OfPnt2d` | `Array1_gp_Pnt2d` | bend/strip_wrap |
+| `TopoDS.Face_s` / `Wire_s` / `Edge_s` / `Solid_s` / `Shell_s` | only the bare `TopoDS.Face(...)`, which 7.9 binds too | 40 call sites in 8 files |
+| `Bnd_Box.Get()` → six floats | raises `TypeError: Unable to convert function return value ... Bnd_Box::Lim` on EVERY call | regions, strip_revolve, pads, `_support.bbox` |
+
+Every other `_s` static - the 19 others, `BRepGProp.VolumeProperties_s`,
+`TDataStd_Name.Set_s`, `BRepBndLib.Add_s`, `TopExp.MapShapes_s`,
+`XCAFDoc_DocumentTool.ShapeTool_s` and the rest - is bound in both.
+`OCP.collections` does not exist in 7.9 and holds 642 names in 8.0.
+
+**The hasher trap**, step2html's finding, re-measured here because two of the
+maps decide geometry: 8.0 binds `IndexedMap_TopoDS_Shape` (keys on `IsEqual`,
+orientation counts) beside the `..._TopTools_ShapeMapHasher` one (`IsSame`).
+On a cube `MapShapes_s` refuses the plain map outright and counts 12 edges
+under the hasher; a face bound in the plain `DataMap_TopoDS_Shape_int` is NOT
+found by its reversed twin, in the hasher one it is - and `fuse_keeping_faces`
+looks faces up exactly that way, so the plausible name would have coloured
+the layer-stitched board wrong everywhere and said nothing. 7.9's `TopTools_*`
+are the hasher ones. `Bnd_Box.Get()`: `CornerMin()` / `CornerMax()` give the
+same six doubles in both, gap included, and raise the same
+`Standard_ConstructionError` on a void box that 7.9's `Get()` raised.
+
+### The fix: one module, forty bare casts
+
+`stepbuilder/_occt.py` binds the seven collections under their 7.9 names
+(try 7.9, fall back to `OCP.collections`), `box_limits(box)` in place of
+`Get()`, and reports a missing name with the OCP version and the range the
+code knows (the way step2html's `_occt.py` does, after a user report that
+arrived as "does not work with a newer cadquery" because the old message
+blamed the interpreter). The geometry modules import the seven from it; the
+window's side still imports no OCP (round 80, G5). The casts are spelled
+bare. Thirteen files, every replacement asserted by count before a byte was
+written.
+
+Proved under 7.9 first: the regression STEP after the edit is byte-identical
+to the one before, apart from the header's date (5765 lines); `golden.py
+--check` 7 cases, no difference; `run_all` 31/31 (454 s beside the mutation
+run). Then under 8.0: `run_all` **30/31 in 459 s**, the one red being
+pyflakes not installed in that venv (installed since; `python_names.py`
+green there too); `golden.py --check` **7 cases, no difference against the
+7.9 record** - volume, box, solids, entity counts 5038 / 1068 / 4611 / 7720 /
+750, placed, warnings, all the same. The regression STEP written by 8.0
+against 7.9's: the first 5397 lines - every line of geometry - identical;
+then the presentation section, the same 6 `STYLED_ITEM`, 50
+`PRESENTATION_STYLE_ASSIGNMENT`, 50 `SURFACE_STYLE_USAGE`, 7 `COLOUR_RGB`,
+written in the other order (the component's presentation representation
+first, the board's after). Read back through XCAF by either version, both
+files give the same colours (`PCB_nomask` Surf and Curv 0, 0.133, 0).
+
+**One process-level difference, and the tool it broke.** OCCT's STEP writer
+prints `** WorkSession : Sending all data` and `Step File Name : ... Write
+Done` to the C++ stdout - under 7.9 as well, one `Write Done` per run in
+both - but 8.0 flushes it at process exit, AFTER Python's own output.
+`tools/golden.py` took the child's LAST stdout line as its JSON answer, so
+under 8.0 all seven cases came back as `crash rc=0` with the numbers gone,
+while the numbers themselves were identical. The child writes
+`build/golden/<case>/result.json` now and the parent reads that; stdout is
+for people (memory: `a-childs-stdout-is-shared-with-the-libraries-it-loads`).
+
+README's install line is `pip install "cadquery-ocp>=7.7,<9"` in both
+languages, with why; QUICKSTART says both work; ARCHITECTURE has the module
+in its table and its graph. Not verified: what Inventor makes of the 8.0
+colour section (the same entities in another order); and the user's install
+still runs 7.9 (pinned by path in their local config), so nothing changes for
+them until they upgrade.
+
+### The mutation runner on copies, and what the copies said
+
+`tools/mutate.py` is the shared harness of the `test-audit` skill as
+step2html took it on 2026-09-21, with the repository's own lines: the default
+table, the copies under `build/mutants/run-<time>-<pid>/w<i>/` (this
+repository's one scratch folder), and neither `input/`, `failed/`, `.claude/`
+nor `simple3d_config.local.json` travelling into a copy. The lock file, the
+leftover check at every start, the bytecode purge and the rule that nobody
+edits while it runs are gone with the design that needed them; what stays is
+the check that the WORKING tree carries no mutation (the copies would inherit
+it), `--changed [REV]` for the day's check, ids selecting rows by substring,
+longest suites first, and the restore proved by SHA-256 per job.
+`tests/mutations.json` names its suites as paths from the root now
+(`tests/test_pads.py`, `tools/skill_checks.py`), which is what `--changed`
+compares with git's own paths. `tests/test_mutations.py` grew two sections:
+the copy a worker makes carries every file and suite a row names, byte for
+byte, no bytecode and none of what must stay out; and `--changed` selects by
+the file, the suite and the row, nothing else - 257 checks in about a second.
+
+**The 48 rows on four copies, the tree as it was before the OCCT edits:**
+127 files in each copy - the 126 tracked files plus `_occt.py`; the harness
+prints the total over the four copies, 508 - copied in 0.2 s, baseline of
+all 29 suites and checks on the copies, then **48 of 48 caught, 878 s of
+wall for 2382 s of suite runs** -
+beside the two full suite runs and four agents starting up, so the fold suite
+took 254 s in the baseline and 310-337 s per row instead of 160. The copies
+were honest in the way BaroSim's were, and here they had nothing to confess:
+no row of this table borrowed its power from the developer's environment
+(the repository root has no `simple3d_config.local.json`; the fixtures the
+suites read are all tracked). Two things worth knowing about running it:
+with stdout redirected to a file Python buffers the whole log until the end,
+so start it with `-u` if the progress is to be watched; and a full run at
+this size is 15 minutes of wall on a busy machine, the fold suite's six rows
+being most of it.
+
+### The table grown to 220: four agents, one row per decision
+
+step2html's table went 0 → 161 the day before by writing one row per
+decision its suites claim, and 65 of the first 150 survived - every one a
+weak test. Same here, with the user's leave for up to four opus agents: each
+owned a disjoint set of suites and targeted only the modules those suites
+claim (board / fold / pads-silk-models / SKILL-launcher-settings-window),
+never editing code, the table, `_support`, a fixture or a document; each
+read its suites for the nine smells, wrote rows, ran them on copies with the
+harness (`--spec` its own file, one or two workers), fixed every weak test in
+its own files, re-ran the row and reported the FAIL line; the coordinator
+merged the rows with a checking script (`_tmp/s3d-agents/merge_rows.py`: id
+new, file and suites exist, `old` once in the FINAL tree, `new` removes it)
+- 172 accepted, 0 refused, 48 → 220. The reports are under
+`build/agents/<scope>/report.md` (the harness refuses a subagent's `.md`, so
+each came back in the agent's message and was saved by hand). The machine
+was shared the whole time with two other projects' mutation runs from other
+sessions (17-27 Python processes), which is why the fold suite cost
+260-2 125 s per run and the fold agent ran 15 of the 26 rows it wrote.
+
+| agent | rows run | caught as the suites were | after the fixes | dropped with a measurement | kept |
+|---|---:|---:|---:|---:|---:|
+| board | 45 | 38 | 44 | 1 | 44 |
+| pads, silk, models | 65 | 47 | 62 | 3 | 62 |
+| SKILL, launcher, settings, window | 54 | 26 of 48 | 53 | 1 | 53 |
+| fold | 15 | 10 | 13 | 1 (+1 open) | 13 |
+
+What the 51 first-run survivors were, in the shapes the playbook names -
+each with the suite that claims it now and the row that proves it (the
+full list is in `docs/test-audit.md`, third pass): checks that could not
+fail (`test_modes [1]` layerFunction, `test_bend [3]` "one solid",
+`test_bend [17]` "says so once", `test_launch_cmd [5]` the dialog by a word
+a comment carries, `test_pads [6]` the third height as an argument);
+oracles never seen to fail (`_neutral_ceiling`'s note, the flat legend's
+merge by file size); fixtures that cannot tell (symmetric stackups, a fold
+stub that commutes, the demo's zero angle, `wide_hold` wide the wrong way,
+both silk sides off together, two masked zones at one z); decisions nothing
+claimed (the whole `component_transform` - now `test_mech [3]` with the
+arithmetic on paper -, `_prepare_stackups` → `align_stackups`, the datum's
+position, thirteen SKILL procedures pinned by name only - `test_skill_pins
+[5c]`-`[5f]`, and `[6]` now requires a statement pin for every mirrored
+procedure -, `s3dResolveCadDir`, `winplace`'s near-screen filter, a strip
+the revolve refuses); suites raising instead of failing (`test_pads` R130,
+`test_variant_path` `said[-1]`); and three defects in the checking
+machinery: `audit_docs`' `format_version` check could not fail (it accepted
+the README's history phrases; now `format_version: N` once per language,
+every occurrence compared), `test_gui [9]` reached a modal box under one
+mutation and sat 31 minutes, `test_launch_cmd`'s 8 s launch deadline went
+red on the clean copy of a loaded machine and two rows read "survived" for
+it. Six survivors were not findings: four equivalent mutants dropped with
+the measurement (an arc's range `GC_MakeArcOfCircle` unwraps itself; a
+pad arc's ccw flag, 6.7e-16 mm²; the anchor sign `_walk` re-decides at the
+seam, every transform identical over five plans; "printed zone wins", which
+needs overlapping zones), one aimed at a phrase no check claims, and one
+open: **an arc through the wrap is not required to stay an arc**
+(`bend-arcs-wrapped-as-splines` survived 2 125 s - no fixture has the relief
+notch that once made OCC call the wire self-intersecting on the real
+board). Eleven fold rows are written and validated but unrun
+(`build/agents/bend/make_rows.py`). No defect in the code: not one of the
+179 mutations showed the Python or the SKILL wrong.
+
+The harness took two things from the day's other projects and one from
+this one: the shared harness of 2026-09-22 (a per-suite timeout of three
+baselines plus two minutes, past which the process tree is killed and the
+row is HUNG; `--data` for files outside version control; `flush`ed
+progress; a SystemExit's last line instead of "exit 1") is ported with the
+repository's own lines, and a suite already red on the clean copy now makes
+the rows naming it UNPROVEN instead of silently "survived" (trap 8 in its
+docstring; the shared harness does not have this yet). `test_mutations`
+asks its questions about 220 rows in 945 checks; its floor is 200.
+
+**The whole table on copies, the final tree: 220 of 220 caught, 2 992 s of
+wall for 10 158 s of suite runs on four copies** (`build/mutation-runs-2026-09-22/full_220.log`):
+the fold suite 658 s in the baseline and 519-651 s per row, nineteen rows
+naming it, no row refused, hung or unproven. That is the number the docs
+carry; the agents' own runs were the proof per row on the way there.
+`tests/` is 32 scripts and 6 fixtures, about 8 800 lines of Python (was
+~7 800); the suites themselves grew by about 1 000 lines. With every agent's
+edit in the tree, `run_all` is **31/31 under 7.9 in 822 s and 31/31 under
+8.0 in 898 s** (the fold suite 662 and 604 s), measured beside the full
+table run and the other sessions' loads; the 225 s of round 89 is the
+quiet-machine number and nothing here was measured on a quiet machine.
+
 ## Update 2026-09-17 (round 89) — the pre-merge review: a fold that ate holed faces, and the mutation table kept in the tree
 
 The ask: look at where the branch stands, whether the tests are worth what

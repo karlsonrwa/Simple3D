@@ -23,7 +23,9 @@ from OCP.IFSelect import IFSelect_ReturnStatus
 from OCP.STEPCAFControl import STEPCAFControl_Reader
 from OCP.TCollection import TCollection_AsciiString, TCollection_ExtendedString
 from OCP.TDataStd import TDataStd_Name
-from OCP.TDF import TDF_Label, TDF_LabelSequence, TDF_Tool
+from OCP.TDF import TDF_Label, TDF_Tool
+
+from ._occt import TDF_LabelSequence
 from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
 from .errors import StepBuilderError

@@ -76,6 +76,20 @@ res4, logs4 = build("silk_off", silk_top=False, silk_bottom=False)
 check("0 solids", res4.silkscreen_solids == 0, str(res4.silkscreen_solids))
 check("warnings still logged when legend is off",
       any("zero width" in m for m in logs4), "warning lost")
+# ONE side off is the case that tells the per-side flag from the outer
+# "is any legend wanted at all" guard: with both off the loop is never entered,
+# so dropping the per-side test from it left this suite green (measured
+# 2026-09-22). The demo board has three top polygons and one bottom one.
+res4b, _ = build("silk_top_only", silk_bottom=False)
+check("the bottom side alone can be switched off: 3 of the 4 built, no bottom part",
+      res4b.silkscreen_solids == 3
+      and "silkscreen_bot" not in (OUT / "silk_top_only.step").read_text(errors="replace"),
+      str(res4b.silkscreen_solids))
+res4c, _ = build("silk_bot_only", silk_top=False)
+check("and so can the top: 1 built, no top part",
+      res4c.silkscreen_solids == 1
+      and "silkscreen_top" not in (OUT / "silk_bot_only.step").read_text(errors="replace"),
+      str(res4c.silkscreen_solids))
 
 print("\n[7] flat mode: faces unioned, file smaller")
 res5, logs5 = build("silk_flat", silk_flat=True)
@@ -303,6 +317,113 @@ check("none skipped", res7.silkscreen_skipped == 0, res7.silkscreen_skipped)
 check("no area disagreement on either side",
       not [m for m in logs7 if "differ from the area" in m],
       [m for m in logs7 if "differ from the area" in m])
+
+print("\n[13] the ink stands off the face it is printed on, on the right side of it")
+
+# [1] counts solids and [7] compares file sizes, so the SIGN of the ink and the
+# flat legend's clearance were measured by nothing: the bottom legend growing
+# upward INTO the board, and a flat face landing exactly ON the board face -
+# the flicker DEFAULT_FLAT_HEIGHT exists to prevent - both left the suite green
+# (measured 2026-09-22). These read the z of what was built.
+from OCP.Bnd import Bnd_Box
+from OCP.BRepBndLib import BRepBndLib
+from OCP.BRepGProp import BRepGProp
+from OCP.GProp import GProp_GProps
+
+H = legend.DEFAULT_FLAT_HEIGHT
+
+
+def zrange(shape):
+    b = Bnd_Box()
+    BRepBndLib.AddOptimal_s(shape, b, False, False)
+    return b.CornerMin().Z(), b.CornerMax().Z()
+
+
+def surface_area(shape):
+    props = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(shape, props)
+    return props.Mass()
+
+
+def zat(shape, lo, hi, tol=1e-12):
+    got = zrange(shape)
+    return abs(got[0] - lo) < tol and abs(got[1] - hi) < tol
+
+
+SQ = [square(0, 0, 4, "L1")]
+solid_top, _, _ = legend.build_silkscreen(SQ, 0.0, 0.025, side="top")
+solid_bot, _, _ = legend.build_silkscreen(SQ, -1.0, -0.025, side="bottom")
+check("solid ink on the top grows up, away from the face it is printed on",
+      zat(solid_top, 0.0, 0.025), zrange(solid_top))
+check("and on the bottom it grows down, away from the board and not into it",
+      zat(solid_bot, -1.025, -1.0), zrange(solid_bot))
+
+flat_top, _, _ = legend.build_silkscreen(SQ, 0.0, 0.0, side="top", flat=True, flat_offset=H)
+flat_bot, _, _ = legend.build_silkscreen(SQ, -1.0, 0.0, side="bottom", flat=True, flat_offset=-H)
+check(f"a flat legend is lifted clear of the face by DEFAULT_FLAT_HEIGHT ({H} mm), "
+      f"not left coplanar with it", zat(flat_top, H, H), zrange(flat_top))
+check("and the bottom one is lifted the other way",
+      zat(flat_bot, -1.0 - H, -1.0 - H), zrange(flat_bot))
+
+# Flat faces that overlap are unioned (_merge_coplanar): two 4x4 squares 2 mm
+# apart share 4 mm2, so the merged surface is 28 mm2, not 32. Unmerged they are
+# two coincident coplanar faces over that square, which no depth buffer can
+# order - the flicker the merge exists to remove, and nothing measured it.
+TWO = [square(0, 0, 4, "L1"), square(2, 2, 4, "L1")]
+merged, built_m, _ = legend.build_silkscreen(TWO, 0.0, 0.0, side="top", flat=True,
+                                             flat_offset=0.0)
+check(f"two overlapping flat polygons are unioned: {surface_area(merged):.3f} mm2 "
+      f"against 32 unmerged", built_m == 2 and abs(surface_area(merged) - 28.0) < 1e-9,
+      surface_area(merged))
+check("while as solids they are deliberately left as two prisms",
+      legend.build_silkscreen(TWO, 0.0, 0.025, side="top")[1] == 2)
+
+# The SIGN is decided in core._build_legend, which the four checks above do not
+# go through: handing build_silkscreen abs(thickness) - the bottom legend
+# growing up, into the board it is printed on - left the whole suite green
+# (measured 2026-09-22). The same board with and without a legend, the
+# component removed so that only the ink can move the bounding box.
+from _support import read_step, bbox
+
+nc = json.loads(json.dumps(base))
+nc.pop("C1", None)
+nc["format"] = "simple3d"; nc["format_version"] = 3
+jfn = OUT / "silk_sign.json"
+for tag, silk in (("silk_sign", [square(20, 20, 4, "L1")]), ("silk_none", [])):
+    nc["silkscreen"] = {"thickness": 0.025, "top": silk,
+                        "bottom": [square(30, 40, 3, "L1")] if silk else []}
+    jfn.write_text(json.dumps(nc))
+    core.generate(step_dir=ROOT / "demo/step_files", json_file=jfn, output_dir=OUT,
+                  output_name=tag, log=lambda m: None)
+on, off = bbox(read_step(OUT / "silk_sign.step")), bbox(read_step(OUT / "silk_none.step"))
+check(f"through the build, the ink grows AWAY from the board on both sides: "
+      f"z {off[2]:.4f}..{off[5]:.4f} -> {on[2]:.4f}..{on[5]:.4f}",
+      abs((on[5] - off[5]) - 0.025) < 1e-4 and abs((off[2] - on[2]) - 0.025) < 1e-4,
+      (on[2], on[5], off[2], off[5]))
+
+print("\n[14] the zone clip is wired into the build, not only into the function")
+
+# [9] calls clip_silk_to_zones directly, so severing its CALL in
+# core._build_legend left the whole suite green (measured 2026-09-22): the demo
+# board this suite builds from has no zones at all. This board has.
+zb = json.loads((ROOT / "tests/fixtures/rigidflex.json").read_text())
+zb.update({"format_version": 12, "name": "silkzones", "components": {}})
+zb["stackups"]["STIFFENER2"]["silkscreen"] = {"top": True, "bottom": False}
+zb["stackups"]["FLEX"]["silkscreen"] = {"top": False, "bottom": False}
+zb["silkscreen"] = {"thickness": 0.025,
+                    "top": [glyph(8, 5), glyph(4, 8),            # zone S2: printed
+                            glyph(20, 20), glyph(30, 15)],       # zone F2: bare
+                    "bottom": []}
+jfz = OUT / "silkzones.json"
+jfz.write_text(json.dumps(zb))
+logsz = []
+resz = core.generate(step_dir=ROOT / "demo/step_files", json_file=jfz, output_dir=OUT,
+                     output_name="silkzones", log=logsz.append, fold_bends=False)
+check("only the two glyphs on the printed zone are built",
+      resz.silkscreen_solids == 2, resz.silkscreen_solids)
+check("and the build itself says which zone carries no silkscreen",
+      any("F2 carries no silkscreen" in m and "(2)" in m for m in logsz),
+      [m for m in logsz if "silkscreen" in m])
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

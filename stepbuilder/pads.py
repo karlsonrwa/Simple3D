@@ -73,7 +73,7 @@ from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
 from OCP.TopAbs import TopAbs_FACE, TopAbs_Orientation
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopLoc import TopLoc_Location
-from OCP.TopTools import TopTools_HSequenceOfShape
+from ._occt import TopTools_HSequenceOfShape, box_limits
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Face, TopoDS_Shape, TopoDS_Wire
 from OCP.gp import gp_Ax1, gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
@@ -255,7 +255,7 @@ def _rect_contour(bbox) -> list[dict]:
 def _tight_box(shape: TopoDS_Shape) -> tuple[float, float, float, float]:
     box = Bnd_Box()
     BRepBndLib.AddOptimal_s(shape, box, False, False)
-    x0, y0, _, x1, y1, _ = box.Get()
+    x0, y0, _, x1, y1, _ = box_limits(box)
     return x0, y0, x1, y1
 
 
@@ -290,7 +290,7 @@ def _settle_offset(face: TopoDS_Face, pad: dict) -> tuple[TopoDS_Face, str | Non
     if (abs(ox) > 1e-9 or abs(oy) > 1e-9) and _boxes_agree(got, box):
         trsf = gp_Trsf()
         trsf.SetTranslation(gp_Vec(ox, oy, 0.0))
-        return TopoDS.Face_s(BRepBuilderAPI_Transform(face, trsf, True).Shape()), None
+        return TopoDS.Face(BRepBuilderAPI_Transform(face, trsf, True).Shape()), None
     return face, (f"outline box ({got[0]:.4f}, {got[1]:.4f})..({got[2]:.4f}, {got[3]:.4f}) "
                   f"is neither the declared box ({box[0]:.4f}, {box[1]:.4f})..({box[2]:.4f}, "
                   f"{box[3]:.4f}) nor that box at its offset ({ox:.4f}, {oy:.4f}); "
@@ -385,7 +385,7 @@ def _pad_wire(outline: list) -> TopoDS_Wire:
     ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(sequence, WIRE_TOLERANCE, False, wires)
     if wires.Length() != 1:
         raise StepBuilderError(f"pad outline is not one loop: its pieces formed {wires.Length()} wires")
-    wire = TopoDS.Wire_s(wires.Value(1))
+    wire = TopoDS.Wire(wires.Value(1))
     if not wire.Closed():
         raise StepBuilderError("pad outline is open" + _open_wire_detail(wire))
     return wire
@@ -393,7 +393,7 @@ def _pad_wire(outline: list) -> TopoDS_Wire:
 
 def _first_face(shape: TopoDS_Shape) -> TopoDS_Face | None:
     exp = TopExp_Explorer(shape, TopAbs_FACE)
-    return TopoDS.Face_s(exp.Current()) if exp.More() else None
+    return TopoDS.Face(exp.Current()) if exp.More() else None
 
 
 def _normal_up(face: TopoDS_Face) -> bool | None:
@@ -411,7 +411,7 @@ def _faces_of(shape: TopoDS_Shape) -> list[TopoDS_Face]:
     faces = []
     exp = TopExp_Explorer(shape, TopAbs_FACE)
     while exp.More():
-        faces.append(TopoDS.Face_s(exp.Current()))
+        faces.append(TopoDS.Face(exp.Current()))
         exp.Next()
     return faces
 
@@ -561,12 +561,12 @@ def _finish(faces: list, mirrored: bool, face_up: bool) -> TopoDS_Shape:
     if mirrored:
         mirror = gp_Trsf()
         mirror.SetMirror(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)))
-        faces = [TopoDS.Face_s(BRepBuilderAPI_Transform(f, mirror, True).Shape()) for f in faces]
+        faces = [TopoDS.Face(BRepBuilderAPI_Transform(f, mirror, True).Shape()) for f in faces]
 
     oriented = []
     for f in faces:
         up = _normal_up(f)
-        oriented.append(TopoDS.Face_s(f.Reversed()) if up is not None and up != face_up else f)
+        oriented.append(TopoDS.Face(f.Reversed()) if up is not None and up != face_up else f)
     return _assemble(oriented)
 
 

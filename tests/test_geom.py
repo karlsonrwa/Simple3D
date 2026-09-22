@@ -19,6 +19,37 @@ def parse(g):
     m = re.match(r"^(\d+)x(\d+)\+(-?\d+)\+(-?\d+)$", g)
     return tuple(int(x) for x in m.groups()) if m else None
 
+
+class _Fake:
+    """What winplace.normal_geometry asks a window, and nothing else.
+
+    A real Tk window cannot be made screen-sized-but-not-maximized reliably
+    (the manager maximizes it and state() changes), which is why the filter
+    that case exists for had never been measured - see [7b]."""
+
+    def __init__(self, state, w, h, x, y, screen_w, screen_h):
+        self._state, self._w, self._h = state, w, h
+        self._x, self._y = x, y
+        self._sw, self._sh = screen_w, screen_h
+
+    def state(self):
+        return self._state
+
+    def winfo_width(self):
+        return self._w
+
+    def winfo_height(self):
+        return self._h
+
+    def winfo_screenwidth(self):
+        return self._sw
+
+    def winfo_screenheight(self):
+        return self._sh
+
+    def geometry(self):
+        return f"{self._w}x{self._h}+{self._x}+{self._y}"
+
 def make(cfgdata, name):
     p = TMP/name; p.write_text(json.dumps(cfgdata), encoding="utf-8")
     # The window writes a LOCAL file beside the one it is given, and that file
@@ -119,6 +150,32 @@ app.destroy()
 app2 = StepBuilderApp(p); app2.deiconify(); app2.update()
 check("reopens maximized", app2.state() == "zoomed", app2.state())
 app2.destroy()
+
+print("\n[7b] a window sized to the whole screen while state() still says normal")
+# The second filter in winplace.normal_geometry, and the one nothing measured:
+# maximizing arrives as a <Configure> that can still be seen while state()
+# reports "normal", so without it the MAXIMIZED rect is recorded as the normal
+# one - and un-maximizing on the next run gives back a screen-sized window that
+# is not maximized. Every case above sizes the window well under the screen, so
+# the filter never had to do anything. Measured 2026-09-22: with it removed,
+# this is what bites (mutation winplace-maximized-rect-remembered).
+small = (860, 620, 200, 100)
+check("a window well under the screen IS the normal geometry",
+      winplace.normal_geometry(_Fake("normal", *small, SW, SH)) == "860x620+200+100",
+      winplace.normal_geometry(_Fake("normal", *small, SW, SH)))
+check("one as wide and as tall as the screen is not, though state() says normal",
+      winplace.normal_geometry(_Fake("normal", SW, SH, 0, 0, SW, SH)) is None,
+      winplace.normal_geometry(_Fake("normal", SW, SH, 0, 0, SW, SH)))
+check("and the slack is what decides: a window inside it still counts",
+      winplace.normal_geometry(_Fake(
+          "normal", SW - winplace.NEAR_SCREEN_WIDTH_SLACK - 1,
+          SH - winplace.NEAR_SCREEN_HEIGHT_SLACK - 1, 0, 0, SW, SH)) is not None)
+check("just outside it does not",
+      winplace.normal_geometry(_Fake(
+          "normal", SW - winplace.NEAR_SCREEN_WIDTH_SLACK,
+          SH - winplace.NEAR_SCREEN_HEIGHT_SLACK, 0, 0, SW, SH)) is None)
+check("and a window that says it is zoomed never gives a geometry at all",
+      winplace.normal_geometry(_Fake("zoomed", *small, SW, SH)) is None)
 
 print("\n[8] a garbled value falls back to centring instead of crashing")
 check("winplace.parse_geometry reads Tk's form, negative coordinates included",

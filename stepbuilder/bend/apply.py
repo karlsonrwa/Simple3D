@@ -14,7 +14,7 @@ from OCP.BRep import BRep_Builder
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
 from OCP.TopAbs import TopAbs_ShapeEnum
-from OCP.TopTools import TopTools_ListOfShape
+from .._occt import TopTools_ListOfShape
 from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator, TopoDS_Shape
 
 from .constants import LogFn, _noop_log

@@ -53,6 +53,10 @@ def ztop(st, name):
     return [l for l in lined[st]["layers"] if l["name"] == name][0]["z_top"]
 
 
+def zbot(st, name):
+    return [l for l in lined[st]["layers"] if l["name"] == name][0]["z_bottom"]
+
+
 check("before: the two disagree about INNER1",
       abs(pair["PRIMARY"]["layers"][3]["z_top"]
           - pair["FLEXI1"]["layers"][1]["z_top"]) > 0.2)
@@ -68,6 +72,19 @@ check("so the flex now sits INSIDE the rigid board, not on top of it",
       ztop("FLEXI1", "COVERLAY_INNER1") < 0.0, ztop("FLEXI1", "COVERLAY_INNER1"))
 check("and it says what it moved and by how much",
       any("lined up" in m and "FLEXI1" in m for m in say), say)
+
+# A stackup is SLID, so both faces of every layer move together. Until
+# 2026-09-22 every assertion above read z_top only: dropping the offset from
+# the z_bottom line left the whole set green while every layer of the moved
+# stackup silently changed thickness (mutation board-align-shifts-only-z-top).
+check("the moved stackup keeps every layer's thickness",
+      all(abs((new["z_top"] - new["z_bottom"]) - (old["z_top"] - old["z_bottom"])) < 1e-12
+          for new, old in zip(lined["FLEXI1"]["layers"], pair["FLEXI1"]["layers"])),
+      [(l["name"], round(l["z_top"] - l["z_bottom"], 6))
+       for l in lined["FLEXI1"]["layers"]])
+check("and INNER1's BOTTOM face lines up too, not only its top",
+      abs(zbot("PRIMARY", "INNER1") - zbot("FLEXI1", "INNER1")) < 1e-12,
+      (zbot("PRIMARY", "INNER1"), zbot("FLEXI1", "INNER1")))
 
 # A board whose stackups already agree must not be touched - that is every
 # single-stackup board and every rigid-flex one whose flex carries the outer
@@ -91,6 +108,34 @@ told = []
 core.align_stackups(odd, told.append)
 check("a stackup with no shared conductor is reported, not moved",
       any("shares no named conductor" in m for m in told), told)
+
+print("\n[0b] and a BUILD goes through it - the call site, not only the function")
+# Everything above calls align_stackups itself, so severing the one line in
+# core._prepare_stackups that reaches it left all of [0] green (mutation
+# board-stackups-never-aligned). This is the same rigid/flex pair as two
+# zones of one board, taken through the stage that a build uses.
+from stepbuilder.build import BuildOptions
+MIS = {"format": "simple3d", "format_version": 6, "name": "mis",
+       "pcb": {"thickness": {"soldermask_top": 0.02, "board": 0.79,
+                             "soldermask_bottom": 0.02},
+               "edges": [rect(0, 0, 40, 20)]},
+       "stackups": {"PRIMARY": {"thickness": 0.83, "layers": layers(RIGID)},
+                    "FLEXI1": {"thickness": 0.37, "layers": layers(CORE)}},
+       "zones": [{"name": "R", "stackup": "PRIMARY", "contour": rect(0, 0, 20, 20)},
+                 {"name": "F", "stackup": "FLEXI1", "contour": rect(20, 0, 40, 20)}]}
+heard = []
+stage = core._prepare_stackups(MIS, BuildOptions(), heard.append)
+# Aligned, FLEXI1 slides -0.235 mm onto PRIMARY's INNER1/INNER2 and the rigid
+# stack stays the datum: R spans 0 .. -0.83, F sits inside it at -0.23 .. -0.60.
+# Unaligned it is the flex that reaches highest and F comes out at 0 .. -0.37.
+check("the rigid zone is still the datum face",
+      abs(stage.levels["R"][0]) < 1e-9 and abs(stage.levels["R"][1] + 0.83) < 1e-9,
+      stage.levels["R"])
+check("the flex core sits INSIDE the rigid board: -0.230 .. -0.600",
+      abs(stage.levels["F"][0] + 0.23) < 1e-9
+      and abs(stage.levels["F"][1] + 0.60) < 1e-9, stage.levels["F"])
+check("and the build says it lined them up",
+      any("lined up" in m and "FLEXI1" in m for m in heard), heard)
 
 base=json.loads((ROOT/"demo/ap-214/demo.json").read_text())
 def build(name, s2_shape=None):

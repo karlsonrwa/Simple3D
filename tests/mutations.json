@@ -5,8 +5,8 @@
   "old": "        if key in seen:\n            dropped += 1\n            continue",
   "new": "        if False:\n            dropped += 1\n            continue",
   "suites": [
-   "test_dupcuts.py",
-   "test_overlapping_cutouts.py"
+   "tests/test_dupcuts.py",
+   "tests/test_overlapping_cutouts.py"
   ],
   "why": "a repeated cutout is no longer dropped - the board should come out empty"
  },
@@ -16,8 +16,8 @@
   "old": "    return TopExp_Explorer(shape, TopAbs_SOLID).More()",
   "new": "    return True",
   "suites": [
-   "test_dupcuts.py",
-   "test_zones.py"
+   "tests/test_dupcuts.py",
+   "tests/test_zones.py"
   ],
   "why": "the guard that says a boolean left nothing now always says it is fine"
  },
@@ -27,9 +27,9 @@
   "old": "    above = sum(float(lay[\"thickness\"]) for lay in layers[:first])",
   "new": "    above = 0.0",
   "suites": [
-   "test_nomask.py",
-   "test_layers.py",
-   "test_zones.py"
+   "tests/test_nomask.py",
+   "tests/test_layers.py",
+   "tests/test_zones.py"
   ],
   "why": "the stack no longer hangs off the conductor - every z is wrong"
  },
@@ -39,8 +39,8 @@
   "old": "    return SOLDERMASK_MARKER in \"\".join(c for c in probe if c.isalnum())",
   "new": "    return False",
   "suites": [
-   "test_nomask.py",
-   "test_modes.py"
+   "tests/test_nomask.py",
+   "tests/test_modes.py"
   ],
   "why": "no layer is a soldermask any more, so none is ever dropped"
  },
@@ -50,8 +50,8 @@
   "old": "    shift = -board_top if z_datum == \"top\" else -board_bottom\n\n    levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}",
   "new": "    shift = 0.0\n\n    levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}",
   "suites": [
-   "test_zones.py",
-   "test_layers.py"
+   "tests/test_zones.py",
+   "tests/test_layers.py"
   ],
   "why": "the datum face no longer lands on z=0"
  },
@@ -61,10 +61,10 @@
   "old": "def contour_points(contour, arc_steps: int = 8)",
   "new": "def contour_points(contour, arc_steps: int = 3)",
   "suites": [
-   "test_overlapping_cutouts.py",
-   "test_zones.py",
-   "test_pads.py",
-   "test_bend.py"
+   "tests/test_overlapping_cutouts.py",
+   "tests/test_zones.py",
+   "tests/test_pads.py",
+   "tests/test_bend.py"
   ],
   "why": "arcs sampled three times instead of eight - containment gets coarse"
  },
@@ -74,9 +74,9 @@
   "old": "        if isinstance(value, dict) and isinstance(out.get(key), dict):\n            out[key] = merge_config(out[key], value)\n        else:\n            out[key] = value",
   "new": "        out[key] = value",
   "suites": [
-   "test_config_merge.py",
-   "test_settings.py",
-   "test_gui.py"
+   "tests/test_config_merge.py",
+   "tests/test_settings.py",
+   "tests/test_gui.py"
   ],
   "why": "nested sections are replaced whole - the local file wipes the defaults"
  },
@@ -86,8 +86,8 @@
   "old": "    return visible_w >= MIN_VISIBLE_WIDTH and visible_h >= MIN_VISIBLE_HEIGHT",
   "new": "    return True",
   "suites": [
-   "test_geom.py",
-   "test_gui.py"
+   "tests/test_geom.py",
+   "tests/test_gui.py"
   ],
   "why": "a window remembered on a monitor that is gone is restored there anyway"
  },
@@ -97,7 +97,7 @@
   "old": "    masks_known = has_mask_data(library)",
   "new": "    masks_known = False",
   "suites": [
-   "test_pads.py"
+   "tests/test_pads.py"
   ],
   "why": "the mask data in the file is ignored, so every pad draws whole"
  },
@@ -107,7 +107,7 @@
   "old": "    left_candidate_sits_left = nx < 0.0",
   "new": "    left_candidate_sits_left = nx > 0.0",
   "suites": [
-   "test_silk.py"
+   "tests/test_silk.py"
   ],
   "why": "every silkscreen arc bulges the wrong way under the AXIS reading"
  },
@@ -117,8 +117,8 @@
   "old": "    pads = _build_pads(data, stack, fold, options, document, json_stem, log)",
   "new": "    pads = None",
   "suites": [
-   "test_pads.py",
-   "test_mech.py"
+   "tests/test_pads.py",
+   "tests/test_mech.py"
   ],
   "why": "the whole copper-pad path is severed"
  },
@@ -128,8 +128,8 @@
   "old": "    silk_built, silk_skipped = _build_legend(data, stack, fold, options, document,\n                                             json_stem, log)",
   "new": "    silk_built, silk_skipped = (0, 0)",
   "suites": [
-   "test_silk.py",
-   "test_mech.py"
+   "tests/test_silk.py",
+   "tests/test_mech.py"
   ],
   "why": "the whole silkscreen path is severed"
  },
@@ -139,7 +139,7 @@
   "old": "def _strips_overlap(a, b) -> bool:",
   "new": "def _strips_overlap(a, b): return False\ndef _strips_overlap_unused(a, b) -> bool:",
   "suites": [
-   "test_bend.py"
+   "tests/test_bend.py"
   ],
   "why": "two bends that share material are no longer seen to"
  },
@@ -149,7 +149,7 @@
   "old": "    worst = 0.0\n    panels = [r for r in plan.regions if r.kind == \"panel\" and r.poly]",
   "new": "    worst = 0.0\n    return worst\n    panels = [r for r in plan.regions if r.kind == \"panel\" and r.poly]",
   "suites": [
-   "test_bend.py"
+   "tests/test_bend.py"
   ],
   "why": "the measure the fold suite judges a plan by always says perfect"
  },
@@ -159,11 +159,11 @@
   "old": "                    when( substring( probe i strlen( key ) ) == upperCase( key )\n                        neg = t",
   "new": "                    when( substring( probe i strlen( key ) ) == upperCase( key )\n                        neg = nil",
   "suites": [
-   "test_neg.py",
-   "skill_checks.py",
-   "check_arity.py",
-   "audit_docs.py",
-   "test_skill_pins.py"
+   "tests/test_neg.py",
+   "tools/skill_checks.py",
+   "tools/check_arity.py",
+   "tools/audit_docs.py",
+   "tests/test_skill_pins.py"
   ],
   "why": "the exporter now calls no layer negative - coverlay would come out inverted"
  },
@@ -173,9 +173,9 @@
   "old": "            rotateXY( xy list( xCoord( xy ) + dx  yCoord( xy ) + dy ) rotation )",
   "new": "            rotateXY( xy list( xCoord( xy ) - dx  yCoord( xy ) - dy ) rotation )",
   "suites": [
-   "test_drill_offset.py",
-   "skill_checks.py",
-   "test_skill_pins.py"
+   "tests/test_drill_offset.py",
+   "tools/skill_checks.py",
+   "tests/test_skill_pins.py"
   ],
   "why": "the drill offset is applied backwards in the exporter"
  },
@@ -185,9 +185,9 @@
   "old": "            !( (ax1 < bx0) || (bx1 < ax0) || (ay1 < by0) || (by1 < ay0) )",
   "new": "            ( (ax1 < bx0) || (bx1 < ax0) || (ay1 < by0) || (by1 < ay0) )",
   "suites": [
-   "test_pads.py",
-   "skill_checks.py",
-   "test_skill_pins.py"
+   "tests/test_pads.py",
+   "tools/skill_checks.py",
+   "tests/test_skill_pins.py"
   ],
   "why": "boxes that meet are reported as apart and the other way round"
  },
@@ -197,10 +197,10 @@
   "old": "                        ( scan && pcreMatchp( pattern c )  \" \" )",
   "new": "                        ( nil  \" \" )",
   "suites": [
-   "test_quote.py",
-   "test_emit.py",
-   "skill_checks.py",
-   "test_skill_pins.py"
+   "tests/test_quote.py",
+   "tests/test_emit.py",
+   "tools/skill_checks.py",
+   "tests/test_skill_pins.py"
   ],
   "why": "a control character is written raw, and the whole intermediate stops parsing"
  },
@@ -210,13 +210,13 @@
   "old": "            \"--brd-name \\\"\" designName \"\\\" \"",
   "new": "            \"--board-name \\\"\" designName \"\\\" \"",
   "suites": [
-   "test_launcher.py",
-   "test_launch_cmd.py",
-   "test_variant_path.py",
-   "test_gui.py",
-   "skill_checks.py",
-   "check_arity.py",
-   "audit_docs.py"
+   "tests/test_launcher.py",
+   "tests/test_launch_cmd.py",
+   "tests/test_variant_path.py",
+   "tests/test_gui.py",
+   "tools/skill_checks.py",
+   "tools/check_arity.py",
+   "tools/audit_docs.py"
   ],
   "why": "the SKILL launcher now passes a flag the Python parser refuses"
  },
@@ -226,9 +226,9 @@
   "old": "s3dConfigRead( S3D_ConfigFile )",
   "new": "s3dConfigReadX( S3D_ConfigFile )",
   "suites": [
-   "test_config_merge.py",
-   "skill_checks.py",
-   "check_arity.py"
+   "tests/test_config_merge.py",
+   "tools/skill_checks.py",
+   "tools/check_arity.py"
   ],
   "why": "the launcher no longer reads the settings file"
  },
@@ -238,10 +238,10 @@
   "old": "        if step_name in self._labels:\n            return self._labels[step_name], None",
   "new": "        if False:\n            return self._labels[step_name], None",
   "suites": [
-   "test_mech.py",
-   "test_regression_geometry.py",
-   "test_embedded.py",
-   "test_index.py"
+   "tests/test_mech.py",
+   "tests/test_regression_geometry.py",
+   "tests/test_embedded.py",
+   "tests/test_index.py"
   ],
   "why": "a model is re-imported per refdes, so the part is no longer shared - test_mech prints the solid count and says it proves sharing"
  },
@@ -251,8 +251,8 @@
   "old": "    if dropped:\n        log(",
   "new": "    if False:\n        log(",
   "suites": [
-   "test_dupcuts.py",
-   "test_gui.py"
+   "tests/test_dupcuts.py",
+   "tests/test_gui.py"
   ],
   "why": "the cutout-repeat warning is never logged"
  },
@@ -262,7 +262,7 @@
   "old": "def _settle_offset(face: TopoDS_Face, pad: dict) -> tuple[TopoDS_Face, str | None]:",
   "new": "def _settle_offset(face, pad): return face, None\ndef _settle_offset_unused(face: TopoDS_Face, pad: dict) -> tuple[TopoDS_Face, str | None]:",
   "suites": [
-   "test_pads.py"
+   "tests/test_pads.py"
   ],
   "why": "a pad's offset is no longer settled against its own bounding box"
  },
@@ -272,12 +272,12 @@
   "old": "                out = cons( list( car( entry )\n                                  s3dJsonMerge( cadr( entry ) cadr( hit ) ) ) out )",
   "new": "                out = cons( hit out )",
   "suites": [
-   "test_config_merge.py",
-   "test_settings.py",
-   "skill_checks.py",
-   "check_arity.py",
-   "audit_docs.py",
-   "test_skill_pins.py"
+   "tests/test_config_merge.py",
+   "tests/test_settings.py",
+   "tools/skill_checks.py",
+   "tools/check_arity.py",
+   "tools/audit_docs.py",
+   "tests/test_skill_pins.py"
   ],
   "why": "the SKILL config merge stops being recursive - the local file's gui section would wipe the shipped one"
  },
@@ -287,8 +287,8 @@
   "old": "        if abs(radius) > 1.0e-9:\n            left = _arc_bulges_left(p0, p1, radius, rule, positive_is_first)\n            return _arc_edge(p0, p1, radius, z, left)",
   "new": "        if False:\n            left = _arc_bulges_left(p0, p1, radius, rule, positive_is_first)\n            return _arc_edge(p0, p1, radius, z, left)",
   "suites": [
-   "test_silk.py",
-   "test_regression_geometry.py"
+   "tests/test_silk.py",
+   "tests/test_regression_geometry.py"
   ],
   "why": "every silkscreen arc is replaced by its chord - the built area no longer matches the one Allegro reported"
  },
@@ -298,7 +298,7 @@
   "old": "                if ratio > AREA_TOLERANCE:",
   "new": "                if False:",
   "suites": [
-   "test_silk.py"
+   "tests/test_silk.py"
   ],
   "why": "the area comparison can no longer disagree - the suite reads its verdict"
  },
@@ -308,20 +308,20 @@
   "old": "        if step_name in self._labels:\n            return self._labels[step_name], None",
   "new": "        if False:\n            return self._labels[step_name], None",
   "suites": [
-   "test_silk.py",
-   "test_mech.py",
-   "test_regression_geometry.py",
-   "test_zones.py",
-   "test_layers.py",
-   "test_modes.py",
-   "test_plain_modes.py",
-   "test_nomask.py",
-   "test_neg.py",
-   "test_dupcuts.py",
-   "test_overlapping_cutouts.py",
-   "test_pads.py",
-   "test_embedded.py",
-   "test_index.py"
+   "tests/test_silk.py",
+   "tests/test_mech.py",
+   "tests/test_regression_geometry.py",
+   "tests/test_zones.py",
+   "tests/test_layers.py",
+   "tests/test_modes.py",
+   "tests/test_plain_modes.py",
+   "tests/test_nomask.py",
+   "tests/test_neg.py",
+   "tests/test_dupcuts.py",
+   "tests/test_overlapping_cutouts.py",
+   "tests/test_pads.py",
+   "tests/test_embedded.py",
+   "tests/test_index.py"
   ],
   "why": "one part per distinct STEP model, severed - every refdes re-imports"
  },
@@ -331,8 +331,8 @@
   "old": "        tools.Append(BRepPrimAPI_MakePrism(face.Face(), direction).Shape())",
   "new": "        if tools.IsEmpty():\n            tools.Append(_compound([]))\n        BRep_Builder().Add(tools.First(), BRepPrimAPI_MakePrism(face.Face(), direction).Shape())",
   "suites": [
-   "test_overlapping_cutouts.py",
-   "test_dupcuts.py"
+   "tests/test_overlapping_cutouts.py",
+   "tests/test_dupcuts.py"
   ],
   "why": "Round 86: every cutout prism went back into ONE compound handed to BRepAlgoAPI_Cut as a single tool (the self-interfering argument that left plugs in circle-a0's mouse bites). Works through TopTools_ListOfShape.First(), which shares the TShape (probed: 3 children both ways). MEASURED on a HEAD copy: CAUGHT by test_overlapping_cutouts.py, 8 assertions ('six tabs, six bites: ONE solid' reads 7 solids; volumes 176.7146 against 175.7695)."
  },
@@ -342,9 +342,9 @@
   "old": "    for face in faces:",
   "new": "    for face in [_compound(faces)]:",
   "suites": [
-   "test_overlapping_cutouts.py",
-   "test_layers.py",
-   "test_neg.py"
+   "tests/test_overlapping_cutouts.py",
+   "tests/test_layers.py",
+   "tests/test_neg.py"
   ],
   "why": "Round 86b: a layer's drawn shapes handed to the Cut/Common as one compound instead of one argument each - on faces this drops all but one shape. MEASURED: CAUGHT by test_overlapping_cutouts.py [6]/[7], 8 assertions (the one-disc numbers 371.7257 / 28.2743 come back at every spacing, the touching row included). Single-line old because the working tree is CRLF (see notes)."
  },
@@ -354,7 +354,7 @@
   "old": "    for _, part in strips:",
   "new": "    _c = TopoDS_Compound(); BRep_Builder().MakeCompound(_c)\n    for _s in strips: BRep_Builder().Add(_c, _s[1])\n    for _, part in [(None, _c)]:",
   "suites": [
-   "test_bend.py"
+   "tests/test_bend.py"
   ],
   "why": "Round 86b: the bend strips back into one compound as the Cut's tool; two crossing strips then subtract their shared square twice and weld the corners through zero-width slits. MEASURED: CAUGHT by test_bend.py [7b3], 4 assertions (1 panel instead of 4, 4489 mm2, 'pinch' and a 36.0000 mm2 sliver dropped); 168 s beside the other job."
  },
@@ -364,7 +364,7 @@
   "old": "            shared = _area_of(common.Shape())",
   "new": "            shared = 0.0",
   "suites": [
-   "test_bend.py"
+   "tests/test_bend.py"
   ],
   "why": "Round 86b: shared_strips never reports a crossing (the plan_fold warning goes silent). MEASURED: CAUGHT by test_bend.py [7b3] 'shared_strips finds the one crossing pair <- []' - and the suite then aborts with IndexError at :482 (smell listed), so only one FAIL line is printed."
  },
@@ -374,7 +374,7 @@
   "old": "    if not outline or not plan.regions:",
   "new": "    if outline or not plan.regions:",
   "suites": [
-   "test_bend.py"
+   "tests/test_bend.py"
   ],
   "why": "double_claimed answers 0.0 for every board: test_bend [7d] makes one panel of the Z fold claim the whole outline and requires the fraction the other pieces hold (round 89)."
  },
@@ -384,7 +384,7 @@
   "old": "    if not layers or not conductors:",
   "new": "    if layers or not conductors:",
   "suites": [
-   "test_pads.py"
+   "tests/test_pads.py"
   ],
   "why": "mask_sides returns (True, True) for every stackup - windows drawn over coverlay-only flex zones again (the demo's floating openings). MEASURED: CAUGHT by test_pads.py [7], 5 assertions (FLEX reads (True, True); 2 windows instead of 1; 3 bare polygons built, 14 mm2; the flex-only board gets 5 windows)."
  },
@@ -394,7 +394,7 @@
   "old": "            if not (mask_top if face_side == \"top\" else mask_bottom):",
   "new": "            if (mask_top if face_side == \"top\" else mask_bottom):",
   "suites": [
-   "test_pads.py"
+   "tests/test_pads.py"
   ],
   "why": "The no_mask_zone gate inverted: windows drawn only where the zone has NO soldermask. MEASURED: CAUGHT by test_pads.py, 8 assertions ([6] 0 openings placed on the plain board, the heights check reads [-1.106, 0.002], [7] the F2 pin gets the window)."
  },
@@ -404,7 +404,7 @@
   "old": "                faces = _faces_of(common.Shape()) if common.IsDone() else []",
   "new": "                faces = _faces_of(compound)",
   "suites": [
-   "test_pads.py"
+   "tests/test_pads.py"
   ],
   "why": "build_exposed keeps a straddling drawn-opening polygon whole instead of clipping it to the masked zone's contour. MEASURED: CAUGHT by test_pads.py [7], 1 assertion (10.0 mm2 and a box reaching y = 13 instead of 6.76 mm2 ending at 11.38)."
  },
@@ -414,7 +414,7 @@
   "old": "        fold=fold, lift=2.0 * abs(options.silk_flat_height),",
   "new": "        fold=fold, lift=1.0 * abs(options.silk_flat_height),",
   "suites": [
-   "test_pads.py"
+   "tests/test_pads.py"
   ],
   "why": "Two of the three heights collapse: copper and windows both at h, the coplanar overlap that ate the demo's rings in step2html. MEASURED: CAUGHT by test_pads.py [6], 1 assertion ('the windows sit one clearance above the face and the copper two' <- [-1.105, 0.001])."
  },
@@ -424,7 +424,7 @@
   "old": "            lift=3.0 * abs(options.silk_flat_height), section=section, log=log)",
   "new": "            lift=2.0 * abs(options.silk_flat_height), section=section, log=log)",
   "suites": [
-   "test_pads.py"
+   "tests/test_pads.py"
   ],
   "why": "The third height collapses onto the second: the drawn openings' copper and laminate parts land coplanar with the pads. test_pads [6] reads the lift handed to build_exposed (round 89)."
  },
@@ -434,8 +434,8 @@
   "old": "    best_error, best = min(scores, key=lambda s: s[0])",
   "new": "    best_error, best = scores[0]",
   "suites": [
-   "test_silk.py",
-   "test_pads.py"
+   "tests/test_silk.py",
+   "tests/test_pads.py"
   ],
   "why": "The convention search stops searching and returns the first candidate. test_silk [10] feeds the sample with every radius negated and requires the mirror reading to win (round 89)."
  },
@@ -445,9 +445,9 @@
   "old": "            when( errset( axlAddSelectAll() t )",
   "new": "            when( errset( axlAddSelectBox( list( 0:0 1000:1000 ) ) t )",
   "suites": [
-   "test_pads.py",
-   "skill_checks.py",
-   "check_arity.py"
+   "tests/test_pads.py",
+   "tools/skill_checks.py",
+   "tools/check_arity.py"
   ],
   "why": "Round 87 undone textually: the copper sweep goes back to Allegro's interactive box select. MEASURED: CAUGHT by test_pads.py [8], exactly one assertion (the token 'axlAddSelectAll()'); skill_checks.py and check_arity.py pass. Shows the seam is pinned by a word, see the next two."
  },
@@ -457,9 +457,9 @@
   "old": "                found = axlGetSelSet()",
   "new": "                found = nil",
   "suites": [
-   "test_pads.py",
-   "test_skill_pins.py",
-   "skill_checks.py"
+   "tests/test_pads.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
   ],
   "why": "The sweep selects with axlAddSelectAll and then throws the selection away - every opening becomes bare laminate, the exact symptom of the round-87 bug, with all six [8] tokens still present. MEASURED: SURVIVED test_pads.py, test_skill_pins.py, skill_checks.py. Pinned statement by statement in test_skill_pins [5b] since round 89."
  },
@@ -469,9 +469,9 @@
   "old": "                    when( s3dBoxesMeet( cadr( entry )->bBox p->bBox )",
   "new": "                    unless( s3dBoxesMeet( cadr( entry )->bBox p->bBox )",
   "suites": [
-   "test_pads.py",
-   "test_skill_pins.py",
-   "skill_checks.py"
+   "tests/test_pads.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
   ],
   "why": "The box match applied backwards at its call site: each opening is ANDed against every polygon whose box does NOT meet it. The procedure body is pinned (next mutation) but the decision that uses it is not. MEASURED: SURVIVED all three suites. Pinned statement by statement in test_skill_pins [5b] since round 89."
  },
@@ -481,9 +481,9 @@
   "old": "            filter = list( \"noall\" \"lines\" \"clines\" \"shapes\" \"pins\" \"vias\" )",
   "new": "            filter = list( \"noall\" \"clines\" \"shapes\" \"pins\" \"vias\" )",
   "suites": [
-   "test_pads.py",
-   "test_skill_pins.py",
-   "skill_checks.py"
+   "tests/test_pads.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
   ],
   "why": "Round 85's 'copper drawn with no net is copper' (Add Line on an ETCH subclass is a \"line\" to the find filter, the user's 51-stroke label) undone. No test names the filter. MEASURED: SURVIVED all three suites. Pinned statement by statement in test_skill_pins [5b] since round 89."
  },
@@ -493,7 +493,7 @@
   "old": "27 test suites",
   "new": "23 test suites",
   "suites": [
-   "audit_docs.py"
+   "tools/audit_docs.py"
   ],
   "why": "The audit's finding 5 re-made. MEASURED: CAUGHT by audit_docs.py in 0.2 s ('[stale suite count] README.md says 23 test suites; run_all.py runs 26'). Note README.md is modified in the working tree by another job; the count is 1 at HEAD and 1 in the working tree."
  },
@@ -503,7 +503,7 @@
   "old": "27 test suites",
   "new": "twenty-seven test suites",
   "suites": [
-   "audit_docs.py"
+   "tools/audit_docs.py"
   ],
   "why": "The English count phrase drifts out of the audit regex: README then states the count once instead of once per language, which the docs audit reports as a check that ran on less than it should (round 89)."
  },
@@ -513,8 +513,8 @@
   "old": "    if not fuse and shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_COMPOUND:",
   "new": "    if not fuse:",
   "suites": [
-   "test_pads.py",
-   "test_silk.py"
+   "tests/test_pads.py",
+   "tests/test_silk.py"
   ],
   "why": "Round 89: the piece-by-piece fold descends into a FACE again - a face with a hole comes back as its flat edges with no face between them (48 of 112 mm2 of bare laminate on flex3-a0, 733 loose edges). test_pads [9] folds three rings."
  },
@@ -524,7 +524,7 @@
   "old": "        x0, y0, x1, y1 = _tight_box(outer)",
   "new": "        (x0, y0), (x1, y1) = pad[\"bbox\"]",
   "suites": [
-   "test_pads.py"
+   "tests/test_pads.py"
   ],
   "why": "Round 89: a DONUT's hole built at the declared box's centre again, the whole offset away from its ring. test_pads [2] classifies points of a donut at an offset."
  },
@@ -534,7 +534,7 @@
   "old": "            if polygon:\n                xs = [p[0] for p in polygon]",
   "new": "            if False:\n                xs = [p[0] for p in polygon]",
   "suites": [
-   "test_pads.py"
+   "tests/test_pads.py"
   ],
   "why": "Round 89: a plain board's drawn openings are no longer clipped to its outline - one across the edge is built half in the air. test_pads [7] builds one across the edge and one outside."
  },
@@ -544,9 +544,1826 @@
   "old": "                    if( null( res ) then",
   "new": "                    if( nil then",
   "suites": [
-   "test_skill_pins.py",
-   "skill_checks.py"
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
   ],
   "why": "Round 89: a FAILED axlPolyOperation (nil, not (nil)) is read as an empty result again and the opening vanishes from both lists in silence. Pinned by test_skill_pins [5b]; no board reaches the failure, so a source pin is the only link."
+ },
+ {
+  "id": "board-soldermask-marker-not-normalised",
+  "file": "stepbuilder/stackup.py",
+  "old": "    return SOLDERMASK_MARKER in \"\".join(c for c in probe if c.isalnum())",
+  "new": "    return SOLDERMASK_MARKER in probe",
+  "suites": [
+   "tests/test_nomask.py"
+  ],
+  "why": "the name is matched raw, so SOLDER_MASK_TOP and 'Solder Mask' stop being soldermask. MEASURED: caught by tests/test_nomask.py, FAIL  SOLDER_MASK_TOP/None -> маска  <-"
+ },
+ {
+  "id": "board-restack-z-top-after-own-thickness",
+  "file": "stepbuilder/stackup.py",
+  "old": "        z_top = above - cum\n        cum += thickness\n",
+  "new": "        cum += thickness\n        z_top = above - cum\n",
+  "suites": [
+   "tests/test_nomask.py",
+   "tests/test_layers.py"
+  ],
+  "why": "every layer's z_top is taken after its own thickness is counted - the whole stack slips down by one layer. MEASURED: caught by tests/test_nomask.py, FAIL  STIFFENER_TOP2 верх = 2.125  <- 0.125"
+ },
+ {
+  "id": "board-dropmask-no-restack",
+  "file": "stepbuilder/stackup.py",
+  "old": "        out[name] = {**stackup, \"layers\": restack(keep)}",
+  "new": "        out[name] = {**stackup, \"layers\": keep}",
+  "suites": [
+   "tests/test_nomask.py"
+  ],
+  "why": "the survivors keep their old heights, so a gap is left where the mask was instead of closing toward the core. MEASURED: caught by tests/test_nomask.py, FAIL  верхняя часть осела ровно на 0.025  <- 2.125 -> 2.125"
+ },
+ {
+  "id": "board-thickness-parts-board-excludes-last-conductor",
+  "file": "stepbuilder/stackup.py",
+  "old": "            \"board\": thick(layers[idx[0]:idx[-1] + 1]),",
+  "new": "            \"board\": thick(layers[idx[0]:idx[-1]]),",
+  "suites": [
+   "tests/test_nomask.py",
+   "tests/test_plain_modes.py"
+  ],
+  "why": "the board span stops one layer short - the bottom conductor is counted as soldermask. MEASURED: caught by tests/test_nomask.py, FAIL  v9 с маской: толщина 1.096  <- 1.0610"
+ },
+ {
+  "id": "board-thickness-parts-no-top-mask",
+  "file": "stepbuilder/stackup.py",
+  "old": "    return {\"soldermask_top\": thick(layers[:idx[0]]),",
+  "new": "    return {\"soldermask_top\": 0.0,",
+  "suites": [
+   "tests/test_plain_modes.py"
+  ],
+  "why": "what lies above the first conductor is not measured, so a stackup-measured board is thinner than it is. MEASURED: caught by tests/test_plain_modes.py, FAIL  volume = outline x 1.104  <- 215.800"
+ },
+ {
+  "id": "board-align-needs-three-stackups",
+  "file": "stepbuilder/stackup.py",
+  "old": "    if len(usable) < 2:",
+  "new": "    if len(usable) < 3:",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "two stackups are never put on one datum - the flex keeps its own zero. MEASURED: caught by tests/test_layers.py, FAIL  after: INNER1 is one height  <- (-0.23500000000000001, 0.0)"
+ },
+ {
+  "id": "board-align-reference-fewest-conductors",
+  "file": "stepbuilder/stackup.py",
+  "old": "    reference = max(usable, key=lambda n: (len(conductors(usable[n])),",
+  "new": "    reference = min(usable, key=lambda n: (len(conductors(usable[n])),",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "the stackup with the FEWEST conductors becomes the datum, so the rigid board moves instead of the flex. MEASURED: caught by tests/test_layers.py, FAIL  the rigid stack is the reference and does not move  <- 0.235"
+ },
+ {
+  "id": "board-align-offset-sign",
+  "file": "stepbuilder/stackup.py",
+  "old": "        offsets = [ref[n] - mine[n] for n in shared]",
+  "new": "        offsets = [mine[n] - ref[n] for n in shared]",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "the alignment shift is applied backwards - the shared conductor ends up twice as far out. MEASURED: caught by tests/test_layers.py, FAIL  after: INNER1 is one height  <- (-0.23500000000000001, 0.235)"
+ },
+ {
+  "id": "board-align-shifts-only-z-top",
+  "file": "stepbuilder/stackup.py",
+  "old": "                                 \"z_bottom\": float(lay[\"z_bottom\"]) + offset}",
+  "new": "                                 \"z_bottom\": float(lay[\"z_bottom\"])}",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "only the top of each moved layer is shifted: every layer of a moved stackup changes thickness. MEASURED: caught by tests/test_layers.py, FAIL  the moved stackup keeps every layer's thickness  <- [('COVERLAY_INNER1', -0.21), ('I"
+ },
+ {
+  "id": "board-align-move-report-silenced",
+  "file": "stepbuilder/stackup.py",
+  "old": "        if abs(offset) > 1.0e-9:",
+  "new": "        if False:",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "the stackups are lined up in silence - nothing says which moved and by how much. MEASURED: caught by tests/test_layers.py, FAIL  and it says what it moved and by how much  <- []"
+ },
+ {
+  "id": "board-stackup-levels-no-shift",
+  "file": "stepbuilder/stackup.py",
+  "old": "    shift = -board_top if z_datum == \"top\" else -board_bottom\n    levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}",
+  "new": "    shift = 0.0\n    levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}",
+  "suites": [
+   "tests/test_layers.py",
+   "tests/test_modes.py"
+  ],
+  "why": "the per-layer path never puts the datum face on z=0 (the zone_levels twin of this line is already row zone-levels-no-shift). MEASURED: caught by tests/test_layers.py, FAIL  верх платы = 0 (датум top)  <- 2.1250001"
+ },
+ {
+  "id": "board-stackup-levels-top-from-bottom",
+  "file": "stepbuilder/stackup.py",
+  "old": "        tops[name] = max(float(lay[\"z_top\"]) for lay in layers)",
+  "new": "        tops[name] = max(float(lay[\"z_bottom\"]) for lay in layers)",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "a zone's top face is measured from the layer BOTTOMS, so the board's top is one layer low. MEASURED: caught by tests/test_layers.py, FAIL  верх платы = 0 (датум top)  <- 2.0000001"
+ },
+ {
+  "id": "board-zone-levels-ignore-below",
+  "file": "stepbuilder/stackup.py",
+  "old": "        bottoms[name] = -(float(zone[\"core\"]) + float(zone[\"below\"]))",
+  "new": "        bottoms[name] = -float(zone[\"core\"])",
+  "suites": [
+   "tests/test_zones.py"
+  ],
+  "why": "what a format_version 5 zone carries below its core is dropped from the zone's extent. MEASURED: caught by tests/test_zones.py, FAIL  overall thickness = thickest zone span  <- 2.34"
+ },
+ {
+  "id": "board-zone-levels-top-ignores-above",
+  "file": "stepbuilder/stackup.py",
+  "old": "        tops[name] = float(zone[\"above\"])",
+  "new": "        tops[name] = 0.0",
+  "suites": [
+   "tests/test_zones.py"
+  ],
+  "why": "every zone's top face lands on the core, so a stiffener no longer stands above the flex. MEASURED: caught by tests/test_zones.py, FAIL  overall thickness = thickest zone span  <- 0.315"
+ },
+ {
+  "id": "board-layer-polarity-inverted",
+  "file": "stepbuilder/board.py",
+  "old": "    if layer.get(\"negative\"):\n        cut = BRepAlgoAPI_Cut()",
+  "new": "    if not layer.get(\"negative\"):\n        cut = BRepAlgoAPI_Cut()",
+  "suites": [
+   "tests/test_neg.py",
+   "tests/test_overlapping_cutouts.py"
+  ],
+  "why": "a drawn layer shape is read as material where it is an opening and the other way round. MEASURED: caught by tests/test_neg.py, FAIL  позитив: медь + шейп 4x4x0.1 = 6.60  <- 13.400"
+ },
+ {
+  "id": "board-layer-cut-arguments-swapped",
+  "file": "stepbuilder/board.py",
+  "old": "        cut.SetArguments(zone)\n        cut.SetTools(drawn)",
+  "new": "        cut.SetArguments(drawn)\n        cut.SetTools(zone)",
+  "suites": [
+   "tests/test_neg.py",
+   "tests/test_overlapping_cutouts.py"
+  ],
+  "why": "a negative layer comes out as its openings minus the zone instead of the zone minus its openings. MEASURED: caught by tests/test_neg.py, FAIL  негатив: медь + (100-16)x0.1 = 13.40  <- 5.000"
+ },
+ {
+  "id": "board-shape-voids-ignored",
+  "file": "stepbuilder/board.py",
+  "old": "    inner = [build_contour(v, z) for v in (shape.get(\"voids\") or [])]",
+  "new": "    inner = []",
+  "suites": [
+   "tests/test_layers.py",
+   "tests/test_overlapping_cutouts.py"
+  ],
+  "why": "a void drawn inside a layer shape stops being a hole in it. MEASURED: caught by tests/test_layers.py, FAIL  объём меньше ещё на 3x3x2.0=18.0  <- 0.000"
+ },
+ {
+  "id": "board-layer-solids-no-shift",
+  "file": "stepbuilder/board.py",
+  "old": "            top = float(layer[\"z_top\"]) + shift",
+  "new": "            top = float(layer[\"z_top\"])",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "every layer is built at the stackup's own z, so the datum shift never reaches the geometry. MEASURED: caught by tests/test_layers.py, FAIL  верх платы = 0 (датум top)  <- 2.1250001"
+ },
+ {
+  "id": "board-layer-extruded-upwards",
+  "file": "stepbuilder/board.py",
+  "old": "            solid = BRepPrimAPI_MakePrism(region, gp_Vec(0, 0, -height)).Shape()",
+  "new": "            solid = BRepPrimAPI_MakePrism(region, gp_Vec(0, 0, height)).Shape()",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "each layer grows upward from its own top face - the whole stack is mirrored about itself. MEASURED: caught by tests/test_layers.py, FAIL  верх платы = 0 (датум top)  <- 2.0000001"
+ },
+ {
+  "id": "board-zero-thickness-layer-built",
+  "file": "stepbuilder/board.py",
+  "old": "            if height <= 0:\n                continue",
+  "new": "            if height < 0:\n                continue",
+  "suites": [
+   "tests/test_plain_modes.py"
+  ],
+  "why": "a layer of zero thickness (SILKSCREEN_TOP in a real xsection) is extruded instead of skipped. MEASURED: caught by tests/test_plain_modes.py, exit 1"
+ },
+ {
+  "id": "board-layer-parts-no-cutouts",
+  "file": "stepbuilder/board.py",
+  "old": "    parts = layer_solids(stackups, zones, shift, log, cutouts)",
+  "new": "    parts = layer_solids(stackups, zones, shift, log)",
+  "suites": [
+   "tests/test_dupcuts.py",
+   "tests/test_overlapping_cutouts.py"
+  ],
+  "why": "the board's holes are never cut from the separate layer parts. MEASURED: caught by tests/test_dupcuts.py, FAIL  and together they are the same board: 96.0730 mm3  <- 100.000000"
+ },
+ {
+  "id": "board-stackup-board-not-fused",
+  "file": "stepbuilder/board.py",
+  "old": "    log(f\"Building board from {len(solids)} layer solid(s)\")\n    return fuse_and_unify(solids, log)",
+  "new": "    log(f\"Building board from {len(solids)} layer solid(s)\")\n    return _compound(solids)",
+  "suites": [
+   "tests/test_layers.py",
+   "tests/test_modes.py"
+  ],
+  "why": "the stacked layers are handed over as a compound, so the board is N loose solids. MEASURED: caught by tests/test_layers.py, FAIL  плата + компонентов = 18 тел (не 18 отдельных слоёв)  <- 18"
+ },
+ {
+  "id": "board-coplanar-faces-not-merged",
+  "file": "stepbuilder/board.py",
+  "old": "        if not merged.IsNull():\n            fused = merged",
+  "new": "        if False:\n            fused = merged",
+  "suites": [
+   "tests/test_modes.py",
+   "tests/test_layers.py"
+  ],
+  "why": "UnifySameDomain's result is thrown away: every layer interface stays as its own face. MEASURED: caught by tests/test_modes.py, FAIL  solid: every layer interface is merged away, a dozen faces at most  <- 69"
+ },
+ {
+  "id": "board-layer-colours-all-from-first-layer",
+  "file": "stepbuilder/board.py",
+  "old": "            faces.append((face, parts[owner.Find(face)][1]))",
+  "new": "            faces.append((face, parts[0][1]))",
+  "suites": [
+   "tests/test_modes.py"
+  ],
+  "why": "the boolean's history is not used: every face of the layer-coloured board is painted as the first layer. MEASURED: caught by tests/test_modes.py, FAIL  layers has more colours than solid  <- 1 vs 1"
+ },
+ {
+  "id": "board-cutouts-include-outline",
+  "file": "stepbuilder/board.py",
+  "old": "    for contour in contours[1:]:",
+  "new": "    for contour in contours:",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "the outline itself is taken as a cutout, so the board cuts itself away. MEASURED: caught by tests/test_dupcuts.py, FAIL  two different holes both survive  <-"
+ },
+ {
+  "id": "board-cut-arguments-and-tools-swapped",
+  "file": "stepbuilder/board.py",
+  "old": "    cut.SetArguments(arguments)\n    cut.SetTools(tools)",
+  "new": "    cut.SetArguments(tools)\n    cut.SetTools(arguments)",
+  "suites": [
+   "tests/test_dupcuts.py",
+   "tests/test_overlapping_cutouts.py"
+  ],
+  "why": "the board is subtracted from its own cutouts instead of the cutouts from the board. MEASURED: caught by tests/test_dupcuts.py, exit 1"
+ },
+ {
+  "id": "board-zone-solid-extruded-upwards",
+  "file": "stepbuilder/board.py",
+  "old": "            BRepPrimAPI_MakePrism(face.Face(), gp_Vec(0, 0, -height)).Shape())",
+  "new": "            BRepPrimAPI_MakePrism(face.Face(), gp_Vec(0, 0, height)).Shape())",
+  "suites": [
+   "tests/test_zones.py"
+  ],
+  "why": "a format_version 5 zone prism grows up from its top face, so the whole board sits one thickness too high. MEASURED: caught by tests/test_zones.py, FAIL  the zone prisms hang BELOW the datum: top 0.000, bottom -2.440  <- -2.0500 .. 2.4400"
+ },
+ {
+  "id": "board-zone-solid-only-first-zone",
+  "file": "stepbuilder/board.py",
+  "old": "    board = solids[0]\n    for solid in solids[1:]:",
+  "new": "    board = solids[0]\n    for solid in []:",
+  "suites": [
+   "tests/test_zones.py"
+  ],
+  "why": "only the first zone is kept: the rest of a multi-zone board is dropped before the fuse. MEASURED: caught by tests/test_zones.py, FAIL  volume 444.2752 vs zone sum 712.9057  <- diff 268.6305"
+ },
+ {
+  "id": "board-total-thickness-ignores-bottom-mask",
+  "file": "stepbuilder/core.py",
+  "old": "        + float(thickness.get(\"soldermask_bottom\", 0.0))",
+  "new": "        + 0.0",
+  "suites": [
+   "tests/test_plain_modes.py",
+   "tests/test_nomask.py"
+  ],
+  "why": "the bottom soldermask is left out of the finished board thickness. MEASURED: caught by tests/test_plain_modes.py, FAIL  volume = outline x 1.104  <- 215.800"
+ },
+ {
+  "id": "board-written-thickness-wins-over-stackup",
+  "file": "stepbuilder/core.py",
+  "old": "    if measured is not None and abs(total_board_thickness(written) - total_board_thickness(measured)) > 1e-3:",
+  "new": "    if measured is not None and abs(total_board_thickness(written) - total_board_thickness(measured)) > 1e9:",
+  "suites": [
+   "tests/test_plain_modes.py"
+  ],
+  "why": "a pcb.thickness that disagrees with the stackup is believed instead of the stackup. MEASURED: caught by tests/test_plain_modes.py, FAIL  a pcb.thickness that disagrees with the stackup loses to it  <- 100.000"
+ },
+ {
+  "id": "board-ignore-mask-keeps-thickness",
+  "file": "stepbuilder/core.py",
+  "old": "        thickness = float(parts[\"board\"])",
+  "new": "        thickness = total_board_thickness(parts)",
+  "suites": [
+   "tests/test_nomask.py"
+  ],
+  "why": "Ignore soldermask leaves a plain board's thickness as it was - the setting does nothing. MEASURED: caught by tests/test_nomask.py, FAIL  без маской: толщина 1.036  <- 1.0960"
+ },
+ {
+  "id": "board-soldermask-never-dropped-from-stackups",
+  "file": "stepbuilder/core.py",
+  "old": "    if stackups and ignore_soldermask:\n        stackups = drop_soldermask(stackups, log)",
+  "new": "    if False:\n        stackups = drop_soldermask(stackups, log)",
+  "suites": [
+   "tests/test_nomask.py"
+  ],
+  "why": "the mask layers stay in the stackup even when the build is told to ignore them. MEASURED: caught by tests/test_nomask.py, FAIL  объём 244.00 -> 244.00, разница = 100x0.05  <- 0.000"
+ },
+ {
+  "id": "board-stackups-never-aligned",
+  "file": "stepbuilder/core.py",
+  "old": "    if stackups:\n        stackups = align_stackups(stackups, log)",
+  "new": "    if False:\n        stackups = align_stackups(stackups, log)",
+  "suites": [
+   "tests/test_layers.py",
+   "tests/test_modes.py"
+  ],
+  "why": "align_stackups is never called by a build: stackups keep whatever datum the exporter gave them. MEASURED: caught by tests/test_layers.py, FAIL  the rigid zone is still the datum face  <- (-0.005000000000000001, -0.83500000000000"
+ },
+ {
+  "id": "board-solid-mode-gets-implicit-zone",
+  "file": "stepbuilder/core.py",
+  "old": "    if not zones and board_mode != \"solid\":",
+  "new": "    if not zones:",
+  "suites": [
+   "tests/test_plain_modes.py",
+   "tests/test_regression_geometry.py"
+  ],
+  "why": "plain Solid stops using the single-prism path and is rebuilt as one implicit zone. MEASURED: caught by tests/test_plain_modes.py, FAIL  no zone log  <- ['Reading p_solid.json', \"Single-stackup board: building it as one z"
+ },
+ {
+  "id": "board-plain-board-datum-inverted",
+  "file": "stepbuilder/core.py",
+  "old": "    elif z_datum == \"top\":",
+  "new": "    elif z_datum == \"bottom\":",
+  "suites": [
+   "tests/test_plain_modes.py",
+   "tests/test_zones.py",
+   "tests/test_nomask.py"
+  ],
+  "why": "a plain board's datum face is the wrong one: the body sits a whole thickness off z=0. MEASURED: caught by tests/test_plain_modes.py, FAIL  datum top: the top face is on z=0 and the body hangs below it  <- -0.0000 .. 1.1040"
+ },
+ {
+  "id": "board-plain-board-honours-mode",
+  "file": "stepbuilder/core.py",
+  "old": "    mode = board_mode if multi else \"solid\"",
+  "new": "    mode = board_mode",
+  "suites": [
+   "tests/test_modes.py"
+  ],
+  "why": "a board with no zones is pushed down the per-layer path it has no data for. MEASURED: caught by tests/test_modes.py, exit 1"
+ },
+ {
+  "id": "board-not-added-to-assembly",
+  "file": "stepbuilder/core.py",
+  "old": "        shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))",
+  "new": "        pass",
+  "suites": [
+   "tests/test_regression_geometry.py",
+   "tests/test_plain_modes.py"
+  ],
+  "why": "the board part is built and never hung under the root assembly. MEASURED: caught by tests/test_regression_geometry.py, FAIL  STEP entity count is 5038  <- got 5029"
+ },
+ {
+  "id": "board-update-assemblies-severed",
+  "file": "stepbuilder/stepdoc.py",
+  "old": "        self.shape_tool.UpdateAssemblies()",
+  "new": "        pass",
+  "suites": [
+   "tests/test_regression_geometry.py",
+   "tests/test_modes.py"
+  ],
+  "why": "the documented trap: without UpdateAssemblies the transferred document is empty. MEASURED: caught by tests/test_regression_geometry.py, FAIL  volume matches the C++ baseline 12073.309477  <- drift -507.104752"
+ },
+ {
+  "id": "board-surfacecurve-mode-always-minimised",
+  "file": "stepbuilder/stepdoc.py",
+  "old": "        Interface_Static.SetIVal_s(\"write.surfacecurve.mode\", 0 if minimize_size else 1)",
+  "new": "        Interface_Static.SetIVal_s(\"write.surfacecurve.mode\", 0)",
+  "suites": [
+   "tests/test_regression_geometry.py"
+  ],
+  "why": "minimize_size=False no longer writes the p-curves: the sticky writer global is set one way whatever the caller asked. MEASURED: caught by tests/test_regression_geometry.py, FAIL  STEP entity count is 5038  <- got 2503"
+ },
+ {
+  "id": "board-step-writer-colour-mode-off",
+  "file": "stepbuilder/stepdoc.py",
+  "old": "        writer.SetColorMode(True)",
+  "new": "        writer.SetColorMode(False)",
+  "suites": [
+   "tests/test_modes.py"
+  ],
+  "why": "the writer stops carrying colours, so every layer-coloured board comes back plain. MEASURED: caught by tests/test_modes.py, FAIL  layers has more colours than solid  <- 0 vs 0"
+ },
+ {
+  "id": "board-layer-kind-ignores-type",
+  "file": "stepbuilder/colors.py",
+  "old": "    by_type = kind_of_type.get(str(layer.get(\"type\") or \"\").upper())",
+  "new": "    by_type = None",
+  "suites": [
+   "tests/test_modes.py"
+  ],
+  "why": "a CONDUCTOR is classified by its name alone, so copper called TOP becomes 'other'. MEASURED: caught by tests/test_modes.py, FAIL  TOP -> copper  <- other"
+ },
+ {
+  "id": "board-layer-kind-ignores-function",
+  "file": "stepbuilder/colors.py",
+  "old": "    probe = f\"{layer.get('name') or ''} {layer.get('function') or ''}\".upper()",
+  "new": "    probe = f\"{layer.get('name') or ''}\".upper()",
+  "suites": [
+   "tests/test_modes.py"
+  ],
+  "why": "the IPC layerFunction is not read at all: a layer whose name says nothing falls through to 'other'. MEASURED: caught by tests/test_modes.py, FAIL  a layer named LAYER_7 with function COVERLAY -> coverlay  <- other"
+ },
+ {
+  "id": "board-layer-kind-one-stiffener-spelling",
+  "file": "stepbuilder/colors.py",
+  "old": "                          ((\"STIFFENER\", \"STIFFNER\", \"STIFNER\"), \"stiffener\"),",
+  "new": "                          ((\"STIFFENER\",), \"stiffener\"),",
+  "suites": [
+   "tests/test_modes.py"
+  ],
+  "why": "Cadence's own STIFFNER spelling falls through to undifferentiated grey again. MEASURED: caught by tests/test_modes.py, FAIL  STIFFNER_INNER1 -> stiffener  <- other"
+ },
+ {
+  "id": "board-arc-sense-reversed",
+  "file": "stepbuilder/contour.py",
+  "old": "            arc = GC_MakeArcOfCircle(circle, alpha, beta, True).Value()",
+  "new": "            arc = GC_MakeArcOfCircle(circle, alpha, beta, False).Value()",
+  "suites": [
+   "tests/test_regression_geometry.py"
+  ],
+  "why": "every arc is built the long way round the circle - the round-63 fault, from the other side. MEASURED: caught by tests/test_regression_geometry.py, FAIL  STEP entity count is 5038  <- got 5102"
+ },
+ {
+  "id": "models-search-path-reversed",
+  "file": "stepbuilder/models.py",
+  "old": "        for root in self.roots:",
+  "new": "        for root in reversed(self.roots):",
+  "suites": [
+   "tests/test_index.py"
+  ],
+  "why": "the ordered search path is walked backwards: the LAST model folder wins, so a project-local override is shadowed by the company library. MEASURED: caught by tests/test_index.py, FAIL  proj wins when listed first  <-"
+ },
+ {
+  "id": "models-shadow-report-off",
+  "file": "stepbuilder/models.py",
+  "old": "                if winner != path and not _same_root(winner, root):",
+  "new": "                if False:",
+  "suites": [
+   "tests/test_index.py"
+  ],
+  "why": "a model name found in more than one root is substituted in silence. MEASURED: caught by tests/test_index.py, FAIL  one report line  <- []"
+ },
+ {
+  "id": "models-case-fold-lookup-off",
+  "file": "stepbuilder/models.py",
+  "old": "                hit = self._folded.get(bare.lower())",
+  "new": "                hit = None",
+  "suites": [
+   "tests/test_index.py"
+  ],
+  "why": "the lookup of last resort is gone: MODEL.STEP on disk against model.step in Allegro's mapping table is a miss again. MEASURED: caught by tests/test_index.py, FAIL  lower-cased extension found  <-"
+ },
+ {
+  "id": "models-folded-lookup-first",
+  "file": "stepbuilder/models.py",
+  "old": "        hit = self._index.get(name)\n        if hit is None and name:",
+  "new": "        hit = self._folded.get(Path(name).name.lower()) if name else None\n        if hit is None and name:",
+  "suites": [
+   "tests/test_index.py"
+  ],
+  "why": "the case-folded index is consulted BEFORE the exact one: an exact name no longer wins, and nothing is said about the case. MEASURED: caught by tests/test_index.py, FAIL  and it says so  <- []"
+ },
+ {
+  "id": "models-case-report-uncapped",
+  "file": "stepbuilder/models.py",
+  "old": "        if self._case_folded <= 10:",
+  "new": "        if self._case_folded <= 99:",
+  "suites": [
+   "tests/test_index.py"
+  ],
+  "why": "the case report is one line per component again - a whole library spelled the other way buries the log. MEASURED: caught by tests/test_index.py, FAIL  the case report is capped, not one line per component  <- 14"
+ },
+ {
+  "id": "models-missing-root-silent",
+  "file": "stepbuilder/models.py",
+  "old": "            log(f\"warning: STEP folder does not exist, skipped: {path}\")",
+  "new": "            continue",
+  "suites": [
+   "tests/test_index.py"
+  ],
+  "why": "a mistyped model folder is skipped without a word. MEASURED: caught by tests/test_index.py, FAIL  warns about the missing one  <- ['shared.step: using D:\\\\Projects\\\\AI\\\\Claude\\\\Simpl"
+ },
+ {
+  "id": "models-unreadable-reported-as-missing",
+  "file": "stepbuilder/models.py",
+  "old": "                return [], \"unreadable\"",
+  "new": "                return [], \"missing\"",
+  "suites": [
+   "tests/test_index.py"
+  ],
+  "why": "a model file that is on disk but unusable is reported as missing, so the advice given is the wrong one. MEASURED: caught by tests/test_index.py, FAIL  it is reported as unreadable  <- []"
+ },
+ {
+  "id": "models-missing-not-cached",
+  "file": "stepbuilder/models.py",
+  "old": "            self._log(f\"warning: could not find {step_name}\")\n            self._labels[step_name] = []\n            return [], \"missing\"",
+  "new": "            self._log(f\"warning: could not find {step_name}\")\n            return [], \"missing\"",
+  "suites": [
+   "tests/test_embedded.py",
+   "tests/test_index.py"
+  ],
+  "why": "a missing model is counted once per refdes instead of once per file: the warning and missing_step_files repeat. MEASURED: caught by tests/test_embedded.py, FAIL  three refdes on one absent model: the FILE is listed once  <- ['MISSING_PART.step',"
+ },
+ {
+  "id": "models-part-not-named",
+  "file": "stepbuilder/models.py",
+  "old": "                    TDataStd_Name.Set_s(\n                        new_labels[0], TCollection_ExtendedString(part_name)\n                    )",
+  "new": "                    pass",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "the shared part carries no name, so nothing in the STEP says which model it is. MEASURED: caught by tests/test_mech.py, FAIL  cap_D8x10mm in the STEP text  <-"
+ },
+ {
+  "id": "models-embedded-path-not-stripped",
+  "file": "stepbuilder/models.py",
+  "old": "    both = sorted({str(name) for name in embedded\n                   if Path(str(name)).name in missing})",
+  "new": "    both = sorted({str(name) for name in embedded if str(name) in missing})",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "embedded_models is matched on the whole string, so a mapping carrying a path component never matches the missing file. MEASURED: caught by tests/test_embedded.py, FAIL  matches on the bare filename  <- []"
+ },
+ {
+  "id": "models-embedded-every-model-named",
+  "file": "stepbuilder/models.py",
+  "old": "    both = sorted({str(name) for name in embedded\n                   if Path(str(name)).name in missing})",
+  "new": "    both = sorted({str(name) for name in embedded})",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "every embedded model is named as not-on-disk, whether it is missing or not. MEASURED: caught by tests/test_embedded.py, FAIL  nothing recorded  <- ['SOMETHING_ELSE.step']"
+ },
+ {
+  "id": "models-rotation-order-reversed",
+  "file": "stepbuilder/models.py",
+  "old": "    rotation = rz * ry * rx",
+  "new": "    rotation = rx * ry * rz",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "the mapping rotation is composed in the other order: a part with two non-zero mapping angles lands turned the wrong way. MEASURED: caught by tests/test_mech.py, FAIL  and the mapping rotation lays its z axis along +x before the offset is added  <- (31"
+ },
+ {
+  "id": "models-offset-before-rotation",
+  "file": "stepbuilder/models.py",
+  "old": "    return position * angle * mirror * offset * rotation",
+  "new": "    return position * angle * mirror * rotation * offset",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "the mapping offset is applied in the model's own frame instead of after the mapping rotation. MEASURED: caught by tests/test_mech.py, FAIL  a top part: the model origin lands at the pin plus the mapping offset  <- (34.0, 51."
+ },
+ {
+  "id": "models-symbol-angle-dropped",
+  "file": "stepbuilder/models.py",
+  "old": "    angle = _rotation(gp_Dir(0, 0, 1), component[\"angle\"])",
+  "new": "    angle = gp_Trsf()",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "the symbol's placement angle is thrown away: every part stands at 0 deg. MEASURED: caught by tests/test_mech.py, FAIL  the symbol's 90 degree angle turns the placed part about the pin  <- ((31.0, 52.0, 4"
+ },
+ {
+  "id": "models-mirror-no-flip",
+  "file": "stepbuilder/models.py",
+  "old": "        mirror = _rotation(gp_Dir(0, 1, 0), 180.0)",
+  "new": "        mirror = gp_Trsf()",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "a bottom-side part is not flipped: it stands on the bottom face pointing the same way as a top one. MEASURED: caught by tests/test_mech.py, FAIL  a mirrored part is flipped about Y: the offset's x and z change sign  <- (31.0, 52.0"
+ },
+ {
+  "id": "models-mirrored-at-top-face",
+  "file": "stepbuilder/models.py",
+  "old": "        z = board_bottom_z\n        mirror = _rotation(gp_Dir(0, 1, 0), 180.0)",
+  "new": "        z = board_top_z\n        mirror = _rotation(gp_Dir(0, 1, 0), 180.0)",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "a mirrored part rests on the TOP face - a board thickness out of place. MEASURED: caught by tests/test_mech.py, FAIL  a mirrored part is flipped about Y: the offset's x and z change sign  <- (29.0, 52.0"
+ },
+ {
+  "id": "models-zone-ignored",
+  "file": "stepbuilder/models.py",
+  "old": "        zone = component.get(\"zone\")",
+  "new": "        zone = None",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "on a multi-stackup board every part rests on the board-wide surface instead of its own zone's - two millimetres out on a stiffener. MEASURED: caught by tests/test_mech.py, FAIL  a part on a zone rests on THAT zone's top surface, not the board's  <- (31.0, 52.0,"
+ },
+ {
+  "id": "models-zone-side-swapped",
+  "file": "stepbuilder/models.py",
+  "old": "            z = zone_bottom if component[\"is_mirrored\"] else zone_top",
+  "new": "            z = zone_top if component[\"is_mirrored\"] else zone_bottom",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "the zone's two faces are confused: a top part rests on the zone's bottom surface and a mirrored one on its top. MEASURED: caught by tests/test_mech.py, FAIL  a part on a zone rests on THAT zone's top surface, not the board's  <- (31.0, 52.0,"
+ },
+ {
+  "id": "silk-first-radius-unused",
+  "file": "stepbuilder/legend.py",
+  "old": "        edge = make(points[-1], points[0], radii[0] if first_radius_closes else 0.0)",
+  "new": "        edge = make(points[-1], points[0], 0.0)",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the third ambiguity is settled by fiat: the closing edge is always straight, whatever the convention says. MEASURED: caught by tests/test_silk.py, FAIL  every polygon reproduces Allegro's area under the measured reading (worst 1633.1334%"
+ },
+ {
+  "id": "silk-arc-radius-sign-dropped",
+  "file": "stepbuilder/legend.py",
+  "old": "    rad = max(abs(radius), chord / 2.0)",
+  "new": "    rad = max(radius, chord / 2.0)",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "a negative radius is read as a radius of zero, so every arc of that sign becomes a semicircle on its chord. MEASURED: caught by tests/test_silk.py, FAIL  every polygon reproduces Allegro's area under the measured reading (worst 31.8310%)"
+ },
+ {
+  "id": "silk-holes-dropped",
+  "file": "stepbuilder/legend.py",
+  "old": "        inner = [_wire_from_vertices(h, z, convention)\n                 for h in polygon.get(\"holes\", [])]",
+  "new": "        inner = []",
+  "suites": [
+   "tests/test_silk.py",
+   "tests/test_pads.py"
+  ],
+  "why": "a legend polygon's holes are not cut: a ring comes out solid. MEASURED: caught by tests/test_silk.py, FAIL  no area disagreement  <- ['warning: 1 of 3 silkscreen_top polygons still differ from"
+ },
+ {
+  "id": "silk-area-tolerance-loose",
+  "file": "stepbuilder/legend.py",
+  "old": "AREA_TOLERANCE = 0.005",
+  "new": "AREA_TOLERANCE = 0.5",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the area cross-check accepts a 50% disagreement, so a wrong arc reading passes it. MEASURED: caught by tests/test_silk.py, FAIL  all 7 other readings are off by at least 63.6% (the tolerance is 50.0%)  <- {'positi"
+ },
+ {
+  "id": "silk-clip-side-ignored",
+  "file": "stepbuilder/legend.py",
+  "old": "        (printed if flag.get(side) else bare).append((str(zone[\"name\"]), contour))",
+  "new": "        (printed if flag.get(\"top\") else bare).append((str(zone[\"name\"]), contour))",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the bottom legend is judged by the TOP silkscreen flag of each stackup. MEASURED: caught by tests/test_silk.py, FAIL  the bottom side is judged on its own flag  <- 3"
+ },
+ {
+  "id": "silk-flat-offset-ignored",
+  "file": "stepbuilder/legend.py",
+  "old": "            face = _silk_face(polygon, z + flat_offset if flat else z, convention)",
+  "new": "            face = _silk_face(polygon, z, convention)",
+  "suites": [
+   "tests/test_silk.py",
+   "tests/test_pads.py"
+  ],
+  "why": "a flat legend - and the drawn openings' parts, which are built by it - lands coplanar with the face it is printed on. MEASURED: caught by tests/test_pads.py, FAIL  what is built is the square on S2 plus the clipped strip: 4 + 2 x 1.38 mm2, ending a"
+ },
+ {
+  "id": "silk-merge-coplanar-off",
+  "file": "stepbuilder/legend.py",
+  "old": "    if flat and len(shapes) > 1:",
+  "new": "    if False and len(shapes) > 1:",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "overlapping flat faces are no longer unioned: the overlap is two coincident coplanar faces again. MEASURED: caught by tests/test_silk.py, FAIL  two overlapping flat polygons are unioned: 32.000 mm2 against 32 unmerged  <- 32.0"
+ },
+ {
+  "id": "pads-surface-span-ignored",
+  "file": "stepbuilder/pads.py",
+  "old": "        if not start:\n            return [(\"bottom\" if mirrored else \"top\", pad, mask)]",
+  "new": "        return [(\"bottom\" if mirrored else \"top\", pad, mask)]",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a surface pin's layer span is ignored and the mirror flag decides: the 48 demo pins on INNER1 get copper on the outer face. MEASURED: caught by tests/test_pads.py, FAIL  a surface pin on INNER1 in the rigid zone: no outer face at all  <-"
+ },
+ {
+  "id": "pads-mirrored-stack-not-reversed",
+  "file": "stepbuilder/pads.py",
+  "old": "    if mirrored:\n        names = [name for name, _ in pads]\n        by_layer = {name: pads[len(pads) - 1 - i][1] for i, name in enumerate(names)}",
+  "new": "    if False:\n        names = [name for name, _ in pads]\n        by_layer = {name: pads[len(pads) - 1 - i][1] for i, name in enumerate(names)}",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a mirrored through padstack is not read backwards: the pad drawn for TOP stays on the top face. MEASURED: caught by tests/test_pads.py, FAIL  mirrored: the pad drawn for TOP lands on the bottom face, its opening with it  <-"
+ },
+ {
+  "id": "pads-mirrored-mask-not-flipped",
+  "file": "stepbuilder/pads.py",
+  "old": "    if mirrored:\n        wanted = \"SOLDERMASK_BOTTOM\" if wanted == \"SOLDERMASK_TOP\" else \"SOLDERMASK_TOP\"",
+  "new": "    if False:\n        wanted = \"SOLDERMASK_BOTTOM\" if wanted == \"SOLDERMASK_TOP\" else \"SOLDERMASK_TOP\"",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the padstack flips with the part but its mask pads do not: a mirrored through pin gets the other side's opening. MEASURED: caught by tests/test_pads.py, FAIL  mirrored: the pad drawn for TOP lands on the bottom face, its opening with it  <-"
+ },
+ {
+  "id": "pads-surface-mask-wrong-side",
+  "file": "stepbuilder/pads.py",
+  "old": "            mask = masks.get(\"SOLDERMASK_BOTTOM\" if layer == \"BOTTOM\" else \"SOLDERMASK_TOP\")",
+  "new": "            mask = masks.get(\"SOLDERMASK_TOP\" if layer == \"BOTTOM\" else \"SOLDERMASK_BOTTOM\")",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a surface padstack with masks on both sides takes the opening from the side its pad is NOT on. MEASURED: caught by tests/test_pads.py, FAIL  a surface padstack with masks on both sides takes the one on its pad's side  <-"
+ },
+ {
+  "id": "pads-mask-pads-count-as-etch",
+  "file": "stepbuilder/pads.py",
+  "old": "        if str(layer).upper().startswith(\"ETCH/\") and isinstance(pad, dict):",
+  "new": "        if isinstance(pad, dict):",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the mask pads are counted as etch pads, so a surface padstack is read as a through one. MEASURED: caught by tests/test_pads.py, FAIL  a surface pin whose span says BOTTOM: the bottom face, same pad, same opening  <-"
+ },
+ {
+  "id": "pads-outer-conductors-swapped",
+  "file": "stepbuilder/pads.py",
+  "old": "    return names[0], names[-1]",
+  "new": "    return names[-1], names[0]",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a zone's outer conductors come back the wrong way round: top is read as bottom. MEASURED: caught by tests/test_pads.py, FAIL  outer conductors by position, not by name  <-"
+ },
+ {
+  "id": "pads-mask-sides-swapped",
+  "file": "stepbuilder/pads.py",
+  "old": "    return (any(_is_soldermask(lay) for lay in layers[:conductors[0]]),\n            any(_is_soldermask(lay) for lay in layers[conductors[-1] + 1:]))",
+  "new": "    return (any(_is_soldermask(lay) for lay in layers[conductors[-1] + 1:]),\n            any(_is_soldermask(lay) for lay in layers[:conductors[0]]))",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "mask_sides answers for the other side: a stackup masked on one side only puts its windows on the bare one. MEASURED: caught by tests/test_pads.py, FAIL  a stackup masked on one side only is read on the right side of it  <- ((False, True)"
+ },
+ {
+  "id": "pads-arc-ends-not-joined",
+  "file": "stepbuilder/pads.py",
+  "old": "            start = current if _near(current, own_start) else own_start\n            after = _prim_start(nxt) if len(prims) > 1 else None\n            end = after if _near(after, own_end) else own_end",
+  "new": "            start = own_start\n            after = _prim_start(nxt) if len(prims) > 1 else None\n            end = own_end",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a pad arc is built on its own rounded centre instead of through its neighbours' exact ends: a ROUNDED_RECTANGLE comes apart into open wires. MEASURED: caught by tests/test_pads.py, FAIL  a rounded rectangle whose arc centres are rounded still closes, through its end points"
+ },
+ {
+  "id": "pads-arc-beta-not-wrapped",
+  "file": "stepbuilder/pads.py",
+  "old": "    while beta < alpha:\n        beta += 360.0",
+  "new": "    if False:\n        beta += 360.0",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "an arc crossing 0 deg keeps beta < alpha, so its midpoint is computed on the other side of the circle. MEASURED: caught by tests/test_pads.py, FAIL  a rounded rectangle whose arc centres are rounded still closes, through its end poin"
+ },
+ {
+  "id": "pads-centred-outline-not-moved",
+  "file": "stepbuilder/pads.py",
+  "old": "    if (abs(ox) > 1e-9 or abs(oy) > 1e-9) and _boxes_agree(got, box):",
+  "new": "    if False:",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a figure-centred outline is never moved by its padstack offset - the pad is drawn at the padstack origin and only a note is logged. MEASURED: caught by tests/test_pads.py, FAIL  an outline that is the figure-centred box itself is moved by the offset  <- ('outlin"
+ },
+ {
+  "id": "pads-box-tolerance-zero",
+  "file": "stepbuilder/pads.py",
+  "old": "BOX_TOLERANCE = 0.02",
+  "new": "BOX_TOLERANCE = 0.0",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the 0.01-mil rounding of a board laid out in mils is read as an offset disagreement on every pad. MEASURED: caught by tests/test_pads.py, FAIL  a hundredth of a mil of rounding (a board laid out in mils) is not a disagreement  <"
+ },
+ {
+  "id": "pads-drill-not-cut",
+  "file": "stepbuilder/pads.py",
+  "old": "            return None, \"the drill could not be cut out of the pad\"\n        faces = _faces_of(cut.Shape())",
+  "new": "            return None, \"the drill could not be cut out of the pad\"\n        faces = [face]",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the drill is computed and thrown away: a through pad is a disc, not an annular ring, and the hole in the board is covered. MEASURED: caught by tests/test_pads.py, FAIL  a through pad keeps its drill hole (annular ring)  <- 2.0106192982974678"
+ },
+ {
+  "id": "pads-copper-not-clipped-to-opening",
+  "file": "stepbuilder/pads.py",
+  "old": "        common = BRepAlgoAPI_Common(_assemble(faces), window)",
+  "new": "        common = BRepAlgoAPI_Common(_assemble(faces), _assemble(faces))",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the copper is not clipped to its mask opening: a solder-mask-defined pad shows its whole copper. MEASURED: caught by tests/test_pads.py, FAIL  an opening smaller than the copper: the opening's area (mask-defined)  <- (None, 2.0"
+ },
+ {
+  "id": "pads-opening-cut-backwards",
+  "file": "stepbuilder/pads.py",
+  "old": "        cut = BRepAlgoAPI_Cut(_assemble(faces), pad)",
+  "new": "        cut = BRepAlgoAPI_Cut(pad, _assemble(faces))",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the window is cut out of the copper instead of the copper out of the window. MEASURED: caught by tests/test_pads.py, FAIL  with the copper it is the mask less what the copper shows through it  <- (None, 0.29"
+ },
+ {
+  "id": "pads-mirrored-about-y",
+  "file": "stepbuilder/pads.py",
+  "old": "        mirror.SetMirror(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)))",
+  "new": "        mirror.SetMirror(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)))",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a mirrored pin's figure is mirrored about the wrong axis (y -> -y instead of x -> -x). MEASURED: caught by tests/test_pads.py, FAIL  mirrored: x -> -x  <- (0.0, -0.5, 2.0, 0.5)"
+ },
+ {
+  "id": "pads-normals-not-oriented",
+  "file": "stepbuilder/pads.py",
+  "old": "        oriented.append(TopoDS.Face(f.Reversed()) if up is not None and up != face_up else f)",
+  "new": "        oriented.append(f)",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the faces' normals are left as built, so a bottom pad faces into the board and a viewer that culls back faces shows nothing. MEASURED: caught by tests/test_pads.py, FAIL  top faces look up, bottom faces look down  <-"
+ },
+ {
+  "id": "pads-rotate-after-move",
+  "file": "stepbuilder/pads.py",
+  "old": "    trsf = move * turn",
+  "new": "    trsf = turn * move",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a pin's rotation is applied after the move, so the whole pad swings round the board origin instead of round the pin. MEASURED: caught by tests/test_pads.py, FAIL  a 2x1 pad along +x turned 90 degrees stands along +y at the pin  <- (-20.5, 10.00000"
+ },
+ {
+  "id": "pads-fold-applied-first",
+  "file": "stepbuilder/pads.py",
+  "old": "        trsf = fold.transform_at(x, y) * trsf",
+  "new": "        trsf = trsf * fold.transform_at(x, y)",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the fold transform is applied in the pad's own frame instead of last. MEASURED: caught by tests/test_pads.py, FAIL  a fold that stands the panel up is applied to the PLACED pad, not to the figure at t"
+ },
+ {
+  "id": "pads-bottom-lift-inward",
+  "file": "stepbuilder/pads.py",
+  "old": "            z = top_z + lift if face_side == \"top\" else bottom_z - lift",
+  "new": "            z = top_z + lift if face_side == \"top\" else bottom_z + lift",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the bottom pads are lifted INTO the board instead of away from it. MEASURED: caught by tests/test_pads.py, FAIL  the windows sit one clearance above the face and the copper two, on both sides  <- ["
+ },
+ {
+  "id": "pads-covered-pads-drawn",
+  "file": "stepbuilder/pads.py",
+  "old": "            if mask is None and masks_known:",
+  "new": "            if False:",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a pad with no opening in its padstack is drawn instead of being left under the mask. MEASURED: caught by tests/test_pads.py, FAIL  five pad faces placed: two surface pins, a through pin on both faces, the untented v"
+ },
+ {
+  "id": "pads-vias-not-counted",
+  "file": "stepbuilder/pads.py",
+  "old": "            is_via = len(row) > 7 and str(row[7]).lower() == \"via\"",
+  "new": "            is_via = False",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the format_version 12 via tag is not read, so no placement is counted as a via. MEASURED: caught by tests/test_pads.py, FAIL  the via is a pin with no symbol: the log counts it, and the tented one draws nothing"
+ },
+ {
+  "id": "pads-figure-cache-key-coarse",
+  "file": "stepbuilder/pads.py",
+  "old": "                key = (name, layer, mirrored, face_side)",
+  "new": "                key = (name, layer)",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the shared-figure cache key drops the mirror flag and the side: a mirrored pin reuses the unmirrored figure. MEASURED: caught by tests/test_pads.py, FAIL  five pad faces placed: two surface pins, a through pin on both faces, the untented v"
+ },
+ {
+  "id": "pads-opening-cache-key-coarse",
+  "file": "stepbuilder/pads.py",
+  "old": "                okey = (name, mask_layer, mirrored, face_side, \"opening\")",
+  "new": "                okey = (name, mask_layer, \"opening\")",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the opening cache key drops the mirror flag and the side, so a mirrored window is the unmirrored one. MEASURED: caught by tests/test_pads.py, FAIL  openings alone: a window per pin and via with a mask pad, no copper anywhere  <- (0,"
+ },
+ {
+  "id": "pads-everything-under-pads-top",
+  "file": "stepbuilder/pads.py",
+  "old": "                    shape_tool.AddComponent(group_for(\"pads_top\" if face_side == \"top\" else \"pads_bot\"),\n                                            label, TopLoc_Location(trsf))",
+  "new": "                    shape_tool.AddComponent(group_for(\"pads_top\"),\n                                            label, TopLoc_Location(trsf))",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "every pad goes under pads_top, the bottom node is never created. MEASURED: caught by tests/test_pads.py, FAIL  pads_top and pads_bot are nodes of the assembly, named per board  <-"
+ },
+ {
+  "id": "pads-exposed-section-ignored",
+  "file": "stepbuilder/pads.py",
+  "old": "    exposed = pads.get(section) if isinstance(pads, dict) else None",
+  "new": "    exposed = pads.get(\"exposed\") if isinstance(pads, dict) else None",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "build_exposed builds the copper under the drawn openings whichever section is asked for: the bare laminate is never read. MEASURED: caught by tests/test_pads.py, FAIL  the drawn openings come whole, as laminate, on both sides  <- ['Drawn openings, whol"
+ },
+ {
+  "id": "pads-assemble-first-face-only",
+  "file": "stepbuilder/pads.py",
+  "old": "    if len(faces) == 1:\n        return faces[0]",
+  "new": "    if True:\n        return faces[0]",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a figure that comes back as several faces - a pad a slot cut in two, an opening showing two islands - keeps only the first of them. MEASURED: caught by tests/test_pads.py, FAIL  a slot-like drill wider than the pad cuts it in two: a compound of two faces, both k"
+ },
+ {
+  "id": "pads-no-outline-no-box",
+  "file": "stepbuilder/pads.py",
+  "old": "        bbox = pad.get(\"bbox\")\n        if not bbox:\n            return None, \"no outline and no bounding box\"\n        outline = _rect_contour(bbox)",
+  "new": "        return None, \"no outline\"",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a figure the exporter wrote with no outline (a FLASH) is dropped instead of standing its declared bounding box in for it. MEASURED: caught by tests/test_pads.py, FAIL  no outline: the bounding box stands in  <- no outline"
+ },
+ {
+  "id": "pads-exposed-bottom-lift-inward",
+  "file": "stepbuilder/pads.py",
+  "old": "    for side, sign in ((\"top\", 1.0), (\"bottom\", -1.0)):",
+  "new": "    for side, sign in ((\"top\", 1.0), (\"bottom\", 1.0)):",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the bottom drawn-opening parts are lifted into the board instead of away from it. MEASURED: caught by tests/test_pads.py, FAIL  and the bottom one at z = -1.107, three BELOW the bottom face and not inside the boa"
+ },
+ {
+  "id": "core-silk-layers-not-excluded",
+  "file": "stepbuilder/core.py",
+  "old": "                polygons = [p for p in polygons\n                            if p.get(\"layer\") not in excluded]",
+  "new": "                polygons = list(polygons)",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the layers the user switched off are printed anyway. MEASURED: caught by tests/test_silk.py, FAIL  2 of 4 polygons left out  <- 4"
+ },
+ {
+  "id": "core-silk-off-still-built",
+  "file": "stepbuilder/core.py",
+  "old": "            if not wanted or not polygons:",
+  "new": "            if not polygons:",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "a side of the legend switched off is built all the same. MEASURED: caught by tests/test_silk.py, FAIL  the bottom side alone can be switched off: 3 of the 4 built, no bottom part  <- 4"
+ },
+ {
+  "id": "core-silk-zone-clip-severed",
+  "file": "stepbuilder/core.py",
+  "old": "            polygons = clip_silk_to_zones(polygons, stackups, zones, face, log)",
+  "new": "            polygons = list(polygons)",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the zone clip is computed nowhere in the build: the legend is printed over a stiffener zone whose stackup carries none. MEASURED: caught by tests/test_silk.py, FAIL  only the two glyphs on the printed zone are built  <- 4"
+ },
+ {
+  "id": "core-silk-bottom-grows-up",
+  "file": "stepbuilder/core.py",
+  "old": "                polygons, z, sign * ink_thickness, log=log, side=side,",
+  "new": "                polygons, z, abs(ink_thickness), log=log, side=side,",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the bottom legend's ink grows upward, into the board it is printed on. MEASURED: caught by tests/test_silk.py, FAIL  through the build, the ink grows AWAY from the board on both sides: z -1.0960..0.000"
+ },
+ {
+  "id": "core-mirrored-parts-on-top",
+  "file": "stepbuilder/core.py",
+  "old": "        side = \"symbols_bot\" if component[\"is_mirrored\"] else \"symbols_top\"",
+  "new": "        side = \"symbols_top\"",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "every component goes under symbols_top, mirrored ones included. MEASURED: caught by tests/test_mech.py, FAIL  symbols_bot_mech_test in the STEP text  <-"
+ },
+ {
+  "id": "core-symbols-group-not-per-board",
+  "file": "stepbuilder/core.py",
+  "old": "                grp, TCollection_ExtendedString(_sanitize(f\"{side}_{json_stem}\")))",
+  "new": "                grp, TCollection_ExtendedString(_sanitize(side)))",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "the component groups lose the board postfix: two boards in one CAD session collide on a bare symbols_top. MEASURED: caught by tests/test_mech.py, FAIL  symbols_top_mech_test in the STEP text  <-"
+ },
+ {
+  "id": "core-exposed-copper-part-never-built",
+  "file": "stepbuilder/core.py",
+  "old": "    if options.exposed_copper:\n        flat_parts.append((\"copper\", rgb, \"Exposed copper under drawn openings\", drawn(\"exposed\")))",
+  "new": "    if False:\n        flat_parts.append((\"copper\", rgb, \"Exposed copper under drawn openings\", drawn(\"exposed\")))",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the copper under the drawn mask openings is never made a part. MEASURED: caught by tests/test_pads.py, FAIL  the copper under the drawn opening is one part per side, copper-coloured, named  <-"
+ },
+ {
+  "id": "core-drawn-openings-not-whole",
+  "file": "stepbuilder/core.py",
+  "old": "        if not options.exposed_copper:\n            for side, pieces in drawn(\"exposed\").items():\n                sides.setdefault(side, []).extend(pieces)\n            what = \"Drawn openings, whole\"",
+  "new": "        if False:\n            for side, pieces in drawn(\"exposed\").items():\n                sides.setdefault(side, []).extend(pieces)\n            what = \"Drawn openings, whole\"",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "with the copper pads off, a drawn opening shows only its bare laminate - the copper's area is a hole in the window. MEASURED: caught by tests/test_pads.py, FAIL  the drawn openings come whole, as laminate, on both sides  <- []"
+ },
+ {
+  "id": "pads-boundary-vertex-not-at-home",
+  "file": "stepbuilder/pads.py",
+  "old": "                homes.add(next((name for name, poly, _c, _b, _z in masked\n                                if point_in_polygon(v, poly) or point_on_polygon(v, poly)), None))",
+  "new": "                homes.add(next((name for name, poly, _c, _b, _z in masked\n                                if point_in_polygon(v, poly)), None))",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a drawn opening whose vertex lies ON a masked zone's boundary is no longer at home there: an opening drawn up to the board edge is treated as straddling and clipped instead of being built whole. MEASURED: caught by tests/test_pads.py, FAIL  its area is checked against Allegro's like the legend's"
+ },
+ {
+  "id": "skill-refdes-token-anything",
+  "file": "skill/s3d_variants.il",
+  "old": "stringp( t_token ) && rexMatchp( \"[A-Za-z0-9]\" t_token )",
+  "new": "stringp( t_token )",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_variant_path.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the stray \\n token the parser leaves behind counts as a refdes again, so 'covers N of M' and the not-placed warning are one too big. MEASURED: caught by tests/test_skill_pins.py, FAIL  s3dIsRefdesToken: stringp( t_token ) && rexMatchp( \"[A-Za-z0-9]\" t_token )  <- found"
+ },
+ {
+  "id": "skill-variant-fit-foreign-accepted",
+  "file": "skill/s3d_variants.il",
+  "old": "when( (nBoard > 0) && (onBoard == 0)",
+  "new": "when( (nBoard > 0) && (onBoard > 0)",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "another project's Variants.lst is accepted: every variant exports a stripped board nothing downstream can tell from a real one. MEASURED: caught by tests/test_variant_path.py, FAIL  the foreign file still stops the export rather than exporting something wrong  <-"
+ },
+ {
+  "id": "skill-variant-fit-empty-not-named",
+  "file": "skill/s3d_variants.il",
+  "old": "when( nKnown == 0",
+  "new": "when( nKnown == -1",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "a list that installs nothing is no longer named, so a stub Variants.lst copied from another project silently exports the bare board. MEASURED: caught by tests/test_variant_path.py, FAIL  ...and goes on to the export with a warning, not an error  <- None"
+ },
+ {
+  "id": "skill-always-export-cannot-rescue",
+  "file": "skill/s3d_variants.il",
+  "old": "                    ( g_variantSymbolList && t_variant && refdes &&\n                      !installed[upperCase( refdes )] &&\n                      !s3dAlwaysStepExport( sym )\n                        nNotInVariant = nNotInVariant + 1",
+  "new": "                    ( g_variantSymbolList && t_variant && refdes &&\n                      !installed[upperCase( refdes )]\n                        nNotInVariant = nNotInVariant + 1",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "ALWAYS_STEP_EXPORT stops working: the one property that keeps a connector in every variant no longer rescues a part the variant does not install. MEASURED: caught by tests/test_variant_path.py, FAIL  and tests it LAST, so it cannot rescue a NO_STEP_EXPORT symbol  <-"
+ },
+ {
+  "id": "skill-no-step-export-ignored",
+  "file": "skill/s3d_variants.il",
+  "old": "                    ( s3dNoStepExport( sym )\n",
+  "new": "                    ( nil && s3dNoStepExport( sym )\n",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "NO_STEP_EXPORT stops excluding a symbol, so a part marked never-export is written into every variant. MEASURED: caught by tests/test_skill_pins.py, FAIL  s3dSymbolsToExport: ( s3dNoStepExport( sym )  <- found 0 times"
+ },
+ {
+  "id": "skill-variant-list-ignored-for-refdes",
+  "file": "skill/s3d_variants.il",
+  "old": "                    ( g_variantSymbolList && t_variant && refdes &&\n",
+  "new": "                    ( nil && t_variant && refdes &&\n",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the variant list stops governing parts that have a refdes: every variant gets every component, which is the whole board under a variant name. MEASURED: caught by tests/test_variant_path.py, FAIL  the exporter subtracts on the refdes alone, with no mechanical test  <-"
+ },
+ {
+  "id": "skill-parser-base-block-name",
+  "file": "skill/s3d_variants.il",
+  "old": "                        when( strcmp( line \"\\t\\t(base\\n\" ) == 0\n                            state = \"appendSymbols\"",
+  "new": "                        when( strcmp( line \"\\t\\t(alt\\n\" ) == 0\n                            state = \"appendSymbols\"",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the line that opens a variant's base list is no longer recognised: the symbol list is never filled and every variant installs nothing. MEASURED: caught by tests/test_skill_pins.py, FAIL  gdsysGetVariantInfo: when( strcmp( line \"\\t\\t(base\\n\" ) == 0  <- found 0 times"
+ },
+ {
+  "id": "skill-parser-list-never-ends",
+  "file": "skill/s3d_variants.il",
+  "old": "                        if( strcmp( line \"\\t\\t)\\n\" ) == 0 then\n                            state = \"awaitEndCondition\"",
+  "new": "                        if( strcmp( line \"\\t\\t)\\n\" ) == 1 then\n                            state = \"awaitEndCondition\"",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the base list never closes, so the variant is never registered in the table. MEASURED: caught by tests/test_skill_pins.py, FAIL  gdsysGetVariantInfo: if( strcmp( line \"\\t\\t)\\n\" ) == 0 then  <- found 0 times"
+ },
+ {
+  "id": "skill-parser-variant-name-any-line",
+  "file": "skill/s3d_variants.il",
+  "old": "                        when( length( subStrings ) == 3\n                            currentVariant = nth( 1 subStrings )",
+  "new": "                        when( length( subStrings ) >= 1\n                            currentVariant = nth( 0 subStrings )",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "any line opens a variant, and its name is the text before the first quote: the table fills with junk names. MEASURED: caught by tests/test_skill_pins.py, FAIL  gdsysGetVariantInfo: when( length( subStrings ) == 3  <- found 0 times"
+ },
+ {
+  "id": "skill-parser-alternate-needs-nothing",
+  "file": "skill/s3d_variants.il",
+  "old": "                                when( length( subStrings ) > 1\n",
+  "new": "                                when( length( subStrings ) > 0\n",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "a property block with only a refdes on the line is read as an installed alternate part. MEASURED: caught by tests/test_skill_pins.py, FAIL  gdsysGetVariantInfo: when( length( subStrings ) > 1  <- found 0 times"
+ },
+ {
+  "id": "skill-design-folder-slash-only",
+  "file": "skill/s3d_util.il",
+  "old": "when( (ch == \"/\") || (ch == \"\\\\\")  cut = i )",
+  "new": "when( (ch == \"/\")  cut = i )",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "a Windows path with backslashes has no folder any more, so Variants.lst is opened by its bare name against Allegro's working directory - the round-5 bug. MEASURED: caught by tests/test_skill_pins.py, FAIL  s3dDesignFolder: when( (ch == \"/\") || (ch == \"\\\\\") cut = i )  <- found 0 times"
+ },
+ {
+  "id": "skill-design-folder-keeps-separator",
+  "file": "skill/s3d_util.il",
+  "old": "return( if( cut == 1 then \"/\" else substring( full 1 cut - 1 ) ) )",
+  "new": "return( if( cut == 1 then \"/\" else substring( full 1 cut ) ) )",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the folder keeps the trailing separator, so every path built on it gets a doubled one. MEASURED: caught by tests/test_skill_pins.py, FAIL  s3dDesignFolder: return( if( cut == 1 then \"/\" else substring( full 1 cut - 1 ) ) )"
+ },
+ {
+  "id": "skill-variant-path-no-separator",
+  "file": "skill/s3d_util.il",
+  "old": "            ( t                                strcat( dir \"/Variants.lst\" ) )",
+  "new": "            ( t                                strcat( dir \"Variants.lst\" ) )",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the separator between the folder and the file is dropped: d:/boardsVariants.lst, which never opens. MEASURED: caught by tests/test_skill_pins.py, FAIL  s3dVariantFilePath: ( t strcat( dir \"/Variants.lst\" ) )  <- found 0 times"
+ },
+ {
+  "id": "skill-add-indent-spaces",
+  "file": "skill/s3d_util.il",
+  "old": "            pad = strcat( pad \"\\t\" )",
+  "new": "            pad = strcat( pad \" \" )",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_emit.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the intermediate is indented with spaces, not the tabs every fragment and the reference demo.json are written with. MEASURED: caught by tests/test_skill_pins.py, FAIL  s3dAddIndent: pad = strcat( pad \"\\t\" )  <- found 0 times"
+ },
+ {
+  "id": "skill-add-indent-drops-non-strings",
+  "file": "skill/s3d_util.il",
+  "old": "            ( !stringp( t_string ) t_string )",
+  "new": "            ( !stringp( t_string ) nil )",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_emit.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "a non-string handed to the indenter is thrown away instead of passed through, so a number member vanishes from the JSON. MEASURED: caught by tests/test_skill_pins.py, FAIL  s3dAddIndent: ( !stringp( t_string ) t_string )  <- found 0 times"
+ },
+ {
+  "id": "skill-body-keeps-silk-and-paste",
+  "file": "skill/s3d_stackup.il",
+  "old": "        !( s3dContains( probe \"SILK\" ) || s3dContains( probe \"PASTE\" ) )",
+  "new": "        ( s3dContains( probe \"SILK\" ) || s3dContains( probe \"PASTE\" ) )",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_neg.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the stackup body test is inverted: the board becomes the silkscreen and paste sheets only, and the thickness is wrong by every conductor. MEASURED: caught by tests/test_skill_pins.py, FAIL  s3dLayerInBody: !( s3dContains( probe \"SILK\" ) || s3dContains( probe \"PASTE\" ) )  <-"
+ },
+ {
+  "id": "skill-body-lets-paste-through",
+  "file": "skill/s3d_stackup.il",
+  "old": "        !( s3dContains( probe \"SILK\" ) || s3dContains( probe \"PASTE\" ) )\n",
+  "new": "        !( s3dContains( probe \"SILK\" ) )\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_neg.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "paste layers go back into the board body: the 0.025 sheets that reported 1.204 mm on a 1.104 mm board. MEASURED: caught by tests/test_skill_pins.py, FAIL  s3dLayerInBody: !( s3dContains( probe \"SILK\" ) || s3dContains( probe \"PASTE\" ) )  <-"
+ },
+ {
+  "id": "skill-format-version-11",
+  "file": "skill/s3d_export.il",
+  "old": "            \"\\\"format_version\\\": 12\"",
+  "new": "            \"\\\"format_version\\\": 11\"",
+  "suites": [
+   "tools/audit_docs.py",
+   "tests/test_emit.py",
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the file claims a version it is not: the reader would take v12's pads as an unknown key instead of refusing the file. MEASURED: caught by tools/audit_docs.py, exit 1"
+ },
+ {
+  "id": "skill-placement-zone-dropped",
+  "file": "skill/s3d_export.il",
+  "old": "                \"\\t\\\"zone\\\": \" s3dJsonQuote( zoneName ) \",\\n\"     ; nil -> null",
+  "new": "                \"\\t\\\"zone\\\": null,\\n\"",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_emit.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "every component loses its stackup zone, so a part on a 2.44 mm stiffener is placed on the flex. MEASURED: caught by tests/test_emit.py, FAIL  the writer quotes through s3dJsonQuote( zoneName )  <-"
+ },
+ {
+  "id": "skill-pcb-color-keys-swapped",
+  "file": "skill/s3d_export.il",
+  "old": "          \"\\t\\\"g\\\": \" sprintf( nil \"%f\" cadr( color ) ) \",\\n\"\n          \"\\t\\\"b\\\": \" sprintf( nil \"%f\" caddr( color ) ) \"\\n\"",
+  "new": "          \"\\t\\\"g\\\": \" sprintf( nil \"%f\" caddr( color ) ) \",\\n\"\n          \"\\t\\\"b\\\": \" sprintf( nil \"%f\" cadr( color ) ) \"\\n\"",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_emit.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "green and blue swap in every board colour the exporter writes. MEASURED: caught by tests/test_skill_pins.py, FAIL  the copy reads the same element for each channel  <- ({'r': 0.125, 'g': 0.25, 'b': 0"
+ },
+ {
+  "id": "skill-pcb-no-cuts-branch",
+  "file": "skill/s3d_export.il",
+  "old": "        when( cuts\n            arrays = append( arrays car( cuts ) )\n        )",
+  "new": "        arrays = append( arrays car( cuts ) )",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_emit.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the cutout list is appended unconditionally, which is the pre-2026-07-22 trailing comma on a board with nothing to cut. MEASURED: caught by tests/test_skill_pins.py, FAIL  makePcb: when( cuts arrays = append( arrays car( cuts ) ) )  <- found 0 times"
+ },
+ {
+  "id": "skill-full-board-key-always",
+  "file": "skill/s3d_export.il",
+  "old": "        when( g_fullBoard\n            members = append( members list( \"\\\"full_board\\\": true\" ) )\n        )",
+  "new": "        members = append( members list( \"\\\"full_board\\\": true\" ) )",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_emit.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "every variant file claims to be the whole board, so the window's batch rule drops all of them. MEASURED: caught by tests/test_skill_pins.py, FAIL  create3dIntermediateFormat: when( g_fullBoard members = append( members list( \"\\\"ful"
+ },
+ {
+  "id": "skill-local-config-suffix",
+  "file": "skill/s3d_json.il",
+  "old": "\".local.json\"",
+  "new": "\".user.json\"",
+  "suites": [
+   "tests/test_config_merge.py",
+   "tests/test_skill_pins.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the SKILL half reads a different local settings file from the window's, so the two halves of one export disagree about every setting. MEASURED: caught by tests/test_config_merge.py, FAIL  the local name is derived rather than spelled out twice  <-"
+ },
+ {
+  "id": "skill-cad-sibling-ignored",
+  "file": "simple3d.il",
+  "old": "                if( isDir( cad ) then",
+  "new": "                if( t then",
+  "suites": [
+   "tests/test_launcher.py",
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py",
+   "tools/check_arity.py"
+  ],
+  "why": "output goes to a 'cad' folder whether or not it exists, so a pcb-only layout writes into a folder nothing created. MEASURED: caught by tests/test_launch_cmd.py, FAIL  s3dResolveCadDir: if( isDir( cad ) then  <- 0"
+ },
+ {
+  "id": "skill-launch-quoted-first",
+  "file": "simple3d.il",
+  "old": "start \\\"\\\" /D",
+  "new": "start /D",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "start reads the interpreter path as the window title, so nothing launches. MEASURED: caught by tests/test_launch_cmd.py, FAIL  s3dLaunch uses  start \"\" /D  <-"
+ },
+ {
+  "id": "skill-preflight-sentinel-whole",
+  "file": "simple3d.il",
+  "old": "            \"import stepbuilder.core, tkinter; print('S3D' '_OK')\\\" > \\\"\"",
+  "new": "            \"import stepbuilder.core, tkinter; print('S3D_OK')\\\" > \\\"\"",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the sentinel is spelled whole in the -c source, so Python 3.13's traceback echo forges it and the pre-flight passes itself. MEASURED: caught by tests/test_launch_cmd.py, FAIL  the success sentinel is a SPLIT literal in the -c command  <- s3dPreflight's sentine"
+ },
+ {
+  "id": "skill-preflight-no-dialog",
+  "file": "simple3d.il",
+  "old": "        errset( axlUIConfirm( strcat(",
+  "new": "        errset( printf( strcat(",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "a failed pre-flight no longer blocks: the console line is the only word, and the console can be closed. MEASURED: caught by tests/test_launch_cmd.py, FAIL  a failed preflight also says so in a blocking dialog  <- the console can be closed o"
+ },
+ {
+  "id": "skill-config-path-literal",
+  "file": "simple3d.il",
+  "old": "S3D_ScriptDir = \"\"",
+  "new": "S3D_ScriptDir = \"D:/Projects/simple3d\"",
+  "suites": [
+   "tests/test_config_merge.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "one installation's path is shipped to everyone in a tracked file. MEASURED: caught by tests/test_config_merge.py, FAIL  no absolute path is left in the file  <-"
+ },
+ {
+  "id": "settings-save-writes-tracked-file",
+  "file": "stepbuilder/settings.py",
+  "old": "    target = local_config_path(config_path)",
+  "new": "    target = Path(config_path)",
+  "suites": [
+   "tests/test_gui.py",
+   "tests/test_settings.py"
+  ],
+  "why": "the window writes the tracked simple3d_config.json again: an update conflicts every time and the user's paths land in every commit. MEASURED: caught by tests/test_gui.py, FAIL  the tracked file is byte-identical  <-"
+ },
+ {
+  "id": "settings-save-without-clean-load",
+  "file": "stepbuilder/settings.py",
+  "old": "    if not loaded_cleanly:\n        return",
+  "new": "    if False:\n        return",
+  "suites": [
+   "tests/test_gui.py",
+   "tests/test_settings.py"
+  ],
+  "why": "a settings file that was unreadable at load is written back anyway - the fault that destroyed a user's allegro and silkscreen sections. MEASURED: caught by tests/test_settings.py, FAIL  nothing is written when the load had a problem  <-"
+ },
+ {
+  "id": "settings-save-keeps-every-default",
+  "file": "stepbuilder/settings.py",
+  "old": "        section = {name: value for name, value in section.items()\n                   if name.startswith(\"_comment\")\n                   or name not in base_gui or base_gui[name] != value}",
+  "new": "        section = dict(section)",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the local file pins every key at today's value, so an improved shipped default can never reach this installation again. MEASURED: caught by tests/test_settings.py, FAIL  a value equal to the shipped default is not written  <-"
+ },
+ {
+  "id": "settings-superseded-keys-kept",
+  "file": "stepbuilder/settings.py",
+  "old": "    for old in SUPERSEDED_KEYS:\n        section.pop(old, None)",
+  "new": "    pass",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the migrated-away keys stay in the local file, so two keys mean one thing and the hand-edited old one is silently ignored forever. MEASURED: caught by tests/test_settings.py, FAIL  the superseded keys are dropped  <- ['_comment_mine', 'boardEdge', 'boardEdgeCustom'"
+ },
+ {
+  "id": "settings-missing-local-is-a-problem",
+  "file": "stepbuilder/settings.py",
+  "old": "        return {}, None if missing_ok else f\"settings file not found: {path}\"",
+  "new": "        return {}, f\"settings file not found: {path}\"",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a fresh clone with no local file reads as a problem, so the window refuses to save anything ever. MEASURED: caught by tests/test_settings.py, FAIL  no problems  <- (None, 'settings file not found: D:\\\\Projects\\\\AI\\\\Claude\\\\Simple3D\\"
+ },
+ {
+  "id": "settings-bad-json-reads-as-empty",
+  "file": "stepbuilder/settings.py",
+  "old": "    except json.JSONDecodeError as exc:\n        return {}, f\"{path.name} is not valid JSON: {exc}\"",
+  "new": "    except json.JSONDecodeError:\n        return {}, None",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a file that does not parse reads as an empty one - exactly the reading that let a save wipe every other section. MEASURED: caught by tests/test_settings.py, FAIL  an unparsable local file is a problem of its own  <- None"
+ },
+ {
+  "id": "settings-merge-truthiness",
+  "file": "stepbuilder/settings.py",
+  "old": "        if isinstance(value, dict) and isinstance(out.get(key), dict):",
+  "new": "        if isinstance(value, dict) and out.get(key):",
+  "suites": [
+   "tests/test_config_merge.py",
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a local override merges into a non-dict base value instead of replacing it. MEASURED: caught by tests/test_config_merge.py, exit 1"
+ },
+ {
+  "id": "settings-launcher-keys-written-back",
+  "file": "stepbuilder/settings.py",
+  "old": "        if key.launcher_owned and paths_from_launcher:\n            continue",
+  "new": "        if False:\n            continue",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the board Allegro handed this run is written back as a preference, so every export of a different board rewrites the file. MEASURED: caught by tests/test_settings.py, FAIL  and a changed path is not written over them either  <-"
+ },
+ {
+  "id": "settings-board-mode-migration-gone",
+  "file": "stepbuilder/settings.py",
+  "old": "    return \"inspect\" if section.get(\"debugLayers\") else \"solid\"",
+  "new": "    return \"solid\"",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a config written before boardMode loses its debugLayers setting silently. MEASURED: caught by tests/test_settings.py, FAIL  debugLayers true -> inspect  <-"
+ },
+ {
+  "id": "settings-step-dir-migration-gone",
+  "file": "stepbuilder/settings.py",
+  "old": "    single = str(section.get(\"stepDir\", \"\")).strip()\n    return [single] if single else []",
+  "new": "    return []",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the single-folder stepDir of an older config is dropped instead of migrated, so the model search path comes up empty after an upgrade. MEASURED: caught by tests/test_settings.py, FAIL  stepDir becomes a one-entry stepDirs, stripped  <- []"
+ },
+ {
+  "id": "settings-layers-off-as-inclusions",
+  "file": "stepbuilder/settings.py",
+  "old": "    return set(raw) if isinstance(raw, list) else set()",
+  "new": "    return set() if isinstance(raw, list) else set()",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the remembered silkscreen exclusions are thrown away, so every layer the user switched off comes back on. MEASURED: caught by tests/test_settings.py, FAIL  and reading it back gives the same settings  <- {'layers_off': ({'L2', 'L1'}, set())"
+ },
+ {
+  "id": "winplace-above-screen-allowed",
+  "file": "stepbuilder/winplace.py",
+  "old": "    if y < vy:\n        return False                      # title bar above every screen",
+  "new": "    if False:\n        return False                      # title bar above every screen",
+  "suites": [
+   "tests/test_geom.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a window whose title bar is above every screen is restored, and there is no way to drag it back. MEASURED: caught by tests/test_geom.py, FAIL  title bar above all screens is not  <-"
+ },
+ {
+  "id": "winplace-sliver-is-enough",
+  "file": "stepbuilder/winplace.py",
+  "old": "    return visible_w >= MIN_VISIBLE_WIDTH and visible_h >= MIN_VISIBLE_HEIGHT",
+  "new": "    return visible_w >= 0 and visible_h >= 0",
+  "suites": [
+   "tests/test_geom.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a 70 px sliver on a screen edge counts as reachable, so the window opens where it cannot be grabbed. MEASURED: caught by tests/test_geom.py, FAIL  centred instead  <- 9000"
+ },
+ {
+  "id": "winplace-negative-offsets-refused",
+  "file": "stepbuilder/winplace.py",
+  "old": "_GEOMETRY = re.compile(r\"^(\\d+)x(\\d+)\\+(-?\\d+)\\+(-?\\d+)$\")",
+  "new": "_GEOMETRY = re.compile(r\"^(\\d+)x(\\d+)\\+(\\d+)\\+(\\d+)$\")",
+  "suites": [
+   "tests/test_geom.py",
+   "tests/test_gui.py"
+  ],
+  "why": "Tk's +-1920 form is refused, so a window on a monitor left of the primary is centred on the primary every run. MEASURED: caught by tests/test_geom.py, FAIL  winplace.parse_geometry reads Tk's form, negative coordinates included  <-"
+ },
+ {
+  "id": "winplace-maximized-rect-remembered",
+  "file": "stepbuilder/winplace.py",
+  "old": "    if near_screen:\n        return None",
+  "new": "    if False:\n        return None",
+  "suites": [
+   "tests/test_geom.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the maximized rect is remembered as the normal one, so un-maximizing next run gives a screen-sized window that is not maximized. MEASURED: caught by tests/test_geom.py, FAIL  one as wide and as tall as the screen is not, though state() says normal  <- 1920x10"
+ },
+ {
+  "id": "winplace-zoomed-state-dropped",
+  "file": "stepbuilder/winplace.py",
+  "old": "            if state == \"zoomed\":\n                root.state(\"zoomed\")",
+  "new": "            pass",
+  "suites": [
+   "tests/test_geom.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a window closed maximized reopens windowed. MEASURED: caught by tests/test_geom.py, FAIL  reopens maximized  <- normal"
+ },
+ {
+  "id": "winplace-unreachable-restored-anyway",
+  "file": "stepbuilder/winplace.py",
+  "old": "        if reachable(w, h, x, y):",
+  "new": "        if True:",
+  "suites": [
+   "tests/test_geom.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the reachability test is bypassed: a rect on a monitor that has been unplugged is restored as it was. MEASURED: caught by tests/test_geom.py, FAIL  centred instead  <- 9000"
+ },
+ {
+  "id": "intermediate-full-board-always-built",
+  "file": "stepbuilder/intermediate.py",
+  "old": "    if len(jobs) > 1 and not build_full_board:",
+  "new": "    if len(jobs) > 1 and build_full_board:",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the 'Build the full-board file too' switch is inverted for a folder of intermediates. MEASURED: caught by tests/test_variant_path.py, FAIL  a queued folder can leave the full-board file out  <- []"
+ },
+ {
+  "id": "intermediate-single-full-board-kept",
+  "file": "stepbuilder/intermediate.py",
+  "old": "    elif len(jobs) == 1 and not build_full_board and jobs[0].is_full_board:",
+  "new": "    elif False:",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the one whole-board file a user pointed at is built although the switch is off, so the rule differs between one file and many. MEASURED: caught by tests/test_variant_path.py, exit 1"
+ },
+ {
+  "id": "intermediate-brd-name-dated-only",
+  "file": "stepbuilder/intermediate.py",
+  "old": "    if brd_name and not several:\n        return brd_name",
+  "new": "    return None",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "--brd-name is honoured on the dated path only again: the round-73 defect where naming a board without --dated-name was silently ignored. MEASURED: caught by tests/test_gui.py, FAIL  a board name names the file, WITHOUT a date  <- None"
+ },
+ {
+  "id": "intermediate-reserved-key-lost",
+  "file": "stepbuilder/intermediate.py",
+  "old": "RESERVED = (\"name\", \"pcb\", \"format\", \"format_version\", \"silkscreen\",",
+  "new": "RESERVED = (\"name\", \"pcb\", \"format\", \"format_version\",",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a metadata key drops out of RESERVED, so a v1-v8 file reads the silkscreen object as a component called 'silkscreen'. MEASURED: caught by tests/test_variant_path.py, FAIL  components are what is left after the reserved keys  <-"
+ },
+ {
+  "id": "bridge-cancel-reads-as-crash",
+  "file": "stepbuilder/worker_bridge.py",
+  "old": "        if self.cancelled:",
+  "new": "        if False:",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a build the user cancelled is reported as a crash, with an access-violation advice note attached to a deliberate stop. MEASURED: caught by tests/test_gui.py, FAIL  a cancelled build is not reported as a crash  <- ('The build crashed', [('StepBuilde"
+ },
+ {
+  "id": "bridge-death-never-reported",
+  "file": "stepbuilder/worker_bridge.py",
+  "old": "        if self.process is None or self.process.is_alive() or self.finished:",
+  "new": "        if True:",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a child that died of an access violation is never noticed: the window sits frozen on a build that is gone. MEASURED: caught by tests/test_gui.py, FAIL  a cancelled build is not reported as a crash  <- ('Cancelled', [])"
+ },
+ {
+  "id": "docs-config-key-unshipped",
+  "file": "simple3d_config.json",
+  "old": "\"maskOpenings\"",
+  "new": "\"maskOpeningsX\"",
+  "suites": [
+   "tools/audit_docs.py",
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the window reads a key the shipped config does not carry, so a fresh install has no default for it. MEASURED: caught by tools/audit_docs.py, exit 1"
+ },
+ {
+  "id": "docs-cli-flag-renamed",
+  "file": "stepbuilder/__main__.py",
+  "old": "\"--board-mode\"",
+  "new": "\"--board-style\"",
+  "suites": [
+   "tools/audit_docs.py",
+   "tests/test_launcher.py"
+  ],
+  "why": "a documented flag is gone from the parser, so every README command line that uses it fails. MEASURED: caught by tools/audit_docs.py, exit 1"
+ },
+ {
+  "id": "bend-band-from-origin",
+  "file": "stepbuilder/bend/pieces.py",
+  "old": "        across = [(-ny) * vx + nx * vy for vx, vy in outline]",
+  "new": "        across = [0.0]",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the band a strip is cut with reaches BAND_REACH either side of the origin instead of either side of the board, so a board drawn at x = 1000 misses its own strip. MEASURED: caught, FAIL  both bends of the corner are folded  <- [] (126 s)"
+ },
+ {
+  "id": "bend-cutter-face-is-exact",
+  "file": "stepbuilder/bend/regions.py",
+  "old": "        return self.cutter if self.cutter is not None else self.face",
+  "new": "        return self.face",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a shape is cut with the piece's EXACT face again, which shares every outline wall with the layer: flex2-a0's hairline spike then takes the whole corner of the panel with it (round 84). MEASURED: caught, FAIL  the pieces of the spiked layer sum to the layer  <- (3.353420774896126, 3.3564277462 (557 s)"
+ },
+ {
+  "id": "bend-cutters-not-subtracted",
+  "file": "stepbuilder/bend/pieces.py",
+  "old": "        for j, other in enumerate(faces):\n            if j != i:\n                tools.Append(other)",
+  "new": "        for j, other in enumerate(faces):\n            if j < 0:\n                tools.Append(other)",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the grown cutter keeps the margin at the SEAMS too - the other pieces' exact faces are no longer taken back out - so neighbouring pieces overlap by CUTTER_MARGIN and the layer is built twice there. MEASURED: caught, FAIL  every piece is cut with a grown face, not its exact one  <- (423 s)"
+ },
+ {
+  "id": "bend-facet-angle-not-interpolated",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "                phi = theta * (hinge - lo) / (2 * half) if half > EPS else 0.0",
+  "new": "                phi = theta if half > EPS else 0.0",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "every facet of a faceted bend is turned through the WHOLE angle instead of the angle the arc has reached at its own hinge. MEASURED: caught, FAIL  it still folds and keeps its material  <- (149.36123817998123, 153.4545454545455) (597 s)"
+ },
+ {
+  "id": "bend-fold-left-as-a-heap",
+  "file": "stepbuilder/bend/apply.py",
+  "old": "    fused = _fuse_all(pieces, log)",
+  "new": "    fused = None",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the folded pieces are never fused: apply_plan takes its own could-not-fuse path and hands the board back as a compound of separate bodies. MEASURED: caught, FAIL  the fold is one solid, not a heap of slices  <- 3 (1067 s)"
+ },
+ {
+  "id": "bend-neutral-ceiling-never-noted",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "    if (refused or any(\"pinch\" in m for m in marks)) and neutral_factor > 0.0:",
+  "new": "    if (refused and any(\"pinch\" in m for m in marks)) and neutral_factor > 0.0:",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a board whose bends were refused is no longer told the largest neutral factor it can take - the one number the user can act on. MEASURED: caught, FAIL  and the board is told the largest neutral factor it can take  <- ['Folding 1 bend(s) (1782 s)"
+ },
+ {
+  "id": "bend-prism-span-blind",
+  "file": "stepbuilder/bend/strip_revolve.py",
+  "old": "PRISM_SPAN_TOLERANCE = 1e-3",
+  "new": "PRISM_SPAN_TOLERANCE = 1e3",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the section no longer has to SPAN what the strip spans, so a feature inside the bend area small enough to hide in 0.2% of the volume - flex2-a0's 25 micron ledge - is revolved away. MEASURED: caught, FAIL  the ear inside the bend is still there after folding  <- 0.000000 mm3 past y=80.005 (294 s)"
+ },
+ {
+  "id": "bend-revolve-off",
+  "file": "stepbuilder/bend/apply.py",
+  "old": "        bent = _revolve_strip(flat, strip)",
+  "new": "        bent = None",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the exact revolve is never tried: every strip goes through the general wrap instead. MEASURED: caught, FAIL  and the loop stands a diameter and a stack above the board  <- (-0.4000019109366337, (1096 s)"
+ },
+ {
+  "id": "bend-side-of-by-extent",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "    seam = _closest_point(parts[part], parts[npanel + s])",
+  "new": "    seam = None",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "which side of a strip a piece is on is judged by its EXTENT again, not at the seam: the wide board reaching past a narrow arm's band on both sides gets the strip's near edge sewn to the far panel (the 23.8 mm tear). MEASURED: caught, FAIL  and that fold joins up, judged at the seam and not by an extent  <- 15.4304835191647 (698 s)"
+ },
+ {
+  "id": "bend-slice-turns-before-it-slides",
+  "file": "stepbuilder/bend/regions.py",
+  "old": "    return carried * turn * slide",
+  "new": "    return carried * slide * turn",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "_slice_trsf rotates first and slides afterwards, so the flat material the bend eats is not taken out of the arc and the far panel lands elsewhere. MEASURED: caught, FAIL  the far panel stands up exactly as far as it is long  <- (21.942477946076938, 20.057 (584 s)"
+ },
+ {
+  "id": "bend-touching-rectangles-overlap",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        if abs(ax * dx + ay * dy) > reach - EPS:",
+  "new": "        if abs(ax * dx + ay * dy) > reach + EPS:",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "_strips_overlap counts two rectangles that merely TOUCH as overlapping, so a flex rolled into a ring (two 180 deg areas sharing a line) loses its second bend. MEASURED: caught, FAIL  at k = 0 both fold, and the flex closes into a ring  <- ['R1'] (480 s)"
+ },
+ {
+  "id": "bend-wrap-expects-flat-volume",
+  "file": "stepbuilder/bend/strip_wrap.py",
+  "old": "    return volume * abs(strip.axis_z - (z_top + z_bottom) / 2.0) / rho",
+  "new": "    return volume",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the wrap asks for the FLAT volume back instead of r/rho times it, which rejects every layer of a stack except the one at the neutral axis. MEASURED: caught, FAIL  a notched thin layer is WRAPPED rather than revolved, so it is the wrap's own volume (699 s)"
+ },
+ {
+  "id": "bend-wrap-off",
+  "file": "stepbuilder/bend/apply.py",
+  "old": "            bent = _map_strip(flat, strip, why)",
+  "new": "            bent = None",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the wrap is never tried: a strip the revolve refuses falls straight to the 7.5 deg facets. MEASURED: caught, FAIL  the revolve refuses it and the outline is wrapped instead  <- ['  B1: faceted at 7.5 (424 s)"
  }
 ]

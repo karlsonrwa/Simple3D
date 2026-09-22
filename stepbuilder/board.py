@@ -26,7 +26,7 @@ from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
-from OCP.TopTools import TopTools_ListOfShape
+from ._occt import TopTools_ListOfShape
 from OCP.gp import gp_Vec
 
 from .contour import _face_from_wires, build_contour
@@ -385,14 +385,14 @@ def fuse_keeping_faces(parts: list[tuple[str, dict, TopoDS_Shape]],
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
     from OCP.TopAbs import TopAbs_FACE
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopTools import TopTools_DataMapOfShapeInteger, TopTools_ListOfShape
+    from ._occt import TopTools_DataMapOfShapeInteger, TopTools_ListOfShape
 
     solids = [solid for _, _, solid in parts]
     if len(solids) == 1:
         faces = []
         exp = TopExp_Explorer(solids[0], TopAbs_FACE)
         while exp.More():
-            faces.append((TopoDS.Face_s(exp.Current()), parts[0][1]))
+            faces.append((TopoDS.Face(exp.Current()), parts[0][1]))
             exp.Next()
         return solids[0], faces
 
@@ -435,7 +435,7 @@ def fuse_keeping_faces(parts: list[tuple[str, dict, TopoDS_Shape]],
     faces, unknown = [], 0
     exp = TopExp_Explorer(fused, TopAbs_FACE)
     while exp.More():
-        face = TopoDS.Face_s(exp.Current())
+        face = TopoDS.Face(exp.Current())
         if owner.IsBound(face):
             faces.append((face, parts[owner.Find(face)][1]))
         else:
@@ -476,7 +476,7 @@ def fuse_and_unify(solids: list[TopoDS_Shape], log: LogFn) -> TopoDS_Shape:
 
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
     from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain
-    from OCP.TopTools import TopTools_ListOfShape
+    from ._occt import TopTools_ListOfShape
 
     # BRepAlgoAPI_Fuse in its multi-argument form, NOT BRepAlgoAPI_BuilderAlgo:
     # the general fuse computes the same boolean but leaves the pieces as
@@ -670,7 +670,7 @@ def _rim_faces(shape: TopoDS_Shape, fold=None):
     rim = []
     exp = TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_FACE)
     while exp.More():
-        face = TopoDS.Face_s(exp.Current())
+        face = TopoDS.Face(exp.Current())
         surf = BRepAdaptor_Surface(face)
         kind = surf.GetType()
         if kind == GeomAbs_SurfaceType.GeomAbs_Plane:

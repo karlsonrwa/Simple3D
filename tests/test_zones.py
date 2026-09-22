@@ -60,6 +60,17 @@ check(f"volume {got:.4f} vs zone sum {want:.4f}", abs(got-want)/want < 0.02,
       f"diff {abs(got-want):.4f}")
 check("log reports the zones", any("Multi-stackup board: 4 zone" in m for m in logs),
       str([m for m in logs[:6]]))
+# WHICH WAY the zone prisms grow, not only how much material they hold.
+# Until 2026-09-22 this section measured volume alone: extruding every zone
+# UP from its top face instead of down (mutation board-zone-solid-extruded-
+# upwards) kept the volume exact and left the whole suite green, with the
+# board standing a full stiffener above the datum it is measured from.
+from OCP.Bnd import Bnd_Box
+from OCP.BRepBndLib import BRepBndLib
+bbz=Bnd_Box(); BRepBndLib.Add_s(read_step(OUT/"flex.step"), bbz)
+check("the zone prisms hang BELOW the datum: top 0.000, bottom -2.440",
+      abs(bbz.CornerMax().Z())<1e-6 and abs(bbz.CornerMin().Z()+2.44)<1e-6,
+      f"{bbz.CornerMin().Z():.4f} .. {bbz.CornerMax().Z():.4f}")
 
 print("\n[4] a component sits on ITS zone, not on the board top")
 def place(zone):

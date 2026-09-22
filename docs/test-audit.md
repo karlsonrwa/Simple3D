@@ -324,3 +324,169 @@ of the next full pass.
   board's hole follow different rules and no test can say which is
   Allegro's, because no board on hand has such a padstack (README, *Known
   limitations*).
+
+## The third pass, 22 September 2026 (round 90): the table proved on copies
+
+On 21 September the mutation work in BaroSim and step2html settled a rule
+this repository's harness did not yet follow: mutate a private COPY of the
+tree, never the tree. The in-place design - a byte snapshot restored after
+every fault - needed a lock file, a leftover check, a bytecode purge and a
+rule that nobody edits while it runs, and still cost four accidents in one
+week elsewhere. And it measured the developer's tree, which holds files a
+clone does not: two BaroSim rows that had counted as caught for a week
+survived on a copy, one of them caught only by the developer's gitignored
+settings file. A copy has only what is under version control plus what the
+runner deliberately gives it, and that is the honest place to run.
+
+| | |
+|---|---|
+| Harness | `tools/mutate.py` is the shared harness of the `test-audit` skill as step2html took it the day before: each worker owns a copy of the tree under `build/mutants/run-<time>-<pid>/w<i>/`, made without `.git`, `build/`, `input/`, `failed/`, `.claude/`, bytecode or `simple3d_config.local.json`; the copies run in parallel, longest suites first; the mutated file is restored from the bytes read before the write and the restore is proved by SHA-256; `--changed [REV]` selects the rows whose file, suite or table entry differ from a revision, the check for the day; ids select rows by substring. The lock, the leftover check on every start, the bytecode purge and the edit ban are gone with the design that needed them; what stays is the check that the WORKING tree carries no mutation, since the copies inherit whatever it has |
+| Table | the 48 rows of the second pass, their suites named as paths from the root (`tests/test_pads.py`, `tools/skill_checks.py`), which is what `--changed` compares with git's own paths |
+| Sentinel | `tests/test_mutations.py` gained two sections: the copy a worker makes carries every file and every suite a row names, byte for byte, no bytecode and none of what must stay out; and `--changed` picks by the file, the suite and the row, nothing else. 257 checks in about a second |
+| The 48 on copies | **48 of 48 caught**; 127 files per copy (the 126 tracked files plus `_occt.py`; the harness prints the total over the four copies, 508), copied in 0.2 s; 878 s of wall for 2382 s of suite runs on four copies, measured beside two full suite runs and four agents starting (the fold suite 254 s in the baseline and 310-337 s per row, against 160 s alone) |
+
+What the copies said: nothing that the tree had hidden. No row of this table
+borrows its power from the environment - the repository root has no local
+settings file, and every fixture the suites read is tracked - which is a fact
+about the table that only a copy can state. Two things about running it: with
+its output redirected to a file Python buffers the whole log until the end,
+so start it with `-u` when the progress is to be watched; and a full run at
+this size is about fifteen minutes of wall on a busy machine, the fold
+suite's six rows being most of it.
+
+### The table grown: one row per decision the suites claim
+
+step2html had shown the day before what a table of 48 misses: written one
+row per decision its suites claimed, 65 of the first 150 rows survived, every
+survivor a weak test. So four agents (opus, in parallel, each owning a
+disjoint set of suites and targeting only the modules those suites claim,
+never editing code, the table or anything shared) read their suites for the
+nine smells, wrote rows, ran them on copies with the harness, fixed every
+weak test in their own files and re-ran the row; the coordinator merged the
+rows with a script that re-checks each against the final tree (id new, file
+and suites exist, `old` once, `new` removes it). The machine was shared all
+the while with two other projects' mutation runs, so the fold suite cost
+260-2 125 s per run instead of 160 and the fold agent ran 15 of the 26 rows
+it wrote.
+
+| scope (agent) | rows run | caught as the suites were | caught after the fixes | dropped, with a measurement | in the table |
+|---|---:|---:|---:|---:|---:|
+| board: zones, layers, modes, plain modes, no-mask, negative, cutouts, regression → `board`, `stackup`, `contour`, `stepdoc`, `colors`, the board stages of `core` | 45 | 38 | 44 | 1 | 44 |
+| pads, silkscreen, models: pads, silk, mech, embedded, index → `pads`, `legend`, `models`, the legend / pads / placement stages of `core` | 65 | 47 | 62 | 3 | 62 |
+| SKILL, launcher, settings, reader, window: quote, emit, drill offset, skill pins, launch cmd, launcher, variant path, config merge, settings, gui, geom, and the mechanical checks → `skill/*.il`, `simple3d.il`, `settings`, `winplace`, `worker_bridge`, `intermediate`, `__main__`, the docs the audit reads | 54 | 26 of 48 | 53 | 1 | 53 |
+| fold: test_bend → `bend/*`, `core._plan_fold` | 15 | 10 | 13 | 1, and 1 open | 13 |
+| **together** | **179** | **121** | **172** | **6** | **220 with the 48** |
+
+**What the survivors said.** Fifty-one rows survived their first run. Six of
+them were not findings: four equivalent mutants (an arc's parameter range
+unwrapped by `GC_MakeArcOfCircle` itself, the ccw flag of a pad arc that
+moves a snap point by 6.7e-16 mm², the anchor sign that `_walk` re-decides
+at the seam - every transform identical to the last digit over five plan
+shapes -, and a "printed zone wins" rule reachable only with overlapping
+zones, which no fixture has), one aimed at a phrase no check claims, and one
+that stays open below. **Forty-five were weak tests, and every one was fixed
+the same day, in the suite that claims the behaviour, and proved by the row
+biting afterwards.** By kind:
+
+- *Checks that could not fail.* "layerFunction still wins" was true because
+  the fixture's name classified it anyway (`test_modes [1]`); "the fold is
+  one solid" was `volume > 0 and not IsNull()`, which a heap of three
+  satisfies (`test_bend [3]`); "and it says so once" asked for a phrase both
+  constructions print (`test_bend [17]`); the pre-flight dialog was checked
+  by the word `axlUIConfirm` anywhere in the file, and a comment three lines
+  above the call carries it (`test_launch_cmd [5]`); the third height was
+  the lift *argument*, never a z (`test_pads [6]`).
+- *Oracles never seen to fail.* `_neutral_ceiling`'s note was never read;
+  the flat legend's merge was judged by file size alone.
+- *Fixtures that could not tell.* Every stackup on hand is masked on both
+  sides or neither, so `mask_sides` could answer for the other side; the
+  fold stub in `test_pads [3]` was a z translation, which commutes with both
+  factors of a placement; the demo's symbol angle is 0; `wide_hold` is wide
+  in x, not in the bend's own direction, so its held piece stopped at the
+  band and an extent answered correctly by luck; both legend sides were
+  switched off together, so the per-side loop was never entered; the two
+  masked zones of `test_pads [9]` sit at the same z.
+- *Decisions nothing claimed.* The whole of `component_transform` - rotation
+  order, offset frame, the symbol angle, the flip, the face a bottom part
+  rests on, the zone's own surface (`test_mech [3]` now, the arithmetic
+  written out on paper); the one line of `_prepare_stackups` that reaches
+  `align_stackups`; the datum's *position* in the plain-board modes; thirteen
+  SKILL procedures pinned by name only (`test_skill_pins [5c]`-`[5f]`, and
+  `[6]` now requires every mirrored procedure to be pinned by a statement,
+  so a copy added later cannot go unwatched); `s3dResolveCadDir`, the
+  pcb → cad rule (`test_launch_cmd [6]`); `winplace`'s near-screen filter
+  (`test_geom [7b]`); a strip the revolve refuses, so the wrap's own volume
+  check finally runs (`test_bend [17c]`).
+- *Suites that raised instead of failing.* A non-closing pad wire took
+  `test_pads` down with a traceback; the batch rule's `said[-1]` in
+  `test_variant_path` raised on exactly the failure it exists for; three
+  board rows are still caught by the suite raising (`test_dupcuts [2]`,
+  `test_modes [4]`, `test_plain_modes [2]`), honest non-zero exits that stop
+  the suite at that point - noted, not changed.
+- *The checking machinery itself*, three defects: `tools/audit_docs.py`'s
+  `format_version` check accepted the loose forms the README uses for the
+  HISTORY ("11 has no vias"), so dropping the exporter to 11 passed - it now
+  requires the `format_version: N` form once per language and compares
+  every occurrence; `test_gui [9]` reached a modal message box under one
+  mutation and sat for 31 minutes at 2 % CPU with the run's whole output
+  buffered behind it - stubbed, and "nothing was shown" asserted; and
+  `test_launch_cmd`'s 8 s deadline for a detached `start` went red on the
+  clean copy of a loaded machine, so two rows read "survived" for a reason
+  that had nothing to do with the tests - 40 s now, and the harness reports
+  such rows as UNPROVEN rather than survived (trap 8 in its docstring),
+  with a timeout of three times a suite's baseline plus two minutes past
+  which the suite's process tree is killed and the row is HUNG (trap 7).
+
+**No defect in the code.** Not one of the 179 mutations showed the Python
+or the SKILL doing the wrong thing; two docstrings claim more than the
+measurement supports (`stepdoc.write` says the document is empty without
+`UpdateAssemblies()`; measured, the board still comes through as a free
+shape and the placements are what is lost, 507.10 of 12 073.31 mm³).
+
+**The whole table on copies, with every agent's edit in the tree: 220 of
+220 caught, 2 992 s of wall for 10 158 s of suite runs on four copies** -
+the fold suite 658 s in the baseline and up to 651 s per row, the machine
+shared with two other projects' runs throughout; no row refused, none hung,
+none unproven. `run_all` afterwards: 31/31 under cadquery-ocp 7.9 (822 s)
+and 31/31 under 8.0 (898 s), on the same loaded machine.
+
+The suites grew by about 1 000 lines: `test_skill_pins` 88 → 186 PASS
+lines, `test_mech` 20 → 29, `test_silk` 51 → 62, `test_pads` 108 → 112,
+`test_bend` 229 → 234, the board suites 195 → 210, `test_launch_cmd`
+25 → 35, `test_geom` 30 → 35; `tests/test_mutations.py` asks its questions
+about 220 rows in 945 checks. The four agents' full reports - the inventory
+per suite, every row with its FAIL line, the equivalence measurements - are
+under `build/agents/<scope>/report.md`, outside the repository.
+
+### What is still not covered, after the third pass
+
+- **An arc through the wrap is not required to stay an arc**
+  (`bend-arcs-wrapped-as-splines`, the one open survivor): with the
+  `GeomAbs_Circle` branch of `_edge_curves` disabled the notch is fitted as a
+  spline and every volume still agrees to 1e-6, because no fixture has the
+  relief notch that once made OCC call the wire self-intersecting on the
+  real board. A check that the wrapped solid still carries circular or
+  elliptical edges would close it; each attempt costs a fold-suite run.
+- Eleven fold rows written and validated but never run for want of machine
+  time (`build/agents/bend/make_rows.py`): the auto anchor holding the
+  smallest piece, slices before panels in `flat_frame`, a hole wire not
+  reversed, the shared-strip threshold inverted, the band ten times wide,
+  the far edge of a seam untransformed, the chain order, slices built as
+  panels, the local stack ignored, `_piece_at` farthest, k out of the
+  developed length. The pinch repair in `_piece_face` never runs; nothing
+  produces a pinch.
+- No board suite exercises the rim colour or `_rim_faces`; the PRIMARY
+  stackup preference, `_layer_region`'s failure arms and `build_contour`'s
+  guards are claimed by nothing; `_pad_wire`'s self-closing arc,
+  `StepFileIndex._same_root`, `models._sanitize` (every fixture name is
+  already plain) and a straddling opening over two masked zones at
+  *different* heights have no datum.
+- **No test executes SKILL.** Everything on that side is a source pin plus a
+  Python copy; the thirteen newly pinned procedures have no recorded Allegro
+  answer yet (`skill_answers.json` covers five; `probe_translit.il` is where
+  a case is added), and the golden corpus still needs Allegro and is not in
+  `run_all`. That `S3D_NegativeLayers` and `S3D_ExportFullBoard` must reset
+  per export is named by nothing.
+- The mirrored pin with an offset drill, the never-executed failure branch
+  of `s3dCollectExposed` and `run_all` running neither golden corpus are as
+  they were.

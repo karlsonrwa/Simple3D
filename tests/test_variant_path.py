@@ -310,12 +310,17 @@ from stepbuilder.intermediate import Intermediate, batch_jobs
 full = Intermediate("board.json", {"format": "simple3d", "full_board": True})
 var = Intermediate("board_lsm.json", {"format": "simple3d"})
 said = []
+# said[-1] on an empty list RAISES, and the failure these checks exist for is
+# exactly the one that leaves it empty: the suite then ends with a traceback
+# instead of naming the rule that broke (measured 2026-09-22, mutation
+# intermediate-single-full-board-kept - "exit 1" and not one FAIL line).
+last = lambda: said[-1] if said else ""
 check("a queued folder can leave the full-board file out",
-      batch_jobs([full, var], False, said.append) == [var] and "Not building" in said[-1], said)
+      batch_jobs([full, var], False, said.append) == [var] and "Not building" in last(), said)
 said.clear()
 check("and keeps it when asked to", batch_jobs([full, var], True, said.append) == [full, var] and not said)
 check("but a single file chosen by hand is built anyway, and says so",
-      batch_jobs([full], False, said.append) == [full] and "despite" in said[-1], said)
+      batch_jobs([full], False, said.append) == [full] and "despite" in last(), said)
 worker = (ROOT / "stepbuilder/worker.py").read_text(encoding="utf-8")
 cli = (ROOT / "stepbuilder/__main__.py").read_text(encoding="utf-8")
 check("the window's worker and the CLI both go through that one rule",

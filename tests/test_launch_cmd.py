@@ -26,7 +26,7 @@ Every case therefore runs twice - once as written, once behind an extra
 "cmd /c " - so the shape is proven independent of how many shells SKILL's
 system() puts in front of it.
 """
-import json, os, shutil, sys, time
+import json, os, re, shutil, sys, time
 from pathlib import Path
 
 if sys.platform != "win32":
@@ -82,7 +82,14 @@ def preflight_cmd():
             f'import probepkg, tkinter; print(\'S3D\' \'_OK\')" > "{LOGF}" 2>&1')
 
 
-def run_launch(cmd, wait=8.0):
+# 40 s, not the 8 s this had: `start` is detached, so the wait is for a whole
+# Python to come up, and on a loaded machine that is not 8 seconds. Measured
+# 2026-09-22 - with three other mutation runs going, this suite went red on the
+# clean tree inside tools/mutate.py, which then SKIPS an already-red suite for
+# every row that names it: two rows would have been reported SURVIVED for a
+# reason that has nothing to do with the test. A deadline is a machine's answer,
+# not the program's ([[a-pass-the-environment-hands-you]]).
+def run_launch(cmd, wait=40.0):
     if OUTF.exists():
         OUTF.unlink()
     os.system(cmd)
@@ -164,6 +171,13 @@ check("quoted-first form does NOT deliver the spaced path",
 
 print("\n[5] simple3d.il still uses the shape this suite proves")
 il = (ROOT / "simple3d.il").read_text(encoding="utf-8")
+
+
+def uncommented(text):
+    """SKILL with its comments off - a word in a comment is not a call."""
+    return "\n".join(line.split(";")[0] if not line.lstrip().startswith(";") else ""
+                     for line in text.splitlines())
+
 check('s3dLaunch uses  start "" /D', 'start \\"\\" /D' in il)
 check('s3dPreflight uses  start /B /WAIT "" /D', 'start /B /WAIT \\"\\" /D' in il)
 check("no batch file is written any more",
@@ -179,8 +193,49 @@ check("the success sentinel is a SPLIT literal in the -c command",
       "s3dPreflight's sentinel can be forged by its own traceback echo")
 check("the check reports which interpreter answered",
       "sys.executable" in il and "S3D_PY " in il)
+# The CALL, not the word: the comment three lines above the call explains what
+# axlUIConfirm is for, so a grep over the whole file passes with the call gone.
 check("a failed preflight also says so in a blocking dialog",
-      "axlUIConfirm" in il, "the console can be closed or not looked at")
+      re.search(r"^\s*errset\(\s*axlUIConfirm\(", uncommented(il), re.M),
+      "the console can be closed or not looked at")
+
+print("\n[6] where the export writes: the pcb -> cad folder rule")
+# The rule (simple3d.il, s3dResolveCadDir): a design in a folder called "pcb"
+# that has a SIBLING "cad" writes into that sibling; anything else - no "pcb"
+# folder, or a "pcb" folder with no "cad" beside it - writes beside the .brd.
+# Nothing else in the repository reads this procedure, so what holds it is the
+# statements that decide. A `cad` taken without asking whether it exists sends
+# every export of a pcb-only layout into a folder that was never created;
+# dropping the leaf test sends every export into a sibling of wherever the
+# board happens to be.
+cad = il[il.index("procedure( s3dResolveCadDir("):]
+cad = cad[:cad.index("\nprocedure( ", 1)]
+flat = " ".join(cad.split())
+for statement in ('parts = parseString( t_designDir "/" )',
+                  'leaf = if( n >= 1 then nth( n - 1 parts ) else nil )',
+                  'if( leaf && (upperCase( leaf ) == "PCB") then',
+                  'parent = buildString( s3dHeadList( parts n - 1 ) "/" )',
+                  'cad = strcat( parent "/cad" )',
+                  'if( isDir( cad ) then'):
+    check(f"s3dResolveCadDir: {statement}", flat.count(" ".join(statement.split())) == 1,
+          flat.count(" ".join(statement.split())))
+# Derived: the folder NAMES are read out of the source rather than restated
+# here, and both branches that fall back must hand back the design's own
+# folder - never the candidate that does not exist.
+leaf_name = re.search(r'upperCase\( leaf \) == "(\w+)"', flat)
+sibling = re.search(r'cad = strcat\( parent "/(\w+)" \)', flat)
+check("the two folder names are in the source", bool(leaf_name) and bool(sibling),
+      (leaf_name, sibling))
+if leaf_name and sibling:
+    check(f"the leaf it looks for is {leaf_name.group(1)!r} and the sibling "
+          f"{sibling.group(1)!r}",
+          leaf_name.group(1) == "PCB" and sibling.group(1) == "cad",
+          (leaf_name.group(1), sibling.group(1)))
+check("the sibling is used only when it exists, and the fallback creates what it returns",
+      flat.count("isDir( cad )") == 1 and flat.count("s3dMakeDirs( t_designDir )") == 2,
+      (flat.count("isDir( cad )"), flat.count("s3dMakeDirs( t_designDir )")))
+check("a folder that cannot be read is said rather than parsed",
+      re.search(r'if\( !stringp\( t_designDir \) then s3dWarn\(', flat), flat[:160])
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)
