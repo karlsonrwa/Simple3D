@@ -182,6 +182,19 @@ check("'auto' still holds the largest piece, the way it did before",
 check("and then it is the short side that stands up",
       near(zmax_a, z_axis + (10.0 - developed / 2), 1e-6), zmax_a)
 
+# The same strip with the bend at x=30: now the ORIGIN's side is the larger
+# piece, so "hold the largest" and the default sign of the search disagree.
+# A search that no longer searched - the default cell for every bend - held
+# the right piece above by coincidence and holds the tail here (round 90).
+far_end = Bend(name="B1", start=(30.0, 0.0), end=(30.0, 10.0),
+               angle=90.0, radius=R, inner_side="top")
+auto_far = plan_fold([far_end], outline, 0.0, -T, anchor=None)
+_, _, _, xmax_af, _, zmax_af = bbox(auto_far.apply(strip))
+check("'auto' holds the largest piece when that is the origin's side too",
+      near(xmax_af, (30.0 - developed / 2) + (z_axis + T), 1e-6), xmax_af)
+check("and the short tail is what stands up",
+      near(zmax_af, z_axis + (40.0 - (30.0 + developed / 2)), 1e-6), zmax_af)
+
 far = plan_fold([near_end], outline, 0.0, -T, anchor=(40.0, 5.0))
 _, _, _, xmax_f, _, _ = bbox(far.apply(strip))
 check("an anchor at the other end holds that end instead",
@@ -985,6 +998,17 @@ check("and it is still standing on the surface it was placed on",
 check("a part standing in the bend area is reported",
       plan.in_bend_area(20.0, 5.0) == "B1")
 check("one outside it is not", plan.in_bend_area(5.0, 5.0) is None)
+# The band's own width decides, not "somewhere near the line": a point one and
+# a half half-widths out is outside, nine tenths in is inside (round 90 - a
+# band ten times wide still passed the two points above).
+_, (nx_b, ny_b), (px_b, py_b), half_b = plan.chain[0]
+check("a part one and a half half-widths from the line is not in the bend area",
+      plan.in_bend_area(px_b + nx_b * 1.5 * half_b, py_b + ny_b * 1.5 * half_b) is None
+      and plan.in_bend_area(px_b - nx_b * 1.5 * half_b, py_b - ny_b * 1.5 * half_b) is None,
+      (half_b, plan.in_bend_area(px_b + nx_b * 1.5 * half_b, py_b + ny_b * 1.5 * half_b)))
+check("and one nine tenths of a half-width from it is",
+      plan.in_bend_area(px_b + nx_b * 0.9 * half_b, py_b + ny_b * 0.9 * half_b) == "B1"
+      and plan.in_bend_area(px_b - nx_b * 0.9 * half_b, py_b - ny_b * 0.9 * half_b) == "B1")
 check("the region names read sensibly",
       plan.region_at(5, 5) == "held" and "B1" in plan.region_at(20, 5),
       (plan.region_at(5, 5), plan.region_at(20, 5)))
@@ -995,6 +1019,28 @@ flat_again = p_moved.Transformed(back)
 check("flat_frame is the exact inverse of the fold",
       near(flat_again.X(), 35.0, 1e-6) and near(flat_again.Z(), 0.0, 1e-6),
       (flat_again.X(), flat_again.Z()))
+
+# And it is the panel's own frame that answers for a panel point a hair from
+# the strip: the regions are built slices first, and a slice's inverse can
+# land such a point back inside the stack and inside the slice's footprint -
+# 0.1 mm off its true place, measured on 30 of 7209 points of this plan
+# (round 90). flat_frame tries the panels first for exactly this.
+seam_off = []
+for k in range(1, 26):
+    d = half_b + 0.02 * k
+    for x in (px_b - d, px_b + d):
+        for y in (1.0, 5.0, 9.0):
+            folded = gp_Pnt(x, y, 0.0).Transformed(plan.transform_at(x, y))
+            frame = plan.flat_frame(folded)
+            if frame is None:
+                seam_off.append((round(x, 3), y, None))
+                continue
+            home = folded.Transformed(frame)
+            if not (near(home.X(), x, 1e-6) and near(home.Y(), y, 1e-6)
+                    and near(home.Z(), 0.0, 1e-6)):
+                seam_off.append((round(x, 3), y, round(home.Distance(gp_Pnt(x, y, 0.0)), 4)))
+check("a panel point up to half a millimetre from the strip unfolds exactly home, "
+      "through its panel and not through a slice", not seam_off, seam_off[:4])
 
 # --------------------------------------------------------------------------- #
 print("\n[9] the radius is measured from the LOCAL stack, not the board")

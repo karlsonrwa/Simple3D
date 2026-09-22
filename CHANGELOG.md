@@ -46,7 +46,10 @@ to use the tool.
   GUI test that hung on a modal box for 31 minutes, a launch deadline that
   broke on a loaded machine - and fixed. The whole table, run once more on
   four copies of the final tree: 220 of 220 caught, 50 minutes of wall for
-  2 h 49 min of suite runs. /
+  2 h 49 min of suite runs; by the evening 230, with the eleven fold rows
+  there had been no machine time for (ten caught, two of them after the
+  suite learned to ask a point near a bend's seam, one dropped as
+  equivalent). /
   **Работает на cadquery-ocp 8.0 так же, как на 7.9, а тесты доказываются на
   копиях дерева.** С сентября голый `pip install cadquery-ocp` приносит
   OpenCASCADE 8.0, и Simple 3D падал там на первом же импорте: 8.0 перенёс
@@ -82,7 +85,10 @@ to use the tool.
   окна, зависший на модальном диалоге на 31 минуту, дедлайн запуска,
   ломавшийся на загруженной машине, — и починены. Вся таблица, прогнанная
   ещё раз на четырёх копиях итогового дерева: 220 из 220 поймано, 50 минут
-  стены при 2 ч 49 мин прогонов наборов.
+  стены при 2 ч 49 мин прогонов наборов; к вечеру — 230, с одиннадцатью
+  строками по свёртке, на которые не хватило машинного времени (десять
+  пойманы, две из них после того, как набор научился спрашивать точку у шва
+  сгиба, одна отброшена как эквивалентная).
 
 - **2026-09-17** — **The exposed-copper work is on `main`, after a review
   that fixed a fold and kept the proof of the tests in the tree.** Three

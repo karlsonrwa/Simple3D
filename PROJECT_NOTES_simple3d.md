@@ -3225,6 +3225,32 @@ wall for 10 158 s of suite runs on four copies** (`build/mutation-runs-2026-09-2
 the fold suite 658 s in the baseline and 519-651 s per row, nineteen rows
 naming it, no row refused, hung or unproven. That is the number the docs
 carry; the agents' own runs were the proof per row on the way there.
+
+**Later the same day - the eleven fold rows, and 3dproperties.** With the
+machine quiet (the fold suite 176 s), the eleven rows the fold agent had
+written but not run went on four copies: 8 caught as the suite was, 3
+survived. `bend-area-ten-times-wide`: the suite's two points were far from
+the band - [8] asks one and a half half-widths out and nine tenths in now.
+`bend-flat-frame-slices-first`: the regions are built slices FIRST (`_walk`
+extends the facets, `plan_fold` appends the panels after it), so the sort
+is real, and a probe over 72 000 folded points of three plans found 393
+answered differently slices-first, up to 0.54 mm - all within ~0.3 mm of a
+seam; [8] now unfolds fifty panel points within half a millimetre of the
+strip and requires each back exactly home (a slice would put one 0.1 mm
+off). `bend-auto-anchor-holds-smallest` is an equivalent mutant: the sign
+search's answer is re-decided by `_walk` at the seams, and six auto-anchored
+plans plus the rigid-flex fixture give identical region transforms, held
+piece and notes with and without it - dropped with the measurement. Table
+**230**. Found and not fixed: near a seam `flat_frame` answers with a panel
+for a point on the bend surface (and slices-first would answer with a slice
+for a panel point); the honest rule would be the region whose inverse lands
+nearest the flat plane. 3dproperties was checked against 8.0 the same way
+(its own note and README carry the numbers): the same three binding
+changes, bound in its `_occt.py`; the table, the 38 pictures and the repair
+reports the same under both versions except `UnifySameDomain` merging more
+faces on two models; and `step_repair.py --check` had been running the
+self-intersection check in-process and hanging for good on IRZIRK - it uses
+the killable child now and says "NOT answered" when it runs out of time.
 `tests/` is 32 scripts and 6 fixtures, about 8 800 lines of Python (was
 ~7 800); the suites themselves grew by about 1 000 lines. With every agent's
 edit in the tree, `run_all` is **31/31 under 7.9 in 822 s and 31/31 under

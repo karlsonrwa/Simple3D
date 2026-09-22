@@ -467,14 +467,32 @@ under `build/agents/<scope>/report.md`, outside the repository.
   relief notch that once made OCC call the wire self-intersecting on the
   real board. A check that the wrapped solid still carries circular or
   elliptical edges would close it; each attempt costs a fold-suite run.
-- Eleven fold rows written and validated but never run for want of machine
-  time (`build/agents/bend/make_rows.py`): the auto anchor holding the
-  smallest piece, slices before panels in `flat_frame`, a hole wire not
-  reversed, the shared-strip threshold inverted, the band ten times wide,
-  the far edge of a seam untransformed, the chain order, slices built as
-  panels, the local stack ignored, `_piece_at` farthest, k out of the
-  developed length. The pinch repair in `_piece_face` never runs; nothing
-  produces a pinch.
+- The eleven fold rows the agent had written but had no machine time to run
+  were run later the same day, on four copies of a quiet machine (the fold
+  suite 176 s in the baseline): **8 caught as the suite was, 3 survived.**
+  Two of the three were weak tests, fixed and re-run: `in_bend_area` ten
+  times wide passed because the suite's two points were far from the band -
+  `test_bend [8]` now asks a point one and a half half-widths out and one
+  nine tenths in; and `flat_frame` with its panels-before-slices sort removed
+  passed because no point the suite asked was near a seam - measured over
+  72 000 folded points of three plans, 393 get a different frame slices-first,
+  up to 0.54 mm off, so [8] now unfolds fifty panel points within half a
+  millimetre of the strip and requires each back exactly home. The third,
+  the auto anchor holding the SMALLEST piece, is an equivalent mutant of the
+  same family as the sign inversion above: the sign search's answer is
+  re-decided by `_walk` at every seam, and on six auto-anchored plans (three
+  strips, a Z fold, two arms, a 180° tall board) plus the rigid-flex fixture
+  every region transform, the held piece and the notes are identical with
+  and without it - dropped. Table 220 → 230.
+- **Found on the way, not fixed:** `flat_frame` answers with a *panel* for
+  a point on the bend surface within about 0.3 mm of a seam (the panel's
+  inverse lands it back inside the stack and the panel's footprint still
+  holds it), and slices-first would answer with a slice for a panel point
+  the same distance out. Neither order is right at both seams; the honest
+  rule would take the region whose inverse lands the point nearest the flat
+  plane. On the demo board a rim face with its sample point that close to a
+  seam has not been seen; the 393 points above are the measurement.
+- The pinch repair in `_piece_face` never runs; nothing produces a pinch.
 - No board suite exercises the rim colour or `_rim_faces`; the PRIMARY
   stackup preference, `_layer_region`'s failure arms and `build_contour`'s
   guards are claimed by nothing; `_pad_wire`'s self-closing arc,

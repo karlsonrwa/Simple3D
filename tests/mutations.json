@@ -2365,5 +2365,105 @@
    "tests/test_bend.py"
   ],
   "why": "the wrap is never tried: a strip the revolve refuses falls straight to the 7.5 deg facets. MEASURED: caught, FAIL  the revolve refuses it and the outline is wrapped instead  <- ['  B1: faceted at 7.5 (424 s)"
+ },
+ {
+  "id": "bend-flat-frame-slices-first",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        for region in sorted(self.regions, key=lambda r: r.kind != \"panel\"):",
+  "new": "        for region in self.regions:",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "flat_frame no longer tries panels before slices, so a panel's own face is judged in a slice's frame - where it stands vertical and is painted with the board EDGE colour. MEASURED: caught by tests/test_bend.py, FAIL  a panel point up to half a millimetre from the strip unfolds exactly home, through its panel and not through a slice"
+ },
+ {
+  "id": "bend-hole-wire-not-reversed",
+  "file": "stepbuilder/bend/strip_wrap.py",
+  "old": "            maker = BRepBuilderAPI_MakeFace(built, TopoDS.Wire(wire.Reversed()))",
+  "new": "            maker = BRepBuilderAPI_MakeFace(built, wire)",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a hole's wire is wrapped the same way round as the outer one, so the wrapped face comes out with the hole as its material. MEASURED: caught by tests/test_bend.py, FAIL  a hole inside the bend area comes through the wrap too  <- (159.97174601990775, 159.88690266447077)"
+ },
+ {
+  "id": "bend-shared-strips-threshold-inverted",
+  "file": "stepbuilder/bend/pieces.py",
+  "old": "            if shared > ratio * smaller:",
+  "new": "            if shared < ratio * smaller:",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "shared_strips reports the seam slivers and stays silent about a real crossing - the comparison against SHARED_STRIP_RATIO runs the wrong way. MEASURED: caught by tests/test_bend.py, FAIL  shared_strips finds the one crossing pair  <- []"
+ },
+ {
+  "id": "bend-area-ten-times-wide",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "            if -half <= w <= half:",
+  "new": "            if -half * 10.0 <= w <= half * 10.0:",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "in_bend_area calls a point ten strip-widths away from the bend line a part standing in the bend area. MEASURED: caught by tests/test_bend.py, FAIL  a part one and a half half-widths from the line is not in the bend area  <- (0.9424777960769379, 'B1')"
+ },
+ {
+  "id": "bend-seam-far-edge-untransformed",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        ends = ((strip.lo, strip.carried),\n                (strip.hi, _slice_trsf(strip.carried, nx, ny, strip.lo,\n                                       strip.hi, strip.axis_z, strip.turn)))",
+  "new": "        ends = ((strip.lo, strip.carried), (strip.hi, strip.carried))",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "seam_gap places the strip's FAR edge with the transform the near edge has, so a fold that joins up perfectly is reported as torn by the whole arc. MEASURED: caught by tests/test_bend.py, FAIL  and it joins up  <- 1.335345049073294"
+ },
+ {
+  "id": "bend-chain-order-reversed",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "    ordered = sorted(\n        zip(bends, normals),\n        key=lambda bn: abs((ref[0] - bn[0].midpoint[0]) * bn[1][0]",
+  "new": "    ordered = sorted(\n        zip(bends, normals), reverse=True,\n        key=lambda bn: abs((ref[0] - bn[0].midpoint[0]) * bn[1][0]",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the chain is ordered from the FAR end inwards, so a Z fold applies its second bend in the first one's place. MEASURED: caught by tests/test_bend.py, FAIL  only the first of two overlapping bends is folded  <- ['B2']"
+ },
+ {
+  "id": "bend-slices-built-as-panels",
+  "file": "stepbuilder/bend/apply.py",
+  "old": "        if region.kind != \"panel\":\n            continue",
+  "new": "        if region.kind == \"nothing\":\n            continue",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the facets are built as well as the strip they are the fallback for, so the material inside every bend area is in the model twice. MEASURED: caught by tests/test_bend.py, FAIL  the piece containing the origin stays put  <- (-1.5000000177635683e-07, 10.466048166175376)"
+ },
+ {
+  "id": "bend-local-stack-ignored",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "    if zones and levels:",
+  "new": "    if zones and not levels:",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the bend's radius is measured from the BOARD's own top face instead of the local stack, which on a rigid-flex board swings the tail through an arc 2 mm too high. MEASURED: caught by tests/test_bend.py, FAIL  the tail rises from the flex surface, 2.05 mm below the board top  <- (9.256416227257665, 8.021266671782"
+ },
+ {
+  "id": "bend-piece-at-farthest",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "    return min(range(len(panels)),\n               key=lambda i: min(math.hypot(vx - point[0], vy - point[1])",
+  "new": "    return max(range(len(panels)),\n               key=lambda i: min(math.hypot(vx - point[0], vy - point[1])",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "an anchor outside the board takes the FARTHEST piece rather than the nearest, so an anchor just off a corner holds the other end of the board. MEASURED: caught by tests/test_bend.py, FAIL  an anchor at the other end holds that end instead  <- 10.457522353923068"
+ },
+ {
+  "id": "bend-k-not-in-developed-length",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        developed = (bend.radius + factor * thickness) * theta",
+  "new": "        developed = bend.radius * theta",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the material a bend consumes is the INNER arc, not the neutral one, so the neutral factor decides nothing and every bend eats what Allegro drew. MEASURED: caught by tests/test_bend.py, FAIL  the far panel stands up exactly as far as it is long  <- (20.214601986602553, 20.057522203923064)"
  }
 ]
