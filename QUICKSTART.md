@@ -53,8 +53,10 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
 
   The last two need the stackup layers: an intermediate from an older version
   says so in the log and falls back to one solid. Both use the swatch row below
-  — copper, base, coverlay, adhesive, stiffener, soldermask; **Reset colors**
-  puts Allegro's material colors back.
+  — copper, base, coverlay, adhesive, stiffener, soldermask. `Solid` greys the
+  row, all but the two colours its surfaces are drawn in: the copper swatch is
+  live while *Exposed copper* is ticked, the base swatch while *Mask openings*
+  is. **Reset colors** puts Allegro's material colors back on the live swatches.
 - **Do not include soldermask layers** — the stack closes up toward the core by
   what was removed, so the board really does get thinner.
 - **Fold flex bends** — fold along Allegro's bend areas (*Setup – Bend*); the
@@ -199,8 +201,10 @@ builds it.
 
   Двум последним нужны слои стека: интермедиат от старой версии их не несёт —
   лог об этом скажет и соберёт одно тело. Обе пользуются рядом квадратиков ниже
-  — медь, база, покров, адгезив, упрочнитель, паяльная маска; **Reset colors**
-  возвращает цвета материалов Allegro.
+  — медь, база, покров, адгезив, упрочнитель, паяльная маска. В `Solid` ряд
+  гаснет, кроме двух цветов, которыми рисуются поверхности: квадратик меди живой,
+  пока отмечена *Exposed copper*, квадратик базы — пока *Mask openings*.
+  **Reset colors** возвращает цвета материалов Allegro живым квадратикам.
 - **Do not include soldermask layers** — стек смыкается к ядру на убранную
   толщину, и плата действительно становится тоньше.
 - **Fold flex bends** — согнуть плату по зонам сгиба из Allegro (*Setup –

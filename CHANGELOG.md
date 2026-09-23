@@ -11,6 +11,34 @@ to use the tool.
 
 ---
 
+- **2026-09-23** — **The Copper and Base swatches work in Solid.** Exposed
+  copper is drawn in the Copper swatch's colour and the mask openings in the
+  Base swatch's, whatever the body stitching — but in *Solid*, the default,
+  the window greyed the whole swatch row, so those two colours could be
+  changed only by editing `layerColors` in the settings file. Now a swatch is
+  live whenever the build paints with its colour: every one in *Solid colored
+  layers* and *Not stitched*, as before; in *Solid*, Copper while *Exposed
+  copper* is ticked and Base while *Mask openings* is. *Reset colors* resets
+  the live swatches only, so a stiffener colour kept for a layer-coloured
+  build is not reset from a row where it is greyed. Found on the way: after
+  any build started in *Solid*, *Reset colors* came back clickable with every
+  swatch greyed (and, with the silkscreen off, its colour label came back
+  looking live); both are now put back exactly as they were. Nine rows added
+  to the mutation table (251). /
+  **Квадратики Copper и Base работают в Solid.** Открытая медь рисуется
+  цветом квадратика Copper, а вскрытия маски — цветом Base при любой сшивке
+  тела, но в *Solid* — режиме по умолчанию — окно гасило весь ряд квадратиков,
+  и эти два цвета менялись только правкой `layerColors` в файле настроек.
+  Теперь квадратик живой, когда сборка рисует его цветом: в *Solid colored
+  layers* и *Not stitched* — все, как раньше; в *Solid* — Copper, пока
+  отмечена *Exposed copper*, и Base, пока *Mask openings*. *Reset colors*
+  сбрасывает только живые квадратики, так что цвет упрочнителя, сохранённый
+  для сборки с цветными слоями, не сбрасывается из ряда, где он серый.
+  Попутно: после любой сборки из *Solid* кнопка *Reset colors* возвращалась
+  нажимаемой при всех серых квадратиках (а при выключенной шелкографии оживала
+  надпись её цвета); теперь и то и другое возвращается в точности как было. В
+  таблицу мутаций добавлены девять строк (251).
+
 - **2026-09-23** — **A crash inside OpenCASCADE is named as one.** When the
   build process dies of an access violation, the window was meant to add
   *"That is an access violation inside OpenCASCADE"* to its advice. It never

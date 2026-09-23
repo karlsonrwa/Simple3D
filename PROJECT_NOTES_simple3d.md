@@ -5,7 +5,18 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-23 (round 92, on `main`)
+## READ THIS FIRST — state as of 2026-09-23 (round 93, on `main`)
+
+**Round 93 (2026-09-23)**: the Copper and Base swatches are live in Solid
+while Exposed copper / Mask openings are ticked - those surfaces are drawn in
+them in every stitching, and the window used to grey the whole row in Solid.
+The rule is one function, `colors.layer_kinds_painted`, for the window and for
+the outputs matrix the plan proposes; the swatches follow the two checkboxes'
+VARIABLES (a trace: the launcher's flags set them after the window is built);
+*Reset colors* resets the live swatches only. Found on the way and fixed:
+`_freeze_inputs` recorded a ttk widget's `-state` option but not its disabled
+FLAG, so after any build started in Solid *Reset colors* came back live
+(measured on HEAD).
 
 **Round 92 (2026-09-23)**: a build that dies of an access violation is
 named as one - for the first time. `crash_advice` compared the exit code
@@ -68,7 +79,7 @@ one settled.
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
 | The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 80 (2026-09-03): Step 0, Plans A, B, C, D, E1–E2 (`format_version` 9), F1–F3, F5 and G1–G5 - each row says what it left. Left: the optional F4 (pytest) and E3 (deleting `intermediate.RESERVED` once a release has shipped v9). Rounds 85–89 added features and tests and touched no plan row |
 | The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd` (eight since round 86c); `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
-| The mutation table | `tests/mutations.json` (round 89, grown in rounds 90, 91 and 92): 242 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
+| The mutation table | `tests/mutations.json` (round 89, grown in rounds 90 to 93): 251 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
 
 Three tools grew out of this project and now have repositories of their own.
 Nothing here depends on them, and no copy of their code belongs in this tree:
@@ -3049,6 +3060,91 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-23 (round 93) — the Copper and Base swatches live in Solid, and a ttk flag the freeze forgot
+
+Found while writing the outputs-matrix proposal (its section 1): in Solid the
+window greyed every layer-colour swatch (`_update_layer_swatches`) and
+refused their click (`_pick_layer_color`), but `core._build_pads` draws the
+exposed copper in `layer_colors["copper"]` and the mask openings - the
+padstack windows and the drawn openings' laminate - in `layer_colors["base"]`
+in every board mode. The user's own install is exactly that case (Solid,
+`exposedCopper` and `maskOpenings` on in the local file): the two colours it
+uses could be changed only in the file.
+
+### Changed
+
+- `colors.layer_kinds_painted(board_mode, exposed_copper, mask_openings)`:
+  every kind for "layers"/"inspect"; for "solid" `copper` with the copper,
+  `base` with the openings. Read off `_build_board` and `_build_pads` /
+  `pads.build_pads` (`rgb01` is used only when `copper`, `base01` only when
+  `openings`; the drawn openings' parts likewise). One set per build, so the
+  matrix's outputs combine by a union.
+- `gui.py`: `_kinds_painted()` over the three controls; a swatch is live iff
+  its kind is painted, `_pick_layer_color` refuses the others, *Reset colors*
+  is live iff a swatch is and resets the live ones only - a reset from a row
+  showing Copper alone used to rewrite, unseen, a stiffener colour kept for
+  the next layer-coloured build.
+- The swatches follow `exposed_copper` and `mask_openings` through a
+  variable TRACE added at the end of `_build_ui`, not the checkbox's
+  `command`: the launcher's `--exposed-copper` / `--mask-openings` set the
+  variable after the window is built, and a command fires on a click only.
+  `_update_layer_swatches` returns while `_busy`: a trace firing mid-build
+  would otherwise light up what `_freeze_inputs` just dimmed.
+- **The ttk flag.** A ttk widget holds "disabled" twice: the `-state` option
+  (what `cget` reads) and the state flag (what `widget.state([...])` sets,
+  without touching the option). *Reset colors* and the silk group are greyed
+  through the flag, `_freeze_inputs` recorded only `cget("state")` - "normal"
+  for them - and `_thaw_inputs` putting "normal" back CLEARED the flag.
+  Measured on HEAD (`build/scratch/reset_state_probe.py`): in plain Solid,
+  flag disabled before a build, enabled after it. `_frozen_flags` now keeps
+  each ttk widget's flag and it is restored after the option. The existing
+  "every control comes back exactly as it was" check could not see it: it
+  compares `cget("state")`, the same thing the freeze recorded.
+
+### How the click is tested
+
+A `<Button-1>` generated on a WITHDRAWN window reaches no binding (measured:
+the colour chooser was not called). `test_gui [7i]` builds its own window on
+a fresh copy of the shipped settings, sets `-alpha 0.0` and deiconifies it -
+mapped, so the click arrives, and invisible - and stubs
+`tkinter.colorchooser.askcolor` and the message boxes so nothing modal can
+open. 25 checks: the rule itself; Solid alone greys everything and a click
+does nothing; ticking Exposed copper through the VARIABLE alone makes Copper
+live and only Copper; a click opens the chooser and the colour reaches
+`_snapshot().layer_colors`; a greyed swatch beside it stays dead; Mask
+openings likewise for Base; *Reset colors* resets the live one and leaves a
+greyed one's colour; a layer-coloured body lights every swatch; a build
+dims all, a trace mid-build lights nothing, a click mid-build does nothing,
+and after it every swatch is exactly as before; and the flag round trip for
+*Reset colors* and the silk colour label, greyed and live. [7b]'s "greyed in
+any other mode" is renamed for what it now means.
+
+### Verified
+
+- `run_all`: 31/31 in 301 s (the fold suite 210 s of it); `python_names`
+  clean; `audit_docs`: no findings after README (the `layerColors` rows and
+  the Exposed copper / Mask openings rows, both languages) and QUICKSTART
+  (the swatch paragraph, both languages) were brought in line.
+- Mutation table 242 → 251, nine rows: `swatch-copper-ignores-exposed-copper`,
+  `swatch-base-ignores-mask-openings`, `swatch-solid-paints-every-kind`,
+  `swatch-checkbox-not-traced`, `swatch-greyed-still-picks`,
+  `swatch-updated-while-busy`, `swatch-reset-rewrites-greyed`,
+  `swatch-reset-always-live`, `freeze-ttk-flag-forgotten`. `--changed` on
+  four copies: 43 rows, **caught 43 of 43**, 307 s of wall for 1181 s of
+  suite runs. The nine again on ONE copy, 108 s: each caught by the check
+  written for it.
+- **Why the second run.** On four copies `swatch-greyed-still-picks` was
+  reported caught by "[7g] and the STEP-folders box pastes too", a clipboard
+  check nowhere near it; on one copy, by "a click on the Copper swatch does
+  nothing". [7g] and [7h] put text on the REAL Windows clipboard and paste it
+  back, and four copies of `test_gui` do that at once. A flaky check that
+  fails under a mutation reads as "caught" and can hide a survivor - the
+  trap step2html's `test_editing` closed with a named mutex. Not fixed here;
+  offered as a separate task.
+- Not verified: the user's own window. For the install, `stepbuilder/gui.py`
+  and `stepbuilder/colors.py` are the files to copy (the SKILL side is
+  untouched).
 
 ## Update 2026-09-23 (round 92) — an access violation the window never named: an exit code is a DWORD
 

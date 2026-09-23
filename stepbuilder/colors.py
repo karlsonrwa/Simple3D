@@ -110,6 +110,32 @@ DEFAULT_LAYER_COLORS: dict[str, tuple[int, int, int]] = {
 }
 
 
+def layer_kinds_painted(board_mode: str, exposed_copper: bool = False,
+                        mask_openings: bool = False) -> frozenset[str]:
+    """The layer kinds whose colour a build with these options paints with.
+
+    A layer-coloured body ("layers", "inspect") paints every face by its kind,
+    so it uses them all. A "solid" body is one colour and uses none of them -
+    but the surfaces laid over it still do, whatever the body: the exposed
+    copper is drawn in `copper`, the mask openings and the laminate they show
+    in `base` (core._build_pads). Until round 93 the window greyed the whole
+    swatch row in Solid, so the two colours a Solid build with surfaces DID
+    use could be changed only by editing the file.
+
+    A swatch is live exactly when its kind is in here. One set per build, so
+    several builds - the outputs matrix docs/output-matrix-plan.ru.md
+    proposes - combine by a union.
+    """
+    if board_mode in ("layers", "inspect"):
+        return frozenset(DEFAULT_LAYER_COLORS)
+    kinds = set()
+    if exposed_copper:
+        kinds.add("copper")
+    if mask_openings:
+        kinds.add("base")
+    return frozenset(kinds)
+
+
 def layer_kind(layer: dict) -> str:
     """Which of LAYER_KINDS a stackup layer belongs to.
 

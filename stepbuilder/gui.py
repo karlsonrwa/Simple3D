@@ -33,6 +33,7 @@ from .colors import (
     SILK_COLORS,
     SILK_ORDER,
     THEME_ORDER,
+    layer_kinds_painted,
     parse_hex,
     resolve_board_color,
 )
@@ -217,6 +218,7 @@ class StepBuilderApp(tk.Tk):
         # was before the build, to be put back exactly - see _freeze_inputs.
         self._busy = False
         self._frozen: dict = {}
+        self._frozen_flags: dict = {}      # a ttk widget's disabled FLAG; see _freeze_inputs
         self._dimmed: dict = {}
         self._paths_from_launcher = False
         # Layers switched OFF, by name. Exclusions rather than inclusions: a
@@ -362,14 +364,16 @@ class StepBuilderApp(tk.Tk):
             row=5, column=0, columnspan=6, sticky="w", pady=(6, 0))
 
         # The pads' copper on the two outer faces, as surfaces in the copper
-        # colour of the layer swatches. Needs an intermediate written with
+        # colour of the layer swatches - so ticking it makes the Copper swatch
+        # live in any stitching (round 93). Needs an intermediate written with
         # format_version 12 (10 draws the copper whole, unclipped to the mask
         # openings); an older one says so in the log and draws none.
         ttk.Checkbutton(opts, text="Exposed copper (as surfaces)",
                         variable=self.exposed_copper).grid(
             row=6, column=0, columnspan=6, sticky="w", pady=(6, 0))
 
-        # The mask openings as surfaces in the dielectric's colour: every
+        # The mask openings as surfaces in the dielectric's colour - the Base
+        # swatch, live with this box in any stitching (round 93): every
         # padstack's opening, instanced like the pads, and every opening
         # drawn on the mask layers. With the pads on, what the copper leaves
         # of each opening; on their own, the openings whole. Needs the mask
@@ -491,6 +495,14 @@ class StepBuilderApp(tk.Tk):
         # variable, so one trace covers every way the JSON can change.
         self.json_file.trace_add("write", self._schedule_layer_refresh)
         self._refresh_layers()
+        # The Copper and Base swatches follow these two (round 93). A trace
+        # rather than the checkbox's command: the launcher's --exposed-copper
+        # and --mask-openings set the variable after this window is built,
+        # and a command fires on a click only - the swatch would sit grey
+        # beside a ticked box. Added here, after the swatches exist:
+        # _load_config sets both variables before _build_ui runs.
+        for var in (self.exposed_copper, self.mask_openings):
+            var.trace_add("write", lambda *_: self._update_layer_swatches())
 
     # --------------------------------------------------- window placement -- #
 
@@ -555,29 +567,58 @@ class StepBuilderApp(tk.Tk):
             self._swatches[key] = canvas
 
         # Sits at the end of the swatches, so what it resets is unambiguous:
-        # these, back to Allegro's own material colors. The board theme and
-        # the rim have their own controls and are not touched.
+        # the live ones, back to Allegro's own material colors. The board
+        # theme and the rim have their own controls and are not touched.
         self._reset_colors_btn = ttk.Button(row, text="Reset colors", width=14,
                                             command=self._reset_layer_colors)
         self._reset_colors_btn.pack(side="left", padx=(12, 0))
         self._update_layer_swatches()
 
     def _reset_layer_colors(self) -> None:
-        self.layer_colors = dict(DEFAULT_LAYER_COLORS)
+        # The LIVE swatches only (round 93). Until then every live swatch was
+        # every swatch; now Solid with Exposed copper shows Copper alone, and
+        # a reset that also rewrote the greyed ones would throw away, unseen,
+        # a stiffener colour kept for the next layer-coloured build.
+        painted = self._kinds_painted()
+        for kind in painted:
+            self.layer_colors[kind] = DEFAULT_LAYER_COLORS[kind]
         self._update_layer_swatches()
-        self._append_log("Layer colors reset to the Allegro material defaults")
+        if painted == frozenset(DEFAULT_LAYER_COLORS):
+            self._append_log("Layer colors reset to the Allegro material defaults")
+        else:
+            names = [label for key, label, _ in LAYER_KINDS if key in painted]
+            self._append_log("Layer colors reset to the Allegro material defaults: "
+                             + ", ".join(names))
 
     def _on_mode_changed(self) -> None:
         """Both the swatches and the rim controls depend on the stitching."""
         self._update_layer_swatches()
         self._update_rim_swatch()
 
+    def _kinds_painted(self) -> frozenset[str]:
+        """The layer kinds this build paints with - colors.layer_kinds_painted
+        over the three controls that decide it."""
+        return layer_kinds_painted(_mode_key(self.board_mode.get()),
+                                   self.exposed_copper.get(), self.mask_openings.get())
+
     def _update_layer_swatches(self) -> None:
-        # Both "Solid colored layers" and "Not stitched" paint by layer kind;
-        # only plain "Solid" ignores these.
-        active = _mode_key(self.board_mode.get()) in ("layers", "inspect")
-        self._reset_colors_btn.state(["!disabled"] if active else ["disabled"])
+        # A swatch is live when the build paints with its colour. Both
+        # "Solid colored layers" and "Not stitched" paint every kind; "Solid"
+        # paints none of them in the body, but the exposed copper is drawn in
+        # Copper and the mask openings in Base whatever the body is, so those
+        # two are live with their checkboxes (round 93 - they were greyed,
+        # and the colours they stood for were used anyway).
+        #
+        # Never while a build runs: the checkboxes' traces can call this, and
+        # it would put back a live look _freeze_inputs has just dimmed - and
+        # that _thaw_inputs then restores from what it recorded, not from this.
+        if self._busy:
+            return
+        painted = self._kinds_painted()
+        self._reset_colors_btn.state(
+            ["!disabled"] if any(key in painted for key in self._swatches) else ["disabled"])
         for key, canvas in self._swatches.items():
+            active = key in painted
             rgb = self.layer_colors.get(key, DEFAULT_LAYER_COLORS[key])
             canvas.configure(bg="#%02x%02x%02x" % rgb if active else INACTIVE_SWATCH,
                              relief="raised" if active else "flat",
@@ -587,8 +628,8 @@ class StepBuilderApp(tk.Tk):
     def _pick_layer_color(self, kind: str) -> None:
         if self._busy:
             return          # a Canvas cannot be greyed out; see _set_busy
-        if _mode_key(self.board_mode.get()) not in ("layers", "inspect"):
-            return
+        if kind not in self._kinds_painted():
+            return          # greyed: the build does not use this colour
         from tkinter import colorchooser
 
         current = self.layer_colors.get(kind, DEFAULT_LAYER_COLORS[kind])
@@ -1052,6 +1093,7 @@ class StepBuilderApp(tk.Tk):
         if self._frozen:
             return
         self._frozen = {}
+        self._frozen_flags = {}
         # A tk.Text refuses edits when disabled but keeps its white field, and
         # a Canvas swatch keeps its colour whatever its state - so both go on
         # looking live while everything around them greys out. They are dimmed
@@ -1079,9 +1121,23 @@ class StepBuilderApp(tk.Tk):
                 previous = widget.cget("state")
             except Exception:
                 continue          # frames, canvases: nothing to disable
+            # A ttk widget holds "disabled" twice: in its -state OPTION, which
+            # is what cget reads, and in its state FLAG, which widget.state()
+            # sets without touching the option. Reset colors and the silk
+            # group are greyed through the flag, so their option read "normal"
+            # here, and putting "normal" back cleared the flag: after any
+            # build that started in plain Solid, Reset colors came back live
+            # with no swatch live beside it (measured on HEAD in round 93).
+            # So the flag is recorded as well, and restored after the option.
+            if isinstance(widget, ttk.Widget):
+                try:
+                    self._frozen_flags[widget] = widget.instate(["disabled"])
+                except Exception:
+                    pass
             try:
                 widget.configure(state="disabled")
             except Exception:
+                self._frozen_flags.pop(widget, None)
                 continue
             # str(): a ttk state comes back as a Tcl object, and putting that
             # back verbatim is fine, but the tests compare against "readonly".
@@ -1093,7 +1149,14 @@ class StepBuilderApp(tk.Tk):
                 widget.configure(state=previous)
             except Exception:
                 pass
+        # After the option, which on a ttk widget rewrites the flag.
+        for widget, was_disabled in self._frozen_flags.items():
+            try:
+                widget.state(["disabled"] if was_disabled else ["!disabled"])
+            except Exception:
+                pass
         self._frozen = {}
+        self._frozen_flags = {}
         for widget, options in self._dimmed.items():
             try:
                 widget.configure(**options)

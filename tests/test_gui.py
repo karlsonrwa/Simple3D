@@ -217,7 +217,7 @@ check("swatches show their colour in 'layers'",
       app._swatches["copper"].cget("bg") == "#%02x%02x%02x" % app.layer_colors["copper"],
       app._swatches["copper"].cget("bg"))
 app.board_mode.set(_mode_label("solid")); app._update_layer_swatches()
-check("swatches greyed in any other mode",
+check("swatches greyed in Solid when no surface is painted with them - [7i]",
       app._swatches["copper"].cget("bg") == "#d9d9d9", app._swatches["copper"].cget("bg"))
 app.board_mode.set(_mode_label("layers"))
 app.layer_colors["copper"] = (1, 2, 3)
@@ -453,6 +453,173 @@ check("Ctrl+V under a Cyrillic layout pastes into the field", target.get() == "D
 app.clipboard_clear()
 if before_clip:
     app.clipboard_append(before_clip)
+
+print("\n[7i] Copper and Base follow the surfaces painted with them - round 93")
+# Exposed copper is drawn in the Copper colour and the mask openings in Base
+# in EVERY stitching (core._build_pads). Until round 93 the window greyed the
+# whole swatch row in Solid - the default, and the user's own install, which
+# has both surfaces on - so the two colours such a build DID use could be
+# changed only in the file.
+import tkinter.colorchooser as colorchooser_mod
+import stepbuilder.gui as gui_mod
+from stepbuilder.colors import DEFAULT_LAYER_COLORS, layer_kinds_painted
+
+every_kind = frozenset(DEFAULT_LAYER_COLORS)
+check("the rule: a Solid body paints with none of the layer colours",
+      layer_kinds_painted("solid") == frozenset(), layer_kinds_painted("solid"))
+check("Solid with Exposed copper paints Copper, with Mask openings Base, with both both",
+      layer_kinds_painted("solid", exposed_copper=True) == {"copper"}
+      and layer_kinds_painted("solid", mask_openings=True) == {"base"}
+      and layer_kinds_painted("solid", True, True) == {"copper", "base"})
+check("a layer-coloured body paints with every one, surfaces or not",
+      all(layer_kinds_painted(m, c, o) == every_kind
+          for m in ("layers", "inspect") for c in (False, True) for o in (False, True)))
+
+# A window of its own on a fresh copy of the shipped settings, so nothing the
+# cases above saved leaks in. MAPPED, because a click generated on a withdrawn
+# window is dropped before any binding sees it (measured), and fully
+# transparent, so nothing appears on the desk while it is.
+TMP7 = OUT / "swatchtest"
+TMP7.mkdir(exist_ok=True)
+cfg7 = TMP7 / "simple3d_config.json"
+shutil.copy(ROOT / "simple3d_config.json", cfg7)
+for stale in TMP7.glob("*.local.json"):
+    stale.unlink()
+# Nothing modal may open: a real colour chooser or message box would wait for
+# a click nobody gives it, and the suite would hang instead of failing.
+picked = []
+_real_askcolor = colorchooser_mod.askcolor
+colorchooser_mod.askcolor = lambda **kw: (picked.append(kw), ((10, 20, 30), "#0a141e"))[1]
+_real_boxes = {name: getattr(gui_mod.messagebox, name)
+               for name in ("showerror", "showwarning", "showinfo", "askyesno", "askokcancel")}
+for name in _real_boxes:
+    setattr(gui_mod.messagebox, name, lambda *a, **k: None)
+app7 = StepBuilderApp(cfg7)
+app7.attributes("-alpha", 0.0)
+app7.deiconify()
+app7.update()
+
+
+def click(kind):
+    app7._swatches[kind].event_generate("<Button-1>", x=5, y=5)
+    app7.update()
+
+
+def look(kind):
+    canvas = app7._swatches[kind]
+    return (str(canvas.cget("bg")), str(canvas.cget("relief")), str(canvas.cget("cursor")))
+
+
+def live_look(kind):
+    return ("#%02x%02x%02x" % app7.layer_colors[kind], "raised", "hand2")
+
+
+GREY = (gui_mod.INACTIVE_SWATCH, "flat", "")
+try:
+    app7.board_mode.set(_mode_label("solid"))
+    app7._on_mode_changed()
+    app7.exposed_copper.set(False)
+    app7.mask_openings.set(False)
+    check("Solid alone: every swatch greyed, and Reset colors with them",
+          all(look(k) == GREY for k in app7._swatches)
+          and app7._reset_colors_btn.instate(["disabled"]),
+          {k: look(k) for k in app7._swatches if look(k) != GREY})
+    click("copper")
+    check("and a click on the Copper swatch does nothing",
+          not picked and app7._snapshot().layer_colors["copper"] == DEFAULT_LAYER_COLORS["copper"],
+          (picked, app7._snapshot().layer_colors["copper"]))
+
+    # The variable alone, no update call: the checkbox, the settings file and
+    # the launcher's --exposed-copper all land in it, and the trace is what
+    # makes the swatch follow every one of them.
+    app7.exposed_copper.set(True)
+    check("ticking Exposed copper makes Copper live, through the variable alone",
+          look("copper") == live_look("copper"), look("copper"))
+    check("and only Copper", all(look(k) == GREY for k in app7._swatches if k != "copper"),
+          {k: look(k) for k in app7._swatches if k != "copper" and look(k) != GREY})
+    check("Reset colors is live beside it", app7._reset_colors_btn.instate(["!disabled"]))
+    click("copper")
+    check("a click on it opens the colour chooser", len(picked) == 1, len(picked))
+    check("and the colour picked reaches the build",
+          app7._snapshot().layer_colors["copper"] == (10, 20, 30),
+          app7._snapshot().layer_colors["copper"])
+    check("the swatch shows it", look("copper")[0] == "#0a141e", look("copper"))
+    click("stiffener")
+    check("a greyed swatch beside it still does nothing", len(picked) == 1, len(picked))
+
+    app7.exposed_copper.set(False)
+    app7.mask_openings.set(True)
+    check("Mask openings makes Base live, and Copper goes grey again",
+          look("base") == live_look("base") and look("copper") == GREY,
+          (look("base"), look("copper")))
+    click("base")
+    check("Base takes a colour the same way",
+          app7._snapshot().layer_colors["base"] == (10, 20, 30),
+          app7._snapshot().layer_colors["base"])
+    app7._reset_colors_btn.invoke()
+    check("Reset colors puts the live swatch back to Allegro's colour",
+          app7.layer_colors["base"] == DEFAULT_LAYER_COLORS["base"], app7.layer_colors["base"])
+    check("and leaves the colour of a greyed one alone",
+          app7.layer_colors["copper"] == (10, 20, 30), app7.layer_colors["copper"])
+    app7.board_mode.set(_mode_label("layers"))
+    app7._on_mode_changed()
+    check("a layer-coloured body makes every swatch live, as before",
+          all(look(k) == live_look(k) for k in app7._swatches),
+          {k: look(k) for k in app7._swatches if look(k) != live_look(k)})
+
+    # A build, in Solid with Exposed copper: Copper live, the rest grey.
+    app7.board_mode.set(_mode_label("solid"))
+    app7._on_mode_changed()
+    app7.mask_openings.set(False)
+    app7.exposed_copper.set(True)
+    looks_before = {k: look(k) for k in app7._swatches}
+    app7._set_busy(True)
+    check("a build dims every swatch, the live Copper included",
+          all(look(k) == GREY for k in app7._swatches),
+          {k: look(k) for k in app7._swatches if look(k) != GREY})
+    app7.mask_openings.set(True)
+    check("a trace that fires during the build lights nothing up",
+          all(look(k) == GREY for k in app7._swatches),
+          {k: look(k) for k in app7._swatches if look(k) != GREY})
+    app7.mask_openings.set(False)
+    click("copper")
+    check("and a click during the build does nothing", len(picked) == 2, len(picked))
+    app7._set_busy(False)
+    check("after the build every swatch is exactly as it was",
+          {k: look(k) for k in app7._swatches} == looks_before,
+          {k: (looks_before[k], look(k)) for k in app7._swatches if look(k) != looks_before[k]})
+    check("Reset colors live again", app7._reset_colors_btn.instate(["!disabled"]))
+
+    # And the build in plain Solid, where Reset colors and - with both sides
+    # off - the silk group are greyed through ttk's state FLAG rather than the
+    # -state option. _freeze_inputs used to record only the option ("normal"
+    # for them), and putting it back switched them on: measured on HEAD in
+    # round 93, Reset colors came back live with no swatch live beside it.
+    app7.exposed_copper.set(False)
+    app7.silk_top.set(False)
+    app7.silk_bottom.set(False)
+    app7._update_silk_row()
+    flagged = [app7._reset_colors_btn, app7._silk_color_label]
+    check("the premise: those are greyed through the flag, the option says normal",
+          all(w.instate(["disabled"]) and str(w.cget("state")) == "normal" for w in flagged),
+          [(str(w), w.instate(["disabled"]), str(w.cget("state"))) for w in flagged])
+    app7._set_busy(True)
+    app7._set_busy(False)
+    check("after a build they are still greyed",
+          all(w.instate(["disabled"]) for w in flagged),
+          [(str(w), w.instate(["disabled"])) for w in flagged])
+    app7.silk_top.set(True)
+    app7._update_silk_row()
+    app7._set_busy(True)
+    app7._set_busy(False)
+    check("and a control live before a build is live after it",
+          app7._silk_color_label.instate(["!disabled"]))
+finally:
+    colorchooser_mod.askcolor = _real_askcolor
+    for name, box in _real_boxes.items():
+        setattr(gui_mod.messagebox, name, box)
+    app7.withdraw()
+    app7.destroy()
 
 print("\n[8] snapshot is complete and frozen")
 snap = app._snapshot()

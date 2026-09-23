@@ -2585,5 +2585,95 @@
    "tests/test_gui.py"
   ],
   "why": "the exit code is shown in decimal only, so 3221225477 and -1073741819 no longer read as the one status 0xC0000005"
+ },
+ {
+  "id": "swatch-copper-ignores-exposed-copper",
+  "file": "stepbuilder/colors.py",
+  "old": "    if exposed_copper:\n        kinds.add(\"copper\")",
+  "new": "    if False:\n        kinds.add(\"copper\")",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "Exposed copper no longer makes the Copper swatch live: in Solid the colour the copper is drawn in cannot be set from the window - the defect of round 93"
+ },
+ {
+  "id": "swatch-base-ignores-mask-openings",
+  "file": "stepbuilder/colors.py",
+  "old": "    if mask_openings:\n        kinds.add(\"base\")",
+  "new": "    if False:\n        kinds.add(\"base\")",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "Mask openings no longer make the Base swatch live, though the openings are drawn in it"
+ },
+ {
+  "id": "swatch-solid-paints-every-kind",
+  "file": "stepbuilder/colors.py",
+  "old": "    if board_mode in (\"layers\", \"inspect\"):\n        return frozenset(DEFAULT_LAYER_COLORS)",
+  "new": "    if True:\n        return frozenset(DEFAULT_LAYER_COLORS)",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a Solid body counts as painting every layer colour, so the whole swatch row looks live when the body uses none of it"
+ },
+ {
+  "id": "swatch-checkbox-not-traced",
+  "file": "stepbuilder/gui.py",
+  "old": "            var.trace_add(\"write\", lambda *_: self._update_layer_swatches())",
+  "new": "            pass",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the swatches no longer follow the two checkboxes' variables: ticking Exposed copper (or the launcher's flag) leaves Copper grey"
+ },
+ {
+  "id": "swatch-greyed-still-picks",
+  "file": "stepbuilder/gui.py",
+  "old": "        if kind not in self._kinds_painted():\n            return          # greyed: the build does not use this colour",
+  "new": "        if False:\n            return          # greyed: the build does not use this colour",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a click on a greyed swatch still opens the colour chooser"
+ },
+ {
+  "id": "swatch-updated-while-busy",
+  "file": "stepbuilder/gui.py",
+  "old": "        if self._busy:\n            return\n        painted = self._kinds_painted()",
+  "new": "        painted = self._kinds_painted()",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a checkbox trace firing during a build lights up swatches the freeze has just dimmed"
+ },
+ {
+  "id": "swatch-reset-rewrites-greyed",
+  "file": "stepbuilder/gui.py",
+  "old": "        for kind in painted:\n            self.layer_colors[kind] = DEFAULT_LAYER_COLORS[kind]",
+  "new": "        for kind in DEFAULT_LAYER_COLORS:\n            self.layer_colors[kind] = DEFAULT_LAYER_COLORS[kind]",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "Reset colors also rewrites the colours of greyed swatches, unseen"
+ },
+ {
+  "id": "swatch-reset-always-live",
+  "file": "stepbuilder/gui.py",
+  "old": "            [\"!disabled\"] if any(key in painted for key in self._swatches) else [\"disabled\"])",
+  "new": "            [\"!disabled\"])",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "Reset colors stays live with every swatch greyed"
+ },
+ {
+  "id": "freeze-ttk-flag-forgotten",
+  "file": "stepbuilder/gui.py",
+  "old": "        for widget, was_disabled in self._frozen_flags.items():",
+  "new": "        for widget, was_disabled in {}.items():",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a build forgets the ttk disabled flag: Reset colors and the silk group come back live after it though nothing they act on is (measured on HEAD, round 93)"
  }
 ]
