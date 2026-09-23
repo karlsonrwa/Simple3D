@@ -4,7 +4,9 @@ notice it die, kill it on request.
 No tkinter here. The window hands in five callbacks and they are called on
 whatever thread calls `drain_once` - the window's Tk `after` loop, so the
 callbacks may touch widgets; the bridge itself touches none. Round 74,
-plan C5: out of gui.py, behaviour for behaviour (test_gui [9], [9b]).
+plan C5: out of gui.py, behaviour for behaviour (test_gui [9], [9b]); round
+92: a real crash, not a stand-in, is what names the access violation
+(test_gui [9c]).
 """
 
 from __future__ import annotations
@@ -15,16 +17,36 @@ from typing import Callable
 
 from .worker import BuildSettings, run_jobs
 
-# 0xC0000005: what a process ends with when OpenCASCADE reads memory it must
-# not - measured on a real board, in the fuse that stitches the layer solids.
-ACCESS_VIOLATION = -1073741819
+# STATUS_ACCESS_VIOLATION: what a process ends with when OpenCASCADE reads
+# memory it must not - measured on a real board, in the fuse that stitches
+# the layer solids (round 40).
+#
+# Written the way Windows writes it, because which INTEGER arrives depends on
+# who reads the exit code. Windows keeps it as a DWORD; multiprocessing reads
+# it with GetExitCodeProcess and hands over the unsigned 3221225477 (measured
+# 2026-09-23 on Python 3.11.4, 3.12.0 and 3.14.7, with a real access
+# violation in a spawned child), while round 40's table recorded the signed
+# -1073741819. That signed form was the constant from 2026-07-26 until round
+# 92, so the sentence below was never once printed by the window. A code is
+# compared by its low 32 bits, which is the same for both readings.
+ACCESS_VIOLATION = 0xC0000005
+
+
+def is_access_violation(code: int | None) -> bool:
+    """STATUS_ACCESS_VIOLATION, in either reading of the exit code."""
+    return code is not None and (code & 0xFFFFFFFF) == ACCESS_VIOLATION
 
 
 def crash_advice(code: int | None) -> str:
-    """What to tell the user about a build that stopped without a word."""
-    detail = (f"The build stopped without finishing (exit code {code})."
+    """What to tell the user about a build that stopped without a word.
+
+    The code is given in hex as well: a Windows status reads as one
+    (0xC0000005), and in hex its two decimal readings are the same number.
+    """
+    detail = (f"The build stopped without finishing (exit code {code}, "
+              f"0x{code & 0xFFFFFFFF:08X})."
               if code is not None else "The build stopped without finishing.")
-    if code == ACCESS_VIOLATION:
+    if is_access_violation(code):
         detail += ("\nThat is an access violation inside OpenCASCADE, not "
                    "something the export can catch.")
     detail += ("\n\nWhat usually gets a board through: set Body stitching "

@@ -641,6 +641,9 @@ bridge = WorkerBridge(on_log=lambda m: seen.append(("log", m)),
                       on_error=lambda m: seen.append(("error", m)),
                       on_crash=lambda d: seen.append(("crash", d)))
 check("nothing running to begin with", not bridge.alive and bridge.cancel() is False)
+# The stand-in dies with the constant itself. That alone once proved nothing:
+# the constant was the signed reading and a real crash arrives unsigned, so
+# this passed while the window never named one. [9c] crashes a real child.
 dead = _FakeWorker(); dead.killed = True; dead.exitcode = ACCESS_VIOLATION
 bridge.process, bridge.finished, bridge.cancelled = dead, False, False
 bridge.check_alive()
@@ -665,6 +668,39 @@ check("cancel kills a live build", bridge.cancel() is True and live.killed
 check("crash_advice names the exit code when there is one",
       "exit code -15" in crash_advice(-15) and "exit code" not in crash_advice(None)
       and "access violation" not in crash_advice(-15))
+
+print("\n[9c] a REAL access violation, as Windows reports it - round 92")
+# multiprocessing reads a dead child's exit code unsigned: 3221225477 for
+# STATUS_ACCESS_VIOLATION (measured on Python 3.11, 3.12 and 3.14). The
+# constant was the signed -1073741819 from 2026-07-26 to round 92, and in all
+# that time the window never once said "access violation" - while [9b],
+# handing its stand-in the constant itself, passed. Here a child really dies
+# of one; tests/_crash.py says how, and why it is a module of its own.
+from _crash import spawn_crash
+from stepbuilder.worker_bridge import is_access_violation
+child = spawn_crash()
+child.join(60)
+code = child.exitcode
+if child.is_alive():                   # a premise that failed: leave nothing behind
+    child.terminate()
+check("the child really died of an access violation (the premise)",
+      code is not None and (code & 0xFFFFFFFF) == 0xC0000005, code)
+seen.clear()
+bridge.process, bridge.finished, bridge.cancelled = child, False, False
+bridge.check_alive()
+check("the bridge reports the real crash, and names the access violation",
+      seen and seen[-1][0] == "crash" and "access violation" in seen[-1][1]
+      and bridge.finished and bridge.process is None, str(seen[-1:]))
+check("with the code in hex, as Windows writes the status",
+      seen and "0xC0000005" in seen[-1][1], str(seen[-1:]))
+check("both readings of the status are recognised, and nothing else",
+      is_access_violation(3221225477) and is_access_violation(-1073741819)
+      and not is_access_violation(1) and not is_access_violation(-15)
+      and not is_access_violation(None))
+check("the signed reading gets the same advice and the same hex",
+      "access violation" in crash_advice(-1073741819)
+      and "0xC0000005" in crash_advice(-1073741819), crash_advice(-1073741819))
+
 bridge.close()
 check("close with nothing running is harmless", not bridge.alive)
 

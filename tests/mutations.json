@@ -2555,5 +2555,35 @@
    "tests/test_pads.py"
   ],
   "why": "every circular cutout a figure reaches is taken for the pin's own drill and skipped, so a pad over a real hole keeps the hole's copper"
+ },
+ {
+  "id": "crash-av-compared-as-it-arrives",
+  "file": "stepbuilder/worker_bridge.py",
+  "old": "    return code is not None and (code & 0xFFFFFFFF) == ACCESS_VIOLATION",
+  "new": "    return code is not None and code == ACCESS_VIOLATION",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the exit code is compared as it arrives, so the signed reading of STATUS_ACCESS_VIOLATION (-1073741819) is no longer named"
+ },
+ {
+  "id": "crash-av-constant-signed",
+  "file": "stepbuilder/worker_bridge.py",
+  "old": "ACCESS_VIOLATION = 0xC0000005",
+  "new": "ACCESS_VIOLATION = -1073741819",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the constant back in the signed reading it held until round 92: the masked code never equals it, so a real access violation is reported without being named - the defect itself"
+ },
+ {
+  "id": "crash-code-hex-dropped",
+  "file": "stepbuilder/worker_bridge.py",
+  "old": "              f\"0x{code & 0xFFFFFFFF:08X}).\"",
+  "new": "              f\"{code}).\"",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the exit code is shown in decimal only, so 3221225477 and -1073741819 no longer read as the one status 0xC0000005"
  }
 ]

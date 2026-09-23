@@ -11,6 +11,30 @@ to use the tool.
 
 ---
 
+- **2026-09-23** — **A crash inside OpenCASCADE is named as one.** When the
+  build process dies of an access violation, the window was meant to add
+  *"That is an access violation inside OpenCASCADE"* to its advice. It never
+  did: the check compared the exit code with the signed number −1073741819,
+  and Python reports the same Windows status as the unsigned 3221225477 —
+  measured with a child process that really crashes, on Python 3.11, 3.12 and
+  3.14. The status is now recognised in either form, and the message gives
+  the code in hex as well (`0xC0000005`), which is how Windows writes it and
+  the same for both forms. The general advice (*Not stitched*, a coarser fold
+  slice angle) was printed all along and has not changed. The test crashes a
+  real child process now, not a stand-in handed the constant; three rows
+  added to the mutation table (242). /
+  **Падение внутри OpenCASCADE называется падением.** Когда процесс сборки
+  умирает от access violation, окно должно было добавлять к совету *«That is
+  an access violation inside OpenCASCADE»*. Ни разу не добавило: проверка
+  сравнивала код выхода со знаковым числом −1073741819, а Python отдаёт тот
+  же статус Windows беззнаковым 3221225477 — измерено на дочернем процессе,
+  который действительно падает, на Python 3.11, 3.12 и 3.14. Теперь статус
+  узнаётся в обоих видах, а сообщение даёт код ещё и в шестнадцатеричном виде
+  (`0xC0000005`) — так его пишет Windows, и для обоих видов это одно число.
+  Общий совет (*Not stitched*, крупнее шаг нарезки сгиба) печатался всегда и
+  не изменился. Тест теперь роняет настоящий дочерний процесс, а не подставку
+  с самой константой; в таблицу мутаций добавлены три строки (242).
+
 - **2026-09-22** — **Pads and mask openings are clipped at the board's edge
   and at cutouts.** A mouse-bite hole standing 0.2 mm inside the edge of the
   user's 5988-a1 carries a 0.35 mm mask opening, and its window — one shared

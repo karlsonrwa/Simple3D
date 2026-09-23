@@ -5,7 +5,19 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-22 (round 91, on `main`)
+## READ THIS FIRST — state as of 2026-09-23 (round 92, on `main`)
+
+**Round 92 (2026-09-23)**: a build that dies of an access violation is
+named as one - for the first time. `crash_advice` compared the exit code
+with the signed -1073741819, and multiprocessing reports the status
+unsigned, 3221225477, on Python 3.11, 3.12 and 3.14 alike; so since round 40
+the window never said "access violation", and `test_gui [9b]` passed because
+its stand-in was handed the constant itself. The low 32 bits are compared
+now, the message shows the code in hex, and `test_gui [9c]` crashes a real
+spawned child (`tests/_crash.py`). Read round 92 for how a suite spawns a
+child without re-running itself. The same day, an uncommitted proposal:
+`docs/output-matrix-plan.ru.md` (an outputs matrix and step2html in the
+window), waiting on the user's answers.
 
 **Round 91 (2026-09-22)**: a pad or a mask window that reaches the board
 outline or a cutout is clipped to the board and becomes a face of its own
@@ -56,7 +68,7 @@ one settled.
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
 | The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 80 (2026-09-03): Step 0, Plans A, B, C, D, E1–E2 (`format_version` 9), F1–F3, F5 and G1–G5 - each row says what it left. Left: the optional F4 (pytest) and E3 (deleting `intermediate.RESERVED` once a release has shipped v9). Rounds 85–89 added features and tests and touched no plan row |
 | The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd` (eight since round 86c); `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
-| The mutation table | `tests/mutations.json` (round 89, grown in rounds 90 and 91): 239 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
+| The mutation table | `tests/mutations.json` (round 89, grown in rounds 90, 91 and 92): 242 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
 
 Three tools grew out of this project and now have repositories of their own.
 Nothing here depends on them, and no copy of their code belongs in this tree:
@@ -3037,6 +3049,83 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-23 (round 92) — an access violation the window never named: an exit code is a DWORD
+
+Found while writing the outputs-matrix proposal (`docs/output-matrix-plan.ru.md`,
+uncommitted, the same day): the pages it proposes would report a crash of
+step2html through the same bridge, so the bridge's crash report was probed
+with a real crash - and it had never recognised one.
+
+### Measured
+
+- `build/scratch/exitcode_probe.py` (gitignored): a child started with
+  multiprocessing spawn that calls `faulthandler._read_null()` ends with
+  `Process.exitcode == 3221225477` (0xC0000005) on Python 3.11.4, 3.12.0 and
+  3.14.7 - all three interpreters on this machine; one that calls
+  `os._exit(-1073741819)` gives the same 3221225477. multiprocessing reads
+  the code with `GetExitCodeProcess`, which is a DWORD.
+- Two things that look like a crash and are not: `ctypes.string_at(0)` is
+  caught by ctypes' own SEH wrapper and raises `OSError` (the child exits 1),
+  and `os._exit(0xC0000005)` raises `OverflowError` before anything happens.
+- The comparison was `code == -1073741819` from `ba154c5` (2026-07-26,
+  round 40, then in `gui.py`) and `ACCESS_VIOLATION = -1073741819` since
+  round 74 moved it into `worker_bridge.py`. Round 40's reproduction table
+  recorded the signed form. So *"That is an access violation inside
+  OpenCASCADE"* was never printed by the window; the general advice after it
+  was, every time.
+- `test_gui [9b]` passed throughout: its stand-in process was handed
+  `ACCESS_VIOLATION` itself - a test built on its own copy of the value.
+- `faulthandler._read_null()` sets `SEM_NOGPFAULTERRORBOX` before it reads,
+  so Windows Error Reporting is not invoked: no dialog, and no report under
+  `C:\ProgramData\Microsoft\Windows\WER` from these runs (the real OCC
+  crashes of July left theirs there).
+
+### Changed
+
+- `stepbuilder/worker_bridge.py`: `ACCESS_VIOLATION = 0xC0000005`, the
+  status as Windows writes it; `is_access_violation(code)` compares
+  `code & 0xFFFFFFFF`, the same for both readings; `crash_advice` gives the
+  code in decimal and hex - "exit code 3221225477, 0xC0000005".
+- `tests/_crash.py` (new): `read_null()` and `spawn_crash()`. **How a suite
+  spawns a child without re-running itself:** a spawned child first re-runs
+  the parent's main module - for a suite, the whole suite file, which in
+  `test_gui.py` would open windows and run every check again inside the
+  child (the reason [9] used a stand-in). What the child re-runs is decided
+  in `start()`, from `__main__.__spec__` if it has one, else from its file;
+  `spawn_crash` gives `__main__` the spec of `_crash` for the length of
+  `start()` and puts `None` back. The child then runs `_crash.py` as
+  `__mp_main__` - a few imports and two `def`s - and dies.
+- `test_gui [9c]`: a real crash drives `WorkerBridge.check_alive`; the
+  premise (the low 32 bits are 0xC0000005), the advice names it, the hex is
+  in the message, both readings are recognised and 1, -15 and None are not,
+  the signed reading gets the same advice. [9b]'s stand-in is kept, with a
+  comment on what it alone could not see.
+- Mutation table 239 → 242: `crash-av-compared-as-it-arrives` (no mask: the
+  signed reading is lost), `crash-av-constant-signed` (the defect itself:
+  the masked code never equals a negative constant), `crash-code-hex-dropped`.
+
+### Verified
+
+- `run_all`: 31/31 in 256 s (the fold suite 175 s of it); `python_names`:
+  no undefined names; `audit_docs`: no findings. `golden.py --check` not
+  run - nothing on the build's path changed.
+- `mutate.py --changed`: 31 rows (every row that names `test_gui.py`, and
+  the three new ones) - **caught 31 of 31**, 153 s of wall for 580 s of
+  suite runs on four copies. The new rows fail `test_gui` in 8-13 s:
+  `crash-av-compared-as-it-arrives` at "both readings of the status are
+  recognised", `crash-av-constant-signed` already at [9b]'s stand-in (the
+  masked code never equals a negative constant, so even the constant stops
+  matching), `crash-code-hex-dropped` at "with the code in hex".
+- Every run of `test_gui` now kills one child this way. After the mutation
+  run and `run_all`, `C:\ProgramData\Microsoft\Windows\WER` and
+  `%LOCALAPPDATA%\CrashDumps` had gained nothing and the Application log held
+  no "Application Error" event; no copy was left under `build/mutants/`.
+- Not verified: the window itself showing the sentence after a real
+  OpenCASCADE crash - that needs a board that crashes (flex2-a0 at a 5-degree
+  slice angle did in round 40); the bridge that the window uses is what [9c]
+  drives, with the window's own callback shape.
+
 ## Update 2026-09-22 (round 91) — pads and mask windows clipped at the board's edge and at cutouts
 
 The user put `5988-a1.brd` and its export in `input/` and said the mask
