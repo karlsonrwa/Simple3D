@@ -86,6 +86,19 @@ Traps this harness handles, each of which has cost a real run:
    survived: it is unproven, and it says so (round 90: a launch deadline of
    8 s went red on a loaded machine and two rows read "survived" for a reason
    that had nothing to do with the tests).
+9. WHAT A COPY DOES NOT ISOLATE - and this harness cannot help.  A copy has
+   its own files, but the clipboard, the foreground window and the keyboard
+   layout are one per Windows session, shared by every copy running at once.
+   Round 93: test_gui's paste checks in four copies overwrote each other's
+   clipboard, and a mutation of something else entirely read as "caught" by
+   "the STEP-folders box pastes too" - a flaky check under a mutation can
+   hide a survivor.  The suite's side is a turn at the session
+   (tests/_support.SessionTurn, round 94, the named mutex step2html's suite
+   takes too).  The reader's side: look at WHICH check caught a row, and
+   confirm a new row on one copy (--workers 1) when its catch looks foreign.
+   The windows the GUI suites map are the session's too: they are put on a
+   desktop of their own (tests/_support.keep_windows_off_screen), so four
+   copies at once neither show on the user's desktop nor take its focus.
 ----------------------------------------------------------------------------
 """
 from __future__ import annotations

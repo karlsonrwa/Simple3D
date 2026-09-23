@@ -527,3 +527,35 @@ guard has no row on purpose: `clip_to_board` re-orients the faces a boolean
 hands back, and measured on 2026-09-22 the boolean kept their orientation in
 all four mirror/side cases, so a row removing the guard would be an
 equivalent mutant.
+
+## 2026-09-23, rounds 92-94: a test built on its own constant, and what parallel copies share
+
+- **Round 92.** `test_gui [9b]` handed its stand-in process the very constant
+  `crash_advice` compares with, so it passed for two months while the window
+  never once named a real access violation: multiprocessing reports
+  0xC0000005 unsigned (3221225477), and the constant was the signed reading.
+  `[9c]` crashes a real spawned child now (`tests/_crash.py`); three rows
+  (242).
+- **Round 93.** The Copper and Base swatches, nine rows (251) - and a check
+  that could not fail for the reason it existed: "every control comes back
+  exactly as it was" compared `cget("state")`, the very value the freeze
+  recorded, so a ttk widget's disabled FLAG lost across a build was
+  invisible to it. The new checks read `instate`.
+- **Round 94 - trap 9 of the harness** (`tools/mutate.py`): copies isolate
+  files, not the session. Four copies of `test_gui` overwrote each other's
+  clipboard - measured, 8 of 32 parallel runs failed "and the STEP-folders
+  box pastes too" - and under a mutation such a failure reads as "caught":
+  in round 93 it was the first FAIL of `swatch-greyed-still-picks`, which on
+  one copy its own check caught. `_support.SessionTurn`, a named mutex shared
+  with step2html's suite, makes it 0 of 32. Proved on copies twice with
+  `--changed`: 45 of 45, then 49 of 49, and each of the 45 rows the runs
+  share caught by the same check in both - the twelve rows of rounds 92-93
+  each by the check written for it. **Read which check caught a row, not
+  only that it was caught.**
+- At the user's request the windows the GUI suites map moved to a desktop of
+  their own (`_support.keep_windows_off_screen`): 16 per `test_geom` run and
+  4 per `test_gui` run no longer reach the user's desktop, nor do
+  `test_launch_cmd`'s two terminal windows (its stand-in starts with pythonw
+  now, as s3dLaunch does). The measurements are identical to the pixel and
+  the check lists identical, and the second run above was made that way -
+  which is the evidence that the move changed no verdict.

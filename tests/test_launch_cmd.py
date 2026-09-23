@@ -53,6 +53,13 @@ DESIGN_DIR.mkdir(parents=True)
     encoding="utf-8")
 
 PY = sys.executable
+# s3dLaunch starts the window with pythonw - no console - and so does the
+# stand-in now (round 94). With python.exe, `start` gave it a console of its
+# own: a Windows Terminal window on the user's desktop, twice per run and four
+# copies at once under tools/mutate.py. The preflight keeps python.exe, as
+# s3dPreflight does; `start /B` shares the caller's console and opens nothing.
+PYW = (str(Path(PY).with_name("pythonw.exe"))
+       if Path(PY).with_name("pythonw.exe").is_file() else PY)
 OUTF = WORK / "argv.json"
 LOGF = DESIGN_DIR / "_simple3d_preflight.txt"
 
@@ -63,7 +70,7 @@ TAIL = (f'-m probepkg "{OUTF}" --json-dir "{DESIGN_DIR}" '
 
 def launch_cmd():
     """s3dLaunch: detached, no console, working directory set by /D."""
-    return f'cmd /c start "" /D "{SCRIPT_DIR}" "{PY}" {TAIL}'
+    return f'cmd /c start "" /D "{SCRIPT_DIR}" "{PYW}" {TAIL}'
 
 
 def preflight_cmd():

@@ -5,7 +5,17 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-23 (round 93, on `main`)
+## READ THIS FIRST — state as of 2026-09-23 (round 94, on `main`)
+
+**Round 94 (2026-09-23)**: what parallel copies of the suites share. The
+clipboard: `test_gui` [7g]/[7h] take a turn on a machine-wide named mutex
+(`_support.SessionTurn`, step2html's name) - without it 8 of 32 runs of four
+copies at once failed a paste check, with it 0 of 32. And the screen, at the
+user's request: `test_geom` and `test_gui` map their windows on a desktop of
+their own (`_support.keep_windows_off_screen`) - 16 and 4 windows per run
+used to pop up, now none, with identical measurements and check lists - and
+`test_launch_cmd` starts its stand-in with pythonw, as s3dLaunch does (two
+Windows Terminal windows per run before).
 
 **Round 93 (2026-09-23)**: the Copper and Base swatches are live in Solid
 while Exposed copper / Mask openings are ticked - those surfaces are drawn in
@@ -3060,6 +3070,108 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-09-23 (round 94) — what parallel copies share: the clipboard, and the user's screen
+
+### The clipboard
+
+Round 93's mutation run reported `swatch-greyed-still-picks` caught by
+"[7g] and the STEP-folders box pastes too" on four copies, and by its own
+check on one. `test_gui` [7g] and [7h] put a path on the real clipboard and
+paste it back; the clipboard is one per Windows session, and four copies of
+the suite write it at once.
+
+- Measured before anything was changed (`build/scratch/clip_stress.py`: four
+  copies made as `mutate.py` makes them, `test_gui` started in all four at
+  once, eight rounds): with the suite as it was, **8 of 32 runs** failed a
+  clipboard check - every time "and the STEP-folders box pastes too", the
+  paste with the longest gap after the put. With the turn below: **0 of 32**,
+  312 s against 324 s of wall for the eight rounds.
+- `_support.SessionTurn`: a machine-wide NAMED MUTEX (CreateMutexW,
+  WaitForSingleObject, ReleaseMutex; an ABANDONED one is taken), 120 s wait,
+  then a FAIL that names the mutex instead of a hang. A lock file would lock
+  nothing: the copies share no tree. The name is step2html's own
+  (`tests/test_editing.py`, OneAtATime), on purpose - the clipboard is one per
+  session whoever's suite writes it, and mutation runs of several projects
+  have shared this machine.
+- In `test_gui`, from READING the user's clipboard to putting it back - wider
+  than from the first append: read while another copy is in its turn, the
+  "user's clipboard" would be that copy's test text, restored for good.
+- The proof that it excludes, in [7g]: `_support.session_turn_elsewhere`
+  asks for the turn from ANOTHER process (`python -c`, exit 0 taken, 3
+  refused, anything else the probe broken and neither): refused while [7g]
+  holds it, taken within 30 s once it is given back. A second thread would
+  prove a lock, not that it reaches past the process. Checked both ways by
+  hand (`build/scratch/turn_probe_check.py`): free 0, held 3, held with a
+  1.5 s wait 3, given back 0; 0.3-0.4 s per probe.
+
+### The screen, at the user's request
+
+"Windows of the tool keep appearing - can they be rendered in the background,
+if it does not disturb the runs?" Measured with `build/scratch/window_watch.py`
+(every visible top-level window of the user's desktop listed every 50 ms
+while a suite runs): `test_geom` put **16** StepBuilder windows on it per run
+(one maximized), `test_gui` **4**, `test_launch_cmd` **2** Windows Terminal
+windows - and a mutation run starts them four at a time.
+
+- `_support.keep_windows_off_screen()`: `CreateDesktopW("Simple3D-tests")`
+  (the first suite creates it, the rest open it) and `SetThreadDesktop` for
+  the suite's main thread, before the first `Tk()`. The windows are still
+  MAPPED - `test_geom` needs where a window really is, [7i] needs a click
+  that arrives - on a desktop nobody looks at: no taskbar button, no focus
+  taken. The clipboard is the window station's, so the turn above stays.
+  If the desktop cannot be had, the suite says so in a `note:` line and
+  shows its windows as before - an environment is not a failure.
+- Measured the same way on both desktops (`build/scratch/desktop_compare.py`):
+  screen 1536 x 864, virtual screen 0,0,1536,864, work area 1536 x 834, a
+  window placed at 880x640+210+90 with its client at 218,121, maximized to
+  1536 x 811 at -8,-8, `normal_geometry` 880x640+210+90 - identical, to the
+  pixel. And the suites (`build/scratch/suite_shown.py` runs one with the
+  call replaced by a no-op): `test_geom` 34 of 34, `test_gui` 177 of 177, the
+  same check lists in both modes.
+- `test_launch_cmd` [1] starts its stand-in with `pythonw.exe` beside
+  `sys.executable`: `start` gave `python.exe` a console of its own, which on
+  this machine is a Windows Terminal window. s3dLaunch starts the real window
+  with pythonw, so the stand-in is closer to it than before; the preflight
+  keeps python.exe, as s3dPreflight does, and `start /B` opens nothing.
+- After: `test_geom` 0, `test_gui` 0 (twice), `test_launch_cmd` 0 new windows
+  of ours on the user's desktop.
+
+### Verified
+
+- Twice on four copies with `--changed`: run 1 (the turn in, the windows
+  still on the user's desktop) **45 of 45 caught**, 304 s of wall for 1193 s
+  of suite runs; run 2 (the turn and the desktop of their own) **49 of 49**,
+  248 s for 979 s - the four more are `test_launch_cmd`'s rows, selected once
+  that file changed. Each of the 45 rows the runs share was caught by the
+  SAME check in both (`build/scratch/catch_table.py` over the two logs;
+  `build/scratch/catch_table_94.md`), and each belongs to its mutation. The
+  twelve rows of rounds 92-93, run 1 = run 2:
+  `crash-av-compared-as-it-arrives` - "both readings of the status are
+  recognised, and nothing else"; `crash-av-constant-signed` - [9b] "an access
+  violation is reported as a crash, with the advice"; `crash-code-hex-dropped`
+  - "with the code in hex, as Windows writes the status";
+  `swatch-copper-ignores-exposed-copper` and `swatch-base-ignores-mask-openings`
+  - "Solid with Exposed copper paints Copper, with Mask openings Base, with
+  both both"; `swatch-solid-paints-every-kind` - "swatches greyed in Solid when
+  no surface is painted with them - [7i]"; `swatch-checkbox-not-traced` -
+  "ticking Exposed copper makes Copper live, through the variable alone";
+  `swatch-greyed-still-picks` - "and a click on the Copper swatch does
+  nothing" (the row round 93's parallel run had put on [7g]);
+  `swatch-updated-while-busy` - "a trace that fires during the build lights
+  nothing up"; `swatch-reset-rewrites-greyed` - "and leaves the colour of a
+  greyed one alone"; `swatch-reset-always-live` - "Solid alone: every swatch
+  greyed, and Reset colors with them"; `freeze-ttk-flag-forgotten` - "after a
+  build they are still greyed".
+- `run_all`: 31/31 in 643 s, with `build/scratch/desk_watch_until.py`
+  watching the user's desktop the whole time: **0 new windows in 644 s**. The
+  time is the fold suite's (486 s, against 210 s that morning) on a machine
+  busy with other work; the two GUI suites took 12.4 s and 10.9 s.
+- `python_names` clean; `test_mutations` passes (no row targets a test file).
+- Not in the table: `SessionTurn` and `keep_windows_off_screen` are the
+  suites' own machinery, not code a row mutates; what pins the first is the
+  other-process probe in [7g], what pins the second is that a suite that
+  cannot have its desktop still passes, only visibly.
 
 ## Update 2026-09-23 (round 93) — the Copper and Base swatches live in Solid, and a ttk flag the freeze forgot
 

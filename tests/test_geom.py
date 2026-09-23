@@ -2,6 +2,16 @@
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
 from _support import OUT, fails, check, rect
+from _support import keep_windows_off_screen
+
+# Every window below is mapped - it has to be, see the docstring - and every
+# one of them used to pop up on the user's desktop, sixteen per run, one of
+# them maximized (measured 2026-09-23). Mapped on a desktop of their own they
+# are measured the same way and seen by nobody (round 94). Before the first
+# Tk(), or it is too late.
+_OFF_SCREEN = keep_windows_off_screen()
+if _OFF_SCREEN:
+    print(f"note: the windows are shown on this desktop - {_OFF_SCREEN}")
 
 """Window placement: remembered across runs, multi-monitor aware.
 

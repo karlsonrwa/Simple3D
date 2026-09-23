@@ -2,6 +2,15 @@
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
 from _support import ROOT, OUT, fails, check
+from _support import SessionTurn, TURN_REFUSED, TURN_TAKEN, session_turn_elsewhere
+from _support import keep_windows_off_screen
+
+# The windows of this suite on a desktop of their own, not the user's: four
+# came up on it per run, [7i]'s mapped one among them (round 94). Before the
+# first Tk(), or it is too late.
+_OFF_SCREEN = keep_windows_off_screen()
+if _OFF_SCREEN:
+    print(f"note: the windows are shown on this desktop - {_OFF_SCREEN}")
 
 """Real GUI tests: Tk runs headless on Windows, so the widgets can be exercised.
 
@@ -368,27 +377,42 @@ menu = app._edit_menu(entries[0])
 labels = [menu.entrycget(i, "label") for i in range(menu.index("end") + 1) if menu.type(i) == "command"]
 check("Cut, Copy, Paste, Select all", labels == ["Cut", "Copy", "Paste", "Select all"], str(labels))
 target = app.output_dir
-before_clip = None
-try:
-    before_clip = app.clipboard_get()
-except tk.TclError:
-    pass
-app.clipboard_clear()
-app.clipboard_append("D:/pasted/out")
 field = next(w for w in entries if str(w.cget("textvariable")) == str(target))
-field.delete(0, "end")
-app._edit_menu(field).invoke(2)          # Paste
-app.update()
-check("Paste puts the clipboard into the field", target.get() == "D:/pasted/out", target.get())
-app._edit_menu(field).invoke(4)          # Select all
-app.update()
-check("Select all selects it", field.selection_present() and field.selection_get() == "D:/pasted/out")
-app._edit_menu(app._step_text).invoke(2)
-app.update()
-check("and the STEP-folders box pastes too", "D:/pasted/out" in app._step_text.get("1.0", "end"))
-app.clipboard_clear()
-if before_clip:
-    app.clipboard_append(before_clip)
+# The clipboard is the SESSION's, and tools/mutate.py runs four copies of this
+# suite at once: in round 93 another copy's text landed between this one's put
+# and its paste, "the STEP-folders box pastes too" failed, and a mutation of
+# something else entirely read as caught. From reading what the user had on
+# the clipboard to putting it back, this copy holds a turn every other copy -
+# and step2html's suite - waits for (_support.SessionTurn, round 94).
+with SessionTurn() as turn:
+    check("the clipboard is this copy's alone: a turn another process is refused",
+          turn.held and (sys.platform != "win32" or session_turn_elsewhere(0) == TURN_REFUSED),
+          turn.why or "another process took the turn while this one held it")
+    if turn.held:
+        before_clip = None
+        try:
+            before_clip = app.clipboard_get()
+        except tk.TclError:
+            pass
+        app.clipboard_clear()
+        app.clipboard_append("D:/pasted/out")
+        field.delete(0, "end")
+        app._edit_menu(field).invoke(2)          # Paste
+        app.update()
+        check("Paste puts the clipboard into the field", target.get() == "D:/pasted/out", target.get())
+        app._edit_menu(field).invoke(4)          # Select all
+        app.update()
+        check("Select all selects it", field.selection_present() and field.selection_get() == "D:/pasted/out")
+        app._edit_menu(app._step_text).invoke(2)
+        app.update()
+        check("and the STEP-folders box pastes too", "D:/pasted/out" in app._step_text.get("1.0", "end"))
+        app.clipboard_clear()
+        if before_clip:
+            app.clipboard_append(before_clip)
+# Given back, or every other copy waits out its two minutes and fails: another
+# process takes the turn now - within a wait, since a copy may be in it.
+check("and the turn is given back: another process takes it",
+      sys.platform != "win32" or session_turn_elsewhere(30000) == TURN_TAKEN)
 app._busy = True
 class _Click:
     x_root = y_root = 0
@@ -438,21 +462,25 @@ check("AltGr typing a character is not a shortcut",
 check("every path Entry and the STEP-folders box carry the binding",
       all(any("Control" in seq for seq in w.bind()) for w in entries)
       and any("Control" in seq for seq in app._step_text.bind()), str(entries[0].bind()))
-# and for real, into a field - the clipboard is the real one, set and put back
-before_clip = None
-try:
-    before_clip = app.clipboard_get()
-except tk.TclError:
-    pass
-app.clipboard_clear()
-app.clipboard_append("D:/layout/blind")
-field.delete(0, "end")
-layout_blind_shortcut(_Key(field, 86, "Cyrillic_ve", "\x16"))
-app.update()
-check("Ctrl+V under a Cyrillic layout pastes into the field", target.get() == "D:/layout/blind", target.get())
-app.clipboard_clear()
-if before_clip:
-    app.clipboard_append(before_clip)
+# and for real, into a field - the clipboard is the real one, set and put back,
+# in a turn at it of its own, as in [7g]
+with SessionTurn() as turn:
+    check("the clipboard turn is taken for [7h] too", turn.held, turn.why)
+    if turn.held:
+        before_clip = None
+        try:
+            before_clip = app.clipboard_get()
+        except tk.TclError:
+            pass
+        app.clipboard_clear()
+        app.clipboard_append("D:/layout/blind")
+        field.delete(0, "end")
+        layout_blind_shortcut(_Key(field, 86, "Cyrillic_ve", "\x16"))
+        app.update()
+        check("Ctrl+V under a Cyrillic layout pastes into the field", target.get() == "D:/layout/blind", target.get())
+        app.clipboard_clear()
+        if before_clip:
+            app.clipboard_append(before_clip)
 
 print("\n[7i] Copper and Base follow the surfaces painted with them - round 93")
 # Exposed copper is drawn in the Copper colour and the mask openings in Base
