@@ -2748,5 +2748,65 @@
    "tests/test_settings.py"
   ],
   "why": "a default written as a string (\"0.5\") is reported as unreadable although the window reads it"
+ },
+ {
+  "id": "clip-test-text-only-promised",
+  "file": "tests/test_gui.py",
+  "old": "        put = put_clipboard_text(\"D:/pasted/out\")\n",
+  "new": "        put = app.clipboard_clear() or app.clipboard_append(\"D:/pasted/out\") or \"\"\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the [7g] text goes on the clipboard through Tk again, which only promises it: a reader waits for this copy's event loop, and on 16 copies the next copy's read sat 30 s behind this one's give-back probe (round 96)"
+ },
+ {
+  "id": "clip-user-text-not-put-back",
+  "file": "tests/test_gui.py",
+  "old": "        done, why = put_back_clipboard_text(before_clip or None, ours)\n        after = clipboard_sequence()\n",
+  "new": "        done, why = \"put\", \"\"\n        after = clipboard_sequence()\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the user's own text is not put back after [7g]: the test's path stays on their clipboard (seen after a 16-copy round of the old suite, round 96)"
+ },
+ {
+  "id": "clip-put-only-empties",
+  "file": "tests/_support.py",
+  "old": "        if text is None:\n            return \"\"\n",
+  "new": "        if True:\n            return \"\"\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "put_clipboard_text empties the clipboard and puts nothing, and says it is done (round 96)"
+ },
+ {
+  "id": "clip-paste-tried-once",
+  "file": "tests/test_gui.py",
+  "old": "    for tries in range(1, 11):\n",
+  "new": "    for tries in range(1, 2):\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a paste is tried once: one that finds the clipboard held open for a moment by a program reading it fails, as 6 of 308 did on 2-16 copies (round 96)"
+ },
+ {
+  "id": "clip-changed-clipboard-judged",
+  "file": "tests/test_gui.py",
+  "old": "        if clipboard_sequence() != ours:\n            return None, \"the clipboard changed under the test - another program put something on it\", tries\n",
+  "new": "        if False:\n            return None, \"the clipboard changed under the test - another program put something on it\", tries\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a paste the clipboard changed under is judged anyway: the user's own copy in the middle of [7g] (notepad++.exe, twice in 220 runs) fails the check and an unrelated mutation reads as caught (round 96)"
+ },
+ {
+  "id": "clip-put-back-over-newer",
+  "file": "tests/_support.py",
+  "old": "    if clipboard_sequence() != ours:\n        return \"left\", ",
+  "new": "    if False:\n        return \"left\", ",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the user's old text is put back over a newer copy they made while the test ran (round 96)"
  }
 ]

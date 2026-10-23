@@ -5,7 +5,25 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-23 (round 95, on `main`)
+## READ THIS FIRST — state as of 2026-10-23 (rounds 95 and 96, on `main`)
+
+**Round 96 (2026-10-23)**: `test_gui` puts text on the clipboard as real data
+(`_support.put_clipboard_text`), no longer through Tk's `clipboard_append`,
+which only promises it. Measured on the 4090: a reader of a Tk-promised text
+waits for the owner's event loop, up to Windows' 30 s; on 16 parallel copies a
+copy sat in its give-back probe after putting the user's text back that way,
+the next copy's read in its turn waited the full 30 s, and eight probes ran
+out - the five rows of round 95's first table run that read caught for no
+reason of their own. The user's text is read by another process within 10 s
+(`_support.clipboard_text_elsewhere`) and checks prove the text is real data.
+Reading the real clipboard showed two more things of the session: a window of
+another program holding it open makes Tk's paste insert nothing (retried, up
+to ten times), and the user's own copy lands mid-test (notepad++.exe) - such a
+check says "not judged", never FAIL, and the user's newer text is not put
+back over. Six rows (264). On the 4090: stress 8 FAIL in 100 runs before, 0
+in 220 after; the whole table 264 of 264 twice on 8 and twice on 16 copies,
+every row caught by the same check in all four. Read round 96 for the
+detail.
 
 **Round 95 (2026-10-23)**: the window's close no longer loses settings - the
 three blocking findings R6-1, R6-2, R6-3 of the review below. The close writes
@@ -127,7 +145,7 @@ one settled.
 | The structure, written down | `ARCHITECTURE.md` in the repo — files, dependencies, the pipeline stage by stage, the intermediate's shape, and which pieces are monoliths / reusable / glue (round 70, 2026-09-02) |
 | The split plans | `REFACTORING_PLANS.md` in the repo — five monoliths, the order to take them apart, what each step needs green before and after. Done as of round 80 (2026-09-03): Step 0, Plans A, B, C, D, E1–E2 (`format_version` 9), F1–F3, F5 and G1–G5 - each row says what it left. Left: the optional F4 (pytest) and E3 (deleting `intermediate.RESERVED` once a release has shipped v9). Rounds 85–89 added features and tests and touched no plan row |
 | The golden corpora | `tools/golden.py` → `build/golden.json` (local, gitignored): 7 STEP cases; `--check` after every Python refactoring step. `tools/skill_export.py` → `build/skill_golden/` (round 75): the SKILL exporter run headless on every `input/*.brd` (eight since round 86c); `--check` after every SKILL step. `tests/_support.py` is the one preamble every suite imports (round 71) |
-| The mutation table | `tests/mutations.json` (round 89, grown in rounds 90 to 93): 251 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
+| The mutation table | `tests/mutations.json` (round 89, grown in rounds 90 to 96): 264 deliberate faults the suite has been shown to catch, one per decision the suites claim, applied by `python -u tools/mutate.py` to private COPIES of the tree under `build/mutants/`, in parallel, never to the working tree (`--changed` for the day's check, the whole table before a commit; a suite gets three baselines plus two minutes before it is HUNG); `tests/test_mutations.py` in `run_all` checks in about a second that every pattern still matches its file exactly once and that a copy carries what the rows name. The audit and its repairs, three passes: `docs/test-audit.md` |
 
 Three tools grew out of this project and now have repositories of their own.
 Nothing here depends on them, and no copy of their code belongs in this tree:
@@ -3108,6 +3126,189 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-23 (round 96) — the clipboard as real data: no copy waits for another's event loop
+
+The owner, after round 95's first table run on the 4090 made five unrelated
+rows read as caught through `test_gui`'s "and the turn is given back" check:
+«Do this task here» (the follow-up proposed at the end of round 95's runs).
+Everything below was measured on the 4090 in the owner's RDP session (session
+2) unless it says session 0; the owner's llama-server ran there from 13:19 and
+was gone (load 0-6 %) when the runs began at 15:07.
+
+### The mechanism, by experiment (`build/scratch/clip_deadlock.py`, session 0)
+
+Two processes; the owner puts text on the clipboard, the reader times its
+`clipboard_get()`:
+
+| The owner, after putting the text | The read |
+|---|---|
+| with Tk, then asleep 8 s, no messages pumped | 7.5 s - until the owner woke |
+| with Tk, then waiting 8 s for a mutex the READER holds (SessionTurn's wait) | 7.5 s - both stuck until the owner's wait ran out (0x102) |
+| with Tk, then pumping Tk events | 0.0 s |
+| with Win32 `SetClipboardData` and real data, then asleep | 0.0 s |
+| with Tk, then destroyed its root and exited | no text at all |
+| with Tk, then asleep 45 s | 30.0 s, then nothing - Windows gives up |
+
+So Tk's `clipboard_clear` + `clipboard_append` make the Tk window the owner of
+a PROMISE (delayed rendering): Windows asks the owner when somebody reads,
+waits for its event loop up to 30 s, and the text dies with the process unless
+somebody read it first.
+
+### In the suite (`build/scratch/turn_stress.py`, `turntrace/sitecustomize.py`, `turn_report.py`)
+
+`test_gui` started in K copies at once (copies made as `mutate.py` makes
+them), every turn, probe, clipboard call and check time-stamped by a
+`sitecustomize` that wraps `_support` on import - the suite itself unchanged -
+and a sampler logging the clipboard's owner and opener every 50 ms. Before the
+fix, with the clipboard holding text before each round ("the user's"): 2 copies
+x2 rounds, 4 x2, 8 x3 - no FAIL (slowest 3.4, 4.7, 16.4 s); 8 x2 with it empty
+- none (13.8 s); **16 x3: round 1 had 8 of 16 runs FAIL "and the turn is given
+back"** (slowest 51.4 s), rounds 2 and 3 none. The trace of that round: copy w3
+put the user's text back through Tk, gave the turn away at 7.63 s and went
+into its give-back probe - `session_turn_elsewhere(30000)`, a blocking
+`subprocess.run` that pumps nothing; copy w12 took the turn and called
+`clipboard_get()` at 7.68 s, the owner w3; the sampler marked w3's window hung
+at 12.66 s; the read returned at 37.69 s, 30.01 s later; eight copies' probes
+waited behind w12 and ran out at 30.07 s, w3's among them. (Not the [7h] turn
+wait as first supposed - any blocking call does it.) Also seen: emptying the
+clipboard waits for its owner too (w5's `clipboard_clear` 5.01 s behind w12 in
+its probe); `rdpclip.exe` and `DefenderSessionHelper.exe` open the clipboard in
+that session; and the "user's" text was not given back - of 10 seeded rounds
+it was still there after 2 (both on 2 copies), the clipboard was empty after
+7, and once it held the test's own `D:/pasted/out`.
+
+### The fix
+
+- `_support.put_clipboard_text(text)`: OpenClipboard(NULL) with a retry
+  (another process may hold it for a moment), EmptyClipboard, real
+  CF_UNICODETEXT data or nothing for None; returns "" or why not. No owner
+  window, so no reader ever waits for an event loop, and the text outlives
+  the process.
+- `_support.clipboard_text_elsewhere(seconds=10)`: another process reads the
+  clipboard while this one pumps nothing - text, or why not within the limit.
+- `test_gui` [7g] and [7h]: what the user had is read by that other process
+  (raw, within 10 s, never the 30 s), the test's text and the user's go on
+  with `put_clipboard_text`; new checks "the text is put as real data: another
+  process reads it while this copy pumps nothing", "and the user's own text is
+  put back as real data, so it outlives this copy", "[7h] puts the user's
+  text back as real data too".
+- Mutation rows (table 258 -> 261): `clip-test-text-only-promised` (the test
+  text through Tk again), `clip-user-text-not-put-back`, `clip-put-only-empties`.
+
+### Verified
+
+First job after the fix (15:14-15:20, stopped before its tables):
+
+- `test_gui` green; `run_all` 30/31 - the red one `python_names`, "pyflakes
+  is not installed" for the job's Python: the job's .cmd lacked
+  `PYTHONPATH=D:\tools\pydeps` (no table row names that suite).
+- The three rows, `--workers 3`: caught 3 of 3, each by its own check -
+  `clip-put-only-empties` at "the text is put as real data" (<- None, 2.9 s),
+  `clip-test-text-only-promised` at the same check ("another process could
+  not read the clipboard within 10 s", 13.5 s), `clip-user-text-not-put-back`
+  at "and the user's own text is put back" (<- 'D:/pasted/out').
+- The same stress as before the fix: no give-back FAIL anywhere (16 copies x3
+  included), and the seeded text was on the clipboard after every one of the
+  10 seeded rounds. But a new flake: [7h] "Ctrl+V under a Cyrillic layout
+  pastes into the field" found the field empty in 3 of 88 runs on 8-16
+  copies, the paste 53-63 ms after the turn was taken. Tk had pasted from a
+  text it owned itself, which it serves without opening the Windows
+  clipboard; now it opens the clipboard right after the put, and the likeliest
+  reading is a program that opens it whenever it changes got there first (the
+  50 ms sampler did not catch who). [7g], whose paste comes after another
+  process has read the text back, never failed in those runs. So [7h] reads
+  the text back the same way before its paste (a check of its own, "[7h]'s
+  text is real data too"), and the job was stopped and started again.
+
+Second job (15:21:31-15:27:52, stopped before its tables): `test_gui` green,
+`run_all` **31/31 in 78 s**, the three rows caught 3 of 3 again, and the
+longer stress - 220 runs on 2-16 copies: no give-back FAIL, but 5 empty
+pastes. The traces: both [7g] ones ("and the STEP-folders box pastes too")
+had `notepad++.exe` (pid 10412, the owner's session) take the clipboard in
+the middle of the test's turn - the owner was copying at the time, and the
+clipboard after some rounds held their links; the three [7h] ones had no
+change of the clipboard at all between the read-back and the paste. And the
+stress itself, putting back at its end the text it had kept at its start,
+overwrote whatever the owner had copied meanwhile (fixed in
+`stress_all.py`: it puts back only over its own or the suite's text).
+
+What made the [7h] paste empty, measured in session 0
+(`build/scratch/clip_hold_probe.py`): while another process holds the
+clipboard open WITH A WINDOW, OpenClipboard fails (error 5) and Tk's read
+fails at once - "clipboard cannot be opened, another application grabbed it"
+- which an entry's <<Paste>> swallows; held open with no window
+(OpenClipboard(NULL)), it bars nobody. While Tk owned the text, a paste into
+its own window never opened the Windows clipboard, which is why this never
+showed before.
+
+So the clipboard checks now take the session as it is:
+- `pasted()` pastes up to ten times 50 ms apart until the text arrives; it
+  stops and says "not judged" as soon as `clipboard_sequence()` has moved
+  since the test's own put (somebody else put something - the user's copy
+  is one). `judged()` prints such a verdict as a `note:` line, never FAIL;
+  the read-back and the put-back checks are judged the same way.
+- `put_back_clipboard_text(text, ours)`: the user's text goes back only if
+  nobody put anything since the test's own put - otherwise what is there is
+  newer, theirs, and stays.
+- Each rule made to happen once, in [7g]: `hold_clipboard_open(0.4)` (a
+  child holding the clipboard with a message-only window, so it bars Tk)
+  with `clipboard_open_elsewhere()` proving the hold before the paste - the
+  paste must succeed after more than one try; a put of "D:/another/program"
+  between the test's put and its paste - the verdict must be "not judged";
+  a put-back with a stale sequence number - nothing may land. "Select all"
+  now selects text put in the field directly, not what a paste brought.
+- The first holder opened with no window, so the paste succeeded first time
+  and its check failed - job 7 (15:34) was stopped on that, the holder fixed
+  and checked by hand (`holder_check.py`: held True, Tk's read TclError,
+  free after), and job 8 started at 15:37:52.
+- Three more rows (table 264): `clip-paste-tried-once`,
+  `clip-changed-clipboard-judged`, `clip-put-back-over-newer`;
+  `clip-user-text-not-put-back` re-aimed at the guarded put-back.
+
+Job 8 (from 15:37:52):
+
+- `test_gui` green (3.1 s); `run_all` **31/31 in 80 s**.
+- The six `clip-*` rows alone (`--workers 1`): **caught 6 of 6, each by its
+  own check** - `clip-test-text-only-promised` and `clip-put-only-empties` at
+  "the text is put as real data", `clip-user-text-not-put-back` at "and the
+  user's own text is put back" (<- 'D:/another/program'),
+  `clip-paste-tried-once` at the held-open self-test (<- False after one
+  try), `clip-changed-clipboard-judged` at "a paste the clipboard changed
+  under is not judged" (<- False after ten), `clip-put-back-over-newer` at
+  "not put back over a newer one"; 25 s.
+- The stress (15:39:41-15:46:07), 220 runs of `test_gui` on 2-16 copies:
+  **0 with a FAIL, 0 at the give-back probe**; the seeded text on the
+  clipboard after every seeded round. No real "not judged" note in the 220
+  outputs - nobody else put anything on the clipboard during it. The suite
+  is slower under load: the slowest run 13.5-16.4 s on 8 copies, 26.7 s on
+  16 (10-20 s before the extra probes).
+- Across the three states of the suite, the same stress shape: Tk's promise
+  8 FAIL in 100 runs (all at the give-back probe, one round of 16); real data
+  without the retry 3 in 88 and 5 in 220 (empty pastes); the whole fix 0 in
+  220.
+- **The whole table, 264 rows: twice on 8 copies - 264 of 264 in 331 s and
+  in 335 s (2245 and 2268 s of suite runs) - and twice on 16 - 264 of 264 in
+  222 s and in 224 s (2645 and 2637 s).** Row by row, every one of the 264
+  caught by the same check in all four runs; none at the turn check; the
+  only rows caught at a clipboard check are the six `clip-*` rows, by their
+  own. Against round 95's second table run (258 rows) every common row is
+  caught by the same check as then. Slowest `test_gui` verdicts 17-18 s.
+- After the job: `audit_docs` no findings, `test_mutations` ALL PASS,
+  `python_names` no undefined names (run there on the final tree, with the
+  docs); the one-shot task deleted; no WER report, crash dump or Application
+  Error event since 15:07; nothing left under `build/mutants`, no stress
+  copy, the HOME and TEMP folders empty, no python process. Logs:
+  `build/fix-2026-10-23/remote/job4` (before), `job6` (the first fix),
+  `job8` (the final tree), `stress_after*/` (failing traces).
+
+The owner's clipboard on the 4090: the stresses and the suites wrote it
+throughout (the owner agreed beforehand); job 6's stress put its kept text
+back over links the owner had copied meanwhile (fixed since); job 7 was
+stopped before its stress could put anything back, so after the runs the
+session's clipboard most likely held no text. Not checked: step2html's suite
+takes the same mutex and, if it still puts text with Tk, can stall a
+Simple3D copy the same way when both run at once.
 
 ## Update 2026-10-23 (round 95) — the close writes what the window changed, and nothing else
 

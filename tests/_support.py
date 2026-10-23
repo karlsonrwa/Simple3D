@@ -1,6 +1,7 @@
 """What every test script shares: where the repository is, where a test may
 write, the one check() that decides the exit code, the one way a STEP file is
-measured, and the one turn at the session's clipboard (SessionTurn, round 94).
+measured, the one turn at the session's clipboard (SessionTurn, round 94) and
+the one way text is put on it (put_clipboard_text, round 96).
 
 The scripts are run one by one by tests/run_all.py, which reads only the
 subprocess's exit code - a suite that prints FAIL and exits 0 passes. So a
@@ -217,6 +218,219 @@ def session_turn_elsewhere(wait_ms: int) -> int:
     done = subprocess.run([sys.executable, "-c", _TURN_PROBE, SessionTurn.NAME, str(wait_ms)],
                           capture_output=True, timeout=wait_ms / 1000.0 + 60)
     return done.returncode
+
+
+# ---- text on the clipboard as real data, never as Tk's promise ----------- #
+
+CF_UNICODETEXT = 13
+
+
+def put_clipboard_text(text) -> str:
+    """Put `text` on the Windows clipboard as real data - or empty it, for
+    None. Returns "" once done, or why it could not be.
+
+    Not with Tk's clipboard_clear/clipboard_append (round 96). Those make the
+    Tk window the clipboard's OWNER and only promise the text: Windows asks
+    the owner for it when somebody reads (delayed rendering), so a reader
+    waits for the owner's event loop - up to 30 s, after which it gets
+    nothing - and emptying the clipboard waits for the owner too. Measured
+    23.10.2026 on the 4090 (build/scratch/clip_deadlock.py): an owner asleep
+    8 s held a reader 7.5 s, one past 30 s left it with nothing after exactly
+    30.0 s, one that had exited left no text at all; text put here was read
+    at once while its writer slept. And in 16 parallel copies of test_gui
+    (build/scratch/turn_stress.py): a copy put the user's text back through
+    Tk, gave the turn away and went into its give-back probe - a blocking
+    subprocess.run, no messages pumped - so the next copy's clipboard_get in
+    its turn waited the full 30 s for it, and eight copies' probes ran out
+    meanwhile. That is how five unrelated mutations read as caught. After a
+    round of those copies the user's own text was gone, or the test's.
+
+    Opened with no owner window, so nobody's event loop is ever needed and the
+    text outlives this process. Another process may hold the clipboard open
+    for a moment (DefenderSessionHelper does, on the 4090), hence the retry.
+    """
+    if sys.platform != "win32":
+        return "not Windows"
+    import ctypes
+    import time
+    from ctypes import wintypes
+
+    u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
+    u32.OpenClipboard.argtypes = [wintypes.HWND]
+    u32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+    u32.SetClipboardData.restype = wintypes.HANDLE
+    k32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+    k32.GlobalAlloc.restype = wintypes.HGLOBAL
+    k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    k32.GlobalLock.restype = wintypes.LPVOID
+    k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    k32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+    for _ in range(100):
+        if u32.OpenClipboard(None):
+            break
+        time.sleep(0.02)
+    else:
+        return f"OpenClipboard failed for 2 s (error {ctypes.GetLastError()})"
+    try:
+        if not u32.EmptyClipboard():
+            return f"EmptyClipboard failed (error {ctypes.GetLastError()})"
+        if text is None:
+            return ""
+        data = (str(text) + "\0").encode("utf-16-le")
+        handle = k32.GlobalAlloc(0x0002, len(data))           # GMEM_MOVEABLE
+        if not handle:
+            return f"GlobalAlloc failed (error {ctypes.GetLastError()})"
+        ctypes.memmove(k32.GlobalLock(handle), data, len(data))
+        k32.GlobalUnlock(handle)
+        if not u32.SetClipboardData(CF_UNICODETEXT, handle):
+            k32.GlobalFree(handle)          # still ours: only a success hands it over
+            return f"SetClipboardData failed (error {ctypes.GetLastError()})"
+        return ""
+    finally:
+        u32.CloseClipboard()
+
+
+_CLIP_PROBE = """\
+import ctypes, json, sys, time
+from ctypes import wintypes
+u = ctypes.windll.user32
+k = ctypes.windll.kernel32
+u.OpenClipboard.argtypes = [wintypes.HWND]
+u.GetClipboardData.restype = wintypes.HANDLE
+u.GetClipboardData.argtypes = [wintypes.UINT]
+k.GlobalLock.restype = wintypes.LPVOID
+k.GlobalLock.argtypes = [wintypes.HGLOBAL]
+k.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+for _ in range(100):
+    if u.OpenClipboard(None):
+        break
+    time.sleep(0.02)
+else:
+    sys.exit(3)
+try:
+    h = u.GetClipboardData(13)
+    text = None
+    if h:
+        text = ctypes.wstring_at(k.GlobalLock(h))
+        k.GlobalUnlock(h)
+finally:
+    u.CloseClipboard()
+sys.stdout.write(json.dumps(text))
+"""
+
+
+def clipboard_sequence() -> int:
+    """The clipboard's sequence number: every change moves it, whoever makes
+    it, and reading never does - so a test that notes it right after its own
+    put knows whether anybody has put something since. The user's own copy
+    is one: round 96 saw notepad++.exe take the clipboard in the middle of
+    test_gui [7g], twice in 220 runs on the 4090."""
+    if sys.platform != "win32":
+        return 0
+    import ctypes
+
+    return ctypes.windll.user32.GetClipboardSequenceNumber()
+
+
+def put_back_clipboard_text(text, ours: int) -> tuple:
+    """Put the user's `text` back as put_clipboard_text does - unless the
+    clipboard changed since `ours` (clipboard_sequence() right after this
+    test's own last put): what is on it then is newer than `text`, most
+    likely the user's own copy, and it is left there.
+
+    Returns ("put", ""), ("left", why) or ("failed", why)."""
+    if clipboard_sequence() != ours:
+        return "left", "the clipboard changed since this test's own put"
+    why = put_clipboard_text(text)
+    return ("failed", why) if why else ("put", "")
+
+
+_HOLD_OPEN = """\
+import ctypes, sys, time
+from ctypes import wintypes
+u = ctypes.windll.user32
+u.CreateWindowExW.restype = wintypes.HWND
+u.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+                              ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                              wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+u.OpenClipboard.argtypes = [wintypes.HWND]
+# A message-only window (parent HWND_MESSAGE), never shown anywhere: opened
+# with no window at all, the clipboard bars nobody else from opening it.
+hwnd = u.CreateWindowExW(0, "STATIC", None, 0, 0, 0, 0, 0, wintypes.HWND(-3), None, None, None)
+for _ in range(250):
+    if hwnd and u.OpenClipboard(hwnd):
+        break
+    time.sleep(0.02)
+else:
+    sys.exit(3)
+sys.stdout.write("open\\n")
+sys.stdout.flush()
+time.sleep(float(sys.argv[1]))
+u.CloseClipboard()
+"""
+
+
+def clipboard_open_elsewhere() -> bool:
+    """Whether a window of another process has the clipboard open right now.
+    OpenClipboard then fails (error 5), and so does Tk's read - "clipboard
+    cannot be opened, another application grabbed it" - which an entry's
+    <<Paste>> swallows, pasting nothing. Opened with no window, the clipboard
+    bars nobody. Measured 23.10.2026 (build/scratch/clip_hold_probe.py)."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    u32 = ctypes.windll.user32
+    u32.OpenClipboard.argtypes = [wintypes.HWND]
+    if u32.OpenClipboard(None):
+        u32.CloseClipboard()
+        return False
+    return True
+
+
+def hold_clipboard_open(seconds: float):
+    """Another process that opens the clipboard with a window of its own and
+    holds it `seconds`, as a program that reads it on every change does for
+    a moment (rdpclip.exe and DefenderSessionHelper.exe open it in the 4090's
+    RDP session): the Popen once the clipboard is open, or None if it never
+    was. Wait for it to end."""
+    if sys.platform != "win32":
+        return None
+    import subprocess
+
+    holder = subprocess.Popen([sys.executable, "-c", _HOLD_OPEN, str(seconds)],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    if holder.stdout.readline().strip() != b"open":
+        holder.wait(10)
+        return None
+    return holder
+
+
+def clipboard_text_elsewhere(seconds: float = 10.0) -> tuple:
+    """What ANOTHER process reads from the clipboard while this one waits for
+    it and pumps no messages: (text, "") - text None when there is none - or
+    (None, why) when it could not.
+
+    Text this process only promised (Tk's clipboard_append) cannot be read
+    this way: the reader waits for this process's event loop, which is
+    blocked right here, until Windows gives up after 30 s - so `seconds`
+    under 30 makes the promise a failure instead of a long wait (round 96)."""
+    if sys.platform != "win32":
+        return None, "not Windows"
+    import json
+    import subprocess
+
+    try:
+        done = subprocess.run([sys.executable, "-c", _CLIP_PROBE], capture_output=True,
+                              timeout=seconds)
+    except subprocess.TimeoutExpired:
+        return None, f"another process could not read the clipboard within {seconds:.0f} s"
+    if done.returncode == 3:
+        return None, "another process could not open the clipboard for 2 s"
+    if done.returncode:
+        return None, f"the clipboard probe failed with exit code {done.returncode}"
+    return json.loads(done.stdout.decode("utf-8") or "null"), ""
 
 
 # ---- measuring a STEP file, the way the suites and tools/golden.py do ---- #

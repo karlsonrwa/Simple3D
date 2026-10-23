@@ -559,3 +559,23 @@ equivalent mutant.
   now, as s3dLaunch does). The measurements are identical to the pixel and
   the check lists identical, and the second run above was made that way -
   which is the evidence that the move changed no verdict.
+- **Round 96 - the same trap one level down: the session's clipboard, its
+  lock and the user.** On the 4090 with 8 copies, five rows of round 95's
+  table read caught only at "and the turn is given back" - the check ON the
+  lock. Measured (`build/scratch/clip_deadlock.py`, `turn_stress.py`): Tk's
+  `clipboard_append` only promises the text, and a reader waits for the
+  owner's event loop up to Windows' 30 s; a copy that put the user's text
+  back that way and then sat in its give-back probe held the next copy's
+  read inside the turn for 30.01 s, and eight probes ran out (16 copies, one
+  round in three). The text goes on as real data now
+  (`_support.put_clipboard_text`). That exposed the paste to the session:
+  while a window of another program has the clipboard open, Tk's paste
+  inserts nothing (retried, up to ten times), and the user's own copy lands
+  in the middle of a test (notepad++.exe, twice in 220 runs) - a check the
+  clipboard changed under says "not judged" instead of failing, and the
+  user's newer text is not overwritten. Six rows (264), each rule made to
+  happen once in [7g]. The same stress on 2-16 copies: 8 of 100 runs failing
+  before, 0 of 220 after; the whole table twice on 8 and twice on 16 copies,
+  264 of 264 each time, every row caught by the same check in all four, and
+  the 258 older rows by the same check as in round 95. **A check the session
+  can fail - not the code - must say so instead of failing.**
