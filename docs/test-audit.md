@@ -579,3 +579,10 @@ equivalent mutant.
   264 of 264 each time, every row caught by the same check in all four, and
   the 258 older rows by the same check as in round 95. **A check the session
   can fail - not the code - must say so instead of failing.**
+- **Round 97.** The held-open self-test of round 96 held the clipboard 0.4 s
+  against ten pastes ~51 ms apart: the paste landed on try 9, ~60 ms from the
+  last (step2html's copy, 84 runs of 84) - one late holder would fail a
+  healthy run. It holds 0.25 s now: try 6 in 112 runs of 112 on 8-16 copies,
+  ~200 ms from either end, printed as a note in every run; the table 264 of
+  264, every row by the same check as before. **A timing margin is read on
+  the number it leaves, not on green runs.**

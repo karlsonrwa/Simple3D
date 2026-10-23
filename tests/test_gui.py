@@ -457,9 +457,12 @@ with SessionTurn() as turn:
         app.update()
         check("Select all selects it", field.selection_present() and field.selection_get() == "D:/selected/all")
         # The two rules above, each made to happen once: a program holding the
-        # clipboard open for 0.3 s at the paste, then a put by "another
-        # program" between this test's put and its paste.
-        holder = hold_clipboard_open(0.4)
+        # clipboard open for 0.25 s at the paste, then a put by "another
+        # program" between this test's put and its paste. A try every ~51 ms
+        # lands the paste on about the sixth of ten, ~200 ms from either end;
+        # 0.4 s left one try, ~60 ms - step2html's copy of this check landed
+        # on try 9 in 84 runs of 84 (round 97).
+        holder = hold_clipboard_open(0.25)
         held = clipboard_open_elsewhere()
         verdict, why, tries = pasted(into_field, target.get, "D:/pasted/out", ours)
         if holder is not None:
@@ -468,6 +471,7 @@ with SessionTurn() as turn:
                (None, "the holder was not holding the clipboard at the paste") if not held else
                (verdict, why) if verdict is None else
                (verdict and tries > 1, (verdict, why, tries)))
+        print(f"  note: the held-open paste landed on try {tries} of 10")
         put = put_clipboard_text("D:/another/program")
         verdict, why, tries = pasted(into_field, target.get, "D:/pasted/out", ours)
         check("a paste the clipboard changed under is not judged either way", not put and verdict is None,

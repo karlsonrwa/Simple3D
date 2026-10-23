@@ -5,7 +5,12 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-23 (rounds 95 and 96, on `main`)
+## READ THIS FIRST — state as of 2026-10-23 (rounds 95-97, on `main`)
+
+**Round 97 (2026-10-23)**: round 96's held-open self-test holds the clipboard
+0.25 s, not 0.4 - at 0.4 the paste landed on the ninth of ten tries, ~60 ms
+from the last; now on try 6 in 112 runs of 112 on 8-16 copies, ~200 ms from
+either end, and `test_gui` prints the try as a note. step2html changed alike.
 
 **Round 96 (2026-10-23)**: `test_gui` puts text on the clipboard as real data
 (`_support.put_clipboard_text`), no longer through Tk's `clipboard_append`,
@@ -3126,6 +3131,37 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-23 (round 97) — the held-open self-test given room on both sides
+
+The owner: «Смени удержание держателя с 0,4 на 0,25 с в Simple3D и step2html,
+перемерь на 4090 и закоммить каждый проект своим коммитом.» Why: step2html's
+copy of round 96's self-test (`hold_clipboard_open(0.4)`, then `pasted()` -
+ten pastes ~51 ms apart - must land on a later try) landed on try 9 in 84 runs
+of 84, ~60 ms before the tenth and last: a holder late by that much under load
+fails a healthy run, and a failing self-test makes the mutation that copy
+carries read "caught" - the fault round 96 removed. At 0.25 s the paste lands
+on about the sixth try, ~200 ms from either end (the first try comes within a
+millisecond of the hold, so that side is as safe).
+
+- `tests/test_gui.py` [7g]: `hold_clipboard_open(0.25)`, the comment that
+  still said 0.3 s corrected, and a `note:` line with the try the held paste
+  landed on, so every run shows the margin.
+- step2html `tests/test_editing.py`: both of its 0.4 s holders (the paste
+  that must land, the paste a check expects refused) to 0.25 s; its 0.6 s
+  holder for a copy made while held is another case and stays.
+- Measured on the 4090, the owner's session, one job for both projects
+  (`build/scratch/guarded_job.py`: the owner's clipboard text kept in memory
+  only, put back at the end only if the clipboard holds nothing or the
+  suites' own text; 20:37:49): `test_gui` green, the held paste on try 6 of
+  10; `run_all` **31/31 in 82 s**; the six `clip-*` rows alone caught 6 of 6,
+  each by its own check, `clip-paste-tried-once` included (24 s); the stress,
+  112 runs of `test_gui` on 8 and 16 copies (seeded and empty): **0 FAIL, 0
+  not judged, the held paste on try 6 in 112 runs of 112**, the seeded text
+  on the clipboard after every seeded round; **the whole table 264 of 264 on
+  8 copies in 330 s**, every row caught by the same check as in round 96's
+  last run (job 8). step2html's half of the job is in its own notes and
+  commit. Logs: `build/fix-2026-10-23/remote/job9/`.
 
 ## Update 2026-10-23 (round 96) — the clipboard as real data: no copy waits for another's event loop
 
