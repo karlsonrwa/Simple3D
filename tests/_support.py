@@ -225,9 +225,64 @@ def session_turn_elsewhere(wait_ms: int) -> int:
 CF_UNICODETEXT = 13
 
 
-def put_clipboard_text(text) -> str:
+class ClipboardBusy(Exception):
+    """Another program kept the clipboard open past a wait, so whatever needed
+    it can be judged neither way (round 98). A check that meets it says "not
+    judged" and fails nothing: a FAIL the session caused, not the code, makes
+    an unrelated mutation read as caught. On 23.10.2026 one of step2html's
+    puts waited its 2 s and failed while the owner copied something in his
+    RDP session (rdpclip.exe carries such a copy across)."""
+
+
+def clipboard_owned_here() -> bool:
+    """Whether the clipboard's owner is a window of this process: then text
+    on it put with Tk's clipboard_append is this process's own promise."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    import os
+    from ctypes import wintypes
+
+    u32 = ctypes.windll.user32
+    u32.GetClipboardOwner.restype = wintypes.HWND
+    u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    owner = u32.GetClipboardOwner()
+    if not owner:
+        return False
+    pid = wintypes.DWORD()
+    u32.GetWindowThreadProcessId(owner, ctypes.byref(pid))
+    return pid.value == os.getpid()
+
+
+def _busy(what: str) -> str:
+    """The clipboard stayed out of reach: raise ClipboardBusy - unless this
+    process owns it. Then what keeps it out of reach is this process's own
+    promise, a reader sitting on a render this process never gives: under the
+    mutation that puts the test's text with Tk again, rdpclip.exe opened the
+    clipboard to read the promise and stayed (step2html, 23.10.2026). That
+    defect is this process's, so `what` comes back for the caller to fail on."""
+    if clipboard_owned_here():
+        return f"{what}, while the clipboard is this process's own promise"
+    raise ClipboardBusy(f"{what}: another program kept the clipboard open")
+
+
+def clipboard_shown(text, own=()) -> str:
+    """What a check may print of text that came off the clipboard, or out of
+    a field it was pasted into: the text when every line of it is one of the
+    test's own (`own`), or when there is none - else only its length. The
+    clipboard holds whatever the user last copied, a password as easily as a
+    path: on 23.10.2026 a check that printed it put the owner's copied text
+    into 18 stress logs on the 4090 (step2html; round 98)."""
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    if not text or all(line in own for line in lines):
+        return repr(text)
+    return f"{len(text)} characters that are not this test's"
+
+
+def put_clipboard_text(text, seconds: float = 10.0) -> str:
     """Put `text` on the Windows clipboard as real data - or empty it, for
-    None. Returns "" once done, or why it could not be.
+    None. Returns "" once done, or why it could not be; raises ClipboardBusy
+    when another program keeps the clipboard open for `seconds`.
 
     Not with Tk's clipboard_clear/clipboard_append (round 96). Those make the
     Tk window the clipboard's OWNER and only promise the text: Windows asks
@@ -247,7 +302,10 @@ def put_clipboard_text(text) -> str:
 
     Opened with no owner window, so nobody's event loop is ever needed and the
     text outlives this process. Another process may hold the clipboard open
-    for a moment (DefenderSessionHelper does, on the 4090), hence the retry.
+    for a while - DefenderSessionHelper does for a moment, on the 4090, and
+    rdpclip.exe while it carries the user's own copy over RDP, once for more
+    than 2 s - so the put waits up to `seconds` and then leaves the verdict
+    to _busy, never to a plain failure.
     """
     if sys.platform != "win32":
         return "not Windows"
@@ -265,12 +323,11 @@ def put_clipboard_text(text) -> str:
     k32.GlobalLock.restype = wintypes.LPVOID
     k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
     k32.GlobalFree.argtypes = [wintypes.HGLOBAL]
-    for _ in range(100):
-        if u32.OpenClipboard(None):
-            break
+    deadline = time.monotonic() + seconds
+    while not u32.OpenClipboard(None):
+        if time.monotonic() >= deadline:
+            return _busy(f"OpenClipboard failed for {seconds:g} s")
         time.sleep(0.02)
-    else:
-        return f"OpenClipboard failed for 2 s (error {ctypes.GetLastError()})"
     try:
         if not u32.EmptyClipboard():
             return f"EmptyClipboard failed (error {ctypes.GetLastError()})"
@@ -301,12 +358,11 @@ u.GetClipboardData.argtypes = [wintypes.UINT]
 k.GlobalLock.restype = wintypes.LPVOID
 k.GlobalLock.argtypes = [wintypes.HGLOBAL]
 k.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
-for _ in range(100):
-    if u.OpenClipboard(None):
-        break
+deadline = time.monotonic() + float(sys.argv[1])
+while not u.OpenClipboard(None):
+    if time.monotonic() >= deadline:
+        sys.exit(3)
     time.sleep(0.02)
-else:
-    sys.exit(3)
 try:
     h = u.GetClipboardData(13)
     text = None
@@ -338,7 +394,8 @@ def put_back_clipboard_text(text, ours: int) -> tuple:
     test's own last put): what is on it then is newer than `text`, most
     likely the user's own copy, and it is left there.
 
-    Returns ("put", ""), ("left", why) or ("failed", why)."""
+    Returns ("put", ""), ("left", why) or ("failed", why); ClipboardBusy as
+    put_clipboard_text raises it."""
     if clipboard_sequence() != ours:
         return "left", "the clipboard changed since this test's own put"
     why = put_clipboard_text(text)
@@ -410,24 +467,28 @@ def hold_clipboard_open(seconds: float):
 def clipboard_text_elsewhere(seconds: float = 10.0) -> tuple:
     """What ANOTHER process reads from the clipboard while this one waits for
     it and pumps no messages: (text, "") - text None when there is none - or
-    (None, why) when it could not.
+    (None, why) when it could not; ClipboardBusy when another program kept
+    the clipboard open for half of `seconds` (_busy, round 98).
 
     Text this process only promised (Tk's clipboard_append) cannot be read
     this way: the reader waits for this process's event loop, which is
     blocked right here, until Windows gives up after 30 s - so `seconds`
-    under 30 makes the promise a failure instead of a long wait (round 96)."""
+    under 30 makes the promise a failure instead of a long wait (round 96).
+    The probe opens the clipboard within the first half of `seconds`, so an
+    open it never gets (busy) and a read it never finishes (a promise) come
+    apart."""
     if sys.platform != "win32":
         return None, "not Windows"
     import json
     import subprocess
 
     try:
-        done = subprocess.run([sys.executable, "-c", _CLIP_PROBE], capture_output=True,
-                              timeout=seconds)
+        done = subprocess.run([sys.executable, "-c", _CLIP_PROBE, str(seconds / 2)],
+                              capture_output=True, timeout=seconds)
     except subprocess.TimeoutExpired:
-        return None, f"another process could not read the clipboard within {seconds:.0f} s"
+        return None, f"another process could not read the clipboard within {seconds:g} s"
     if done.returncode == 3:
-        return None, "another process could not open the clipboard for 2 s"
+        return None, _busy(f"another process could not open the clipboard for {seconds / 2:g} s")
     if done.returncode:
         return None, f"the clipboard probe failed with exit code {done.returncode}"
     return json.loads(done.stdout.decode("utf-8") or "null"), ""

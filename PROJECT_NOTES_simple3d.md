@@ -5,7 +5,16 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-23 (rounds 95-97, on `main`)
+## READ THIS FIRST — state as of 2026-10-23 (rounds 95-98, on `main`)
+
+**Round 98 (2026-10-23)**: a clipboard another program keeps open past a wait
+- the put's 10 s (was 2), the read's 5, ten pastes - leaves its check "not
+judged", never failed (`_support.ClipboardBusy`), unless what holds it up is
+this process's own promise, which fails as the defect it is; no check prints
+the user's clipboard text, only its length (`clipboard_shown`); the give-back
+probe waits 120 s, as the turn itself does. Five rows (269), each caught by
+its own self-test; the table 269 of 269 on 8 and on 16 copies, every row by
+the same check. step2html changed alike.
 
 **Round 97 (2026-10-23)**: round 96's held-open self-test holds the clipboard
 0.25 s, not 0.4 - at 0.4 the paste landed on the ninth of ten tries, ~60 ms
@@ -3131,6 +3140,89 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-23 (round 98) — a busy clipboard is not judged, and no check prints the user's text
+
+The owner: «Исправь обе слабости в Simple3D и step2html: запись в буфер ждёт
+дольше и пишет «не судим» вместо FAIL, проверки не печатают мой текст;
+перемерь на 4090 и закоммить каждый проект своим коммитом.» Both weaknesses
+came out of round 97's run. One of step2html's 84 stress runs failed "Ctrl+X
+cuts it: OpenClipboard failed for 2 s" in the one round where the owner copied
+something in his RDP session (most likely rdpclip.exe carrying it across
+held the clipboard). And step2html's put-back check printed the user's text
+read back - its details print even on PASS - so the owner's copied text went
+into 18 stress logs (removed there since). Simple3D had the same 2 s limit,
+and printed the same value on FAIL.
+
+### The rule, and the one case it must not cover
+
+A clipboard another program keeps open past a wait leaves the check "not
+judged" - a note, never a FAIL, which would make an unrelated mutation read
+caught. Except when what keeps it open is this process's own promise: under
+the mutation that puts the test text with Tk again, rdpclip.exe opens the
+clipboard to read the promise and sits on a render this process never gives
+(measured by step2html's session) - that is the defect the check exists for,
+and it must fail. So `_support._busy(what)`: owned by a window of this
+process (`clipboard_owned_here`) -> return `what` for the caller to fail on;
+else raise `ClipboardBusy`.
+
+- `put_clipboard_text(text, seconds=10)`: OpenClipboard retried up to
+  `seconds` (was 2 s), then `_busy`.
+- `clipboard_text_elsewhere(seconds=10)`: the probe gets half of `seconds`
+  to open the clipboard (was a fixed 2 s), exit 3 -> `_busy`; a read it opens
+  but never finishes (a promise) is still the plain failure after `seconds`.
+- `pasted(..., judge_busy=True)`: ten failed pastes with the clipboard still
+  held open by another program -> "not judged"; the held-open self-test
+  passes `judge_busy=False`, the holder being its point.
+- [7g] and [7h] run in `try/except ClipboardBusy`: the rest of the section is
+  a note, and the user's text is put back if this test's is on the clipboard.
+  What the user had, unreadable, now means nothing is put at all - before, a
+  failed read became None and the put-back emptied the clipboard over text
+  that was there.
+- `clipboard_shown(text, OWN)`: a check prints clipboard or field text only
+  when every line of it is one of the test's own texts (OWN), else "N
+  characters that are not this test's"; every detail that could carry the
+  user's text goes through it. `build/scratch/turn_stress.py` shows the
+  clipboard after a round the same way.
+- The give-back probe waits 120 s (SessionTurn's own wait), not 30: the new
+  self-tests hold the turn ~3 s a copy, and 16 copies, or 16 of step2html's
+  at ~2.4 s, would queue past 30 s - the open item of round 97's report.
+- Self-tests in [7g], each rule made to happen once: under one holder of
+  1.5 s, ten pastes, a put (0.1 s wait) and a read (0.4 s) must all come
+  back "not judged" (the holder letting go early is itself "not judged");
+  a put held up while Tk's own promise owns the clipboard must fail;
+  `clipboard_shown` must not show a sentinel "private" text.
+- Rows (table 264 -> 269): `clip-busy-put-failed`, `clip-busy-read-failed`,
+  `clip-own-promise-not-judged`, `clip-busy-paste-failed`,
+  `clip-user-text-shown`; `clip-user-text-not-put-back` and
+  `clip-changed-clipboard-judged` re-aimed.
+
+### Verified
+
+On the 4090, the owner's session, one job with step2html's half (job 10,
+from 21:45:04; the owner's clipboard text kept in memory by
+`build/scratch/guarded_job.py`):
+
+- `test_gui` green, every new check passing, the held paste on try 6;
+  `run_all` **31/31 in 86 s**.
+- The eleven `clip-*` rows alone: **caught 11 of 11, each by its own check**
+  - the five new ones at "nor is a put it keeps the clipboard from", "nor a
+  read", "but a put held up by this process's own promise fails", "ten
+  pastes another program keeps the clipboard from are not judged" and "a
+  check shows the user's text by its length only", and
+  `clip-test-text-only-promised` still caught (the own-promise rule at work).
+- The stress, 112 runs of `test_gui` on 8 and 16 copies: **0 FAIL, 0 at the
+  give-back probe**, the seeded text kept after every seeded round. The price
+  is the queue: a copy holds the turn ~3.5 s now, so the slowest run of a
+  round took ~30 s on 8 copies and 58-60 s on 16 - which the old 30 s
+  give-back probe would have failed. (The tracer's report of the 16-copy
+  rounds died on a torn trace line: the suite's children appended to the
+  same trace file; only the traced process writes now. The verdicts come
+  from exit codes and FAIL lines and were not touched.)
+- **The whole table, 269 rows: 269 of 269 on 8 copies in 388 s, 269 of 269
+  on 16 in 250 s**; every row caught by the same check in both, and the 264
+  older ones by the same check as in round 97's run. Logs:
+  `build/fix-2026-10-23/remote/job10/`.
 
 ## Update 2026-10-23 (round 97) — the held-open self-test given room on both sides
 

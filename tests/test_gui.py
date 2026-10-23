@@ -5,6 +5,7 @@ from _support import ROOT, OUT, fails, check
 from _support import SessionTurn, TURN_REFUSED, TURN_TAKEN, session_turn_elsewhere
 from _support import put_clipboard_text, clipboard_text_elsewhere, clipboard_sequence
 from _support import put_back_clipboard_text, hold_clipboard_open, clipboard_open_elsewhere
+from _support import ClipboardBusy, clipboard_owned_here, clipboard_shown
 from _support import keep_windows_off_screen
 
 # The windows of this suite on a desktop of their own, not the user's: four
@@ -389,11 +390,20 @@ field = next(w for w in entries if str(w.cget("textvariable")) == str(target))
 # promises it: on 16 copies a copy that had put the user's text back that way
 # sat in its give-back probe below, and the next copy's read of the clipboard
 # in its turn waited 30 s for it - eight probes ran out (round 96). What the
-# user had is read by another process, as raw text and within a limit.
-def pasted(paste, shown, expected, ours):
+# user had is read by another process, as raw text and within a limit. A
+# clipboard another program keeps open past a wait leaves the rest of the
+# section unjudged, never failed (_support.ClipboardBusy, round 98), and no
+# check prints the user's text - only this test's own (OWN, clipboard_shown).
+CHANGED = "the clipboard changed under the test - another program put something on it"
+OWN = ("D:/pasted/out", "D:/layout/blind", "D:/another/program", "D:/must/not/land",
+       "D:/selected/all", "D:/promised/here")
+
+
+def pasted(paste, shown, expected, ours, judge_busy=True):
     """Paste until shown() holds `expected`, at most ten times 50 ms apart:
     (True, "", tries), (False, why, tries) - or (None, why, tries) when the
-    clipboard changed under the test, which leaves nothing to judge.
+    clipboard changed under the test, or when another program still holds it
+    open after the tenth try, which leave nothing to judge.
 
     Tk pastes from the Windows clipboard now that the text is real data, and
     while a window of another program has the clipboard open - one that reads
@@ -403,7 +413,10 @@ def pasted(paste, shown, expected, ours):
     clipboard is the session's, so the user's own copy lands on it too -
     notepad++.exe took it in the middle of [7g] twice in those 220 runs
     (round 96). A paste that is never made fails all ten times; one the
-    clipboard changed under is no evidence either way."""
+    clipboard changed under is no evidence either way, and nor is one another
+    program kept the clipboard from all along - unless what holds it up is
+    this process's own promise (round 98). The held-open self-test passes
+    judge_busy=False: there the holder is the point."""
     import time
 
     for tries in range(1, 11):
@@ -411,9 +424,11 @@ def pasted(paste, shown, expected, ours):
         if expected in shown():
             return True, "", tries
         if clipboard_sequence() != ours:
-            return None, "the clipboard changed under the test - another program put something on it", tries
+            return None, CHANGED, tries
         time.sleep(0.05)
-    return False, f"{shown()!r} after ten pastes", tries
+    if judge_busy and clipboard_open_elsewhere() and not clipboard_owned_here():
+        return None, "another program held the clipboard open through ten pastes", tries
+    return False, f"{clipboard_shown(shown(), OWN)} after ten pastes", tries
 
 
 def judged(name, result):
@@ -429,72 +444,142 @@ with SessionTurn() as turn:
           turn.held and (sys.platform != "win32" or session_turn_elsewhere(0) == TURN_REFUSED),
           turn.why or "another process took the turn while this one held it")
     if turn.held:
-        before_clip, _ = clipboard_text_elsewhere()
-        put = put_clipboard_text("D:/pasted/out")
-        ours = clipboard_sequence()
-        seen, why = clipboard_text_elsewhere()
-        judged("the text is put as real data: another process reads it while this copy pumps nothing",
-               (not put and seen == "D:/pasted/out", put or why or repr(seen))
-               if clipboard_sequence() == ours else
-               (None, "the clipboard changed under the test - another program put something on it"))
+        ours = before_clip = None
+        try:
+            # What the user had, first: unreadable, the clipboard is left as it
+            # is - nothing put, nothing to put back - and nothing below judged.
+            before_clip, why = clipboard_text_elsewhere()
+            if why:
+                raise ClipboardBusy(f"what the user had could not be read: {why}")
+            put = put_clipboard_text("D:/pasted/out")
+            ours = clipboard_sequence()
+            seen, why = clipboard_text_elsewhere()
+            judged("the text is put as real data: another process reads it while this copy pumps nothing",
+                   (not put and seen == "D:/pasted/out", put or why or clipboard_shown(seen, OWN))
+                   if clipboard_sequence() == ours else (None, CHANGED))
 
-        def into_field():
+            def into_field():
+                field.delete(0, "end")
+                app._edit_menu(field).invoke(2)          # Paste
+                app.update()
+
+            def into_box():
+                app._edit_menu(app._step_text).invoke(2)
+                app.update()
+
+            judged("Paste puts the clipboard into the field",
+                   pasted(into_field, target.get, "D:/pasted/out", ours))
+            judged("and the STEP-folders box pastes too",
+                   pasted(into_box, lambda: app._step_text.get("1.0", "end"), "D:/pasted/out", ours))
             field.delete(0, "end")
-            app._edit_menu(field).invoke(2)          # Paste
+            field.insert(0, "D:/selected/all")
+            app._edit_menu(field).invoke(4)          # Select all
             app.update()
+            check("Select all selects it", field.selection_present() and field.selection_get() == "D:/selected/all")
+            # The rules above, each made to happen once. First a program holding
+            # the clipboard open for 0.25 s at the paste: a try every ~51 ms
+            # lands the paste on about the sixth of ten, ~200 ms from either end;
+            # 0.4 s left one try, ~60 ms - step2html's copy of this check landed
+            # on try 9 in 84 runs of 84 (round 97).
+            holder = hold_clipboard_open(0.25)
+            held = clipboard_open_elsewhere()
+            verdict, why, tries = pasted(into_field, target.get, "D:/pasted/out", ours, judge_busy=False)
+            if holder is not None:
+                holder.wait(10)
+            judged("a paste that finds the clipboard held open by another program is retried until it is free",
+                   (None, "the holder was not holding the clipboard at the paste") if not held else
+                   (verdict, why) if verdict is None else
+                   (verdict and tries > 1, (verdict, why, tries)))
+            print(f"  note: the held-open paste landed on try {tries} of 10")
+            # Then one held for 1.5 s, past every wait below: ten pastes, a put
+            # and a read it keeps the clipboard from are not judged, and fail
+            # nothing (round 98). In that order they take ~0.55, ~0.1 and up to
+            # ~0.5 s, the read's own child starting last, where load shows most.
+            holder = hold_clipboard_open(1.5)
+            held = clipboard_open_elsewhere()
+            verdict, why, tries = pasted(into_field, target.get, "D:/pasted/out", ours)
+            try:
+                put_said = ("returned", put_clipboard_text("D:/must/not/land", seconds=0.1))
+            except ClipboardBusy as busy:
+                put_said = ("busy", str(busy))
+            try:
+                seen, why_read = clipboard_text_elsewhere(0.4)
+                read_said = ("returned", clipboard_shown(seen, OWN), why_read)
+            except ClipboardBusy as busy:
+                read_said = ("busy", str(busy))
+            if holder is not None:
+                holder.wait(10)
+            premise = None if held else (None, "the holder was not holding the clipboard")
+            judged("ten pastes another program keeps the clipboard from are not judged, not failed",
+                   premise or ((None, "the holder let go before the tenth paste") if verdict is True else
+                               (verdict is None and tries == 10, (verdict, why, tries))))
+            judged("nor is a put it keeps the clipboard from", premise or (put_said[0] == "busy", put_said))
+            judged("nor a read", premise or (read_said[0] == "busy", read_said))
+            # But held up by this process's own promise - Tk's clipboard_append,
+            # on purpose - the put fails: the defect would be this process's.
+            # The promise is served at once, for whoever reads it on every change,
+            # and Tk is told afterwards that the clipboard is no longer its own:
+            # one that went on believing so pasted its old text over the next
+            # put (step2html, 23.10.2026).
+            import time
 
-        def into_box():
-            app._edit_menu(app._step_text).invoke(2)
+            app.clipboard_clear()
+            app.clipboard_append("D:/promised/here")
+            for _ in range(10):
+                app.update()
+                time.sleep(0.02)
+            holder = hold_clipboard_open(0.3)
+            held = clipboard_open_elsewhere()
+            try:
+                own_said = ("returned", put_clipboard_text("D:/must/not/land", seconds=0.1))
+            except ClipboardBusy as busy:
+                own_said = ("busy", str(busy))
+            if holder is not None:
+                holder.wait(10)
             app.update()
-
-        judged("Paste puts the clipboard into the field",
-               pasted(into_field, target.get, "D:/pasted/out", ours))
-        judged("and the STEP-folders box pastes too",
-               pasted(into_box, lambda: app._step_text.get("1.0", "end"), "D:/pasted/out", ours))
-        field.delete(0, "end")
-        field.insert(0, "D:/selected/all")
-        app._edit_menu(field).invoke(4)          # Select all
-        app.update()
-        check("Select all selects it", field.selection_present() and field.selection_get() == "D:/selected/all")
-        # The two rules above, each made to happen once: a program holding the
-        # clipboard open for 0.25 s at the paste, then a put by "another
-        # program" between this test's put and its paste. A try every ~51 ms
-        # lands the paste on about the sixth of ten, ~200 ms from either end;
-        # 0.4 s left one try, ~60 ms - step2html's copy of this check landed
-        # on try 9 in 84 runs of 84 (round 97).
-        holder = hold_clipboard_open(0.25)
-        held = clipboard_open_elsewhere()
-        verdict, why, tries = pasted(into_field, target.get, "D:/pasted/out", ours)
-        if holder is not None:
-            holder.wait(10)
-        judged("a paste that finds the clipboard held open by another program is retried until it is free",
-               (None, "the holder was not holding the clipboard at the paste") if not held else
-               (verdict, why) if verdict is None else
-               (verdict and tries > 1, (verdict, why, tries)))
-        print(f"  note: the held-open paste landed on try {tries} of 10")
-        put = put_clipboard_text("D:/another/program")
-        verdict, why, tries = pasted(into_field, target.get, "D:/pasted/out", ours)
-        check("a paste the clipboard changed under is not judged either way", not put and verdict is None,
-              put or (verdict, why, tries))
-        ours = clipboard_sequence()          # that put was this test's own
-        left, why = put_back_clipboard_text("D:/must/not/land", ours - 1)
-        seen, _ = clipboard_text_elsewhere()
-        check("the user's text is not put back over a newer one - the clipboard changed since this "
-              "test's own put", left == "left" and seen != "D:/must/not/land", (left, why, seen))
-        done, why = put_back_clipboard_text(before_clip or None, ours)
-        after = clipboard_sequence()
-        seen, why_not = clipboard_text_elsewhere()
-        if done == "left":
-            print(f"  note: the user's text is not put back - {why}: what is there is theirs, and newer")
-        else:
-            judged("and the user's own text is put back as real data, so it outlives this copy",
-                   (done == "put" and seen == (before_clip or None), why or why_not or repr(seen))
-                   if clipboard_sequence() == after else
-                   (None, "the clipboard changed under the test - another program put something on it"))
+            app.tk.call("selection", "clear", "-displayof", app, "-selection", "CLIPBOARD")
+            judged("but a put held up by this process's own promise fails",
+                   (None, "the holder was not holding the clipboard") if not held else
+                   (own_said[0] == "returned" and bool(own_said[1]), own_said))
+            check("a check shows the user's text by its length only, never the text",
+                  "s3d-private" not in clipboard_shown("s3d-private: a password", OWN)
+                  and clipboard_shown("D:/pasted/out", OWN) == repr("D:/pasted/out"),
+                  clipboard_shown("s3d-private: a password", OWN))
+            # And a put by "another program" between this test's put and its paste.
+            put = put_clipboard_text("D:/another/program")
+            verdict, why, tries = pasted(into_field, target.get, "D:/pasted/out", ours)
+            check("a paste the clipboard changed under is not judged either way", not put and verdict is None,
+                  put or (verdict, why, tries))
+            ours = clipboard_sequence()          # that put was this test's own
+            left, why = put_back_clipboard_text("D:/must/not/land", ours - 1)
+            seen, _ = clipboard_text_elsewhere()
+            check("the user's text is not put back over a newer one - the clipboard changed since this "
+                  "test's own put", left == "left" and seen != "D:/must/not/land",
+                  (left, why, clipboard_shown(seen, OWN)))
+            done, why = put_back_clipboard_text(before_clip or None, ours)
+            after = clipboard_sequence()
+            ours = None                          # nothing of this test's is left to put back
+            seen, why_not = clipboard_text_elsewhere()
+            if done == "left":
+                print(f"  note: the user's text is not put back - {why}: what is there is theirs, and newer")
+            else:
+                judged("and the user's own text is put back as real data, so it outlives this copy",
+                       (done == "put" and seen == (before_clip or None),
+                        why or why_not or clipboard_shown(seen, OWN))
+                       if clipboard_sequence() == after else (None, CHANGED))
+        except ClipboardBusy as busy:
+            print(f"  note: the rest of [7g]'s clipboard checks - not judged: {busy}")
+            if ours is not None:                 # this test's text may still be on the clipboard
+                try:
+                    put_back_clipboard_text(before_clip or None, ours)
+                except ClipboardBusy:
+                    pass
 # Given back, or every other copy waits out its two minutes and fails: another
-# process takes the turn now - within a wait, since a copy may be in it.
+# process takes the turn now - within the wait every copy gives its own turn
+# (SessionTurn's 120 s), since a queue of them may be ahead. 30 s was too
+# short for 16 copies that hold it ~3 s each, or 16 of step2html's at ~2.4 s.
 check("and the turn is given back: another process takes it",
-      sys.platform != "win32" or session_turn_elsewhere(30000) == TURN_TAKEN)
+      sys.platform != "win32" or session_turn_elsewhere(120000) == TURN_TAKEN)
 app._busy = True
 class _Click:
     x_root = y_root = 0
@@ -549,23 +634,35 @@ check("every path Entry and the STEP-folders box carry the binding",
 with SessionTurn() as turn:
     check("the clipboard turn is taken for [7h] too", turn.held, turn.why)
     if turn.held:
-        before_clip, _ = clipboard_text_elsewhere()
-        put = put_clipboard_text("D:/layout/blind")
-        ours = clipboard_sequence()
+        ours = before_clip = None
+        try:
+            before_clip, why = clipboard_text_elsewhere()
+            if why:
+                raise ClipboardBusy(f"what the user had could not be read: {why}")
+            put = put_clipboard_text("D:/layout/blind")
+            ours = clipboard_sequence()
 
-        def by_shortcut():
-            field.delete(0, "end")
-            layout_blind_shortcut(_Key(field, 86, "Cyrillic_ve", "\x16"))
-            app.update()
+            def by_shortcut():
+                field.delete(0, "end")
+                layout_blind_shortcut(_Key(field, 86, "Cyrillic_ve", "\x16"))
+                app.update()
 
-        check("[7h]'s text goes on the clipboard", not put, put)
-        judged("Ctrl+V under a Cyrillic layout pastes into the field",
-               pasted(by_shortcut, target.get, "D:/layout/blind", ours))
-        done, why = put_back_clipboard_text(before_clip or None, ours)
-        if done == "left":
-            print(f"  note: [7h] does not put the user's text back - {why}: what is there is theirs, and newer")
-        else:
-            check("[7h] puts the user's text back as real data too", done == "put", why)
+            check("[7h]'s text goes on the clipboard", not put, put)
+            judged("Ctrl+V under a Cyrillic layout pastes into the field",
+                   pasted(by_shortcut, target.get, "D:/layout/blind", ours))
+            done, why = put_back_clipboard_text(before_clip or None, ours)
+            ours = None
+            if done == "left":
+                print(f"  note: [7h] does not put the user's text back - {why}: what is there is theirs, and newer")
+            else:
+                check("[7h] puts the user's text back as real data too", done == "put", why)
+        except ClipboardBusy as busy:
+            print(f"  note: the rest of [7h]'s clipboard checks - not judged: {busy}")
+            if ours is not None:
+                try:
+                    put_back_clipboard_text(before_clip or None, ours)
+                except ClipboardBusy:
+                    pass
 
 print("\n[7i] Copper and Base follow the surfaces painted with them - round 93")
 # Exposed copper is drawn in the Copper colour and the mask openings in Base

@@ -586,3 +586,17 @@ equivalent mutant.
   ~200 ms from either end, printed as a note in every run; the table 264 of
   264, every row by the same check as before. **A timing margin is read on
   the number it leaves, not on green runs.**
+- **Round 98.** Two weaknesses round 97's run showed. A put gave up after
+  2 s and failed its check while the owner copied something over RDP (in
+  step2html, which shares the code); and a check printed the user's
+  clipboard text it read back (step2html even on PASS - the owner's copied
+  text went into 18 logs). Now a clipboard another program keeps open past a
+  wait (put 10 s, read 5 s, ten pastes) leaves the check "not judged"
+  (`_support.ClipboardBusy`) - unless the hold-up is this process's own
+  promise, which must fail, or the Tk-promise mutation would go unjudged -
+  and clipboard text is printed only when it is the test's own
+  (`clipboard_shown`). The give-back probe waits 120 s: the turn is now held
+  ~3.5 s a copy, and 16 copies queue past 30. Five rows (269), each caught by
+  its own self-test; the table 269 of 269 on 8 and 16 copies, every row by
+  the same check. **A check the session can fail must also be told apart
+  from one its own process fails.**

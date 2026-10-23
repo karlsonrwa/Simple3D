@@ -2762,8 +2762,8 @@
  {
   "id": "clip-user-text-not-put-back",
   "file": "tests/test_gui.py",
-  "old": "        done, why = put_back_clipboard_text(before_clip or None, ours)\n        after = clipboard_sequence()\n",
-  "new": "        done, why = \"put\", \"\"\n        after = clipboard_sequence()\n",
+  "old": "            done, why = put_back_clipboard_text(before_clip or None, ours)\n            after = clipboard_sequence()\n",
+  "new": "            done, why = \"put\", \"\"\n            after = clipboard_sequence()\n",
   "suites": [
    "tests/test_gui.py"
   ],
@@ -2792,8 +2792,8 @@
  {
   "id": "clip-changed-clipboard-judged",
   "file": "tests/test_gui.py",
-  "old": "        if clipboard_sequence() != ours:\n            return None, \"the clipboard changed under the test - another program put something on it\", tries\n",
-  "new": "        if False:\n            return None, \"the clipboard changed under the test - another program put something on it\", tries\n",
+  "old": "        if clipboard_sequence() != ours:\n            return None, CHANGED, tries\n",
+  "new": "        if False:\n            return None, CHANGED, tries\n",
   "suites": [
    "tests/test_gui.py"
   ],
@@ -2808,5 +2808,55 @@
    "tests/test_gui.py"
   ],
   "why": "the user's old text is put back over a newer copy they made while the test ran (round 96)"
+ },
+ {
+  "id": "clip-busy-put-failed",
+  "file": "tests/_support.py",
+  "old": "    raise ClipboardBusy(f\"{what}: another program kept the clipboard open\")\n",
+  "new": "    return f\"{what}: another program kept the clipboard open\"\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a put or read another program keeps the clipboard from fails instead of staying unjudged: the owner's own copy over RDP made one of step2html's puts fail after 2 s (round 98)"
+ },
+ {
+  "id": "clip-busy-read-failed",
+  "file": "tests/_support.py",
+  "old": "        return None, _busy(f\"another process could not open the clipboard for {seconds / 2:g} s\")\n",
+  "new": "        return None, f\"another process could not open the clipboard for {seconds / 2:g} s\"\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a read the clipboard is kept from comes back as a plain failure, never as busy (round 98)"
+ },
+ {
+  "id": "clip-own-promise-not-judged",
+  "file": "tests/_support.py",
+  "old": "    if clipboard_owned_here():\n        return f\"{what}, while the clipboard is this process's own promise\"\n",
+  "new": "    if False:\n        return f\"{what}, while the clipboard is this process's own promise\"\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a clipboard held up by this process's own promise counts as busy, so the Tk-promise defect would read as not judged instead of failing (round 98)"
+ },
+ {
+  "id": "clip-busy-paste-failed",
+  "file": "tests/test_gui.py",
+  "old": "    if judge_busy and clipboard_open_elsewhere() and not clipboard_owned_here():\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "ten pastes another program kept the clipboard from fail instead of staying unjudged (round 98)"
+ },
+ {
+  "id": "clip-user-text-shown",
+  "file": "tests/_support.py",
+  "old": "    return f\"{len(text)} characters that are not this test's\"\n",
+  "new": "    return repr(text)\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a check prints clipboard text that is not the test's own - the user's: the owner's copied text went into 18 stress logs on the 4090 (step2html, round 98)"
  }
 ]
