@@ -5,7 +5,45 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-09-23 (round 94, on `main`)
+## READ THIS FIRST — state as of 2026-10-23 (round 95, on `main`)
+
+**Round 95 (2026-10-23)**: the window's close no longer loses settings - the
+three blocking findings R6-1, R6-2, R6-3 of the review below. The close writes
+only the keys the window changed (`save_gui_settings(..., loaded=)`), so a hand
+edit made while it is open, the first of two windows and a value the loader
+cannot read survive; a key migrated from `stepDir` / `debugLayers` is still
+written; a silkscreen exclusion for a layer the panel does not show is kept
+(`settings.merge_layers_off`, also folded in on every panel refresh); an
+unreadable value is named in the log (`settings.unreadable_keys`). Tests first,
+red on the old code (`test_settings` [8]: 9 FAIL, `test_gui` [R]: 6 FAIL), green
+after; seven mutation rows (258), 7 of 7 caught. On the 4090 the same day the
+full `run_all` caught one more: `test_geom` [3] still asserted the old
+write-everything rule (rewritten to the new one); then `run_all` 31/31 in 78 s
+and the whole table 258 of 258, none at the clipboard-turn check that had made
+five rows of the first run read as caught. Read round 95 for the detail.
+
+**Independent review, 2026-10-23 (not a round: no code changed).** At the
+owner's request the whole project at `24f61ac`, plus the three untracked
+output-matrix proposal files, went through nine fresh reviewers by the
+`independent-reviewer` draft (`HowToDevelop\profile\reviewer-skill\SKILL.md`),
+one per part, each with its own acceptance card. 134 findings: 7 blocking, 67
+material, 60 minor; the organizing session reproduced 122, 7 partly, 5 not
+checked, 0 refuted. Report for the owner: `build/review-2026-10-23/report.ru.md`
+(+ `.html`); the verdicts verbatim per part and the reproduction tables
+(`_orch/repro.md`, `R9-proposal/repro.md`) beside it; the package is
+git-ignored. The blocking ones: a part stands on its zone's stackup top, not on
+the material under it (X1 on flex2-a0 0.575 mm in the air, R3-1); exposed
+copper and mask windows likewise over the stiffener holes (flex-b2 0.15-1.65 mm,
+R4-2); flex2-a0 BEND_6 builds silently into a body BRepCheck rejects, because
+"built in more than one way" no longer fires (R5-1); the window's save rewrites
+every GUI key from load-time values (R6-1), erases wrong-typed values (R6-2) and
+drops silk exclusions absent from the current JSON (R6-3); `%` in any JSON body
+string reaches `fprintf` as the format (R1-1, from the code and Cadence's fprintf
+page, not run in Allegro). Against this memo: the data's zones DO overlap
+(flex-b2 53.6 mm², flex2-a0 21.1 and 18.6 mm²), though "Nested zones: there is
+no such thing" below says they cannot. R6-1, R6-2 and R6-3 are fixed in round
+95 at the owner's word; everything else is open, and the owner decides the
+next fixes and a second round.
 
 **Round 94 (2026-09-23)**: what parallel copies of the suites share. The
 clipboard: `test_gui` [7g]/[7h] take a turn on a machine-wide named mutex
@@ -3070,6 +3108,111 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-23 (round 95) — the close writes what the window changed, and nothing else
+
+The owner's order after the independent review (`build/review-2026-10-23/`):
+«Исправь потерю настроек (R6-1, R6-2, R6-3): тест, который падает на нынешнем
+коде, затем правка, строка мутаций; потом покажи результат.»
+
+**What was wrong.** `save_gui_settings` wrote every `gui` key from the window's
+values, and those were the values read at start-up wherever the user had not
+touched a control. So the close rewrote the local file wholesale: a hand edit
+made while the window was open went back (R6-1); of two windows open at once,
+the one closed last erased what the first had changed (R6-1); a value the
+loader could not read (`stepDirs` as a string, `foldAnchor` as `"10,20"`) came
+back as the default and was written over the user's own (R6-2); and
+`silkscreenLayersOff` was taken from the panel's unticked rows only, so an
+exclusion for a layer the shown board does not carry was dropped (R6-3) -
+switch AUTOSILK_TOP off once, open a board without it, and the next board with
+it built it again.
+
+**The fix.**
+- `save_gui_settings(..., loaded=GuiSettings)`: with `loaded` (the window always
+  passes the deep copy `_load_config` took) a key whose file form equals the
+  loaded one is skipped, and the local file's entry stands as it is NOW.
+  Without `loaded` the old behaviour (every key) is kept - the function tests
+  [5]/[6] still use it.
+- Migration kept: when `stepDir` or `debugLayers` is in either file, the key
+  that superseded it (`SUPERSEDED_BY`) is written whether changed or not -
+  otherwise the setting would live only in the old key the save drops. The
+  first version missed this and `test_gui` [7] (a legacy base with `stepDir`)
+  went red with KeyError 'stepDirs'; that is what found it.
+- `settings.merge_layers_off(remembered, shown, unticked)` =
+  (remembered - shown) | unticked; used by `_save_config` and, before every
+  `layers.refresh`, to fold the rows about to go into `_layers_off` - a layer
+  unticked on one board and gone from the panel on the next stays off.
+- `settings.unreadable_keys(config_path)`: one sentence per key whose loader
+  gives the default although the file does not hold it (case and a number
+  written as text do not count); the window logs each as a warning at start.
+
+**Measured.** New checks first, run on the unfixed code:
+`test_settings` [8] 9 FAIL, `test_gui` [R] 6 FAIL (real windows on their own
+desktop, the real `_on_close`); every older section green. After the fix:
+`test_settings` 71 PASS, `test_gui` 183 PASS, `test_config_merge` 30,
+`test_launcher` 21, `test_mutations` all pass, `python_names` clean,
+`audit_docs` no findings. Seven mutation rows (table 258):
+`python -u tools/mutate.py settings-close-rewrites settings-migrated-key
+settings-layers-off-only gui-close-without gui-refresh-forgets
+settings-unreadable` -> caught 7 of 7, 19 s of wall. Outputs:
+`build/fix-2026-10-23/` (before_*, after_*, mutate_new_rows.txt).
+NOT run: the full `run_all` and the whole mutation table - the owner chose
+targeted runs for the day (the 4090 is down). README §Settings (both halves),
+CHANGELOG, ARCHITECTURE (settings row, counts) updated.
+
+**On the 4090, the same day at 12:39, once it was back** («прогони там всё что
+нужно»). The mirror `D:\Projects\AI\Claude\Simple3D_mirror` there: a bundle of
+`main` plus this tree's bytes, all 128 tracked files compared by sha256;
+`py -3.11` with cadquery-ocp 7.9.3.1.1 (memory: `the-4090-mirror-of-simple3d`).
+`run_all`: **30/31 in 76 s**, red `test_geom` [3] "windowState written <-
+None". [3] asserted that the close writes `windowState: "normal"` although the
+state never changed - the old write-everything rule; the targeted runs above
+had not included `test_geom`. The product is right (a state left out of the
+local file reads as the default, "normal"), so the test changed: [3] checks the
+key is left out, [4] that a window reopened from such a file is normal; on the
+4090 then `test_geom` 35 PASS (screen 1536x864, the RDP session's), `test_gui`
+183 PASS, the same count as here.
+
+The whole table on that first tree, 8 copies (`--workers 8`; the default
+there would be 16): **caught 252 of 258, 457 s of wall for 3298 s of suite
+runs** (12:40:48-12:48:25). Six UNPROVEN: six of the seven `winplace-*` rows
+(`test_geom` red on the clean copy, `test_gui` green). And five "caught"
+verdicts that prove nothing: `winplace-sliver-is-enough` (40.8 s),
+`swatch-checkbox-not-traced` (38.7 s), `bridge-cancel-reads-as-crash`,
+`crash-av-compared-as-it-arrives`, `bridge-death-never-reported` (89.8-90.3 s)
+were caught by `test_gui` only at "and the turn is given back: another process
+takes it" - the [7g] check that another process gets the clipboard turn within
+30 s - which has nothing to do with any of the five mutations. The two short
+ones are the suite's 3.6 s plus that 30 s wait. Who held the turn for more than
+30 s was not measured; the likeliest reading is a copy blocked reading the
+clipboard (Tk renders it on demand, so a reader waits for the owning copy's
+event loop) while another copy sat out a long wait under a bridge mutation.
+So under 8 parallel copies that check can make an unrelated mutation read as
+caught (round 94's trap, one level up). After the run: no WER report, crash
+dump or Application Error event since 12:39, nothing left in `build/mutants`,
+the HOME and TEMP folders empty, no python process.
+
+Second pass on the fixed test (12:52:25-12:59:24, the tree hash-checked again,
+128 of 128): `test_geom` and `test_gui` green on their own; **`run_all` 31/31
+in 78 s**; **the whole table on 8 copies: caught 258 of 258, 322 s of wall for
+2167 s of suite runs**, nothing caught at the turn check, the seven `winplace-*`
+rows caught by `test_geom` in 1.7-6.3 s, the four `test_gui` rows above by
+their own checks in 2.9-3.9 s; and those five rows alone (`--workers 1`):
+**caught 5 of 5 by their own checks**, 1.3-2.4 s each, 15 s in all. Row by
+row against the first run: 247 of 258 caught by the same check both times; the
+other 11 are exactly the rows named above. In the first run `test_gui` under a
+mutation took up to 95.3 s (`crash-av-constant-signed`), in the second at most
+4.1 s - the first run had seven more `test_gui` runs in the pool (the
+`winplace-*` rows falling through to it). Logs:
+`build/fix-2026-10-23/remote/logs1/`, `logs2/`; the task deleted, the 4090 left
+as found apart from the mirror, its env folder and `D:\tools\pydeps`. Open: what
+held the turn over 30 s in the first run - until it is known, a table run with
+more than four copies is read row by row against a second run, as here.
+
+**Left as found:** R6-4 (launch flags "for this run only" still persist), R6-8
+(`zDatum: "Bottom"` still crashes the window), and R9-1 (a LOCAL `stepDir` or
+`debugLayers` never takes effect against the shipped file, which carries the
+new keys - the loader sees the merged section). Not asked for today.
 
 ## Update 2026-09-23 (round 94) — what parallel copies share: the clipboard, and the user's screen
 

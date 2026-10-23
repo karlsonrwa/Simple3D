@@ -936,5 +936,91 @@ check("the note tag is configured with a colour of its own",
       'tag_configure("note"' in gui_src)
 check("and it is not the warning colour",
       gui_src.count('foreground="#d9791e"') == 1)
+
+print("\n[R] what the window did not change stays as the file has it (review 23.10.2026)")
+# R6-1, R6-2, R6-3 of the independent review: a close rewrote every gui key from
+# the values read at start-up. Each case goes through the real close
+# (_on_close); tests/test_settings.py [8] checks the same rules on the functions.
+import time
+from stepbuilder.settings import local_config_path as local_of
+
+
+def close_pair(name, local):
+    base = TMP / f"{name}.json"
+    shutil.copy(ROOT / "simple3d_config.json", base)
+    local_of(base).write_text(json.dumps({"gui": local}), encoding="utf-8")
+    return base
+
+
+def local_gui(base):
+    return json.loads(local_of(base).read_text(encoding="utf-8"))["gui"]
+
+
+def settle(window, seconds=0.6):
+    """Let the start-up log lines (scheduled 150 and 160 ms out) land."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        window.update()
+        time.sleep(0.02)
+
+
+ext = close_pair("r_external", {"stepDirs": ["D:/lib/old"]})
+win = StepBuilderApp(ext); win.withdraw()
+local_of(ext).write_text(json.dumps({"gui": {"stepDirs": ["D:/lib/new", "D:/lib/old"],
+                                             "foldNeutral": 0, "boardColor": "Red"}}),
+                         encoding="utf-8")
+win._on_close()
+g = local_gui(ext)
+check("a hand edit made while the window was open survives its close",
+      g.get("stepDirs") == ["D:/lib/new", "D:/lib/old"] and g.get("foldNeutral") == 0
+      and g.get("boardColor") == "Red", str(g))
+
+two = close_pair("r_two", {})
+first = StepBuilderApp(two); first.withdraw()
+last = StepBuilderApp(two); last.withdraw()
+first.theme.set("Blue"); first.fold_bends.set(False)
+first._on_close()
+last.silk_color.set("Black")
+last._on_close()
+g = local_gui(two)
+check("two windows: the one closed last keeps what the first one changed",
+      g.get("boardColor") == "Blue" and g.get("foldBends") is False
+      and g.get("silkColor") == "Black", str(g))
+
+typed = close_pair("r_typed", {"stepDirs": "D:/models/lib", "foldAnchor": "10,20"})
+win = StepBuilderApp(typed); win.withdraw()
+settle(win)
+shown = win.log_view.get("1.0", "end")
+win._on_close()
+g = local_gui(typed)
+check("a value the window could not read is left in the file as it was",
+      g.get("stepDirs") == "D:/models/lib" and g.get("foldAnchor") == "10,20", str(g))
+check("and the log names it", "stepDirs" in shown and "foldAnchor" in shown, shown[-300:])
+
+off = close_pair("r_layers", {"silkscreenLayersOff": ["MANUFACTURING/AUTOSILK_TOP", "SILK_B"]})
+win = StepBuilderApp(off); win.withdraw()
+win.json_file.set(str(LAYERS))
+if win._layer_refresh_job is not None:
+    win.after_cancel(win._layer_refresh_job)
+win._refresh_layers()
+win._on_close()
+check("an exclusion for a layer this board does not carry survives the close",
+      local_gui(off).get("silkscreenLayersOff") == ["MANUFACTURING/AUTOSILK_TOP", "SILK_B"],
+      str(local_gui(off)))
+win = StepBuilderApp(off); win.withdraw()
+win.json_file.set(str(LAYERS))
+if win._layer_refresh_job is not None:
+    win.after_cancel(win._layer_refresh_job)
+win._refresh_layers()
+win._layer_vars["SILK_A"].set(False)
+win.json_file.set("")
+if win._layer_refresh_job is not None:
+    win.after_cancel(win._layer_refresh_job)
+win._refresh_layers()
+win._on_close()
+check("a layer unticked here and then gone from the panel is still excluded",
+      local_gui(off).get("silkscreenLayersOff")
+      == ["MANUFACTURING/AUTOSILK_TOP", "SILK_A", "SILK_B"], str(local_gui(off)))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

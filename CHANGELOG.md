@@ -11,6 +11,25 @@ to use the tool.
 
 ---
 
+- **2026-10-23** — **Closing the window no longer loses settings.** On close
+  the window used to rewrite every setting in `simple3d_config.local.json`
+  from the values it had read at start-up. A hand edit made while it was open,
+  everything the first of two open windows changed, a value it could not read,
+  and a silkscreen layer switched off on a board that does not carry it were
+  all lost that way. Now it writes only what was changed in it, and the rest
+  stays as the file holds it; a value it cannot read is named in the log as a
+  warning and left in the file. Found by the independent review of 23.10.2026
+  (R6-1, R6-2, R6-3). Seven rows added to the mutation table (258). /
+  **Закрытие окна больше не теряет настройки.** При закрытии окно
+  переписывало все настройки в `simple3d_config.local.json` значениями,
+  прочитанными при открытии. Так пропадали правка руками, сделанная при
+  открытом окне, всё, что изменило первое из двух открытых окон, значение,
+  которое окно не смогло прочесть, и выключенный слой шелкографии, которого нет
+  на текущей плате. Теперь окно пишет только то, что в нём изменили, остальное
+  остаётся как в файле; непрочитанное значение называется в логе
+  предупреждением и остаётся в файле. Найдено независимой приёмкой 23.10.2026
+  (R6-1, R6-2, R6-3). В таблицу мутаций добавлено семь строк (258).
+
 - **2026-09-23** — **The Copper and Base swatches work in Solid.** Exposed
   copper is drawn in the Copper swatch's colour and the mask openings in the
   Base swatch's, whatever the body stitching — but in *Solid*, the default,

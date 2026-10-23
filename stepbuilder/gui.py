@@ -12,6 +12,7 @@ the command line, or by setting them via the config file the SKILL side writes.
 
 from __future__ import annotations
 
+import copy
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -226,6 +227,9 @@ class StepBuilderApp(tk.Tk):
         # appears on a new board would silently go missing. The ticks
         # themselves live in the LayersPanel built by _build_ui.
         self._layers_off: set[str] = set()
+        # The settings as _load_config read them: the close writes only what
+        # differs from these (settings.save_gui_settings, `loaded`).
+        self._loaded_settings: settings.GuiSettings | None = None
         self._layer_refresh_job = None
         self._drain_job = None
 
@@ -268,6 +272,8 @@ class StepBuilderApp(tk.Tk):
                 self.after(160, lambda: self._append_log(
                     f"Local settings on top: "
                     f"{self._show_path(self.local_config_path)}"))
+            for note in settings.unreadable_keys(self.config_path):
+                self.after(170, lambda note=note: self._append_log(f"warning: {note}"))
 
     # ----------------------------------------------------------------- UI -- #
 
@@ -821,6 +827,10 @@ class StepBuilderApp(tk.Tk):
                     for layer, n in counts.items():
                         into[layer] = into.get(layer, 0) + n
 
+        # What the rows about to go say is folded in first, so a layer unticked
+        # here and then gone from the panel (another board) stays excluded.
+        self._layers_off = settings.merge_layers_off(
+            self._layers_off, self._layer_vars, self._current_layers_off())
         self.layers.refresh(found, self._layers_off)
         # A side switched off greys its layers out immediately, not on the next
         # refresh.
@@ -1240,6 +1250,7 @@ class StepBuilderApp(tk.Tk):
         folders buffer in set_step_dirs until their widget exists."""
         s, self._config_problem, self._local_problem = \
             settings.load_gui_settings(self.config_path)
+        self._loaded_settings = copy.deepcopy(s)
         self.set_step_dirs(s.step_dirs)
         self.json_file.set(s.json_file)
         self.output_dir.set(s.output_dir)
@@ -1288,10 +1299,10 @@ class StepBuilderApp(tk.Tk):
             silk_color=self.silk_color.get(),
             silk_flat=self.silk_flat.get(),
             silk_flat_height=self.silk_flat_height,
-            # Only overwrite the remembered exclusions once a list has actually
-            # been shown; an old JSON with no layers must not wipe them.
-            layers_off=set(self._current_layers_off() if self._layer_vars
-                           else self._layers_off),
+            # A shown layer follows its tick; an exclusion for a layer the
+            # panel does not show stays (review 23.10.2026, R6-3).
+            layers_off=settings.merge_layers_off(
+                self._layers_off, self._layer_vars, self._current_layers_off()),
             minimize=self.minimize.get(),
             build_full=self.build_full.get(),
             board_mode=_mode_key(self.board_mode.get()),
@@ -1314,7 +1325,8 @@ class StepBuilderApp(tk.Tk):
             self.config_path, values,
             paths_from_launcher=self._paths_from_launcher,
             loaded_cleanly=(self._config_problem is None
-                            and self._local_problem is None))
+                            and self._local_problem is None),
+            loaded=self._loaded_settings)
 
     def _on_close(self) -> None:
         self._save_config()

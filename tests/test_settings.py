@@ -11,6 +11,7 @@ be exercised through a live Tk window (tests/test_gui.py still does that for
 the widgets' side); here they are checked on the functions directly, which is
 also where a new key's row gets its first test.
 """
+import copy
 import json
 import sys
 
@@ -229,6 +230,96 @@ check("no gui.get(...) reads of the section remain in the window",
       'gui.get("' not in src)
 check("the rim labels come from settings", src.count('"Same as board"') == 0
       and settings.RIM_SAME == "Same as board")
+
+print("\n[8] a close writes what the window changed and leaves the rest as the file has it")
+# The independent review of 23.10.2026 (R6-1, R6-2, R6-3): a close rewrote every
+# gui key from the values read at start-up, so a hand edit made while the window
+# was open, everything the first of two windows changed, a value the loader
+# could not read and an exclusion for a layer the shown board does not carry
+# were all lost. tests/test_gui.py [R] runs the same cases through a real close.
+
+
+def window_save(cfg, values, loaded):
+    """What the window's close does since round 95: it hands over what it loaded."""
+    try:
+        save_gui_settings(cfg, values, paths_from_launcher=False, loaded_cleanly=True,
+                          loaded=loaded)
+    except TypeError:   # a build without `loaded` rewrites every key - what these checks catch
+        save_gui_settings(cfg, values, paths_from_launcher=False, loaded_cleanly=True)
+
+
+ext = pair("w1", SHIPPED, {"gui": {"stepDirs": ["D:/lib/old"]}})
+s0, _, _ = load_gui_settings(ext)
+s = copy.deepcopy(s0)
+s.window_geometry = "900x700+10+10"
+local_config_path(ext).write_text(json.dumps({"gui": {
+    "stepDirs": ["D:/lib/new", "D:/lib/old"], "foldNeutral": 0, "boardColor": "Red"}}),
+    encoding="utf-8")
+window_save(ext, s, s0)
+g = gui_of(ext)
+check("a hand edit made while the window was open survives its close",
+      g.get("stepDirs") == ["D:/lib/new", "D:/lib/old"] and g.get("foldNeutral") == 0
+      and g.get("boardColor") == "Red", g)
+check("and what the window did change is written", g.get("windowGeometry") == "900x700+10+10", g)
+
+two = pair("w2", SHIPPED, {"gui": {}})
+s0, _, _ = load_gui_settings(two)
+first, last = copy.deepcopy(s0), copy.deepcopy(s0)
+first.theme, first.fold_bends = "Blue", False
+last.silk_color = "Black"
+window_save(two, first, s0)
+window_save(two, last, s0)
+g = gui_of(two)
+check("two windows: the one closed last keeps what the first one changed",
+      g.get("boardColor") == "Blue" and g.get("foldBends") is False
+      and g.get("silkColor") == "Black", g)
+
+red = pair("w3", SHIPPED, {"gui": {"boardColor": "Red"}})
+s0, _, _ = load_gui_settings(red)
+s = copy.deepcopy(s0)
+s.theme = SHIPPED["gui"]["boardColor"]
+window_save(red, s, s0)
+check("a value the window sets back to the shipped one is still removed",
+      "boardColor" not in gui_of(red), gui_of(red))
+
+typed = pair("w4", SHIPPED, {"gui": {"stepDirs": "D:/models/lib", "foldAnchor": "10,20",
+                                      "silkscreenLayersOff": "MANUFACTURING/AUTOSILK_TOP"}})
+s0, _, _ = load_gui_settings(typed)
+check("a value the loader cannot read still falls back in the window",
+      s0.step_dirs == [] and s0.layers_off == set() and s0.fold_anchor is None)
+window_save(typed, copy.deepcopy(s0), s0)
+g = gui_of(typed)
+check("and is left in the file as it was, not erased",
+      g.get("stepDirs") == "D:/models/lib" and g.get("foldAnchor") == "10,20"
+      and g.get("silkscreenLayersOff") == "MANUFACTURING/AUTOSILK_TOP", g)
+unreadable = getattr(settings, "unreadable_keys", None)
+notes = unreadable(typed) if unreadable else []
+check("the keys that could not be read are named, for the log",
+      all(any(name in note for note in notes)
+          for name in ("stepDirs", "foldAnchor", "silkscreenLayersOff")), notes)
+check("the shipped file has nothing unreadable in it",
+      unreadable is not None and unreadable(pair("w5", SHIPPED)) == [],
+      unreadable(pair("w5", SHIPPED)) if unreadable else "no unreadable_keys")
+good = pair("w6", SHIPPED, {"gui": {"stepDirs": ["d:/x"], "foldAnchor": "auto",
+                                     "silkscreenLayersOff": [], "foldNeutral": "0.5"}})
+check("nor does a readable hand edit", unreadable is not None and unreadable(good) == [],
+      unreadable(good) if unreadable else "no unreadable_keys")
+s = copy.deepcopy(s0)
+s.step_dirs = ["d:/chosen"]
+window_save(typed, s, s0)
+check("a value the window then changes is written as chosen",
+      gui_of(typed).get("stepDirs") == ["d:/chosen"], gui_of(typed))
+
+merge = getattr(settings, "merge_layers_off", None)
+check("exclusions for layers the panel does not show are kept",
+      merge is not None and merge({"MANUFACTURING/AUTOSILK_TOP", "SILK_B"},
+                                  ["SILK_A", "SILK_B", "SILK_C"], {"SILK_B"})
+      == {"MANUFACTURING/AUTOSILK_TOP", "SILK_B"})
+check("a shown layer follows its tick: unticked joins, ticked leaves",
+      merge is not None and merge({"AUTO", "SILK_B"}, ["SILK_A", "SILK_B"], {"SILK_A"})
+      == {"AUTO", "SILK_A"})
+check("with no rows shown the remembered set stands",
+      merge is not None and merge({"X"}, [], set()) == {"X"})
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

@@ -103,7 +103,11 @@ local = p.with_name(p.stem + ".local" + p.suffix)
 g = json.loads(local.read_text(encoding="utf-8"))["gui"]
 check("windowGeometry written", g.get("windowGeometry") == "880x640+210+90",
       str(g.get("windowGeometry")))
-check("windowState written", g.get("windowState") == "normal", str(g.get("windowState")))
+# The window writes only what changed since it opened (round 95): the state
+# stayed "normal", so it is left out and the next run reads the default -
+# [4] reopens such a file and finds the window normal, [7] writes "zoomed".
+check("windowState not written: unchanged since the window opened",
+      "windowState" not in g, str(g.get("windowState")))
 app.destroy()
 
 print("\n[4] a full round-trip: close here, reopen there")
@@ -114,6 +118,8 @@ check("reopens at the same spot", (app2.winfo_x(), app2.winfo_y()) == (333,177),
       f"+{app2.winfo_x()}+{app2.winfo_y()}")
 check("and the same size", (app2.winfo_width(), app2.winfo_height()) == (910,660),
       f"{app2.winfo_width()}x{app2.winfo_height()}")
+check("and normal: a state left out of the file reads as normal", app2.state() == "normal",
+      app2.state())
 app2.destroy()
 
 print("\n[5] an off-screen position is refused and the window is centred")

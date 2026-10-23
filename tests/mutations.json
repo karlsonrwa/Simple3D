@@ -2675,5 +2675,78 @@
    "tests/test_gui.py"
   ],
   "why": "a build forgets the ttk disabled flag: Reset colors and the silk group come back live after it though nothing they act on is (measured on HEAD, round 93)"
+ },
+ {
+  "id": "settings-close-rewrites-unchanged-keys",
+  "file": "stepbuilder/settings.py",
+  "old": "        if loaded is not None and key.name not in migrated:\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a close rewrites every gui key from the values read at start-up again: a hand edit made while the window is open, the first of two windows and an unreadable value are lost (review 23.10.2026, R6-1, R6-2)"
+ },
+ {
+  "id": "settings-migrated-key-not-written",
+  "file": "stepbuilder/settings.py",
+  "old": "        if loaded is not None and key.name not in migrated:\n",
+  "new": "        if loaded is not None:\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a key migrated from stepDir or debugLayers is left alone like any unchanged one, so the setting lives only in the old key the save drops (round 95)"
+ },
+ {
+  "id": "settings-layers-off-only-shown",
+  "file": "stepbuilder/settings.py",
+  "old": "    return (set(remembered) - set(shown)) | set(unticked)",
+  "new": "    return set(unticked)",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "an exclusion for a layer the board on screen does not carry is dropped on close (review 23.10.2026, R6-3)"
+ },
+ {
+  "id": "gui-close-without-loaded",
+  "file": "stepbuilder/gui.py",
+  "old": "            loaded=self._loaded_settings)",
+  "new": "            loaded=None)",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the window stops handing over what it loaded, so its close rewrites every key again; the functions alone would still pass (review 23.10.2026, R6-1)"
+ },
+ {
+  "id": "gui-refresh-forgets-unticked",
+  "file": "stepbuilder/gui.py",
+  "old": "        self._layers_off = settings.merge_layers_off(\n            self._layers_off, self._layer_vars, self._current_layers_off())\n        self.layers.refresh(found, self._layers_off)",
+  "new": "        self.layers.refresh(found, self._layers_off)",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a layer unticked on one board and gone from the panel on the next is switched back on at close (round 95)"
+ },
+ {
+  "id": "settings-unreadable-silent",
+  "file": "stepbuilder/settings.py",
+  "old": "    return notes\n",
+  "new": "    return []\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a gui value the window could not read falls back to the default without a word in the log (review 23.10.2026, R6-2)"
+ },
+ {
+  "id": "settings-unreadable-number-as-text",
+  "file": "stepbuilder/settings.py",
+  "old": "            return float(raw) == float(form)",
+  "new": "            return False",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "a default written as a string (\"0.5\") is reported as unreadable although the window reads it"
  }
 ]

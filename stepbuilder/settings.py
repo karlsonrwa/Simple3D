@@ -312,6 +312,74 @@ GUI_KEYS: tuple[Key, ...] = (
 # belonging to someone else; these are ours and superseded, and dropping them
 # is the migration.
 SUPERSEDED_KEYS = ("stepDir", "debugLayers")
+# ...and the key each one migrates into.
+SUPERSEDED_BY = {"stepDir": "stepDirs", "debugLayers": "boardMode"}
+
+
+def merge_layers_off(remembered: set[str], shown, unticked: set[str]) -> set[str]:
+    """The silkscreen exclusions after the panel had its say.
+
+    *remembered* is what the file excluded (and what earlier boards in this
+    window added); *shown* are the layers the panel has rows for, *unticked*
+    the rows that are off. A shown layer follows its tick; a layer the panel
+    does not show keeps whatever *remembered* said. Taking the unticked rows
+    alone, as the window did until round 95, dropped every exclusion for a
+    layer the board on screen does not carry - so MANUFACTURING/AUTOSILK_TOP,
+    switched off once, came back on the next board that has it (review
+    23.10.2026, R6-3).
+    """
+    return (set(remembered) - set(shown)) | set(unticked)
+
+
+def _same_in_file(raw, form) -> bool:
+    """Is *raw* (as the file holds it) the file form *form*? Case and a number
+    written as a string do not count as a difference."""
+    if isinstance(raw, dict) and isinstance(form, dict):
+        return raw.keys() == form.keys() and all(_same_in_file(raw[k], form[k]) for k in raw)
+    if isinstance(raw, str) and isinstance(form, str):
+        return raw.strip().casefold() == form.strip().casefold()
+    if isinstance(raw, str) and isinstance(form, (int, float)) and not isinstance(form, bool):
+        try:
+            return float(raw) == float(form)
+        except ValueError:
+            return False
+    return raw == form
+
+
+def unreadable_keys(config_path: Path) -> list[str]:
+    """One sentence per `gui` key whose value the window could not use.
+
+    Such a value falls back to the default in the window, as it always did -
+    a hand-edited file must not stop the window opening. What changed in round
+    95 is that it is SAID (the window logs these lines) and that the file keeps
+    the value until the window itself changes that setting (save_gui_settings,
+    `loaded`); before, the close replaced it with the default without a word
+    (review 23.10.2026, R6-2). A value counts as unreadable when its key's
+    loader gives the default although the file does not hold the default.
+    """
+    config_path = Path(config_path)
+    base, _ = read_config_file(config_path)
+    local, _ = read_config_file(local_config_path(config_path), missing_ok=True)
+    section = merge_config(base, local).get("gui")
+    if not isinstance(section, dict):
+        return []
+    local_gui = local.get("gui") if isinstance(local.get("gui"), dict) else {}
+    notes = []
+    for key in GUI_KEYS:
+        if key.load is None or key.name not in section:
+            continue
+        raw = section[key.name]
+        fallback = key.load(key.default, {})
+        if key.load(raw, section) != fallback:
+            continue
+        form = key.save(fallback) if key.save else fallback
+        if _same_in_file(raw, form):
+            continue
+        where = local_config_path(config_path) if key.name in local_gui else config_path
+        notes.append(f"{key.name} = {json.dumps(raw, ensure_ascii=False)} in {Path(where).name} "
+                     f"could not be read; the default is used, and the file keeps the value "
+                     f"until you change that setting here")
+    return notes
 
 
 def load_gui_settings(config_path: Path) -> tuple[GuiSettings, str | None, str | None]:
@@ -334,7 +402,8 @@ def load_gui_settings(config_path: Path) -> tuple[GuiSettings, str | None, str |
 
 
 def save_gui_settings(config_path: Path, values: GuiSettings, *,
-                      paths_from_launcher: bool, loaded_cleanly: bool) -> None:
+                      paths_from_launcher: bool, loaded_cleanly: bool,
+                      loaded: GuiSettings | None = None) -> None:
     """Write the `gui` section into the LOCAL settings file.
 
     The tracked file is never written. It holds the shipped defaults, it is
@@ -366,6 +435,15 @@ def save_gui_settings(config_path: Path, values: GuiSettings, *,
     REMOVES it here rather than freezing today's default forever. Keys the
     base does not mention are kept as they are: they are either ours and new,
     or someone else's and none of our business.
+
+    ONLY WHAT THIS WINDOW CHANGED is written, when *loaded* - the settings as
+    the window read them at start-up - is given; the window always gives it. A
+    key whose value is still the loaded one keeps whatever the local file holds
+    NOW. Writing every key, as the window did until round 95, rewrote the file
+    from the values read at start-up: a hand edit made while the window was
+    open, everything the first of two windows changed, and a value the loader
+    could not read were all lost on close (review 23.10.2026, R6-1, R6-2).
+    Without *loaded* every key is written, as before.
     """
     if not loaded_cleanly:
         return
@@ -377,13 +455,26 @@ def save_gui_settings(config_path: Path, values: GuiSettings, *,
     section = data.get("gui")
     if not isinstance(section, dict):
         section = {}
+    # A superseded key in either file means the key that replaced it was
+    # migrated at load: it is written even if the window left it alone, or the
+    # setting would live only in the old key - which this save drops from the
+    # local file, and which the next shipped file no longer carries.
+    base_now, base_problem = read_config_file(config_path)
+    base_now_gui = base_now.get("gui") if base_problem is None else None
+    old_keys = set(section) | (set(base_now_gui) if isinstance(base_now_gui, dict) else set())
+    migrated = {SUPERSEDED_BY[old] for old in SUPERSEDED_KEYS if old in old_keys}
     for old in SUPERSEDED_KEYS:
         section.pop(old, None)
     for key in GUI_KEYS:
         if key.launcher_owned and paths_from_launcher:
             continue
         value = getattr(values, key.field)
-        section[key.name] = key.save(value) if key.save else value
+        written = key.save(value) if key.save else value
+        if loaded is not None and key.name not in migrated:
+            before = getattr(loaded, key.field)
+            if written == (key.save(before) if key.save else before):
+                continue
+        section[key.name] = written
 
     base, problem = read_config_file(config_path)
     base_gui = base.get("gui") if problem is None else None

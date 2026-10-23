@@ -222,6 +222,14 @@ window position lands in a commit. You do not have to create the file — the
 window writes one the first time it closes; delete a key from it to go back to
 the shipped default.
 
+**On close the window writes only what you changed in it.** Every other key
+stays as the local file holds it at that moment, so a hand edit made while the
+window is open survives, two windows open at once each keep what they changed,
+and a silkscreen layer you switched off stays off on a board that does not carry
+it. A value the window cannot read (a folder list written as a single string, an
+anchor as `"10,20"`) falls back to the default on screen, is named in the log as
+a warning, and is left in the file until you change that setting in the window.
+
 **If either file cannot be read — missing, or edited into invalid JSON —
 nothing is written back for the rest of the session**, even if you repair it
 while the window is open. The fields on screen are defaults at that point, not
@@ -825,7 +833,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 27 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 230 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 27 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 258 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1053,6 +1061,15 @@ stitched*, которая ничего не сшивает, или более г
 абсолютные пути и положение окна не попадают в коммиты. Создавать файл руками
 не нужно — окно напишет его при первом закрытии; удаление ключа из него
 возвращает поставляемое значение.
+
+**При закрытии окно пишет только то, что вы в нём изменили.** Остальные ключи
+остаются такими, какие лежат в локальном файле в этот момент: правка руками,
+сделанная при открытом окне, сохраняется, два окна, открытых одновременно,
+сохраняют каждое свои изменения, а выключенный слой шелкографии остаётся
+выключенным и на плате, где его нет. Значение, которое окно не может прочесть
+(список папок, записанный одной строкой, привязка `"10,20"`), на экране
+заменяется умолчанием, называется в логе предупреждением и остаётся в файле,
+пока вы не поменяете эту настройку в окне.
 
 **Если не читается любой из двух — его нет или он отредактирован в невалидный
 JSON — ничего не записывается до конца сессии**, даже если вы почините его при
@@ -1659,7 +1676,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 27 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 230 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 27 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 258 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.
