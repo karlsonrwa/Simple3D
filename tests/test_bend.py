@@ -1896,12 +1896,48 @@ corner_face = BRepBuilderAPI_MakeFace(corner.Wire(), True).Face()
 check("a shape is placed by a point of it that unfolds - here only its corner does",
       where(across, [corner_face]) == ["held"], where(across, [corner_face]))
 
+# The check is made twice: on the board as built, and on the board written to
+# STEP and read back by OpenCASCADE's own reader (round 102) - the two disagree
+# both ways on the real boards: flex3-a0's rejected sliver reads back valid,
+# flex2-a0 stitched with its layer faces kept passes as built and reads back
+# with four faces rejected. No small body was found that does the second (nine
+# tried, every one healed on reading), so here the round trip is checked for
+# what it is made of, and the rejections are stood in for.
+import stepbuilder.bend.crooked as crooked_module
+from stepbuilder.bend.crooked import board_check, read_back, step_bytes
+from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder
+
+box_back = read_back(BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape(), True)
+check("a body written to STEP in memory reads back - whole, and passing the check",
+      box_back is not None and near(volume(box_back), 6.0, 1e-6) and rejected(box_back) == {},
+      None if box_back is None else (volume(box_back), rejected(box_back)))
+cylinder = BRepPrimAPI_MakeCylinder(1.0, 2.0).Shape()
+compact_size, full_size = len(step_bytes(cylinder, True) or b""), len(step_bytes(cylinder, False) or b"")
+check("written as the build writes its file: Compact STEP drops the p-curves, so it is the smaller",
+      0 < compact_size < full_size, (compact_size, full_size))
+
+real_read_back = crooked_module.read_back
+try:
+    crooked_module.read_back = lambda shape, compact: BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+    said_built = board_check(moved_box, across)
+    crooked_module.read_back = lambda shape, compact: None
+    said_unread = board_check(BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape(), across)
+finally:
+    crooked_module.read_back = real_read_back
+check("a body rejected as built is said to be, with what and where, though it reads back clean",
+      said_built.startswith("the folded board fails OpenCASCADE's own check (BRepCheck): as built, "
+                            "2 faces, 1 edge and 2 vertices rejected - in held; written to STEP and "
+                            "read back, it passes. Written all the same"), said_built)
+check("and one that does not read back from STEP is said not to",
+      "as built, it passes; written to STEP, it does not read back." in said_unread, said_unread)
+
 # And a whole build: the rigid-flex fixture with its bend moved to y = 11.6, so
 # the stiffener zone S2 lies on the first 0.316 mm of the strip. Its fused
-# board passes the check (measured in all three stitchings), so a rejection is
-# stood in for: the face standing highest - the tail's tip, on the panel the
-# bend carries - which the warning must then place on that panel.
-import stepbuilder.bend.crooked as crooked_module
+# board passes both checks (measured in all three stitchings), so the board as
+# built is let pass and the one read back is given a rejection: the face
+# standing highest - the tail's tip, on the panel the bend carries - which the
+# warning must then place on that panel. Built Compact, as the owner's builds
+# are by default, and the read-back is asked for in that mode.
 
 
 def highest_face(shape):
@@ -1911,24 +1947,44 @@ def highest_face(shape):
                          key=lambda face: bbox(face)[2])]}
 
 
+as_built = []
+
+
+def rejected_after_reading(shape):
+    """Passes the board it is first asked about - the one as built - and
+    rejects the highest face of any other: the board read back."""
+    if not as_built:
+        as_built.append(shape)
+    return {} if shape.IsSame(as_built[0]) else highest_face(shape)
+
+
+modes = []
+
+
+def reading_back(shape, compact):
+    modes.append(compact)
+    return real_read_back(shape, compact)
+
+
 rf18 = json.loads((ROOT / "tests" / "fixtures" / "rigidflex.json").read_text(encoding="utf-8"))
 rf18["bends"][0]["line"] = {"start": [0.0, 11.6], "end": [41.0, 11.6]}
 rf18j = OUT / "rigidflex_crooked.json"
 rf18j.write_text(json.dumps(rf18))
 real_check = crooked_module.rejected
-crooked_module.rejected = highest_face
+crooked_module.rejected, crooked_module.read_back = rejected_after_reading, reading_back
 try:
     logs18 = []
     core.generate(step_dir=ROOT / "demo/step_files", json_file=rf18j, output_dir=OUT,
-                  output_name="rf_crooked", minimize_size=False, log=logs18.append)
+                  output_name="rf_crooked", minimize_size=True, log=logs18.append)
 finally:
-    crooked_module.rejected = real_check
+    crooked_module.rejected, crooked_module.read_back = real_check, real_read_back
 warned = [m for m in logs18 if m.startswith("warning:")]
 check("a build of it names the crooked bend", any("B1: a crooked bend" in m and "0.316 mm" in m
                                                   for m in warned), warned)
-check("and says of a fused board the check rejects what it rejects and where",
-      any("fails OpenCASCADE's own check (BRepCheck): 1 face rejected - in panel after B1." in m
-          for m in warned), warned)
+check("and of a board that passes as built and is rejected read back, says both, and where",
+      any("fails OpenCASCADE's own check (BRepCheck): as built, it passes; written to STEP and "
+          "read back, 1 face rejected - in panel after B1." in m for m in warned), warned)
+check("the board is read back as the file is written - Compact", modes == [True], modes)
 check("and builds it all the same", (OUT / "rf_crooked.step").exists())
 
 print()

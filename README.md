@@ -708,15 +708,17 @@ material the real board does not bend. The export builds it all the same, and
 the log says which bend is crooked, which zone it reaches into, how deep and over
 how much area, and roughly how many of the bend's degrees that zone is carried
 through. A zone drawn up to the edge of the bend area only touches it and is not
-reported. The folded board then goes through OpenCASCADE's own check
-(BRepCheck); a body the check rejects is written all the same, and the log says
-what is rejected and in which piece of the board, because some CAD programs
-refuse such a body or repair it their own way. The check is of the board as
-built, not of the file read back: a STEP reader's own processing may repair
-some of what it finds, or find more. On the test boards OpenCASCADE's own
-reader did both — one board's rejected sliver read back valid, while another
-board that passed as built in *Solid colored layers* read back with four faces
-rejected.
+reported. The folded board is then put through OpenCASCADE's own check
+(BRepCheck) twice: as built, and written to STEP and read back by
+OpenCASCADE's own reader — what a program built on OpenCASCADE is handed when
+it opens the file. The two can disagree either way: on the test boards one
+board's rejected sliver read back valid, while another board that passed as
+built in *Solid colored layers* read back with four faces rejected. So the log
+gives both answers, each saying what is rejected and in which piece of the
+board. The body is written all the same, because some CAD programs refuse such
+a body and others repair it their own way. Reading the board back is done for
+a folded board only and costs about 1.3 s on a board of some 650 faces (4.3 s
+in *Solid colored layers*, where it has about 5000).
 
 A bend stretches the material outside the neutral surface and compresses what is
 inside, and the model says so: each layer's volume comes out multiplied by its
@@ -853,7 +855,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 28 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 289 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 28 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 294 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1571,15 +1573,18 @@ Allegro есть та же идея (*Setup – Anchor 3D View*), но в 24.1 �
 заходит, насколько глубоко и на какой площади и примерно на сколько градусов из
 угла сгиба поворачивается эта зона. Зона, нарисованная вплотную к краю области
 сгиба, только касается её, и о ней лог молчит. Сложенную плату экспорт
-пропускает через собственную проверку OpenCASCADE (BRepCheck). Тело, которое
-проверка бракует, всё равно записывается, а лог говорит, что забраковано и в
-каком куске платы: некоторые CAD-программы такое тело не принимают или чинят
-по-своему. Проверяется плата в том виде, в каком построена, а не файл,
-прочитанный обратно: читатель STEP своей обработкой может часть найденного
-исправить, а может найти больше. На тестовых платах собственный читатель
-OpenCASCADE делал и то и другое: забракованный клочок одной платы после
-чтения оказался в порядке, а другая плата, которая в сшивке *Solid colored
-layers* проверку прошла, после чтения забракована на четырёх гранях.
+дважды пропускает через собственную проверку OpenCASCADE (BRepCheck): в том
+виде, в каком она построена, и записанной в STEP и прочитанной обратно
+читателем OpenCASCADE, то есть такой, какой её получит программа на
+OpenCASCADE, открыв файл. Эти проверки могут расходиться в обе стороны: на
+тестовых платах забракованный клочок одной платы после чтения оказался в
+порядке, а другая плата, которая в сшивке *Solid colored layers* проверку
+прошла, после чтения забракована на четырёх гранях. Поэтому лог даёт оба
+ответа, и в каждом сказано, что забраковано и в каком куске платы. Тело всё
+равно записывается: одни CAD-программы такое тело не принимают, другие чинят
+по-своему. Обратное чтение делается только для сложенной платы и стоит около
+1,3 с на плате примерно из 650 граней (4,3 с в *Solid colored layers*, где
+граней около 5000).
 
 Сгиб растягивает материал снаружи нейтральной поверхности и сжимает изнутри, и
 модель это показывает: объём каждого слоя выходит умноженным на отношение его
@@ -1717,7 +1722,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 28 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 289 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 28 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 294 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

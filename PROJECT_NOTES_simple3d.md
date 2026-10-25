@@ -5,7 +5,18 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-25 (rounds 95-101, on `main`)
+## READ THIS FIRST — state as of 2026-10-25 (rounds 95-102, on `main`)
+
+**Round 102 (2026-10-25)**: at the owner's choice, the folded board is
+checked twice - as built and as OpenCASCADE's reader gets it back from STEP
+(`crooked.read_back`: written to a BytesIO with the file's own p-curve mode,
+read back from the stream, which gives the written file's verdict in 12 of 12
+cases) - and the log gives both answers with their places; flex2-a0 in *Solid
+colored layers*, clean as built, is now said to be rejected read back (4
+faces in the panel after BEND_6). 1.25 s on Cadence_Demo in *Solid*, 4.3 s in
+layers. Rows 294. Next: R3-1 and R4-2 (a part's and a pad's height under the
+point, not the zone's envelope), announced in round 101's report. Read round
+102.
 
 **Round 101 (2026-10-25)**: the review's R5-1 - flex2-a0's BEND_6 built into a
 body BRepCheck rejects while the log said "true cylindrical surfaces". The
@@ -16,8 +27,7 @@ flex-b2 BEND_2 0.162 mm; flex3-a0 BEND_3 0.076 mm; Cadence_Demo none) and
 checks the folded board as built, saying what BRepCheck rejects and in which
 piece (flex2-a0: 1 face, 1 wire and 2 edges, in the panel after BEND_6). The
 geometry did not move: all four boards' STEP DATA equal HEAD's. Rows 289. The
-check is of the board as built, not of the file read back; a read-back check
-would cost 1.5-4.6 s on Cadence_Demo and is the owner's call. Read round 101.
+check was of the board as built only; round 102 reads it back as well.
 
 **Round 100 (2026-10-25)**: the review's R1-1 - every line of the JSON body
 was the format of `fprintf`, so a `%` in a model, zone, layer or variant name
@@ -3183,6 +3193,80 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-25 (round 102) — the folded board is checked as built and read back from STEP (R5-1, the owner's choice)
+
+Round 101 showed the check of the folded board as built and the check of its
+STEP read back disagreeing both ways, and measured what a read-back would
+cost. The owner: «Сначала добавь проверку платы после обратного чтения STEP,
+потом R3-1 и R4-2.»
+
+### What changed
+
+- `crooked.step_bytes(shape, compact)`: the board written to STEP in memory -
+  `STEPControl_Writer.WriteStream` into an `io.BytesIO` - with
+  `write.surfacecurve.mode` 0 when Compact STEP (the default) drops the
+  p-curves, set after the writer is made, as `stepdoc` does. Handed an
+  `io.StringIO`, the same binding killed the process (0xC0000409), so a
+  BytesIO and nothing else.
+- `crooked.read_back(shape, compact)`: those bytes read back by
+  `STEPControl_Reader.ReadStream`, its default processing included; None when
+  either step fails.
+- `board_check(board, plan, compact)`: both answers in one warning - "as
+  built, ...; written to STEP and read back, ..." - each with what is rejected
+  and where (`_described`), "it passes" for a check that passes, "written to
+  STEP, it does not read back" when the round trip fails, nothing when both
+  pass. `core._build_board` passes `options.minimize_size`.
+- README (EN/RU): the paragraph in *Folding flex bends* says the check is
+  made twice, why, and what it costs. CHANGELOG entry. ARCHITECTURE.
+- Rows (289 -> 294): `board-check-read-back-skipped`,
+  `board-check-read-back-unsaid`, `board-check-read-back-full-mode`,
+  `board-check-unreadable-silent`, `board-check-compact-not-passed`;
+  `board-check-not-asked` re-aimed at the new call.
+
+### Measured
+
+On the 4090, session 0 (`build/render/roundtrip_probe2.py`,
+`readback_candidates.py`; logs `build/fix-2026-10-23/remote/rt102_a.txt`,
+`check102_a.txt`, `run102_a.txt`):
+
+- The board read back from the stream gives what the build's own file read
+  back gives - the same counts in the same piece - in all twelve flex cases
+  (three boards, two stitchings, Compact and full): flex2-a0 5 faces and 5
+  wires in *Solid*, 4 and 4 in *Solid colored layers*, both in the panel
+  after BEND_6; flex3-a0 and flex-b2 pass; Cadence_Demo passes in all four.
+- The log: flex2-a0 in *Solid* "as built, 1 face, 1 wire and 2 edges rejected
+  - in panel after BEND_6; written to STEP and read back, 5 faces and 5 wires
+  rejected - in panel after BEND_6"; in *Solid colored layers* "as built, it
+  passes; written to STEP and read back, 4 faces and 4 wires rejected - in
+  panel after BEND_6"; flex3-a0 in both "as built, 1 face rejected - in BEND_3
+  slice 12/12; written to STEP and read back, it passes".
+- Cost, Compact: the round trip and the check of what comes back 1.25 s on
+  Cadence_Demo in *Solid* (a 38.7 s build) and 4.3 s in *Solid colored
+  layers* (53.4 s); full STEP 1.6 and 5.5 s. Under 0.6 s on the flex boards,
+  but a rejected read-back is walked in Python: up to 3.8 s (flex2-a0, layers).
+- Geometry: the three flex boards' DATA sections identical to round 101's in
+  both stitchings; Cadence_Demo's identical but for the order of its styles,
+  the same 2258 (*Solid*) and 7229 (*Solid colored layers*) pairs.
+- No small body was found that passes as built and fails read back: nine
+  tried (an edge's curve moved under a raised tolerance, a vertex moved, two
+  cylinders fused 0, 1e-6 and 1e-4 apart), every one healed on reading. So
+  the suite checks the round trip for what it is made of - a box reads back
+  whole and passing, Compact STEP is the smaller - and stands in for the
+  rejections; the case itself is measured on flex2-a0.
+
+### Verified
+
+- Here: `test_mutations` ALL PASS (294 rows, every pattern once),
+  `audit_docs` no findings, `python_names` no undefined names.
+- Session 0 of the 4090 (the tree shipped whole before the run): `test_bend`
+  FAILURES none, its [18] 22 checks; `run_all` 30/32 in 79 s - only `test_gui`
+  and `test_geom`, which need the owner's session, fail there; the 70 rows of
+  this round (every row on core.py, crooked.py and README, every row naming
+  `test_bend`), read from a file by a 1.1 KB runner that ends with a marker,
+  caught 70 of 70 in 453 s on 8 copies - 62 of the 65 old ones by the same
+  check as in round 101, three by the checks that replaced the one they were
+  caught by.
 
 ## Update 2026-10-25 (round 101) — a crooked bend is built as drawn and named; the folded board is checked (R5-1)
 

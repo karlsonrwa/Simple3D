@@ -226,19 +226,78 @@ def where(plan, shapes) -> list[str]:
     return places
 
 
-def board_check(board, plan) -> str:
-    """The warning for a folded board OpenCASCADE's own check rejects - what
-    it rejects and in which pieces of the board - or "" when it passes."""
-    found = rejected(board)
+def step_bytes(shape, compact: bool) -> bytes | None:
+    """*shape* as a STEP file in memory, with the p-curve mode the build's own
+    file is written with: `write.surfacecurve.mode` 0 when Compact STEP drops
+    them, set after the writer is made (its constructor resets it, see
+    stepdoc.StepDocument.write). None when the writer fails."""
+    import io
+    from OCP.IFSelect import IFSelect_ReturnStatus
+    from OCP.Interface import Interface_Static
+    from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
+
+    writer = STEPControl_Writer()
+    Interface_Static.SetIVal_s("write.surfacecurve.mode", 0 if compact else 1)
+    if writer.Transfer(shape, STEPControl_AsIs) != IFSelect_ReturnStatus.IFSelect_RetDone:
+        return None
+    # A BytesIO and nothing else: the binding takes no other stream, and
+    # handed a StringIO it killed the process (0xC0000409, round 102).
+    buffer = io.BytesIO()
+    if writer.WriteStream(buffer) != IFSelect_ReturnStatus.IFSelect_RetDone:
+        return None
+    return buffer.getvalue()
+
+
+def read_back(shape, compact: bool):
+    """*shape* written to STEP (step_bytes) and read back by OpenCASCADE's
+    own reader, its default processing included - what a program built on
+    OpenCASCADE is handed when it opens the file. None when either fails.
+
+    The two checks disagree both ways (round 101, the four real boards):
+    flex3-a0's rejected sliver reads back valid, and flex2-a0 stitched with
+    its layer faces kept passes as built and reads back with four faces
+    rejected. Read from a stream, the board alone reads back as the build's
+    whole file does (round 102)."""
+    import io
+    from OCP.IFSelect import IFSelect_ReturnStatus
+    from OCP.STEPControl import STEPControl_Reader
+
+    data = step_bytes(shape, compact)
+    if data is None:
+        return None
+    reader = STEPControl_Reader()
+    if reader.ReadStream("board", io.BytesIO(data)) != IFSelect_ReturnStatus.IFSelect_RetDone:
+        return None
+    reader.TransferRoots()
+    return reader.OneShape()
+
+
+def _described(found: dict, plan) -> str:
+    """What one check rejects and where, or that it passes."""
     if not found:
-        return ""
+        return "it passes"
     counts = [f"{len(found[name])} {name if len(found[name]) == 1 else _PLURAL.get(name, name + 's')}"
               for name in CHECKED if name in found]
     said = counts[0] if len(counts) == 1 else ", ".join(counts[:-1]) + " and " + counts[-1]
     places = where(plan, [shape for name in CHECKED for shape in found.get(name, [])])
     at = f" - in {', '.join(places)}" if places else ""
-    return (f"the folded board fails OpenCASCADE's own check (BRepCheck): {said} rejected{at}. "
-            f"Written all the same; some CAD programs refuse such a body or repair it their own way.")
+    return f"{said} rejected{at}"
+
+
+def board_check(board, plan, compact: bool = True) -> str:
+    """The warning for a folded board OpenCASCADE's own check rejects as
+    built, or written to STEP and read back - what each rejects and in which
+    pieces of the board - or "" when both pass."""
+    built = rejected(board)
+    back = read_back(board, compact)
+    returned = rejected(back) if back is not None else None
+    if not built and returned == {}:
+        return ""
+    then = ("written to STEP, it does not read back" if returned is None
+            else f"written to STEP and read back, {_described(returned, plan)}")
+    return (f"the folded board fails OpenCASCADE's own check (BRepCheck): as built, "
+            f"{_described(built, plan)}; {then}. Written all the same; some CAD programs "
+            f"refuse such a body or repair it their own way.")
 
 
 def crooked_parts(strips: list, zones: list[dict], levels: dict) -> list[Crooked]:

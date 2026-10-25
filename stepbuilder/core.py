@@ -455,13 +455,14 @@ def _build_board(data: dict, stack: _Stack, fold, options: BuildOptions,
         shape_tool.SetShape(pcb_label, board)
 
     if fold:
-        # The fused, folded board through OpenCASCADE's own check: the log
-        # said "true cylindrical surfaces" over a body it rejects (round 101,
-        # finding R5-1). Built all the same - it is said, not refused.
+        # The fused, folded board through OpenCASCADE's own check, as built and
+        # read back from STEP: the log said "true cylindrical surfaces" over a
+        # body it rejects (rounds 101-102, finding R5-1). Built all the same -
+        # it is said, not refused.
         if board is not None:
             from .bend.crooked import board_check
 
-            said = board_check(board, fold)
+            said = board_check(board, fold, options.minimize_size)
             if said:
                 log(f"warning: {said}")
         for line in fold.summary():

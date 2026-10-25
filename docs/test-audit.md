@@ -663,3 +663,19 @@ equivalent mutant.
   of them without a word, so a runner ends with a marker line now. **A warning
   is proved by where it points: the first one named a cause nobody had
   measured.**
+- **Round 102.** At the owner's choice, once round 101 had shown the two
+  disagree both ways: the folded board is checked as built and as
+  OpenCASCADE's reader gets it back from STEP - written in memory with the
+  file's own p-curve mode and read back from a stream, which gives what the
+  written file read back gives in all twelve flex cases. flex2-a0 stitched
+  with its layer faces kept, which passes as built, is now said to be rejected
+  read back - 4 faces in the panel after BEND_6. No small body that does this
+  was found - nine tried, every one healed on reading - so the suite checks
+  the round trip for what it is made of (a box reads back whole and passing;
+  Compact STEP is the smaller) and stands in for the rejections, and the case
+  itself is measured on the real board. Five rows (294). Session 0 of the
+  4090: `test_bend` green, `run_all` 30/32 (the two suites that need a
+  window), the 70 rows caught 70 of 70, 62 of the 65 old ones by round 101's
+  checks and three by the checks that replaced the one they were caught by.
+  **When two oracles disagree, report both: the reader's view is the file the
+  owner opens, the other is what the code made.**

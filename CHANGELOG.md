@@ -11,6 +11,24 @@ to use the tool.
 
 ---
 
+- **2026-10-25** — **A folded board is also checked the way a STEP reader will
+  see it.** Besides the board as built, the export now writes the folded board
+  to STEP in memory, reads it back with OpenCASCADE's own reader and checks it
+  again. The two checks can disagree either way - one of the test boards was
+  rejected as built and read back clean, another passed as built and read back
+  with four faces rejected - so the log gives both answers, each with what is
+  rejected and where. It costs about 1.3 s on a board of some 650 faces. Five
+  rows added to the mutation table (294). /
+  **Сложенная плата проверяется ещё и такой, какой её увидит читатель STEP.**
+  Кроме платы в построенном виде, экспорт теперь записывает сложенную плату в
+  STEP в памяти, читает её обратно читателем OpenCASCADE и проверяет ещё раз.
+  Эти проверки могут расходиться в обе стороны: одна тестовая плата была
+  забракована в построенном виде и прочиталась чистой, другая прошла в
+  построенном виде и после чтения забракована на четырёх гранях. Поэтому лог
+  даёт оба ответа, и в каждом сказано, что забраковано и где. Это стоит около
+  1,3 с на плате примерно из 650 граней. В таблицу мутаций добавлено пять строк
+  (294).
+
 - **2026-10-25** — **A bend area that reaches into a stiffener is named in the
   log.** On some boards a bend area cannot keep clear of a stiffener's edge,
   and the fold then bends that zone's layers together with the flex, which the

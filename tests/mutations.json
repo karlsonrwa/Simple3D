@@ -3002,7 +3002,7 @@
  {
   "id": "board-check-not-asked",
   "file": "stepbuilder/core.py",
-  "old": "            said = board_check(board, fold)\n",
+  "old": "            said = board_check(board, fold, options.minimize_size)\n",
   "new": "            said = \"\"\n",
   "suites": [
    "tests/test_bend.py"
@@ -3058,5 +3058,55 @@
    "tests/test_bend.py"
   ],
   "why": "a rejected shape is placed by its face's points only, so a sliver on a seam - flex3-a0's face at the end of BEND_3, whose middle unfolds into no piece - is not placed at all (round 101)"
+ },
+ {
+  "id": "board-check-read-back-skipped",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "    back = read_back(board, compact)\n",
+  "new": "    back = board\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the board 'read back' is the board as built, so a body the STEP reader rejects - flex2-a0 stitched with its layer faces kept, four faces - passes unsaid (round 102)"
+ },
+ {
+  "id": "board-check-read-back-unsaid",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "    if not built and returned == {}:\n        return \"\"\n",
+  "new": "    if not built:\n        return \"\"\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a board that passes as built is not reported though it is rejected read back - the case the read-back was added for (round 102)"
+ },
+ {
+  "id": "board-check-read-back-full-mode",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "    Interface_Static.SetIVal_s(\"write.surfacecurve.mode\", 0 if compact else 1)\n",
+  "new": "    Interface_Static.SetIVal_s(\"write.surfacecurve.mode\", 1)\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the board is read back from a STEP with p-curves while the build's own file, Compact by default, has none - the check judges another file than the one written (round 102)"
+ },
+ {
+  "id": "board-check-unreadable-silent",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "    returned = rejected(back) if back is not None else None\n",
+  "new": "    returned = rejected(back) if back is not None else {}\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a board that does not read back from STEP at all is taken as one that passes (round 102)"
+ },
+ {
+  "id": "board-check-compact-not-passed",
+  "file": "stepbuilder/core.py",
+  "old": "            said = board_check(board, fold, options.minimize_size)\n",
+  "new": "            said = board_check(board, fold, False)\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "core asks for the read-back with p-curves whatever the build writes, so a Compact build - the default - is judged by another file than its own (round 102)"
  }
 ]
