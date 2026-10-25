@@ -702,3 +702,17 @@ equivalent mutant.
   after a pin on the window's edge was added - the 90 old ones by the same
   checks as before. **An oracle that answers "near the body" passes a face
   that is in it; ask it the question the finding asked.**
+- **Round 104.** The review's R4-7, a minor one: on the folded flex3-a0 the
+  drawn openings' faces in BEND_3 stood 6.934 um off the body where 3 um was
+  due. Measured, they lay inside it. Neither bend construction takes a face,
+  so they were faceted, and a slice hinged at its leading edge climbs into the
+  board on the inside of a bend; the review's distance, taken against a
+  compound of the board's shapes, ran from inside to the nearest boundary. Now
+  a face with no volume is wrapped onto the cylinder of its own height -
+  horizontal by its own extent in z: judged by its normal, the first version
+  wrapped a face tilted 1.4 deg at one radius - and the review's oracle finds
+  every one of flex3-a0's 130 copper and 119 laminate faces at 3 um. Four rows
+  (312). Session 0 of the 4090: `run_all` 31/33 (the two suites that need a
+  window), the 54 rows caught 54 of 54, the 50 old ones by the same checks.
+  **A distance says how near, not on which side: against a solid it is zero
+  inside, against a compound it is not.**

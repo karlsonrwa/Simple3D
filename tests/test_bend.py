@@ -1987,6 +1987,91 @@ check("and of a board that passes as built and is rejected read back, says both,
 check("the board is read back as the file is written - Compact", modes == [True], modes)
 check("and builds it all the same", (OUT / "rf_crooked.step").exists())
 
+# --------------------------------------------------------------------------- #
+print("\n[19] a face with no volume is wrapped onto its own cylinder, not faceted")
+# The drawn openings' copper and laminate, and a flat legend, are faces a
+# clearance off the board. Neither the revolve nor the solid wrap takes a face,
+# so they were faceted - each slice tangent to the circle at its leading edge -
+# and on the inside of a bend the slices' tails ran into the board: 67 faces of
+# flex3-a0's drawn openings in BEND_3 lay inside the body (finding R4-7 of the
+# 23.10 review, round 104). [3]'s strip again: inner side top, the axis 1 mm
+# over the top face, so a face 3 um over the top is on the inside of the bend
+# and one 3 um under the bottom on the outside.
+from OCP.BRepAdaptor import BRepAdaptor_Surface as _Surface
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
+from OCP.BRepClass import BRepClass_FaceClassifier as _Classifier
+from OCP.BRepExtrema import BRepExtrema_DistShapeShape
+from OCP.GeomAbs import GeomAbs_SurfaceType as _Kind
+from OCP.TopAbs import TopAbs_State as _State
+from OCP.gp import gp_Pnt2d as _P2d
+
+GAP = 0.003
+board19 = plan.apply(strip)          # [3]'s board again: the name `folded` is a point by now
+
+
+def flat_face(z, x0=18.0, x1=22.0):
+    """A face 6 across at height z over x0 .. x1 - [3]'s bend area is 19.06 .. 20.94."""
+    wire = BRepBuilderAPI_MakePolygon(gp_Pnt(x0, 2, z), gp_Pnt(x1, 2, z), gp_Pnt(x1, 8, z),
+                                      gp_Pnt(x0, 8, z), True).Wire()
+    return BRepBuilderAPI_MakeFace(wire, True).Face()
+
+
+def bent_faces(shape):
+    found, walk = [], _TEE(shape, _TAS.TopAbs_FACE)
+    while walk.More():
+        face = _TDS.Face_s(walk.Current())
+        if _Surface(face).GetType() == _Kind.GeomAbs_Cylinder:
+            found.append(face)
+        walk.Next()
+    return found
+
+
+def gaps(face, body):
+    """The distance to the body from a 6 x 6 grid of points on the face; 0
+    for a point inside it."""
+    surface = _Surface(face)
+    u0, u1, v0, v1 = (surface.FirstUParameter(), surface.LastUParameter(),
+                      surface.FirstVParameter(), surface.LastVParameter())
+    out = []
+    for i in range(6):
+        for j in range(6):
+            u, v = u0 + (u1 - u0) * (i + 0.5) / 6, v0 + (v1 - v0) * (j + 0.5) / 6
+            if _Classifier(face, _P2d(u, v), 1e-7).State() == _State.TopAbs_IN:
+                dist = BRepExtrema_DistShapeShape(BRepBuilderAPI_MakeVertex(surface.Value(u, v)).Vertex(), body)
+                out.append(dist.Value())
+    return out
+
+
+for side, z, radius in (("inside", GAP, z_axis - GAP), ("outside", -T - GAP, z_axis + T + GAP)):
+    folded_face = plan.apply(flat_face(z), fuse=False, note=False)
+    across = bent_faces(folded_face)
+    check(f"the face on the {side} of the bend crosses it as a cylinder, not as slices",
+          len(across) == 1, len(across))
+    if across:
+        measured = gaps(across[0], board19)
+        check(f"and it keeps its {GAP * 1000:.0f} um from the board all the way round",
+              measured and all(near(g, GAP, 1e-6) for g in measured),
+              (min(measured), max(measured)) if measured else None)
+        check(f"its area is the flat one times r / rho ({radius:.3f} / {neutral:.3f})",
+              near(area([across[0]]), developed * 6.0 * radius / neutral, 1e-4),
+              (area([across[0]]), developed * 6.0 * radius / neutral))
+
+# The second bend of [6]'s Z fold rides on the first: its strip is carried to
+# where the first bend leaves it, and the wrapped face must be carried too.
+board19z = plan2.apply(strip)
+second = bent_faces(plan2.apply(flat_face(GAP, 28.0, 32.0), fuse=False, note=False))
+second_gaps = gaps(second[0], board19z) if len(second) == 1 else []
+check("across the second bend of a Z fold, carried by the first, it lies 3 um off the board too",
+      second_gaps and all(near(g, GAP, 1e-6) for g in second_gaps),
+      (len(second), (min(second_gaps), max(second_gaps)) if second_gaps else None))
+
+slanted = BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakePolygon(gp_Pnt(18, 2, 0.1), gp_Pnt(22, 2, 0.2),
+                                                             gp_Pnt(22, 8, 0.2), gp_Pnt(18, 8, 0.1),
+                                                             True).Wire(), True).Face()
+check("a slanted face is not one it can wrap, and still folds - by the facets",
+      not bent_faces(plan.apply(slanted, fuse=False, note=False))
+      and bbox(plan.apply(slanted, fuse=False, note=False))[5] > 1.0)
+
 print()
 print("FAILURES:", fails if fails else "none")
 sys.exit(1 if fails else 0)

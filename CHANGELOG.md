@@ -11,6 +11,23 @@ to use the tool.
 
 ---
 
+- **2026-10-25** — **Drawn openings and a flat legend follow a bend exactly.**
+  A surface with no thickness - the copper and laminate of drawn mask openings,
+  a flat silkscreen - could not be bent the way the board is, so across a bend
+  it was cut into 7.5° slices; on the inside of the bend the slices ran into the
+  board, and on flex3-a0 67 faces of the drawn openings in BEND_3 lay inside it.
+  Now such a surface is wrapped onto the cylinder of its own height and keeps
+  its clearance all the way round. Found by the independent review of
+  23.10.2026 (R4-7). Four rows added to the mutation table (312). /
+  **Нарисованные вскрытия и плоская легенда точно повторяют сгиб.**
+  Поверхность без толщины — медь и ламинат нарисованных вскрытий маски,
+  плоская шелкография — не могла согнуться так, как плата, и на сгибе резалась
+  на дольки по 7,5°. На внутренней стороне сгиба дольки уходили в плату: на
+  flex3-a0 67 граней вскрытий на BEND_3 лежали внутри неё. Теперь такая
+  поверхность переносится на цилиндр своей высоты и держит зазор по всему
+  сгибу. Найдено независимой приёмкой 23.10.2026 (R4-7). В таблицу мутаций
+  добавлено четыре строки (312).
+
 - **2026-10-25** — **Parts and pads stand on the board under them, not on the
   zone's whole stack.** A zone's height was the top of its thickest layer, so
   wherever a stiffener, an adhesive or a coverlay is drawn with a window, the

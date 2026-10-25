@@ -15,13 +15,14 @@ from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
 from OCP.TopAbs import TopAbs_ShapeEnum
 from .._occt import TopTools_ListOfShape
+from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator, TopoDS_Shape
 
 from .constants import LogFn, _noop_log
 from .cut import _cut_to_region
 from .regions import _bbox, _is_empty
 from .strip_revolve import _revolve_strip
-from .strip_wrap import _map_strip
+from .strip_wrap import _map_faces, _map_strip
 
 
 def apply_plan(plan, shape: TopoDS_Shape, fuse: bool = True,
@@ -102,6 +103,11 @@ def apply_plan(plan, shape: TopoDS_Shape, fuse: bool = True,
         if bent is None:
             bent = _map_strip(flat, strip, why)
             how = "wrapped"
+        if bent is None and not TopExp_Explorer(flat, TopAbs_ShapeEnum.TopAbs_SOLID).More():
+            # Faces with no volume - a flat legend, the drawn openings - onto
+            # the cylinder of their own height: faceted, the inside of a bend
+            # took them into the board (round 104, finding R4-7).
+            bent = _map_faces(flat, strip, why)
         if bent is None:
             if note:
                 plan._note_build(strip.bend.name, "faceted", log,

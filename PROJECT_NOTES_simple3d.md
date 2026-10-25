@@ -5,7 +5,14 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-25 (rounds 95-103, on `main`)
+## READ THIS FIRST — state as of 2026-10-25 (rounds 95-104, on `main`)
+
+**Round 104 (2026-10-25)**: the review's R4-7 - the drawn openings' faces in
+flex3-a0's BEND_3 lay INSIDE the folded body (a face was faceted, and a slice
+hinged at its leading edge climbs into the board on the inside of a bend).
+`strip_wrap._map_faces` wraps a piece with no volume - a flat legend, the
+drawn openings - onto the cylinder of its own height; the review's oracle finds
+all 130 copper and 119 laminate faces at 3 um. Rows 312. Read round 104.
 
 **Round 103 (2026-10-25)**: the review's last two blocking findings, R3-1 and
 R4-2, one root - every height was the zone's whole stack. `stepbuilder/surface.py`
@@ -16,8 +23,8 @@ lower, flex-b2's pads up to 2.033 mm, flex3-a0's bottom pads 0.052 mm - every
 pad, window and part of the four boards on the body by a vertical ray. A
 drilled pin is asked round its drill; a drawn opening over two levels keeps
 its zone's face. A new suite, `tests/test_surface.py` (29); rows 308. All seven
-blocking findings of the 23.10 review are now fixed; its separate bend finding
-(drawn openings in BEND_3 at 0.006934 mm, not 0.003) stays open. Read round 103.
+blocking findings of the 23.10 review are now fixed (the bend finding R4-7, a
+minor one, followed in round 104). Read round 103.
 
 **Round 102 (2026-10-25)**: at the owner's choice, the folded board is
 checked twice - as built and as OpenCASCADE's reader gets it back from STEP
@@ -3203,6 +3210,66 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-25 (round 104) — a face with no volume is wrapped onto its own cylinder (R4-7)
+
+At the owner's word («Да, бери находку про вскрытия на сгибе BEND_3; перед
+правкой скажи, что меняешь»). The review's R4-7, "мелочь": on the folded
+flex3-a0 the drawn openings' faces in BEND_3 stood 6.934 um from the body
+where 3 um was due (copper 33 faces, laminate 32 and two more).
+
+### What it was, measured
+
+- Neither construction of a bent strip takes a face: the revolve needs a
+  volume, `_map_strip` a prism. So a piece of a flat legend or of a drawn
+  opening across a bend went to the facets - `_slice_trsf` slides each slice
+  back and turns it about the axis, hinged at its LEADING edge, so the slice
+  is tangent to the circle there and its tail climbs away from the axis. On
+  the inside of a bend that is into the board. All 433 free faces of the
+  folded flex3-a0 were planes.
+- `build/render/bend_faces_probe.py`: the 67 faces lay INSIDE the folded
+  body - BRepExtrema against the board's solid, 0.000 um at every one of 25
+  points of each face. The review's oracle measures against a compound of the
+  board's shapes, to the nearest boundary from inside: hence 6.934, read as
+  "3.9 um too far".
+
+### What changed
+
+- `strip_wrap._map_faces(flat, strip, why)`: a piece with no solid in it,
+  face by face: horizontal by its own extent in z (`FACE_FLAT_TOLERANCE`
+  1e-6 mm, from `BRepBndLib.AddOptimal`; the first version took |nz| > 0.999
+  and wrapped a face tilted 1.4 deg at one radius), carried into the
+  cylinder's parameter space by `_edge_curves` at its own height
+  (`_Frame.of(strip, rho, z, z)`), built by `_face_on`, its area checked
+  against flat x r / rho, then `strip.carried`. A refusal goes to the facets
+  as before.
+- `apply_plan`: for a strip piece with no solid, `_map_faces` after the
+  revolve and the solid wrap, before the facets.
+- `tests/test_bend.py` [19]: a face 3 um over [3]'s strip (the inside of the
+  bend) and one under it (the outside): each crosses the bend as one cylinder,
+  3 um from the folded board at every point of a 6 x 6 grid, its area flat x
+  r / rho; across the second bend of [6]'s Z fold, carried by the first, the
+  same; a slanted face still goes to the facets.
+- README (EN/RU) *Folding flex bends*; CHANGELOG; ARCHITECTURE.
+- Rows (308 -> 312): `faces-not-wrapped`, `faces-slant-accepted`,
+  `faces-off-their-radius`, `faces-not-carried`.
+
+### Measured after, and verified
+
+- On the 4090, session 0 (`run104_a.txt`): the review's oracle on the folded
+  flex-b2, flex2-a0 and flex3-a0 - every pad 0.002, window 0.001, drawn opening
+  0.003; flex3-a0's copper 130 faces and laminate 119, all at 0.003. The probe:
+  no face of the folded flex3-a0 off its 1, 2 or 3 um, the 67 in BEND_3 now
+  cylinders.
+- Here: `test_mutations` ALL PASS (312), `audit_docs` no findings,
+  `python_names` no undefined names.
+- Session 0: `test_bend` FAILURES none ([19] 8 checks); `run_all` 31/33 in
+  84 s - only `test_gui` and `test_geom`, which need the owner's session; the
+  54 rows on strip_wrap.py, apply.py and README plus every row naming
+  `test_bend` caught 54 of 54 in 515 s on 8 copies, the 50 old ones by the
+  same check as before.
+- Not touched: a pad standing in a bend area still takes its slice's rigid
+  transform (a part or pad there is reported as a design-rule violation).
 
 ## Update 2026-10-25 (round 103) — a part, a pad, its window and a drawn opening stand on the material under them (R3-1, R4-2)
 

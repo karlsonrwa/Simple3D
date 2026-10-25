@@ -3248,5 +3248,45 @@
    "tests/test_surface.py"
   ],
   "why": "of what the ring round a drill finds, the innermost faces are taken, so a pin whose ring meets a stiffener's edge puts its copper inside the stiffener (round 103)"
+ },
+ {
+  "id": "faces-not-wrapped",
+  "file": "stepbuilder/bend/apply.py",
+  "old": "            bent = _map_faces(flat, strip, why)\n",
+  "new": "            bent = None\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a face with no volume across a bend is faceted again, each slice tangent at its leading edge: on the inside of the bend its tail runs into the board, as 67 of flex3-a0's drawn openings did in BEND_3 (finding R4-7, round 104)"
+ },
+ {
+  "id": "faces-slant-accepted",
+  "file": "stepbuilder/bend/strip_wrap.py",
+  "old": "                or z1 - z0 > FACE_FLAT_TOLERANCE):\n",
+  "new": "                or False):\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a slanted face is wrapped at one radius, flattened onto a cylinder it does not lie on (round 104)"
+ },
+ {
+  "id": "faces-off-their-radius",
+  "file": "stepbuilder/bend/strip_wrap.py",
+  "old": "        frame = _Frame.of(strip, rho, z, z)\n",
+  "new": "        frame = _Frame.of(strip, rho, z + 0.001, z + 0.001)\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a wrapped face lands on the cylinder a micron from its own height, so its clearance from the board is not the one it was built with (round 104)"
+ },
+ {
+  "id": "faces-not-carried",
+  "file": "stepbuilder/bend/strip_wrap.py",
+  "old": "    return BRepBuilderAPI_Transform(compound, strip.carried, True).Shape()\n",
+  "new": "    return compound\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a face wrapped across a bend that an earlier bend carries is left where the flat board had it, not where the board went (round 104)"
  }
 ]

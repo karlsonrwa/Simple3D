@@ -709,7 +709,10 @@ the outline itself is carried onto the cylinder, which keeps the surfaces
 exactly cylindrical however complicated it is — relief notches, zone boundaries
 and the occasional hole all live inside real bend areas. Only a shape neither
 construction fits is faceted, in 7.5° slices, and the log names the bend and the
-reason. The flat panels either side are never approximated.
+reason. The flat panels either side are never approximated. A surface with no
+thickness — a flat legend, the copper and laminate of drawn openings — is
+wrapped onto the cylinder of its own height in the same way, so it keeps its
+clearance from the board all the way round the bend.
 
 **A bend area that reaches into a stiffener is built as drawn, and called
 crooked.** On some boards the bend area cannot keep clear of a stiffener's edge,
@@ -865,7 +868,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 29 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 308 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 29 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 312 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1584,7 +1587,9 @@ Allegro есть та же идея (*Setup – Anchor 3D View*), но в 24.1 �
 был — разгрузочные полукруги, границы зон и случайные отверстия попадают внутрь
 реальных областей сгиба постоянно. Гранится дольками по 7.5° только форма, к
 которой не подошло ни одно построение, и лог называет сгиб и причину. Плоские
-панели по обе стороны не аппроксимируются никогда.
+панели по обе стороны не аппроксимируются никогда. Поверхность без толщины —
+плоская легенда, медь и ламинат нарисованных вскрытий — так же переносится на
+цилиндр своей высоты и держит свой зазор от платы по всему сгибу.
 
 **Если область сгиба заходит на ребро жёсткости, сгиб строится как нарисован, а
 лог называет его кривым.** На некоторых платах область сгиба не удаётся отвести
@@ -1743,7 +1748,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 29 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 308 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 29 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 312 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

@@ -34,7 +34,9 @@ from OCP.BRepAdaptor import BRepAdaptor_Curve
 from OCP.Geom2d import Geom2d_Ellipse, Geom2d_Line, Geom2d_TrimmedCurve
 from OCP.Geom2dAPI import Geom2dAPI_PointsToBSpline
 from OCP.GeomAbs import GeomAbs_CurveType
-from .._occt import TColgp_Array1OfPnt2d
+from .._occt import TColgp_Array1OfPnt2d, box_limits
+from OCP.Bnd import Bnd_Box
+from OCP.BRepBndLib import BRepBndLib
 from OCP.TopAbs import TopAbs_Orientation
 from OCP.gp import gp_Ax22d, gp_Dir2d, gp_Vec2d
 from OCP.Geom import Geom_CylindricalSurface
@@ -48,6 +50,8 @@ from .strip_revolve import PRISM_TOLERANCE, _prism_of
 # How far the wrapped solid may weigh from what the bend says it should before
 # it is thrown away and the facets used instead.
 MAP_VOLUME_TOLERANCE = 0.01
+# How far apart in z a face's points may lie for it to be wrapped at one radius.
+FACE_FLAT_TOLERANCE = 1.0e-6       # mm
 
 
 @dataclass
@@ -350,6 +354,96 @@ def _expected_volume(volume: float, strip: _Strip, z_top: float, z_bottom: float
     for the flat volume instead rejected every layer but the middle one.
     """
     return volume * abs(strip.axis_z - (z_top + z_bottom) / 2.0) / rho
+
+
+def _map_faces(flat: TopoDS_Shape, strip: _Strip,
+               why: list[str] | None = None) -> TopoDS_Shape | None:
+    """A piece with no volume - the flat legend, the drawn openings' copper
+    and laminate, faces a clearance off the board - wrapped onto the cylinder
+    at its own height, face by face.
+
+    Neither the revolve nor `_map_strip` takes a face: one needs a volume,
+    the other a prism. So such a piece was faceted, each slice set tangent to
+    the circle at its leading edge - and on the inside of a bend its tail ran
+    into the board: flex3-a0's drawn openings in BEND_3, 67 faces, lay inside
+    the body, which the review's distance oracle read as 6.9 um (finding R4-7,
+    round 104). Here each horizontal face is carried onto the cylinder of its
+    own radius by the map the board's layers take, so it keeps its clearance
+    all the way round. A face that is not horizontal, or comes out with an
+    area the bend does not give it, sends the piece back to the facets.
+    """
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
+    from OCP.GeomAbs import GeomAbs_SurfaceType
+
+    def give_up(reason: str) -> None:
+        if why is not None and not why:
+            why.append(reason)
+        return None
+
+    width = strip.hi - strip.lo
+    if width <= EPS or abs(strip.turn) < math.radians(MIN_ANGLE):
+        return give_up("the strip has no width or no angle")
+    rho = width / abs(strip.turn)
+
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    count = 0
+    explorer = TopExp_Explorer(flat, TopAbs_ShapeEnum.TopAbs_FACE)
+    while explorer.More():
+        face = TopoDS.Face(explorer.Current())
+        explorer.Next()
+        # Horizontal by its own extent in z, not by its normal: a face tilted
+        # 1.4 deg has |nz| = 0.9997, and wrapped at one radius it would come
+        # out flattened onto the wrong cylinder.
+        box = Bnd_Box()
+        BRepBndLib.AddOptimal_s(face, box, False, False)     # the geometry's own box, no tolerance
+        _x0, _y0, z0, _x1, _y1, z1 = box_limits(box)
+        if (BRepAdaptor_Surface(face).GetType() != GeomAbs_SurfaceType.GeomAbs_Plane
+                or z1 - z0 > FACE_FLAT_TOLERANCE):
+            return give_up("a face of the piece is not horizontal")
+        z = (z0 + z1) / 2.0
+        frame = _Frame.of(strip, rho, z, z)
+        if frame is None:
+            return give_up("a face lies on the bend's axis")
+        outer = BRepTools.OuterWire_s(face)
+        mapped: list[tuple[list, bool]] = []
+        wires = TopExp_Explorer(face, TopAbs_ShapeEnum.TopAbs_WIRE)
+        while wires.More():
+            wire = TopoDS.Wire(wires.Current())
+            wires.Next()
+            curves = []
+            walker = BRepTools_WireExplorer(wire)
+            while walker.More():
+                one = _edge_curves(frame, walker.Current())
+                if one is None:
+                    return give_up("an edge of a face could not be carried onto the cylinder")
+                curves.extend(one)
+                walker.Next()
+            if not curves:
+                return give_up("a wire of a face came back empty")
+            mapped.append((curves, wire.IsSame(outer)))
+        built, reason = _face_on(frame.cyl_top, mapped)
+        if built is None:
+            return give_up(reason)
+        # The map stretches the across direction by r / rho and leaves the
+        # other alone, so that is what it does to an area.
+        flat_area, made = _area(face), _area(built)
+        expected = flat_area * frame.r_top / rho
+        if expected <= 0 or abs(made - expected) > MAP_VOLUME_TOLERANCE * expected:
+            return give_up(f"a face came out {made:.6f} mm2 where the bend should make it {expected:.6f}")
+        builder.Add(compound, built)
+        count += 1
+    if not count:
+        return give_up("the piece has no face")
+    return BRepBuilderAPI_Transform(compound, strip.carried, True).Shape()
+
+
+def _area(face) -> float:
+    props = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(face, props)
+    return abs(props.Mass())
 
 
 def _map_strip(flat: TopoDS_Shape, strip: _Strip,
