@@ -6,6 +6,7 @@ from _support import SessionTurn, TURN_REFUSED, TURN_TAKEN, session_turn_elsewhe
 from _support import put_clipboard_text, clipboard_text_elsewhere, clipboard_sequence
 from _support import put_back_clipboard_text, hold_clipboard_open, clipboard_open_elsewhere
 from _support import ClipboardBusy, clipboard_owned_here, clipboard_shown
+from _support import ClipboardPromise, read_clipboard_in_background
 from _support import keep_windows_off_screen
 
 # The windows of this suite on a desktop of their own, not the user's: four
@@ -396,7 +397,7 @@ field = next(w for w in entries if str(w.cget("textvariable")) == str(target))
 # check prints the user's text - only this test's own (OWN, clipboard_shown).
 CHANGED = "the clipboard changed under the test - another program put something on it"
 OWN = ("D:/pasted/out", "D:/layout/blind", "D:/another/program", "D:/must/not/land",
-       "D:/selected/all", "D:/promised/here")
+       "D:/selected/all", "D:/promised/here", "D:/put/after the read")
 
 
 def pasted(paste, shown, expected, ours, judge_busy=True):
@@ -451,7 +452,9 @@ with SessionTurn() as turn:
             before_clip, why = clipboard_text_elsewhere()
             if why:
                 raise ClipboardBusy(f"what the user had could not be read: {why}")
-            put = put_clipboard_text("D:/pasted/out")
+            # Every put runs the window's messages while it waits (round 99):
+            # a reader sitting on a promise of this process's waits for them.
+            put = put_clipboard_text("D:/pasted/out", pump=app.update)
             ours = clipboard_sequence()
             seen, why = clipboard_text_elsewhere()
             judged("the text is put as real data: another process reads it while this copy pumps nothing",
@@ -528,6 +531,7 @@ with SessionTurn() as turn:
             for _ in range(10):
                 app.update()
                 time.sleep(0.02)
+            promised = clipboard_sequence()
             holder = hold_clipboard_open(0.3)
             held = clipboard_open_elsewhere()
             try:
@@ -536,20 +540,69 @@ with SessionTurn() as turn:
                 own_said = ("busy", str(busy))
             if holder is not None:
                 holder.wait(10)
+            # Somebody's copy meanwhile makes the clipboard theirs, not this
+            # process's promise: no evidence then (step2html, 23.10.2026: the
+            # owner copied during a 16-copy round and the check failed).
+            moved = clipboard_sequence() != promised
             app.update()
             app.tk.call("selection", "clear", "-displayof", app, "-selection", "CLIPBOARD")
             judged("but a put held up by this process's own promise fails",
                    (None, "the holder was not holding the clipboard") if not held else
+                   (None, CHANGED) if moved else
                    (own_said[0] == "returned" and bool(own_said[1]), own_said))
+            # And a put runs this thread's messages while it waits. A reader
+            # sitting on a promise of this thread's - rdpclip.exe sits so on
+            # the app's Copy - waits for the thread to render it, and a put that
+            # did not pump waited for the reader in turn: step2html's "Ctrl+X
+            # cuts it" failed so in 2 runs of 102 (23.10.2026). The promise is
+            # in a format of the test's own, which nobody else asks for
+            # (_support.ClipboardPromise), and the reader asks only once told
+            # to: no render may come before the put (round 99).
+            promise = ClipboardPromise("D:/promised/here", "Simple3D test promise", pump=app.update)
+            made = clipboard_sequence()
+            reader = (read_clipboard_in_background("Simple3D test promise", pump=app.update)
+                      if not promise.why else None)
+            early = list(promise.renders)
+            moved = clipboard_sequence() != made         # a render never moves it; a write does
+            if reader is not None:
+                reader.stdin.write(b"go\n")
+                reader.stdin.flush()
+            start = time.monotonic()
+            put = put_clipboard_text("D:/put/after the read", seconds=1.0, pump=app.update)
+            end = time.monotonic()
+            app.update()                                  # whatever the put left unserved
+            lines = (reader.communicate(timeout=30)[0].decode("utf-8", "replace").strip().splitlines()
+                     if reader is not None else [])
+            promise.close()
+            try:
+                read = json.loads(lines[-1]) if lines else None   # its "open" was read already
+            except ValueError:
+                read = None
+            ours = clipboard_sequence()                   # those changes were this test's own
+            judged("a put made while a reader waits on this thread's own promise serves it, and lands",
+                   (None, f"the promise was not made: {promise.why}") if promise.why else
+                   (None, "the reader never opened the clipboard") if reader is None else
+                   (None, CHANGED) if moved else
+                   (None, "the promise was rendered before the reader asked") if early else
+                   (not put and read == "D:/promised/here" and len(promise.renders) == 1
+                    and start <= promise.renders[0] <= end,
+                    put or f"the reader read {clipboard_shown(read, OWN)}; rendered "
+                           f"{[round(t - start, 3) for t in promise.renders]} s into the put"))
             check("a check shows the user's text by its length only, never the text",
                   "s3d-private" not in clipboard_shown("s3d-private: a password", OWN)
                   and clipboard_shown("D:/pasted/out", OWN) == repr("D:/pasted/out"),
                   clipboard_shown("s3d-private: a password", OWN))
-            # And a put by "another program" between this test's put and its paste.
-            put = put_clipboard_text("D:/another/program")
+            # And a put by "another program" between this test's put and its
+            # paste. It passes on the change alone: one left unjudged for
+            # another reason - ten pastes held up - has not shown the rule
+            # (step2html's copy of it passed on a busy read instead, 25 stress
+            # runs of 184, 23.10.2026).
+            put = put_clipboard_text("D:/another/program", pump=app.update)
             verdict, why, tries = pasted(into_field, target.get, "D:/pasted/out", ours)
-            check("a paste the clipboard changed under is not judged either way", not put and verdict is None,
-                  put or (verdict, why, tries))
+            judged("a paste the clipboard changed under is not judged either way",
+                   (False, put) if put else
+                   (None, f"not the change: {why}, try {tries}") if verdict is None and why != CHANGED else
+                   (verdict is None, (verdict, why, tries)))
             ours = clipboard_sequence()          # that put was this test's own
             left, why = put_back_clipboard_text("D:/must/not/land", ours - 1)
             seen, _ = clipboard_text_elsewhere()
@@ -639,7 +692,7 @@ with SessionTurn() as turn:
             before_clip, why = clipboard_text_elsewhere()
             if why:
                 raise ClipboardBusy(f"what the user had could not be read: {why}")
-            put = put_clipboard_text("D:/layout/blind")
+            put = put_clipboard_text("D:/layout/blind", pump=app.update)
             ours = clipboard_sequence()
 
             def by_shortcut():

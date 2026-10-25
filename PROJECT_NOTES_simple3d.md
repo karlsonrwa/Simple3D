@@ -5,7 +5,25 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-23 (rounds 95-98, on `main`)
+## READ THIS FIRST — state as of 2026-10-25 (rounds 95-99, on `main`)
+
+**Round 99 (2026-10-25)**: what step2html's round 98 (its `67014ad`) found,
+brought here. The put runs the window's messages while it waits
+(`_support.put_clipboard_text(..., pump=app.update)`, every put in
+`test_gui`): a reader sitting on a promise of this process's - rdpclip.exe on
+the app's Copy - and a put that only slept waited on each other, and
+step2html's "Ctrl+X cuts it" failed so in 2 runs of 102. Its self-test in
+[7g] uses `_support.ClipboardPromise` (a format of the test's own, from a
+window of this thread; Tk's text was read by rdpclip.exe first in the owner's
+session) and `read_clipboard_in_background` (the reader asks only when told
+"go"); row `clip-put-does-not-pump` (270). The self-test of a paste the
+clipboard changed under passes on the change alone, the own-promise one says
+"not judged" when the clipboard changed under it; the put's docstring no
+longer blames round 97's 2 s failure on the owner's copy. On the 4090:
+session 0 - the 12 clip- rows caught 12 of 12; the owner's session (job 14) -
+`run_all` 31/31, the 58 rows naming `test_gui` caught 58 of 58, the 57 old
+ones by round 98's checks, 40 stress runs with no FAIL and nothing unjudged.
+Read round 99 for the detail.
 
 **Round 98 (2026-10-23)**: a clipboard another program keeps open past a wait
 - the put's 10 s (was 2), the read's 5, ten pastes - leaves its check "not
@@ -3140,6 +3158,90 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-25 (round 99) — a put runs the window's messages while it waits
+
+The owner: «4090 снова доступна. Продолжи работу над исправлениями» - the
+answer to the question left after step2html's round 98 (its commit
+`67014ad`, 23.10.2026): bring here what its three jobs on the 4090 found.
+
+### What step2html found, and how it applies here
+
+- **A put that waits without pumping deadlocks with a reader of this
+  process's promise.** Right after the app's Cut or Copy the clipboard is
+  Tk's promise; a reader opens the clipboard for the text and waits for Tk to
+  render it, which Tk does only from its event loop - and the suite's next
+  put only slept between its OpenClipboard tries. step2html: "Ctrl+X cuts it:
+  OpenClipboard failed for 10 s, while the clipboard is this process's own
+  promise" in 2 runs of 102; with the put pumping, none in 277 runs. The
+  mechanism measured in session 0 there (`work/clip96/pump_probe.py`): a put
+  without pumping fails after exactly 1.000 s, 4 of 4; pumping, it lands in
+  0.015-0.032 s. In the owner's session rdpclip.exe was the window holding
+  the clipboard at the put's failed open (`pump_probe2.py`). Here `test_gui`
+  makes no app Copy before a put, but its own-promise self-test leaves Tk's
+  promise on the clipboard right before the next put - the same exposure,
+  never seen in round 98's runs.
+- **A self-test of that rule cannot use Tk's text in an RDP session.**
+  rdpclip.exe opens the clipboard for every change; step2html's first
+  version of the self-test went unjudged in 53 runs of 100, failed in 2 on a
+  reader that read nothing, and the rule's mutation SURVIVED.
+- **A self-test of a "not judged" rule must pass on its own reason.**
+  step2html's "a copy the clipboard changed under is not judged" accepted any
+  None and passed on a busy read instead of the change in 25 stress runs of
+  184; two more of its self-tests failed when the owner copied mid-round.
+
+### What changed
+
+- `tests/_support.put_clipboard_text(text, seconds=10.0, pump=None)`:
+  `pump()` between the OpenClipboard tries. The docstring says why, and no
+  longer puts round 97's 2 s failure down to the owner's copy over RDP: it
+  was the check right after the app's Cut, as the deadlock - which of the two
+  it was is not measured.
+- `_support.ClipboardPromise(text, fmt_name, pump)`: a message-only window of
+  this thread (RegisterClassW + CreateWindowExW under HWND_MESSAGE) takes the
+  clipboard and offers only a registered format of the test's own with
+  `SetClipboardData(fmt, NULL)`, rendering it in its WM_RENDERFORMAT handler
+  and noting the time of each render (`renders`); Tk's update runs that
+  window's sent messages too. `_support.read_clipboard_in_background(fmt_name,
+  pump)`: a reader process that opens the clipboard (the caller pumping
+  meanwhile) and asks for the data only when told "go" on its stdin. The same
+  code as step2html's `tests/harness.py`.
+- `tests/test_gui.py` [7g]/[7h]: every put passes `pump=app.update`; a new
+  self-test - a promise in a format of the test's own, the reader told "go",
+  then a put with `seconds=1.0` - judges only when the promise was made, the
+  reader opened, the clipboard sequence did not move and no render came
+  before the put, and then needs the put to land, the reader to read the
+  promise and exactly one render inside the put; the paste the clipboard
+  changed under passes on `CHANGED` alone (any other "not judged" makes the
+  self-test itself a note); the own-promise self-test notes the sequence
+  after its promise and says "not judged" if it moved.
+- Rows (269 -> 270): `clip-put-does-not-pump` (the put without the `pump()`
+  call); `clip-test-text-only-promised` re-aimed at the pumping put;
+  `clip-busy-put-failed`'s why told as it is now known.
+
+### Verified
+
+- Here: `tests/test_mutations.py` ALL PASS, every pattern of the 270 matching
+  once; pyflakes clean on the two files.
+- Session 0 of the 4090 (its clipboard its own; generated clicks do not
+  arrive, so `test_gui` has its 7 known FAILs in [7i] there): [7g] and [7h]
+  green, the new self-test included; `build/scratch/premutate_s3d.py`
+  (step2html's premutate for this suite: a row is caught by the first FAIL
+  the baseline does not have) - the 12 clip- rows caught 12 of 12, the 11 old
+  ones by the same check as in round 98's owner-session run, the new one by
+  the new self-test.
+- The owner's session (job 14, 25.10.2026 12:51:47-12:57:37, at his yes and
+  after he logged in - the first launch at 12:46 never started: the 4090 had
+  rebooted at 12:19 and nobody was logged on, the task's last result
+  0x41303; the launcher now refuses without a logged-on owner): `test_gui`
+  ALL PASS; `run_all` **31/31 in 72 s**; the 58 rows naming `test_gui` on 8
+  copies **caught 58 of 58 in 117 s**, the 57 old ones by the same check as
+  in both of round 98's whole-table runs (job 10), `clip-put-does-not-pump`
+  by the new self-test; the stress, 32 runs on 16 copies (seeded) and 8 on 8
+  (empty), **0 FAIL, 0 at the give-back probe, no check unjudged**, the new
+  self-test passing in 40 of 40, the seed on the clipboard after every seeded
+  round; the owner's clipboard text (15 characters) put back at the end, read
+  back equal. Logs: `build/fix-2026-10-23/remote/job14/`.
 
 ## Update 2026-10-23 (round 98) — a busy clipboard is not judged, and no check prints the user's text
 

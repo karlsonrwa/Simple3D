@@ -279,10 +279,19 @@ def clipboard_shown(text, own=()) -> str:
     return f"{len(text)} characters that are not this test's"
 
 
-def put_clipboard_text(text, seconds: float = 10.0) -> str:
+def put_clipboard_text(text, seconds: float = 10.0, pump=None) -> str:
     """Put `text` on the Windows clipboard as real data - or empty it, for
     None. Returns "" once done, or why it could not be; raises ClipboardBusy
     when another program keeps the clipboard open for `seconds`.
+
+    `pump` - a Tk window's update - is called while the put waits (round 99).
+    A copy of Tk's own (the app's Copy, or clipboard_append) is a promise, and
+    a reader that opens the clipboard to read it - rdpclip.exe does on every
+    change in an RDP session - sits there until this process renders it: a
+    put that waits without pumping waits for that reader, which waits for the
+    put. step2html's suite, the same code, failed "Ctrl+X cuts it" so in 2
+    runs of 102 on the 4090, the put giving up after 10 s with the clipboard
+    still its own (23.10.2026).
 
     Not with Tk's clipboard_clear/clipboard_append (round 96). Those make the
     Tk window the clipboard's OWNER and only promise the text: Windows asks
@@ -303,9 +312,11 @@ def put_clipboard_text(text, seconds: float = 10.0) -> str:
     Opened with no owner window, so nobody's event loop is ever needed and the
     text outlives this process. Another process may hold the clipboard open
     for a while - DefenderSessionHelper does for a moment, on the 4090, and
-    rdpclip.exe while it carries the user's own copy over RDP, once for more
-    than 2 s - so the put waits up to `seconds` and then leaves the verdict
-    to _busy, never to a plain failure.
+    rdpclip.exe while it reads a change - so the put waits up to `seconds`
+    and then leaves the verdict to _busy, never to a plain failure. (One put
+    of step2html's that gave up after 2 s was put down to the owner's copy
+    over RDP; it was the check right after the app's Cut, as the deadlock
+    above - which of the two it was is not measured.)
     """
     if sys.platform != "win32":
         return "not Windows"
@@ -327,6 +338,8 @@ def put_clipboard_text(text, seconds: float = 10.0) -> str:
     while not u32.OpenClipboard(None):
         if time.monotonic() >= deadline:
             return _busy(f"OpenClipboard failed for {seconds:g} s")
+        if pump:
+            pump()
         time.sleep(0.02)
     try:
         if not u32.EmptyClipboard():
@@ -462,6 +475,196 @@ def hold_clipboard_open(seconds: float):
         holder.wait(10)
         return None
     return holder
+
+
+_READ_HELD = """\
+import ctypes, json, sys, time
+from ctypes import wintypes
+u = ctypes.windll.user32
+k = ctypes.windll.kernel32
+u.CreateWindowExW.restype = wintypes.HWND
+u.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+                              ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                              wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+u.OpenClipboard.argtypes = [wintypes.HWND]
+u.GetClipboardData.restype = wintypes.HANDLE
+u.GetClipboardData.argtypes = [wintypes.UINT]
+u.RegisterClipboardFormatW.argtypes = [wintypes.LPCWSTR]
+k.GlobalLock.restype = wintypes.LPVOID
+k.GlobalLock.argtypes = [wintypes.HGLOBAL]
+k.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+fmt = u.RegisterClipboardFormatW(sys.argv[1]) if len(sys.argv) > 1 else 13
+hwnd = u.CreateWindowExW(0, "STATIC", None, 0, 0, 0, 0, 0, wintypes.HWND(-3), None, None, None)
+for _ in range(250):
+    if hwnd and u.OpenClipboard(hwnd):
+        break
+    time.sleep(0.02)
+else:
+    sys.exit(3)
+sys.stdout.write("open\\n")
+sys.stdout.flush()
+sys.stdin.readline()            # "go": the caller pumps no more
+h = u.GetClipboardData(fmt)
+text = None
+if h:
+    text = ctypes.wstring_at(k.GlobalLock(h))
+    k.GlobalUnlock(h)
+u.CloseClipboard()
+sys.stdout.write(json.dumps(text))
+"""
+
+
+def read_clipboard_in_background(fmt_name=None, pump=None):
+    """Another process that opens the clipboard with a window of its own and,
+    told "go" on its stdin, reads the text in the format `fmt_name` (plain
+    text for None) - waiting, while that is this process's promise, for this
+    process to render it, as rdpclip.exe does with Tk's copy: the Popen once
+    the clipboard is open, or None if it never was. Its last line is the
+    text, as JSON; the "open" before it is read here.
+
+    `pump` runs while the reader opens the clipboard: a reader of another
+    program may hold it open meanwhile, sitting on a promise of this
+    process's, and gets out only once this process renders it. Waited for
+    without pumping, step2html's reader never got in, in 53 stress runs of
+    100 in the owner's session, and the window holding the clipboard was
+    rdpclip.exe's (23.10.2026; the same code since round 99)."""
+    if sys.platform != "win32":
+        return None
+    import subprocess
+    import threading
+
+    reader = subprocess.Popen([sys.executable, "-c", _READ_HELD] + ([fmt_name] if fmt_name else []),
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL)
+    first = []
+    waiter = threading.Thread(target=lambda: first.append(reader.stdout.readline()), daemon=True)
+    waiter.start()
+    while waiter.is_alive():
+        if pump is not None:
+            pump()
+        waiter.join(0.02)
+    if not first or first[0].strip() != b"open":
+        reader.wait(10)
+        return None
+    return reader
+
+
+class ClipboardPromise:
+    """Text this thread only promises, in a clipboard format of the test's
+    own: a message-only window takes the clipboard and renders the text when
+    a reader asks, from this thread's message loop - as a Tk window does with
+    its copy, and update() runs that loop for every window of the thread.
+    `renders` gets the time of each render, so a check can tell a reader that
+    waited on the promise from one that found it rendered.
+
+    Tk's own text would not do in the owner's session: rdpclip.exe opens the
+    clipboard for it on every change, and step2html's reader either never got
+    in or found nothing to wait for - of 100 stress runs 53 unjudged and 2
+    failed on a reader that read nothing, and the row for the rule survived
+    (23.10.2026). A format of the test's own nobody else asked for: no render
+    before the reader's, and nobody holding the clipboard after the promise,
+    in 6 runs of 6 there (step2html's work/clip96/pump_probe2.py). `why` says
+    why there is no promise, "" when there is one; close() ends it. `pump`
+    runs while the clipboard is out of reach, as in put_clipboard_text.
+    Round 99, the same code as step2html's tests/harness.py."""
+
+    def __init__(self, text: str, fmt_name: str, pump=None):
+        self.text, self.renders, self.why, self.hwnd = text, [], "", None
+        if sys.platform != "win32":
+            self.why = "not Windows"
+            return
+        import ctypes
+        import os
+        import time
+        from ctypes import wintypes
+
+        u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
+        lresult = ctypes.c_ssize_t
+        proc_type = ctypes.WINFUNCTYPE(lresult, wintypes.HWND, wintypes.UINT, wintypes.WPARAM,
+                                       wintypes.LPARAM)
+
+        class WndClass(ctypes.Structure):
+            _fields_ = [("style", wintypes.UINT), ("lpfnWndProc", proc_type),
+                        ("cbClsExtra", ctypes.c_int), ("cbWndExtra", ctypes.c_int),
+                        ("hInstance", wintypes.HINSTANCE), ("hIcon", wintypes.HICON),
+                        ("hCursor", wintypes.HANDLE), ("hbrBackground", wintypes.HBRUSH),
+                        ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR)]
+
+        u32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        u32.DefWindowProcW.restype = lresult
+        u32.RegisterClassW.argtypes = [ctypes.POINTER(WndClass)]
+        u32.RegisterClassW.restype = wintypes.ATOM
+        u32.UnregisterClassW.argtypes = [wintypes.LPCWSTR, wintypes.HINSTANCE]
+        u32.CreateWindowExW.restype = wintypes.HWND
+        u32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+                                        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                        wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+        u32.DestroyWindow.argtypes = [wintypes.HWND]
+        u32.RegisterClipboardFormatW.argtypes = [wintypes.LPCWSTR]
+        u32.OpenClipboard.argtypes = [wintypes.HWND]
+        u32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+        u32.SetClipboardData.restype = wintypes.HANDLE
+        k32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+        k32.GetModuleHandleW.restype = wintypes.HMODULE
+        k32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+        k32.GlobalAlloc.restype = wintypes.HGLOBAL
+        k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        k32.GlobalLock.restype = wintypes.LPVOID
+        k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+        k32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+        self._u32, fmt = u32, u32.RegisterClipboardFormatW(fmt_name)
+
+        def render(hwnd, msg, wparam, lparam):
+            if msg == 0x0305 and wparam == fmt:              # WM_RENDERFORMAT
+                self.renders.append(time.monotonic())
+                data = (self.text + "\0").encode("utf-16-le")
+                handle = k32.GlobalAlloc(0x0002, len(data))  # GMEM_MOVEABLE
+                if not handle:
+                    self.why = f"GlobalAlloc failed at the render (error {ctypes.GetLastError()})"
+                    return 0
+                ctypes.memmove(k32.GlobalLock(handle), data, len(data))
+                k32.GlobalUnlock(handle)
+                if not u32.SetClipboardData(fmt, handle):
+                    self.why = f"SetClipboardData failed at the render (error {ctypes.GetLastError()})"
+                    k32.GlobalFree(handle)
+                return 0
+            return u32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+        self._proc = proc_type(render)       # kept alive: Windows calls it while the window lives
+        self._hinst = k32.GetModuleHandleW(None)
+        self._class = f"Simple3D-test-promise-{os.getpid()}-{id(self)}"
+        if not u32.RegisterClassW(ctypes.byref(WndClass(lpfnWndProc=self._proc, hInstance=self._hinst,
+                                                        lpszClassName=self._class))):
+            self.why = f"RegisterClassW failed (error {ctypes.GetLastError()})"
+            return
+        self.hwnd = u32.CreateWindowExW(0, self._class, None, 0, 0, 0, 0, 0, wintypes.HWND(-3),
+                                        None, self._hinst, None)
+        if not self.hwnd:
+            self.why = f"CreateWindowExW failed (error {ctypes.GetLastError()})"
+            return
+        deadline = time.monotonic() + 10
+        while not u32.OpenClipboard(self.hwnd):
+            if time.monotonic() >= deadline:
+                self.why = "OpenClipboard failed for 10 s"
+                return
+            if pump is not None:
+                pump()
+            time.sleep(0.02)
+        try:
+            if not u32.EmptyClipboard():                     # this window is the owner now
+                self.why = f"EmptyClipboard failed (error {ctypes.GetLastError()})"
+            else:
+                u32.SetClipboardData(fmt, None)              # NULL: rendered when asked
+        finally:
+            u32.CloseClipboard()
+
+    def close(self) -> None:
+        if self.hwnd:
+            self._u32.DestroyWindow(self.hwnd)
+            self.hwnd = None
+        if getattr(self, "_class", None):
+            self._u32.UnregisterClassW(self._class, self._hinst)
+            self._class = None
 
 
 def clipboard_text_elsewhere(seconds: float = 10.0) -> tuple:

@@ -2752,7 +2752,7 @@
  {
   "id": "clip-test-text-only-promised",
   "file": "tests/test_gui.py",
-  "old": "        put = put_clipboard_text(\"D:/pasted/out\")\n",
+  "old": "        put = put_clipboard_text(\"D:/pasted/out\", pump=app.update)\n",
   "new": "        put = app.clipboard_clear() or app.clipboard_append(\"D:/pasted/out\") or \"\"\n",
   "suites": [
    "tests/test_gui.py"
@@ -2817,7 +2817,7 @@
   "suites": [
    "tests/test_gui.py"
   ],
-  "why": "a put or read another program keeps the clipboard from fails instead of staying unjudged: the owner's own copy over RDP made one of step2html's puts fail after 2 s (round 98)"
+  "why": "a put or read another program keeps the clipboard from fails instead of staying unjudged: one of step2html's puts gave up after 2 s in the owner's session (round 97; blamed on his copy then, most likely the suite's own deadlock with a reader of its promise - not measured which)"
  },
  {
   "id": "clip-busy-read-failed",
@@ -2858,5 +2858,15 @@
    "tests/test_gui.py"
   ],
   "why": "a check prints clipboard text that is not the test's own - the user's: the owner's copied text went into 18 stress logs on the 4090 (step2html, round 98)"
+ },
+ {
+  "id": "clip-put-does-not-pump",
+  "file": "tests/_support.py",
+  "old": "        if pump:\n            pump()\n",
+  "new": "        if False:\n            pump()\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "a put waits for the clipboard without running the window's messages, so a reader sitting on a promise of this process's (rdpclip.exe, after the app's Copy) and the put wait on each other until the put gives up: step2html's \"Ctrl+X cuts it\" failed so in 2 runs of 102 (23.10.2026, round 99)"
  }
 ]

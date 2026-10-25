@@ -600,3 +600,23 @@ equivalent mutant.
   its own self-test; the table 269 of 269 on 8 and 16 copies, every row by
   the same check. **A check the session can fail must also be told apart
   from one its own process fails.**
+- **Round 99.** What step2html's round 98 found, brought here. A put that
+  waited for the clipboard without running the window's messages, and a
+  reader sitting on a promise of this process's (rdpclip.exe after the app's
+  Copy), waited on each other until the put gave up: step2html's "Ctrl+X
+  cuts it" failed so in 2 runs of 102. Every put in `test_gui` now passes
+  `pump=app.update`. The rule's self-test does not use Tk's text - in the
+  owner's session rdpclip.exe read that promise first, step2html's copy went
+  unjudged in 53 runs of 100 and the rule's row survived - but a promise in a
+  format of the test's own (`_support.ClipboardPromise`) and a reader that
+  asks only when told (`read_clipboard_in_background`); it judges only when
+  no render came before the put. The self-test of a paste the clipboard
+  changed under passes on the change alone (step2html's sibling passed on a
+  busy read in 25 stress runs of 184), and the own-promise one says "not
+  judged" when the clipboard changes under it. One row (270). Session 0 of
+  the 4090: the 12 `clip-*` rows caught 12 of 12, the 11 old ones by round
+  98's checks; the owner's session: `run_all` 31/31, the 58 rows naming
+  `test_gui` caught 58 of 58, the 57 old ones by the same check as in both of
+  round 98's table runs, and 40 stress runs on 8-16 copies with no FAIL and
+  nothing unjudged. **A self-test proves its rule only when it shows its
+  premise held.**
