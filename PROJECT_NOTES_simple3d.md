@@ -7,6 +7,22 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ## READ THIS FIRST — state as of 2026-10-25 (rounds 95-104, on `main`)
 
+**Open, 2026-10-25 22:20** (the list given to the owner that evening). His
+decisions: the push of rounds 92-104 (13 commits; «пока не отправляй»), a
+second round of the review, the order of its remaining findings, the output
+matrix (§5's six questions and the two proposals of 01.10; three files
+untracked), 2.6 GB of scratch on the 4090. What needs him: `test_gui` and
+`test_geom` in his session (not run since round 99), his hand-copied install,
+the review's Allegro-only findings (R1-4, R1-5, R2-3, R2-5), how Inventor takes
+a body BRepCheck rejects. The review: 124 of 134 open - closed by fixes R6-1..3,
+R1-1, R5-1, R3-1, R4-2, R4-7, in passing R1-2 (check 6) and R8-4 (the counts);
+R1-5, R3-7 and R5-3 likely closed by rounds 101-103, not re-measured. First
+among the open, the silent model errors: R1-3, R1-6, R3-2, R3-5, R3-6, R3-8,
+R3-9, R4-1, R4-4, R4-5, R5-2, R5-4, R5-6, R2-5..R2-7. Parked by me: BRepCheck
+on folded boards only (so R3-5 stays silent), a part's height at its origin, a
+part or pad inside a bend area on its slice's transform, no row for the
+non-destructive booleans, the SKILL golden corpus older than `full_board`.
+
 **Round 104 (2026-10-25)**: the review's R4-7 - the drawn openings' faces in
 flex3-a0's BEND_3 lay INSIDE the folded body (a face was faceted, and a slice
 hinged at its leading edge climbs into the board on the inside of a bend).
