@@ -995,11 +995,40 @@ def _placement(x: float, y: float, z: float, rotation: float, fold) -> gp_Trsf:
     return trsf
 
 
+# How many points of the ring round a drilled pin ask the surface.
+DRILL_RING_POINTS = 8
+
+
+def _drill_reach(padstack: dict) -> float | None:
+    """The radius of the ring round a drilled pin that lies on its copper:
+    half-way from the drill's farthest point to the nearest edge of its
+    smallest pad's box, in the padstack's own frame; None when the pad does
+    not reach past the drill."""
+    drill = contour_points(padstack.get("drill") or [])
+    if not drill:
+        return None
+    hole = max(math.hypot(px, py) for px, py in drill)
+    edges = []
+    for pad in (padstack.get("pads") or {}).values():
+        box = pad.get("bbox") if isinstance(pad, dict) else None
+        if box and len(box) == 2:
+            edges.append(min(abs(float(box[0][0])), abs(float(box[0][1])),
+                             abs(float(box[1][0])), abs(float(box[1][1]))))
+    if not edges or min(edges) <= hole:
+        return None
+    return (hole + min(edges)) / 2.0
+
+
 class _Zones:
     """Which zone a point is in, and that zone's outer conductors, faces and
     soldermask sides."""
 
-    def __init__(self, zones, stackups, levels, board_top_z, board_bottom_z):
+    def __init__(self, zones, stackups, levels, board_top_z, board_bottom_z, surface=None):
+        # The faces a point lies on come from *surface* - the layers with
+        # material there - when the build has one, not from the zone's stack:
+        # that put flex-b2's connector pads up to 2.033 mm in the air over the
+        # stiffener's holes (round 103, finding R4-2).
+        self.surface = surface
         self.entries = []
         for zone in zones or []:
             name = str(zone.get("name"))
@@ -1023,8 +1052,33 @@ class _Zones:
         """((top name, bottom name), (top z, bottom z)) for a point."""
         for _, polygon, conductors, faces, *_rest in self.entries:
             if point_in_polygon((x, y), polygon):
-                return conductors, faces
-        return self.default
+                return conductors, self.faces_at(x, y, faces)
+        return self.default[0], self.faces_at(x, y, self.default[1])
+
+    def faces_at(self, x: float, y: float, faces: tuple[float, float]) -> tuple[float, float]:
+        """The board's two faces at a point: the surface's, else *faces*."""
+        here = self.surface.at(x, y) if self.surface else None
+        return here if here is not None else faces
+
+    def around_drill(self, x: float, y: float, padstack: dict,
+                     faces: tuple[float, float]) -> tuple[float, float]:
+        """The board's faces under a drilled pin's copper: asked on a ring
+        between the drill and the nearest edge of its smallest pad, and the
+        outermost of what the ring finds, so the copper never lies inside the
+        body. The centre lies over the drill, which a layer's own shapes may
+        hole too: flex3-a0's top pins have a hole of the drill's radius in the
+        layers over their copper, the face around them 0.525 mm higher than
+        under it (round 103)."""
+        ring = DRILL_RING_POINTS
+        reach = _drill_reach(padstack)
+        if reach is None:
+            return faces
+        found = [self.surface.at(x + reach * math.cos(2 * math.pi * k / ring),
+                                 y + reach * math.sin(2 * math.pi * k / ring)) for k in range(ring)]
+        found = [f for f in found if f is not None]
+        if not found:
+            return faces
+        return max(f[0] for f in found), min(f[1] for f in found)
 
     def mask_at(self, x: float, y: float) -> tuple[bool, bool, str | None]:
         """(mask on top, mask on the bottom, zone name) for a point; the
@@ -1045,7 +1099,7 @@ class _Zones:
 def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom_z,
                fold, lift: float, document, group_for, rgb01, srgb: bool,
                json_stem: str, copper: bool = True, openings: bool = False, base01=None,
-               opening_lift: float | None = None, log: LogFn = _noop_log) -> PadsResult:
+               opening_lift: float | None = None, surface=None, log: LogFn = _noop_log) -> PadsResult:
     """Every pin's copper - and/or its mask opening - into the document, as
     instances of shared faces.
 
@@ -1069,7 +1123,7 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
         return result
     library = pads.get("padstacks") or {}
     rows = pads.get("pins") or []
-    where = _Zones(zones, stackups, levels, board_top_z, board_bottom_z)
+    where = _Zones(zones, stackups, levels, board_top_z, board_bottom_z, surface)
     shape_tool = document.shape_tool
     # A library without a single mask pad is a format_version 10 file: it
     # cannot say which pads are covered, so the copper is drawn whole, as it
@@ -1147,6 +1201,8 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
             result.no_padstack += 1
             continue
         (top, bottom), (top_z, bottom_z) = where.at(x, y)
+        if where.surface and padstack.get("drill"):
+            top_z, bottom_z = where.around_drill(x, y, padstack, (top_z, bottom_z))
         sides = pin_sides(pin, padstack, top, bottom)
         if not sides:
             result.no_outer_face += 1
@@ -1275,8 +1331,32 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
 # the copper under the drawn mask openings (format_version 12)
 # --------------------------------------------------------------------------- #
 
+# How many of a drawn opening's vertices are asked where the surface is.
+LEVEL_SAMPLES = 16
+
+
+def _one_level(where: "_Zones", verts: list, side: str) -> float | None:
+    """The board's face under a drawn-opening polygon when every sample of it
+    finds the same one - its centroid, and its vertices drawn a tenth of the
+    way in, so a vertex on an opening's own edge is asked inside it; None
+    when they differ, or the build has no surface."""
+    if not where.surface or not verts:
+        return None
+    cx = sum(v[0] for v in verts) / len(verts)
+    cy = sum(v[1] for v in verts) / len(verts)
+    step = max(1, len(verts) // LEVEL_SAMPLES)
+    samples = [(cx, cy)] + [(x + 0.1 * (cx - x), y + 0.1 * (cy - y)) for x, y in verts[::step]]
+    found = set()
+    for x, y in samples:
+        here = where.surface.at(x, y)
+        if here is not None:
+            found.add(here[0] if side == "top" else here[1])
+    return found.pop() if len(found) == 1 else None
+
+
 def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bottom_z,
-                  lift: float, section: str = "exposed", log: LogFn = _noop_log) -> dict[str, tuple]:
+                  lift: float, section: str = "exposed", surface=None,
+                  log: LogFn = _noop_log) -> dict[str, tuple]:
     """What the DRAWN mask openings show, per side, as flat faces.
 
     `pads.exposed.top` / `.bottom` are the copper under the openings, and
@@ -1303,7 +1383,7 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
     exposed = pads.get(section) if isinstance(pads, dict) else None
     if not isinstance(exposed, dict):
         return {}
-    where = _Zones(zones, stackups, levels, board_top_z, board_bottom_z)
+    where = _Zones(zones, stackups, levels, board_top_z, board_bottom_z, surface)
     out = {}
     tag = "copper" if section == "exposed" else "bare"
     for side, sign in (("top", 1.0), ("bottom", -1.0)):
@@ -1356,6 +1436,7 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
         whole: dict[float, list] = {}          # z -> polygons
         straddling: list = []
         dropped = 0
+        crossing = 0                           # whole, but over more than one level of the board
         for polygon in polygons:
             verts = [(float(v[0]), float(v[1])) for v in (polygon.get("vertices") or []) if len(v) >= 2]
             if not verts:
@@ -1379,6 +1460,16 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                                 if point_in_polygon(v, poly) or point_on_polygon(v, poly)), None))
             if len(homes) == 1 and None not in homes and not over_cutout:
                 z = next(zf for name, _p, _c, _b, zf in masked if name in homes)
+                # On the board's surface under it when the whole polygon has
+                # one there - in a stiffener's window, a coverlay's opening;
+                # across a change of it, on its zone's face as before, which
+                # never cuts into the body: by its centroid alone, four of
+                # flex3-a0's lay inside the coverlay beside an opening (round 103).
+                level = _one_level(where, verts, side)
+                if level is not None:
+                    z = level
+                elif where.surface:
+                    crossing += 1
                 whole.setdefault(z, []).append(polygon)
             else:
                 touches = [m for m in masked if _boxes_meet(box, m[3])]
@@ -1436,6 +1527,10 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                 + f" - {len(straddling)} drawn-opening polygon(s) clipped to it"
                 + (f" ({over} of them over a cutout)" if over else "")
                 + (f", {dropped} left out" if dropped else ""))
+        if crossing:
+            log(f"{tag}_{side}: {crossing} drawn-opening polygon(s) lie over more than one level of the "
+                f"board - across the edge of a stiffener or a coverlay opening - and are built on their "
+                f"zone's face, above the lower part")
         if not pieces:
             out[side] = (None, built, skipped)
         elif len(pieces) == 1:

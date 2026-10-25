@@ -421,8 +421,8 @@
  {
   "id": "drawn-parts-at-copper-height",
   "file": "stepbuilder/core.py",
-  "old": "            lift=3.0 * abs(options.silk_flat_height), section=section, log=log)",
-  "new": "            lift=2.0 * abs(options.silk_flat_height), section=section, log=log)",
+  "old": "            lift=3.0 * abs(options.silk_flat_height), section=section, surface=stack.surface, log=log)",
+  "new": "            lift=2.0 * abs(options.silk_flat_height), section=section, surface=stack.surface, log=log)",
   "suites": [
    "tests/test_pads.py"
   ],
@@ -490,7 +490,7 @@
  {
   "id": "readme-count-23",
   "file": "README.md",
-  "old": "28 test suites",
+  "old": "29 test suites",
   "new": "23 test suites",
   "suites": [
    "tools/audit_docs.py"
@@ -500,8 +500,8 @@
  {
   "id": "readme-count-unstated",
   "file": "README.md",
-  "old": "28 test suites",
-  "new": "twenty-eight test suites",
+  "old": "29 test suites",
+  "new": "twenty-nine test suites",
   "suites": [
    "tools/audit_docs.py"
   ],
@@ -3108,5 +3108,145 @@
    "tests/test_bend.py"
   ],
   "why": "core asks for the read-back with p-curves whatever the build writes, so a Compact build - the default - is judged by another file than its own (round 102)"
+ },
+ {
+  "id": "surface-never-made",
+  "file": "stepbuilder/core.py",
+  "old": "        surface = Surface(zones, stackups, shift, log)\n",
+  "new": "        surface = None\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "no build has a surface, so every height is the zone's whole stack again: X1 on flex2-a0 0.575 mm in the air, flex-b2's pads up to 2.033 mm (findings R3-1 and R4-2 of the 23.10.2026 review, round 103)"
+ },
+ {
+  "id": "surface-lowest-top",
+  "file": "stepbuilder/surface.py",
+  "old": "        return (max(tops), min(bottoms)) if tops else None\n",
+  "new": "        return (min(tops), max(bottoms)) if tops else None\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "the board's faces at a point are its lowest layer's top and its highest layer's bottom - a part stands inside the board (round 103)"
+ },
+ {
+  "id": "surface-shapeless-layer-absent",
+  "file": "stepbuilder/surface.py",
+  "old": "            return True                             # the whole zone\n",
+  "new": "            return False                            # the whole zone\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a layer drawn without shapes - the conductors, the dielectric - is taken to have no material anywhere, so in a stiffener's window nothing is under the point and the zone's stack is used again (round 103)"
+ },
+ {
+  "id": "surface-shapes-ignored",
+  "file": "stepbuilder/surface.py",
+  "old": "        return any(not box.IsOut(point) and _on_face(face, x, y)\n",
+  "new": "        return True or any(not box.IsOut(point) and _on_face(face, x, y)\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a layer drawn as shapes has material everywhere in its zone, so a window in a stiffener and an opening in a coverlay are not seen (round 103)"
+ },
+ {
+  "id": "part-ignores-surface",
+  "file": "stepbuilder/models.py",
+  "old": "    if surface:\n        here = surface.at(float(component[\"x\"]), float(component[\"y\"]))\n",
+  "new": "    if False:\n        here = surface.at(float(component[\"x\"]), float(component[\"y\"]))\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a part stands on its zone's face again, not on what is under it: X1 on flex2-a0 0.575 mm above the board in its stiffener's window (finding R3-1, round 103)"
+ },
+ {
+  "id": "part-lowered-unsaid",
+  "file": "stepbuilder/core.py",
+  "old": "    return gap if gap > 1e-6 else 0.0\n",
+  "new": "    return 0.0\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a part standing below its zone's top - in a stiffener's window - is placed right and not named, so the log does not say why it is lower than its zone (round 103)"
+ },
+ {
+  "id": "part-lowered-side-swapped",
+  "file": "stepbuilder/core.py",
+  "old": "        where = \"above the bottom\" if bottom else \"below the top\"\n",
+  "new": "        where = \"below the top\" if bottom else \"above the bottom\"\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "the log says a part under the board stands below its zone's top and one on top above its bottom (round 103)"
+ },
+ {
+  "id": "pads-ignore-surface",
+  "file": "stepbuilder/pads.py",
+  "old": "        here = self.surface.at(x, y) if self.surface else None\n",
+  "new": "        here = None\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "pads, their windows and the drawn openings lie on the zone's whole stack again: flex-b2's connector pads up to 2.033 mm in the air over the stiffener's holes (finding R4-2, round 103)"
+ },
+ {
+  "id": "pads-not-given-surface",
+  "file": "stepbuilder/core.py",
+  "old": "        opening_lift=abs(options.silk_flat_height), surface=stack.surface, document=document,\n",
+  "new": "        opening_lift=abs(options.silk_flat_height), document=document,\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "the build does not hand the surface to the pads, so the pads and their windows float while the parts stand right (round 103)"
+ },
+ {
+  "id": "drawn-openings-at-zone-face",
+  "file": "stepbuilder/pads.py",
+  "old": "                if level is not None:\n                    z = level\n",
+  "new": "                if False:\n                    z = level\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a drawn opening is built on its zone's face, not on what is under it: in a stiffener's window it floats with the stiffener's height (round 103)"
+ },
+ {
+  "id": "drawn-openings-any-level",
+  "file": "stepbuilder/pads.py",
+  "old": "    return found.pop() if len(found) == 1 else None\n",
+  "new": "    return found.pop() if found else None\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a drawn opening over two levels of the board is built on one of them, by whichever sample came first - on the window's floor it cuts into the stiffener beside it, as four of flex3-a0's did by their centroid (round 103)"
+ },
+ {
+  "id": "drawn-openings-crossing-unsaid",
+  "file": "stepbuilder/pads.py",
+  "old": "        if crossing:\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a drawn opening left on its zone's face because it lies over two levels is not counted in the log, so nothing says it floats above the lower part (round 103)"
+ },
+ {
+  "id": "pads-drill-centre",
+  "file": "stepbuilder/pads.py",
+  "old": "        if where.surface and padstack.get(\"drill\"):\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a through pin is asked for the surface at its centre, over its drill: where the layers are holed to the drill - flex3-a0's top pins - the pad and its window lie 0.525 mm inside the body (round 103)"
+ },
+ {
+  "id": "pads-drill-ring-inner",
+  "file": "stepbuilder/pads.py",
+  "old": "        return max(f[0] for f in found), min(f[1] for f in found)\n",
+  "new": "        return min(f[0] for f in found), max(f[1] for f in found)\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "of what the ring round a drill finds, the innermost faces are taken, so a pin whose ring meets a stiffener's edge puts its copper inside the stiffener (round 103)"
  }
 ]

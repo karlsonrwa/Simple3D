@@ -5,7 +5,19 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-25 (rounds 95-102, on `main`)
+## READ THIS FIRST — state as of 2026-10-25 (rounds 95-103, on `main`)
+
+**Round 103 (2026-10-25)**: the review's last two blocking findings, R3-1 and
+R4-2, one root - every height was the zone's whole stack. `stepbuilder/surface.py`
+gives the board's faces at a point from the layers that have material there
+(the function the body is built from, every zone that holds the point), and
+parts, pads, mask windows and drawn openings lie on it: X1 on flex2-a0 0.575 mm
+lower, flex-b2's pads up to 2.033 mm, flex3-a0's bottom pads 0.052 mm - every
+pad, window and part of the four boards on the body by a vertical ray. A
+drilled pin is asked round its drill; a drawn opening over two levels keeps
+its zone's face. A new suite, `tests/test_surface.py` (29); rows 308. All seven
+blocking findings of the 23.10 review are now fixed; its separate bend finding
+(drawn openings in BEND_3 at 0.006934 mm, not 0.003) stays open. Read round 103.
 
 **Round 102 (2026-10-25)**: at the owner's choice, the folded board is
 checked twice - as built and as OpenCASCADE's reader gets it back from STEP
@@ -14,9 +26,7 @@ read back from the stream, which gives the written file's verdict in 12 of 12
 cases) - and the log gives both answers with their places; flex2-a0 in *Solid
 colored layers*, clean as built, is now said to be rejected read back (4
 faces in the panel after BEND_6). 1.25 s on Cadence_Demo in *Solid*, 4.3 s in
-layers. Rows 294. Next: R3-1 and R4-2 (a part's and a pad's height under the
-point, not the zone's envelope), announced in round 101's report. Read round
-102.
+layers. Rows 294. Read round 102.
 
 **Round 101 (2026-10-25)**: the review's R5-1 - flex2-a0's BEND_6 built into a
 body BRepCheck rejects while the log said "true cylindrical surfaces". The
@@ -3193,6 +3203,119 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-25 (round 103) — a part, a pad, its window and a drawn opening stand on the material under them (R3-1, R4-2)
+
+The last two of the review's blocking findings, one root, taken at the owner's
+word («потом R3-1 и R4-2») after the plan in round 101's report: every height
+came from `stackup_levels` - a zone's top is the highest `z_top` of ALL its
+stack's layers, whatever their shapes - so wherever a positive layer
+(stiffener, adhesive) has a window or a negative one (coverlay) an opening, a
+part or a pad inside it stood on material that is not there.
+
+### Measured before (the review's own oracle, `e3_golden.py`, and mine)
+
+- flex-b2 top: 21 pads 0.150-2.033 mm from the body (expected 0.002), bottom
+  21 at 0.052; flex2-a0 top 10 at 0.150-0.577, bottom 34 at 0.027 and 0.052;
+  flex3-a0 bottom 92 pads at 0.052 and 90 windows at 0.051 - exactly the
+  review's numbers, flat and folded. my_test_board2 (a plain board): all
+  exact.
+- X1 on flex2-a0 (zone LDI2, stack LDI): z 0.0 at datum top and 0.815 at
+  bottom, the body under it at -0.575 and 0.24 - STIFFENER_TOP, ADHESIVE_TOP2
+  and COVERLAY_TOP have no material in LDI2.
+
+### What changed
+
+- `stepbuilder/surface.py` (new): `Surface.at(x, y)` - the top of the highest
+  and the bottom of the lowest layer with material at the point, in every
+  zone whose contour holds it (the zones overlap on real boards). A layer's
+  material is `board._layer_region` - the function the body is built from -
+  worked out the first time a point of its zone asks; zone membership against
+  the zone's own face (arcs and all), points classified with a box prefilter.
+  The board's cutouts are not taken out, so a pin over its own drill is given
+  the face around it.
+- `core._prepare_stackups` makes the stack's `surface` from the stackups the
+  body is built from (after `drop_soldermask` and `align_stackups`), when the
+  board has zones and stackups - a plain board in *Solid* stays one prism and
+  has none.
+- `models.component_transform(..., surface=)`: the part stands on the surface
+  under its origin; `core._place_components` names every part that stands
+  inside its zone's face (up to 12, then a count): "X1 stands on the board's
+  surface under it, 0.575 mm below the top of its zone LDI2: the zone's upper
+  layers have no material there".
+- `pads._Zones(..., surface)`: `at()` gives the surface's faces with the zone's
+  conductors, so the pads and their windows lie on it. A drilled pin is asked
+  on a ring between its drill and the nearest edge of its smallest pad
+  (`around_drill`, 8 points), the outermost faces the ring finds: its centre
+  lies over the drill, which a layer's own shapes may hole too - flex3-a0's
+  two top pins have a hole of the drill's radius (0.3) in the layers over
+  their copper, and asked at the centre the first version laid both pads
+  0.525 mm inside the body (measured by rays round the pin: the body's top is
+  0.0 from r = 0.3 to 1.5 mm; the review's oracle, a minimum distance to the
+  body's boundary, still said 0.002). Drawn openings: a whole
+  polygon lies on the surface when its centroid and its vertices (drawn a
+  tenth of the way in) all find one level; over two levels it stays on its
+  zone's face as before, which never cuts into the body, and the log counts
+  it - by its centroid alone, four of flex3-a0's lay inside the coverlay beside
+  an opening (the first version, measured: 0.0 from the body).
+- `tests/test_surface.py` (new, the 29th suite): the rigid-flex fixture with a
+  window r = 1.5 in S2's stiffener and adhesive and an opening in its bottom
+  coverlay; the oracle is the built body, a vertical line through the point.
+- README (EN/RU): *Multi-stackup and rigid-flex* and *Exposed copper*; suite
+  count 29. CHANGELOG. ARCHITECTURE.
+- Rows (294 -> 308): `surface-never-made`, `surface-lowest-top`,
+  `surface-shapeless-layer-absent`, `surface-shapes-ignored`,
+  `part-ignores-surface`, `part-lowered-unsaid`, `part-lowered-side-swapped`,
+  `pads-ignore-surface`, `pads-not-given-surface`,
+  `drawn-openings-at-zone-face`, `drawn-openings-any-level`,
+  `drawn-openings-crossing-unsaid`, `pads-drill-centre`,
+  `pads-drill-ring-inner` (306 -> 308 with the last two); `readme-count-23`,
+  `readme-count-unstated` re-aimed at 29 suites, `drawn-parts-at-copper-height`
+  at core's new call.
+
+### Measured after
+
+- The review's oracle on flex-b2, flex2-a0 and flex3-a0, flat and folded:
+  every pad 0.002, every window 0.001, every drawn opening 0.003 - but the
+  folded flex3-a0's drawn openings in BEND_3 (33 and 32 faces at 0.006934),
+  which were so before and are the review's separate bend finding, not
+  R4-2. The same in *Solid colored layers*, *Not stitched*, without the
+  soldermask and at datum bottom (flat). my_test_board2 unchanged.
+- My own oracle (`build/render/parts_oracle.py`: every part given one demo
+  model, a vertical ray through the body under each part, pad and window,
+  the faces round a hole when the ray meets none), HEAD's code against this
+  tree: Cadence_Demo 2 parts and 20 pads 0.203 mm in the air (its stiffener
+  zones) -> 357 parts, 5466 pads and 2080 windows all exact; flex-b2 all 42
+  pads off -> 0; flex2-a0 X1 and all 44 pads off -> 0; flex3-a0 92 pads and
+  90 windows 0.05 mm inside the body -> 0. X1 at -0.575 (datum top) and 0.24
+  (bottom); the log names X1 and Cadence_Demo's P2 and P3 (0.203 mm below
+  their stiffener zones' tops).
+- Cost: Cadence_Demo's build makes 16 247 surface queries, 2.03 s of a 52.8 s
+  build; flex-b2 2532 queries 1.61 s of 4.6 s, flex2-a0 0.93 s, flex3-a0 0.34 s
+  (`surface_cost.py`). Whole builds of Cadence_Demo with HEAD and this tree,
+  two passes each: pads off 46.1/37.8 against 39.7/40.5 s, pads on 49.6/53.1
+  against 52.0/59.1 s - a spread of several seconds between passes.
+
+### Verified
+
+- Here: `test_mutations` ALL PASS (308 rows, every pattern once),
+  `audit_docs` no findings, `python_names` no undefined names.
+- Session 0 of the 4090: `test_surface` FAILURES none (27 checks),
+  `test_pads`, `test_zones`, `test_layers`, `test_mech` ALL PASS; `run_all`
+  31/33 in 79 s - only `test_gui` and `test_geom`, which need the owner's
+  session, fail there; the 104 rows on core.py, models.py, pads.py,
+  surface.py and README plus every row naming `test_surface` caught 104 of
+  104 - `pads-drill-ring-inner` only after the fixture got a through pin on
+  the window's edge (the ring round the first one found one level, so inside
+  and outside agreed), `surface-never-made` by a named check after the suite
+  learned to stop on a missing surface instead of crashing on it - and the 90
+  old ones by the same check as before (`readme-count-23` the same check, its
+  message saying 29 suites).
+- Not done: the folded flex3-a0's drawn openings in BEND_3 (0.006934 against
+  0.003) - the review's separate bend finding; a part whose origin lies over a
+  mounting hole drawn into a stiffener would stand in the hole (a part is asked
+  at its origin only; no board here has one); the GUI suites were not run in
+  the owner's session (no GUI file changed).
 
 ## Update 2026-10-25 (round 102) — the folded board is checked as built and read back from STEP (R5-1, the owner's choice)
 

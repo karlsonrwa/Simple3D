@@ -490,9 +490,11 @@ solid if you mean to do boolean work on the ink.
 Off by default; tick **Exposed copper (as surfaces)** for a model that reads as a
 board with its pads rather than as a green slab. The copper of every pin's pad
 is drawn on the two outer faces as a surface in the copper colour of
-`layerColors`, two `silkscreenFlatHeight`s above the mask — the way a flat
-legend sits on it, one step higher (the *Mask openings* take the first step,
-so where a window overlaps a neighbouring pad's copper the copper is on top).
+`layerColors`, two `silkscreenFlatHeight`s above the board's face under the pad
+— the mask, or what lies under a stiffener or a coverlay opened around the
+pad — the way a flat legend sits on it, one step higher (the *Mask openings*
+take the first step, so where a window overlaps a neighbouring pad's copper the
+copper is on top).
 That is the whole construction: **nothing is cut into the board.** A window per pad cut through the mask and a body per pad set into it
 would be a boolean over thousands of prisms — minutes of solver time on a dense
 board and a real chance of an empty result — for a picture that cannot tell a
@@ -651,9 +653,17 @@ outline — which is why *Body stitching* works there too.
 **Zones line up on the copper, not on their outer faces.** A 2.44 mm stiffener
 zone and a 0.365 mm flex zone share the same conductor core, and the stiffener
 grows outwards from it — mostly upwards. Aligning their top faces instead would
-tear the board apart at every zone boundary. **Components stand on their own
-zone**, so a part on a stiffener and one on the flex are two millimetres apart
-in Z.
+tear the board apart at every zone boundary. **Components stand on the board's
+surface under them**, so a part on a stiffener and one on the flex are two
+millimetres apart in Z, and one in a window of a stiffener stands on the flex
+inside the window. The surface is what the layers have at that point, not the
+zone's whole stack: a stiffener, an adhesive or a coverlay drawn as shapes
+counts only where its shapes put material. The log names a part that stands
+inside its zone's outer face that way. Pads, mask windows and drawn openings
+lie on the same surface: a drilled pin is asked round its drill, on its copper,
+so a layer holed to the drill does not drop the pad into the hole, and a drawn
+opening that lies over two levels at once stays on its zone's face, which the
+log counts.
 
 Thickness comes from Allegro's own per-stackup figure rather than being summed
 by layer name, because a flex stackup has no `SOLDERMASK` layer at all —
@@ -855,7 +865,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 28 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 294 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 29 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 308 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1354,9 +1364,11 @@ Allegro, где его набирают руками, а файл на диск�
 По умолчанию выключено; поставьте **Exposed copper (as surfaces)**, чтобы модель
 читалась как плата с площадками, а не как зелёная пластина. Медь площадки
 каждого вывода рисуется на двух наружных гранях поверхностью цвета меди из
-`layerColors`, на два `silkscreenFlatHeight` над маской — как плоская
-легенда, на ступеньку выше (первую ступеньку занимают *Mask openings*, и там,
-где окно ложится на медь соседней площадки, медь сверху). В этом вся
+`layerColors`, на два `silkscreenFlatHeight` над гранью платы под площадкой
+(над маской, а где вокруг площадки вскрыт стиффенер или покровный слой — над
+тем, что под ним) — как плоская легенда, на ступеньку выше (первую ступеньку
+занимают *Mask openings*, и там, где окно ложится на медь соседней площадки,
+медь сверху). В этом вся
 конструкция: **в плату ничего не вырезается.** Окно на каждую площадку сквозь маску и тело в нём — это булева
 операция над тысячами призм: минуты решателя на плотной плате и реальный шанс
 пустого результата ради картинки, которая не отличит площадку заподлицо от
@@ -1516,8 +1528,17 @@ Rigid-flex — это несколько **зон**, у каждой свой с
 **Зоны выравниваются по меди, а не по внешним граням.** Зона стиффенера 2.44 мм
 и зона флекса 0.365 мм имеют общее проводящее ядро, и стиффенер растёт от него
 наружу — в основном вверх. Выравнивание по верхним граням разорвало бы плату на
-каждой границе зон. **Компоненты стоят на своей зоне**, поэтому деталь на
-стиффенере и деталь на флексе разнесены по Z на два миллиметра.
+каждой границе зон. **Компоненты стоят на поверхности платы под ними**,
+поэтому деталь на стиффенере и деталь на флексе разнесены по Z на два
+миллиметра, а деталь в окне стиффенера стоит на флексе внутри окна.
+Поверхность — это то, что в этой точке есть у слоёв, а не весь стек зоны:
+стиффенер, клей или покровный слой, нарисованные фигурами, учитываются только
+там, где их фигуры дают материал. Деталь, которая из-за этого стоит ниже
+наружной грани своей зоны, лог называет. Площадки, окна маски и нарисованные
+вскрытия лежат на той же поверхности. Для пина со сверлом поверхность
+спрашивается вокруг сверла, на его меди, поэтому слой с дыркой по размеру
+сверла не роняет площадку в отверстие. Нарисованное вскрытие, лежащее сразу на
+двух уровнях, остаётся на грани своей зоны, и лог такие вскрытия считает.
 
 Толщина берётся из собственной цифры Allegro на стекап, а не суммируется по
 именам слоёв: у флекс-стекапа слоя `SOLDERMASK` нет вообще — на его месте
@@ -1722,7 +1743,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 28 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 294 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 29 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 308 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

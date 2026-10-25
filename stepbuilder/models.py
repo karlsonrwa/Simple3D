@@ -51,6 +51,7 @@ def component_transform(
     board_top_z: float,
     board_bottom_z: float,
     zone_levels: dict | None = None,
+    surface=None,
 ) -> gp_Trsf:
     """Build the full placement transform for one component.
 
@@ -93,6 +94,13 @@ def component_transform(
         if zone and zone in zone_levels:
             zone_top, zone_bottom = zone_levels[zone]
             z = zone_bottom if component["is_mirrored"] else zone_top
+    # And the zone's face is only its stack's envelope: a part in a window of
+    # a stiffener stands on what is under it, which is where *surface* puts
+    # it - X1 on flex2-a0 0.575 mm lower (round 103, finding R3-1).
+    if surface:
+        here = surface.at(float(component["x"]), float(component["y"]))
+        if here is not None:
+            z = here[1] if component["is_mirrored"] else here[0]
 
     position = gp_Trsf()
     position.SetTranslation(gp_Vec(component["x"], component["y"], z))

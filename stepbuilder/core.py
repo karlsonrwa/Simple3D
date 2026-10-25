@@ -179,6 +179,9 @@ class _Stack:
     board_top_z: float
     board_bottom_z: float
     extrude_z_offset: float
+    # The board's faces at a point, from the layers that have material there
+    # (surface.Surface, round 103); None on a board built as one prism.
+    surface: object = None
 
 
 def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
@@ -260,7 +263,15 @@ def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
         board_top_z, board_bottom_z = thickness, 0.0
         extrude_z_offset = thickness       # outline at z=+T, prism goes down to 0
 
-    return _Stack(thickness=thickness, zones=zones, stackups=stackups, levels=levels, shift=shift, board_top_z=board_top_z, board_bottom_z=board_bottom_z, extrude_z_offset=extrude_z_offset)
+    # From the same stackups the body is built from - after drop_soldermask
+    # and align_stackups - so a part, a pad and a window lie on the body.
+    surface = None
+    if zones and stackups:
+        from .surface import Surface
+
+        surface = Surface(zones, stackups, shift, log)
+
+    return _Stack(thickness=thickness, zones=zones, stackups=stackups, levels=levels, shift=shift, board_top_z=board_top_z, board_bottom_z=board_bottom_z, extrude_z_offset=extrude_z_offset, surface=surface)
 
 
 def _plan_fold(data: dict, stack: _Stack, options: BuildOptions, log: LogFn):
@@ -637,7 +648,7 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
         # viewer's draw order (two windows of neighbouring through pins
         # overlap each other's copper ring).
         fold=fold, lift=2.0 * abs(options.silk_flat_height),
-        opening_lift=abs(options.silk_flat_height), document=document,
+        opening_lift=abs(options.silk_flat_height), surface=stack.surface, document=document,
         group_for=group_for, rgb01=(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0),
         srgb=options.srgb_color, json_stem=json_stem,
         copper=options.exposed_copper, openings=options.mask_openings,
@@ -691,7 +702,7 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
         built_sides = build_exposed(
             data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
             board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
-            lift=3.0 * abs(options.silk_flat_height), section=section, log=log)
+            lift=3.0 * abs(options.silk_flat_height), section=section, surface=stack.surface, log=log)
         return {side: [piece] for side, piece in built_sides.items()}
 
     flat_parts: list[tuple[str, tuple, str, dict]] = []
@@ -796,6 +807,7 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
     models = ModelCache(index, doc, shape_tool, log)
 
     total = len(components)
+    lowered = []            # (ref_des, zone, bottom side, how far inside its zone's face), round 103
     for i, (ref_des, component) in enumerate(components.items(), start=1):
         phase(75 + 20.0 * i / max(total, 1), f"Placing components {i}/{total}")
 
@@ -822,7 +834,10 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
         #     result.missing_mfr_pn.append(ref_des)
 
         trsf = component_transform(mapping, component, board_top_z, board_bottom_z,
-                                   zone_levels=levels)
+                                   zone_levels=levels, surface=stack.surface)
+        below = _below_zone_face(component, levels, stack.surface)
+        if below:
+            lowered.append((ref_des, component.get("zone"), bool(component["is_mirrored"]), below))
 
         # A folded board carries its parts with it. The component is placed in
         # the FLAT frame first and then moved by whatever its panel does, which
@@ -850,9 +865,37 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
             shape_tool.AddComponent(parent, root, TopLoc_Location(trsf))
         result.components_placed += 1
 
+    # A part stands on the board's surface under it, and where that is not
+    # its zone's face - a window in a stiffener, an opening in a coverlay -
+    # the log says so: the zone's stack had put X1 on flex2-a0 0.575 mm in
+    # the air (round 103, finding R3-1).
+    for ref_des, zone, bottom, below in lowered[:LOWERED_SHOWN]:
+        where = "above the bottom" if bottom else "below the top"
+        log(f"  {ref_des} stands on the board's surface under it, {below:.3f} mm {where} of its zone "
+            f"{zone}: the zone's {'lower' if bottom else 'upper'} layers have no material there")
+    if len(lowered) > LOWERED_SHOWN:
+        log(f"  ... and {len(lowered) - LOWERED_SHOWN} more part(s) the same way")
+
     _report_embedded_only(data, result, log)
 
     return result
+
+
+# How many parts standing inside their zone's face the log names one by one.
+LOWERED_SHOWN = 12
+
+
+def _below_zone_face(component: dict, levels: dict | None, surface) -> float:
+    """How far inside its zone's outer face a part's own surface lies, or 0."""
+    zone = component.get("zone")
+    if not surface or not levels or zone not in levels:
+        return 0.0
+    here = surface.at(float(component["x"]), float(component["y"]))
+    if here is None:
+        return 0.0
+    top, bottom = levels[zone]
+    gap = (here[1] - bottom) if component["is_mirrored"] else (top - here[0])
+    return gap if gap > 1e-6 else 0.0
 
 
 def generate(

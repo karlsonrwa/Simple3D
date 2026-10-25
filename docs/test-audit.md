@@ -679,3 +679,26 @@ equivalent mutant.
   checks and three by the checks that replaced the one they were caught by.
   **When two oracles disagree, report both: the reader's view is the file the
   owner opens, the other is what the code made.**
+- **Round 103.** The review's R3-1 and R4-2, one root: every height came from
+  the zone's whole stack, so wherever a stiffener, an adhesive or a coverlay
+  is drawn with a window, a part or a pad inside it stood on material that is
+  not there - X1 on flex2-a0 0.575 mm in the air, flex-b2's pads up to 2.033
+  mm, flex3-a0's bottom pads 0.052 mm inside the body; the review's own oracle
+  reproduced its numbers exactly before the change. Now a Surface built from
+  the function the body is built from gives the faces at a point, and parts,
+  pads, windows and drawn openings lie on it. Two traps were found by
+  measuring the first version, not by the suite: a layer holed to a pin's
+  drill dropped flex3-a0's two top pads 0.525 mm into the body (a pin is asked
+  on a ring on its copper now), and one height per drawn opening by its
+  centroid cut four of flex3-a0's into the coverlay (over two levels a polygon
+  keeps its zone's face). The review's oracle - a minimum distance to the
+  body's boundary - said 0.002 for the buried pads too; a vertical ray through
+  the built body caught them. Now the two agree on the three flex boards, and
+  the ray finds every part, pad and window of all four boards where it should
+  be (Cadence_Demo: 357, 5466, 2080). A new suite, the 29th, with the built
+  body as its oracle; fourteen rows (308). Session 0 of the 4090: `run_all`
+  31/33 (the two suites that need a window), the 104 rows on the changed files
+  caught 104 of 104 - one, the ring round a drill taken from inside, only
+  after a pin on the window's edge was added - the 90 old ones by the same
+  checks as before. **An oracle that answers "near the body" passes a face
+  that is in it; ask it the question the finding asked.**

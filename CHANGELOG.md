@@ -11,6 +11,30 @@ to use the tool.
 
 ---
 
+- **2026-10-25** — **Parts and pads stand on the board under them, not on the
+  zone's whole stack.** A zone's height was the top of its thickest layer, so
+  wherever a stiffener, an adhesive or a coverlay is drawn with a window, the
+  parts and pads inside the window floated: a connector on flex2-a0 0.575 mm
+  above the board, the connector pads of flex-b2 up to 2 mm above it over the
+  stiffener's holes, and flex3-a0's bottom pads 0.05 mm below their coverlay's
+  openings. Now every part, pad, mask window and drawn opening takes the
+  board's surface at its own point - the layers that have material there - and
+  the log names a part that stands lower than its zone's top. A drawn opening
+  lying over two levels at once stays on its zone's face, and the log counts it.
+  Found by the independent review of 23.10.2026 (R3-1, R4-2). A new test suite
+  (29) and fourteen rows in the mutation table (308). /
+  **Детали и площадки стоят на плате под ними, а не на всём стеке зоны.**
+  Высотой зоны был верх её самого толстого слоя, поэтому там, где стиффенер,
+  клей или покровный слой нарисован с окном, детали и площадки в этом окне
+  висели в воздухе: разъём на flex2-a0 — на 0,575 мм над платой, площадки
+  разъёма на flex-b2 — до 2 мм над отверстиями стиффенера, а нижние площадки
+  flex3-a0 — на 0,05 мм ниже вскрытий покровного слоя. Теперь каждая деталь,
+  площадка, окно маски и нарисованное вскрытие берёт поверхность платы в своей
+  точке — то, что там есть у слоёв, — а деталь, стоящую ниже верха своей зоны,
+  лог называет. Вскрытие, лежащее сразу на двух уровнях, остаётся на грани
+  зоны, и лог его считает. Найдено независимой приёмкой 23.10.2026 (R3-1,
+  R4-2). Новый набор тестов (29) и четырнадцать строк в таблице мутаций (308).
+
 - **2026-10-25** — **A folded board is also checked the way a STEP reader will
   see it.** Besides the board as built, the export now writes the folded board
   to STEP in memory, reads it back with OpenCASCADE's own reader and checks it
