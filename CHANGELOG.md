@@ -11,6 +11,47 @@ to use the tool.
 
 ---
 
+- **2026-10-25** — **A bend area that reaches into a stiffener is named in the
+  log.** On some boards a bend area cannot keep clear of a stiffener's edge,
+  and the fold then bends that zone's layers together with the flex, which the
+  real board does not do. Such a bend is still built as drawn, but the log now
+  calls it crooked and says which zone it reaches into, how deep and over how
+  much area, and roughly how many of the bend's degrees that zone is carried
+  through. A zone drawn up to the edge of the bend area only touches it and is
+  not reported. The folded board also goes through OpenCASCADE's own check:
+  a body the check rejects is written all the same, and the log says what is
+  rejected and in which piece of the board. Found by the independent review of
+  23.10.2026 (R5-1). Thirteen rows added to the mutation table (289). /
+  **Область сгиба, заходящая на ребро жёсткости, теперь названа в логе.** На
+  некоторых платах область сгиба не удаётся отвести от края ребра жёсткости, и
+  сгиб гнёт слои этой зоны вместе с флексом, чего настоящая плата не делает.
+  Такой сгиб по-прежнему строится как нарисован, но лог называет его кривым и
+  пишет, в какую зону он заходит, насколько глубоко и на какой площади и
+  примерно на сколько градусов из угла сгиба поворачивается эта зона. Зона,
+  нарисованная вплотную к краю области сгиба, только касается её и в лог не
+  попадает. Сложенная плата проходит и собственную проверку OpenCASCADE: тело,
+  которое проверка бракует, всё равно записывается, а лог говорит, что
+  забраковано и в каком куске платы. Найдено независимой приёмкой 23.10.2026
+  (R5-1). В таблицу мутаций добавлено тринадцать строк (289).
+
+- **2026-10-25** — **A `%` in a name no longer breaks the export.** Every line
+  of the exported JSON went to Allegro's `fprintf` as its format, so a
+  per-cent sign in a model, zone, layer or variant name was read as a
+  conversion. Measured in Allegro 25.1: a variant named "BOM 100%" stopped its
+  file at the third line, and the whole-board file after it was never
+  written; "R_1%%" came out as "R_1%". Now every line is written as data, and
+  a new check of the SKILL code fails on any format that is not the author's
+  own text. Found by the independent review of 23.10.2026 (R1-1). Six rows
+  added to the mutation table (276). /
+  **Знак `%` в имени больше не ломает экспорт.** Каждая строка JSON уходила в
+  `fprintf` Allegro как формат, и знак процента в имени модели, зоны, слоя
+  или варианта читался как спецификация. Замерено в Allegro 25.1: вариант
+  «BOM 100%» обрывал свой файл на третьей строке, и файл всей платы после
+  него не записывался вовсе; «R_1%%» записывался как «R_1%». Теперь каждая
+  строка пишется как данные, а новая проверка кода SKILL падает на любом
+  формате, который не является текстом самого автора. Найдено независимой
+  приёмкой 23.10.2026 (R1-1). В таблицу мутаций добавлено шесть строк (276).
+
 - **2026-10-23** — **Closing the window no longer loses settings.** On close
   the window used to rewrite every setting in `simple3d_config.local.json`
   from the values it had read at start-up. A hand edit made while it was open,

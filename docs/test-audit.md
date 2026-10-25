@@ -639,3 +639,27 @@ equivalent mutant.
   checks. **A suite proves the code it reads; only the program proves the
   program - here the real export showed what the code review could only
   infer.**
+- **Round 101.** The review's R5-1: flex2-a0's BEND_6 built into a body
+  BRepCheck rejects while the log said "true cylindrical surfaces" - every
+  piece of it wraps, so "built in more than one way" never fired. The owner's
+  rule: such a bend is built as drawn, and the log calls it crooked. The plan
+  cuts each strip against every zone and names a zone of another stack inside
+  it - how deep, over how much area, from which side, through about how many
+  of the bend's degrees: flex2-a0 1.068 mm, flex-b2 0.162 mm, flex3-a0 0.076
+  mm, Cadence_Demo none; a zone that only touches the strip is not named. The
+  folded board goes through BRepCheck, and the log says what is rejected and
+  where. Its first version said "1 face(s)" of flex2-a0 and sent the reader to
+  the crooked bends: the count read faces' own statuses only - two of the
+  board's edges are rejected only inside their faces, as on a box with one
+  edge's curve moved, the suite's case of it - and the pointer had not been
+  measured. Now: "1 face, 1 wire and 2 edges rejected - in panel after
+  BEND_6", where the reviewer found it. The geometry did not move: HEAD's
+  build and this tree's give the same DATA section on all four boards - once
+  the booleans were non-destructive; in the default mode a point of flex3-a0
+  moved by 1e-12 mm. Thirteen rows (289). Session 0 of the 4090: `test_bend`
+  green, `run_all` 30/32 (the two suites that need a window), the 65 rows
+  caught 65 of 65, the 52 old ones by round 98's checks - and the first runner
+  of them was cut at about 8190 characters inside its list of ids and ran 47
+  of them without a word, so a runner ends with a marker line now. **A warning
+  is proved by where it points: the first one named a cause nobody had
+  measured.**

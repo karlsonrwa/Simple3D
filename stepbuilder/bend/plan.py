@@ -44,6 +44,9 @@ class FoldPlan:
     built: dict = field(default_factory=dict)
     # and how many pieces went each way, which is what says a bend is uneven
     tally: dict = field(default_factory=dict)
+    # zones of another stack inside a bend's strip - crooked bends, built as
+    # drawn and named in the summary (crooked.crooked_parts, round 101)
+    crooked: list = field(default_factory=list)
 
     def __bool__(self) -> bool:
         return bool(self.bends) and any(r.moved for r in self.regions)
@@ -133,8 +136,12 @@ class FoldPlan:
         Measured on a real board: a bend across a round stiffener built nine of
         its sixteen layer pieces and faceted the other seven, and Allegro's own
         3D canvas tears the same board in the same place.
+
+        And first, one line per crooked bend - a zone of another stack inside
+        its strip - whether or not it built evenly: since every piece wraps,
+        that same bend builds one way and said nothing (round 101).
         """
-        lines = []
+        lines = [f"  {part.line()}" for part in self.crooked]
         for bend in self.bends:
             ways = {how: count for (name, how), count in self.tally.items()
                     if name == bend.name}
@@ -856,10 +863,17 @@ def plan_from_json(data: dict, board_top_z: float, board_bottom_z: float,
         anchor = (float(from_design[0]), float(from_design[1]))
         log(f"Fold anchor {anchor[0]:.3f}, {anchor[1]:.3f} taken from the design")
 
-    return plan_fold(bends, outline, board_top_z, board_bottom_z,
+    plan = plan_fold(bends, outline, board_top_z, board_bottom_z,
                      stack_at=stack_at, slice_angle=slice_angle,
                      anchor=anchor, neutral_factor=neutral_factor,
                      outline_curves=(contours[0] if contours else None), log=log)
+    # A bend drawn across a zone of another stack is built as drawn and named
+    # (the owner's rule, 25.10.2026 - on some boards it cannot be otherwise).
+    if plan and zones and levels:
+        from .crooked import crooked_parts
+
+        plan.crooked = crooked_parts(plan.strips, zones, levels)
+    return plan
 
 
 def _anchor_signs(bends: list[Bend], outline: list[tuple[float, float]],

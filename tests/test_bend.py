@@ -1804,6 +1804,133 @@ check("and it weighs what it did flat",
       abs(volume(folded_loose) - volume(loose)) / volume(loose) < 1e-5,
       (volume(folded_loose), volume(loose)))
 
+# --------------------------------------------------------------------------- #
+print("\n[18] a bend drawn across a zone of another stack is built, and called crooked")
+# The owner's rule (25.10.2026, finding R5-1 of the 23.10 review): such a bend
+# is built as drawn - on some boards it cannot be done otherwise - and the log
+# says it is crooked, by how much and where. flex2-a0's BEND_6 has its round
+# stiffener zone on the last 1.07 mm of a 4.867 mm strip, and nothing said so:
+# every piece wraps, so "built in more than one way" never fires. The board of
+# [9]: a stiffener zone to x = 20, the flex beyond it.
+from stepbuilder.bend.crooked import rejected
+from OCP.BRep import BRep_Tool
+from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy, BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakePolygon
+from OCP.TopExp import TopExp
+from OCP.TopTools import TopTools_IndexedMapOfShape
+
+
+def bend_at(x):
+    return {"pcb": {"edges": [rect(0, 0, 40, 10)]},
+            "bends": [{"name": "B1", "line": {"start": [x, 0.0], "end": [x, 10.0]},
+                       "inner_radius": 1.0, "info": "INNER_ANGLE=90, INNER_SIDE=TOP"}]}
+
+
+on_flex = plan_from_json(bend_at(30.0), board_top_z=0.0, board_bottom_z=-2.44, zones=zones, levels=levels)
+check("a bend wholly on the flex is not crooked", on_flex.crooked == [], on_flex.crooked)
+check("and its summary says nothing", on_flex.summary() == [], on_flex.summary())
+
+across = plan_from_json(bend_at(20.5), board_top_z=0.0, board_bottom_z=-2.44, zones=zones, levels=levels)
+strip18 = across.strips[0]
+width18 = strip18.hi - strip18.lo
+check("one reaching 0.5 mm short of the stiffener's edge is still built", len(across.bends) == 1
+      and len(across.strips) == 1, (across.bends, across.strips))
+part = across.crooked[0] if across.crooked else None
+check("and it is crooked: the stiffener zone, entering from the side the bend starts on",
+      part is not None and part.zone == "STIFF" and part.edge == "start", across.crooked)
+if part is not None:
+    depth18 = width18 / 2 - 0.5            # the strip is centred on x = 20.5, the stiffener ends at 20
+    check("by exactly how far it reaches in", near(part.depth, depth18, 1e-6), (part.depth, depth18))
+    check("over the area it covers there", near(part.area, 10.0 * depth18, 1e-6), (part.area, 10.0 * depth18))
+    check("its stack and the strip's own are named apart",
+          near(part.thickness, 2.44, 1e-9) and near(part.own, 0.365, 1e-9), (part.thickness, part.own))
+    check("and the part of the angle it is bent through",
+          near(part.share, 90.0 * depth18 / width18, 1e-9), (part.share, 90.0 * depth18 / width18))
+said = across.summary()
+check("the summary names the bend as crooked, says by how much, and that it was built as drawn",
+      len(said) == 1 and "B1: a crooked bend" in said[0] and "zone STIFF" in said[0]
+      and f"{depth18:.3f} mm" in said[0] and "Built as drawn" in said[0], said)
+
+# The bend area drawn up to the stiffener's edge - as boards mostly have it -
+# only touches the zone: a line in common, no material, so not crooked.
+touching = plan_from_json(bend_at(20.0 + width18 / 2), board_top_z=0.0, board_bottom_z=-2.44,
+                          zones=zones, levels=levels)
+check("a bend area drawn to the stiffener's edge only touches it: not crooked",
+      touching.crooked == [] and len(touching.strips) == 1 and near(touching.strips[0].lo, 20.0, 1e-9),
+      (touching.crooked, [(s.lo, s.hi) for s in touching.strips]))
+
+# What no check saw was the FUSED board: every layer of flex2-a0 passes on its
+# own, the solid fused from them is rejected - a face, a wire and two edges.
+# rejected() is what core asks of the folded board now.
+bowtie = BRepBuilderAPI_MakePolygon()
+for x, y in ((0, 0), (1, 1), (1, 0), (0, 1)):
+    bowtie.Add(gp_Pnt(x, y, 0))
+bowtie.Close()
+bad_face = BRepBuilderAPI_MakeFace(bowtie.Wire(), True).Face()
+check("a face whose wire crosses itself is rejected", rejected(bad_face) != {}, rejected(bad_face))
+check("a box is not", rejected(BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()) == {})
+
+# Two of flex2-a0's edges are rejected only INSIDE the faces they bound, with
+# no status of their own. So is the edge of a box whose 3D curve is moved off
+# its faces, and its two vertices (measured: InvalidCurveOnSurface and
+# InvalidPointOnCurve, in context only); a count of own statuses misses all three.
+moved_box = BRepBuilderAPI_Copy(BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()).Shape()
+box_edges = TopTools_IndexedMapOfShape()
+TopExp.MapShapes_s(moved_box, _TAS.TopAbs_EDGE, box_edges)
+got = BRep_Tool.Curve_s(TopoDS.Edge_s(box_edges.FindKey(1)), 0.0, 0.0)
+(got[0] if isinstance(got, tuple) else got).Translate(gp_Vec(0.01, 0.01, 0.0))
+moved_parts = {name: len(parts) for name, parts in rejected(moved_box).items()}
+check("an edge rejected only in its faces is counted, and so are its vertices - and the two "
+      "faces, by statuses of their own (UnorientableShape)",
+      moved_parts == {"face": 2, "edge": 1, "vertex": 2}, moved_parts)
+
+# A rejected shape is placed by the first of its points that unfolds into a
+# piece of the flat board: flex3-a0's rejected face is a sliver whose middle
+# and three of four vertices sit on a seam and unfold into none. Here a
+# triangle off the board but for one corner, on the board's corner at the
+# origin: its middle and every point inside it are off the board, the corner
+# is on the held piece.
+from stepbuilder.bend.crooked import where
+
+corner = BRepBuilderAPI_MakePolygon(gp_Pnt(0, 0, 0), gp_Pnt(-10, 0, 0), gp_Pnt(0, -10, 0), True)
+corner_face = BRepBuilderAPI_MakeFace(corner.Wire(), True).Face()
+check("a shape is placed by a point of it that unfolds - here only its corner does",
+      where(across, [corner_face]) == ["held"], where(across, [corner_face]))
+
+# And a whole build: the rigid-flex fixture with its bend moved to y = 11.6, so
+# the stiffener zone S2 lies on the first 0.316 mm of the strip. Its fused
+# board passes the check (measured in all three stitchings), so a rejection is
+# stood in for: the face standing highest - the tail's tip, on the panel the
+# bend carries - which the warning must then place on that panel.
+import stepbuilder.bend.crooked as crooked_module
+
+
+def highest_face(shape):
+    faces = TopTools_IndexedMapOfShape()
+    TopExp.MapShapes_s(shape, _TAS.TopAbs_FACE, faces)
+    return {"face": [max((faces.FindKey(i) for i in range(1, faces.Extent() + 1)),
+                         key=lambda face: bbox(face)[2])]}
+
+
+rf18 = json.loads((ROOT / "tests" / "fixtures" / "rigidflex.json").read_text(encoding="utf-8"))
+rf18["bends"][0]["line"] = {"start": [0.0, 11.6], "end": [41.0, 11.6]}
+rf18j = OUT / "rigidflex_crooked.json"
+rf18j.write_text(json.dumps(rf18))
+real_check = crooked_module.rejected
+crooked_module.rejected = highest_face
+try:
+    logs18 = []
+    core.generate(step_dir=ROOT / "demo/step_files", json_file=rf18j, output_dir=OUT,
+                  output_name="rf_crooked", minimize_size=False, log=logs18.append)
+finally:
+    crooked_module.rejected = real_check
+warned = [m for m in logs18 if m.startswith("warning:")]
+check("a build of it names the crooked bend", any("B1: a crooked bend" in m and "0.316 mm" in m
+                                                  for m in warned), warned)
+check("and says of a fused board the check rejects what it rejects and where",
+      any("fails OpenCASCADE's own check (BRepCheck): 1 face rejected - in panel after B1." in m
+          for m in warned), warned)
+check("and builds it all the same", (OUT / "rf_crooked.step").exists())
+
 print()
 print("FAILURES:", fails if fails else "none")
 sys.exit(1 if fails else 0)

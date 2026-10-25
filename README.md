@@ -701,6 +701,23 @@ and the occasional hole all live inside real bend areas. Only a shape neither
 construction fits is faceted, in 7.5° slices, and the log names the bend and the
 reason. The flat panels either side are never approximated.
 
+**A bend area that reaches into a stiffener is built as drawn, and called
+crooked.** On some boards the bend area cannot keep clear of a stiffener's edge,
+and the fold then curls that zone's layers onto the same cylinders as the flex —
+material the real board does not bend. The export builds it all the same, and
+the log says which bend is crooked, which zone it reaches into, how deep and over
+how much area, and roughly how many of the bend's degrees that zone is carried
+through. A zone drawn up to the edge of the bend area only touches it and is not
+reported. The folded board then goes through OpenCASCADE's own check
+(BRepCheck); a body the check rejects is written all the same, and the log says
+what is rejected and in which piece of the board, because some CAD programs
+refuse such a body or repair it their own way. The check is of the board as
+built, not of the file read back: a STEP reader's own processing may repair
+some of what it finds, or find more. On the test boards OpenCASCADE's own
+reader did both — one board's rejected sliver read back valid, while another
+board that passed as built in *Solid colored layers* read back with four faces
+rejected.
+
 A bend stretches the material outside the neutral surface and compresses what is
 inside, and the model says so: each layer's volume comes out multiplied by its
 own radius over the neutral one.
@@ -754,6 +771,9 @@ fit, clearance and a picture; not a substitute for a flex stress calculation.
 
 **Two bends that claim the same material are not both folded.** See *The K
 factor*.
+
+**A stiffener inside a bend area is bent with the flex.** The board is built as
+drawn and the log names the bend; see *Folding flex bends*.
 
 **Component B-rep comes from your library models.** File size beyond the board
 is dominated by them, and *Compact STEP* cannot shrink geometry that lives
@@ -833,7 +853,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 28 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 276 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 28 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 289 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1543,6 +1563,24 @@ Allegro есть та же идея (*Setup – Anchor 3D View*), но в 24.1 �
 которой не подошло ни одно построение, и лог называет сгиб и причину. Плоские
 панели по обе стороны не аппроксимируются никогда.
 
+**Если область сгиба заходит на ребро жёсткости, сгиб строится как нарисован, а
+лог называет его кривым.** На некоторых платах область сгиба не удаётся отвести
+от края ребра, и тогда сгиб заворачивает слои этой зоны на те же цилиндры, что и
+флекс, то есть гнёт материал, который на настоящей плате не гнётся. Экспорт
+всё равно строит такую плату, а в лог пишет, какой сгиб кривой, в какую зону он
+заходит, насколько глубоко и на какой площади и примерно на сколько градусов из
+угла сгиба поворачивается эта зона. Зона, нарисованная вплотную к краю области
+сгиба, только касается её, и о ней лог молчит. Сложенную плату экспорт
+пропускает через собственную проверку OpenCASCADE (BRepCheck). Тело, которое
+проверка бракует, всё равно записывается, а лог говорит, что забраковано и в
+каком куске платы: некоторые CAD-программы такое тело не принимают или чинят
+по-своему. Проверяется плата в том виде, в каком построена, а не файл,
+прочитанный обратно: читатель STEP своей обработкой может часть найденного
+исправить, а может найти больше. На тестовых платах собственный читатель
+OpenCASCADE делал и то и другое: забракованный клочок одной платы после
+чтения оказался в порядке, а другая плата, которая в сшивке *Solid colored
+layers* проверку прошла, после чтения забракована на четырёх гранях.
+
 Сгиб растягивает материал снаружи нейтральной поверхности и сжимает изнутри, и
 модель это показывает: объём каждого слоя выходит умноженным на отношение его
 радиуса к нейтральному.
@@ -1597,6 +1635,9 @@ Allegro построена при `k = 0`. На плате с запасом р�
 
 **Два сгиба, претендующих на один материал, вместе не складываются.** См.
 *K-фактор*.
+
+**Ребро жёсткости внутри области сгиба гнётся вместе с флексом.** Плата
+строится как нарисована, а лог называет такой сгиб; см. *Сгибание гибких плат*.
 
 **B-rep компонентов приходит из вашей библиотеки.** Размер файла сверх самой
 платы определяют именно эти модели, и *Compact STEP* не уменьшит геометрию,
@@ -1676,7 +1717,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 28 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 276 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 28 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 289 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

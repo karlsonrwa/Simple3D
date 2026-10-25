@@ -5,7 +5,19 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-25 (rounds 95-100, on `main`)
+## READ THIS FIRST — state as of 2026-10-25 (rounds 95-101, on `main`)
+
+**Round 101 (2026-10-25)**: the review's R5-1 - flex2-a0's BEND_6 built into a
+body BRepCheck rejects while the log said "true cylindrical surfaces". The
+owner ruled: built as drawn, with a warning («собирать с предупреждением, что
+есть кривой сгиб»). `stepbuilder/bend/crooked.py` names every zone of another
+stack inside a bend's strip (flex2-a0 BEND_6 1.068 mm, about 29 of 130 deg;
+flex-b2 BEND_2 0.162 mm; flex3-a0 BEND_3 0.076 mm; Cadence_Demo none) and
+checks the folded board as built, saying what BRepCheck rejects and in which
+piece (flex2-a0: 1 face, 1 wire and 2 edges, in the panel after BEND_6). The
+geometry did not move: all four boards' STEP DATA equal HEAD's. Rows 289. The
+check is of the board as built, not of the file read back; a read-back check
+would cost 1.5-4.6 s on Cadence_Demo and is the owner's call. Read round 101.
 
 **Round 100 (2026-10-25)**: the review's R1-1 - every line of the JSON body
 was the format of `fprintf`, so a `%` in a model, zone, layer or variant name
@@ -3171,6 +3183,120 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-25 (round 101) — a crooked bend is built as drawn and named; the folded board is checked (R5-1)
+
+The second of the review's open blocking findings, taken at the owner's word
+of round 100 («по одной... перед каждой правкой скажи, что собираешься
+менять»). R5-1: flex2-a0's BEND_6 builds into a body BRepCheck rejects, with
+nothing in the log but "true cylindrical surfaces", because every piece of it
+wraps and "built in more than one way" needs two ways. Shown pictures of the
+bend (`build/render/out/`), the owner ruled: «Вердикт: собирать с
+предупреждением, что есть кривой сгиб. В некоторых платах иначе не сделать
+сгибание.» That is the reviewer's second clearing route - a README rule agreed
+with the owner - not the first (a refusal).
+
+### What changed
+
+- `stepbuilder/bend/crooked.py` (new): `crooked_parts(strips, zones, levels)`
+  cuts each strip's piece to its band and against every zone's face (planar,
+  z = 0, like the plan's own); a zone of another stack than the one most of
+  the strip lies on is a `Crooked` - zone, its stack and the strip's, area,
+  depth from the side it enters, the strip's width and the bend's angle, and
+  `share` = angle x depth / width. A zone that only touches the strip (less
+  than `AREA_TOL` = 1e-3 mm2 in common) is not one. The booleans are
+  non-destructive: in the default mode the Common on the plan's strip face
+  moved a point of flex3-a0's folded board by 1e-12 mm (HEAD's STEP against
+  this tree's, below).
+- `plan.py`: `FoldPlan.crooked`, filled by `plan_from_json` when the board has
+  zones and levels; `summary()` names each crooked bend first, whether or not
+  it built evenly.
+- `core._build_board`: a folded board that is a body (solid and layers modes;
+  inspect has none) goes through `crooked.board_check`, which logs what
+  BRepCheck rejects - by kind, counting statuses of a sub-shape's own and those
+  it has in context (in the faces it bounds) - and in which pieces of the flat
+  board (`where`: the plan's `flat_frame` and `region_at`, each shape placed by
+  the first of its points that unfolds - the middle of a face's parameter box,
+  a 9 x 9 grid on the face, its vertices). Written all the same.
+- The first version of the check said "fails ... on 1 face(s) - the crooked
+  bend(s) named below are where to look": the count had only faces' own
+  statuses, and the pointer was not measured. Both replaced before the commit.
+- README (EN/RU): the rule in *Folding flex bends* and a line in *Known
+  limitations*. CHANGELOG: this round and round 100's `%` fix, which had no
+  entry.
+- Rows (276 -> 289): `bend-crooked-not-told`, `bend-crooked-not-worked-out`,
+  `bend-crooked-own-stack-reported`, `bend-crooked-own-by-least-area`,
+  `bend-crooked-edge-from-the-far-side`, `bend-crooked-touching-counts`,
+  `board-check-always-valid`, `board-check-not-asked`,
+  `board-check-context-blind`, `board-check-own-blind`,
+  `board-check-places-dropped`, `board-check-place-left-folded`,
+  `board-check-place-by-middle-only`.
+
+### Measured
+
+On the 4090, session 0 (`build/render/crooked_boards.py`,
+`board_check_diag.py`, `face_where_probe.py`; logs in
+`build/fix-2026-10-23/remote/boards101_*.txt`, `diag101_a.txt`,
+`where101_a.txt`, `check101_a.txt`, `run101_a.txt`):
+
+| board | crooked bend | the check of the folded body, as built | its STEP read back |
+|---|---|---|---|
+| Cadence_Demo | none | passes | passes |
+| flex-b2 | BEND_2: 0.162 mm into STIFFENER2 (2.58 mm2, about 3 of 28 deg) | passes | passes |
+| flex2-a0 | BEND_6: 1.068 mm into STIFF_TOP_500_2 (5.13 mm2, about 29 of 130 deg) | 1 face, 1 wire, 2 edges - in panel after BEND_6 | 5 faces, 5 wires |
+| flex3-a0 | BEND_3: 0.076 mm into STIFFENER2 (1.09 mm2, about 2 of 90 deg) | 1 face - a 0.0000 mm2 sliver at BEND_3's end | passes |
+
+- HEAD's code (a whole copy of HEAD as the cwd: `stepbuilder` is a namespace
+  package) built the same boards: with the committed code all four DATA
+  sections are identical to HEAD's, and HEAD against HEAD as well. On the way,
+  the first version (booleans in the default mode) moved one point of
+  flex3-a0 by 1e-12 mm, and two intermediate versions left Cadence_Demo's
+  DATA identical only up to entity #1908411 (once #1916414): past it 20 318
+  style entities grouped and ordered otherwise, with the same 2258 (styled
+  entity, colour) pairs (`step_entity_diff.py`, `step_style_diff.py`).
+- The check of the body as built and of its STEP read back disagree both
+  ways (table; in *Solid colored layers* flex2-a0 passes as built and reads
+  back with 4 faces rejected, flex3-a0 is rejected as built - "1 face rejected
+  - in BEND_3 slice 12/12" - and reads back valid). The reviewer's 5 faces were
+  read back; as built, two of flex2-a0's edges are rejected only in context,
+  which a count of own statuses misses (a box with one edge's curve moved
+  0.01 mm: the edge and both its vertices only in context, the two faces on
+  their own). README says the check is of the board as built.
+- Cost: Cadence_Demo builds in 36.0-45.0 s with HEAD and 37.4-44.8 s with this
+  tree over the runs of the day - no difference beyond the spread; the check
+  of its valid board takes 0.2 s.
+- The first session-0 runner of the rows was 3.7 KB, and ps_remote.py's
+  -EncodedCommand was cut at about 8190 characters inside its list of 65 ids:
+  no error, mutate.py ran the first 47 and said "caught 47 of 47". The other
+  18 - all 13 of this round among them - ran from a short runner that reads
+  the ids from a file.
+
+### Verified
+
+- Here: `test_mutations` ALL PASS (289 rows, every pattern once),
+  `audit_docs` no findings, `python_names` no undefined names; pyflakes clean
+  on the changed files (core's 48 re-exports as at HEAD).
+- Session 0 of the 4090 (the mirror equal to this tree in all 130 files but
+  the three documents edited after the run): `test_bend` FAILURES none, its
+  [18] 17 checks; `run_all` 30/32 in 79 s - only `test_gui` and `test_geom`,
+  which need the owner's session, fail there; the 65 rows of this round
+  (every row on plan.py, core.py and crooked.py, every row naming `test_bend`,
+  the two README rows) caught 65 of 65 - 47 from the first runner, which was
+  cut (above), 18 from the second - and the 52 old ones by the same check as
+  in both of round 98's whole-table runs (`readme-count-23` the same check,
+  its message saying 28 suites).
+- A check of the board read back, measured (`build/render/roundtrip_probe.py`,
+  `rt101_a.txt`): the board written alone and read back gives what the whole
+  file read back gives (flex2-a0 5 faces in *Solid*, 4 in *Solid colored
+  layers*; flex3-a0, flex-b2, Cadence_Demo pass), for 1.5 s on Cadence_Demo in
+  *Solid* (a 41.6 s build) and 4.6 s in *Solid colored layers* (50.6 s), under
+  2 s on the flex boards but 5.2 s where the read-back is rejected. Not built:
+  the round was announced as the crooked-bend warning, so this is the owner's
+  call.
+- Not done: no row for the non-destructive booleans - its effect (1e-12 mm on
+  flex3-a0) is below every tolerance in the suites, so only the STEP
+  comparison on the real boards shows it; the GUI suites were not run in the
+  owner's session (no GUI file changed).
 
 ## Update 2026-10-25 (round 100) — a format is the author's text, never the board's (R1-1)
 

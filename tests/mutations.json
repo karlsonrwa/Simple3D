@@ -2928,5 +2928,135 @@
    "tests/test_allegro_home.py"
   ],
   "why": "a HOME without the licence lines is taken, and Allegro starts only to say \"No licenses available\" and exit (round 100)"
+ },
+ {
+  "id": "bend-crooked-not-told",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        lines = [f\"  {part.line()}\" for part in self.crooked]\n",
+  "new": "        lines = []\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a crooked bend - a zone of another stack inside its strip - is worked out and never said: the summary is silent again, as it was over flex2-a0's BEND_6, whose round stiffener lies on the last 1.05 mm of the strip (finding R5-1 of the 23.10.2026 review, round 101)"
+ },
+ {
+  "id": "bend-crooked-not-worked-out",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        plan.crooked = crooked_parts(plan.strips, zones, levels)\n",
+  "new": "        plan.crooked = []\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "no plan looks for zones of another stack inside its strips, so no build can say a bend is crooked (round 101)"
+ },
+ {
+  "id": "bend-crooked-own-stack-reported",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "            if abs(thick[name] - own) <= EPS:\n                continue\n",
+  "new": "            if False:\n                continue\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the zone the strip lies on is reported too, so every bend of a multi-stack board is called crooked - the flex itself named as material that does not bend (round 101)"
+ },
+ {
+  "id": "bend-crooked-own-by-least-area",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "        own_name = max(parts, key=lambda part: part[1])[0]\n",
+  "new": "        own_name = min(parts, key=lambda part: part[1])[0]\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the strip's own stack is taken from the zone covering LEAST of it, so the stiffener passes for the bend's own material and the flex is named as the crooked part (round 101)"
+ },
+ {
+  "id": "bend-crooked-edge-from-the-far-side",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "                edge, depth = \"start\", high - strip.lo\n",
+  "new": "                edge, depth = \"end\", strip.hi - low\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a zone entering from the side the bend starts on is said to enter from the other side and is measured from there - the whole strip, not the 0.316 mm it reaches (round 101)"
+ },
+ {
+  "id": "bend-crooked-touching-counts",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "            if area >= AREA_TOL:\n",
+  "new": "            if area >= 0.0:\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a zone that only touches the strip - the bend area drawn to the zone's edge, as boards mostly have it - counts as reaching into it, and a bend with nothing crooked about it is called crooked (round 101)"
+ },
+ {
+  "id": "board-check-always-valid",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "    if analyzer.IsValid():\n        return {}\n",
+  "new": "    if True:\n        return {}\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the check of the fused board passes every body, so flex2-a0's rejected face, wire and two edges go unsaid again (round 101)"
+ },
+ {
+  "id": "board-check-not-asked",
+  "file": "stepbuilder/core.py",
+  "old": "            said = board_check(board, fold)\n",
+  "new": "            said = \"\"\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the folded, fused board goes into the STEP unchecked, the log saying 'true cylindrical surfaces' over a body OpenCASCADE's own check rejects (round 101)"
+ },
+ {
+  "id": "board-check-context-blind",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "    while result.MoreShapeInContext():\n",
+  "new": "    while False:\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a sub-shape rejected only inside the shapes it belongs to is not counted - two of flex2-a0's edges, and on a box with one edge's curve moved, the edge and both its vertices (round 101)"
+ },
+ {
+  "id": "board-check-own-blind",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "    if any(not _no_error(status) for status in result.Status()):\n        return True\n",
+  "new": "    if False:\n        return True\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a sub-shape's own statuses are not read, so a face rejected for itself - flex3-a0's BadOrientationOfSubshape, the moved box's two UnorientableShape faces - is not counted (round 101)"
+ },
+ {
+  "id": "board-check-places-dropped",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "    at = f\" - in {', '.join(places)}\" if places else \"\"\n",
+  "new": "    at = \"\"\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the warning says the board is rejected but not where, so the panel after BEND_6 has to be found by hand (round 101)"
+ },
+ {
+  "id": "board-check-place-left-folded",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "            flat = point.Transformed(back)\n",
+  "new": "            flat = point\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a rejected shape is placed by where it stands on the FOLDED board, read against the flat board's pieces: the tail's tip of the test board lands in a slice of the bend (round 101)"
+ },
+ {
+  "id": "board-check-place-by-middle-only",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "    exp = TopExp_Explorer(shape, TopAbs_VERTEX)\n    while exp.More():\n        yield ",
+  "new": "    exp = TopExp_Explorer(shape, TopAbs_VERTEX)\n    while False:\n        yield ",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a rejected shape is placed by its face's points only, so a sliver on a seam - flex3-a0's face at the end of BEND_3, whose middle unfolds into no piece - is not placed at all (round 101)"
  }
 ]
