@@ -620,3 +620,22 @@ equivalent mutant.
   round 98's table runs, and 40 stress runs on 8-16 copies with no FAIL and
   nothing unjudged. **A self-test proves its rule only when it shows its
   premise held.**
+- **Round 100.** The review's R1-1, the first of its four open blocking
+  findings, and the one easiest to check: every line of the JSON body was
+  the format of `fprintf`, so a `%` in a model, zone, layer or variant name
+  was read as a conversion. Measured in Allegro 25.1 headless before the fix:
+  a variant "BOM 100%" stopped its file at the third line ("illegal format
+  spec.", the export's exit still 0) and took the whole-board file with it;
+  "R_1%%" came out as "R_1%". After: both files whole, both names exact, the
+  whole-board file equal to the record but the `full_board` line the record
+  predates. The same in the variant check's error message (a path, the names
+  it lists). A sixth mechanical check makes the class visible: a format must
+  be the author's own text - red on exactly those two places, green after,
+  with a self-test of its own. The runner got a HOME of its own (the user's
+  is D:\Projects\OrCAD, closed to these tools) and an environment with
+  nothing leading there, and a suite for that rule. Six rows (276), two
+  re-aimed. Session 0 of the 4090: `run_all` 30/32 (the two suites that need
+  a window), the 47 rows caught 47 of 47, the 41 old ones by round 98's
+  checks. **A suite proves the code it reads; only the program proves the
+  program - here the real export showed what the code review could only
+  infer.**

@@ -417,9 +417,13 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 
         fprintf( outPort "{\n")
 
+        ; Each line is DATA - a model, zone, layer or variant name may carry a
+        ; per-cent sign - so it goes in as a %s argument, never as the format
+        ; (round 100, finding R1-1 of the 23.10.2026 review). Measured in
+        ; Allegro 25.1: a variant named "BOM 100%" stopped the file at its
+        ; third line ("illegal format spec."), "R_1%%" came out as "R_1%".
         foreach( line lines
-            fprintf( outPort strcat( "\t" line ) )
-            fprintf( outPort "\n" )
+            fprintf( outPort "\t%s\n" line )
         )
 
         ; Streamed straight to the port instead of being folded into the string

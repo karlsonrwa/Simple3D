@@ -142,8 +142,11 @@ procedure( s3dVariantFit( g_variantSymbolList t_path )
             return( t )
         )
 
+        ; The message carries the file's path and the names it lists, so it
+        ; is a %s argument, not the format: a per-cent sign in either would
+        ; be read as a conversion (round 100, as the JSON writer's R1-1).
         when( (nBoard > 0) && (onBoard == 0)
-            error( strcat(
+            error( "%s" strcat(
                 sprintf( nil "Simple 3D: %s does not describe this board.\n" t_path )
                 sprintf( nil "None of the %d component(s) it lists is placed here, and %d are.\n"
                          nKnown nBoard )

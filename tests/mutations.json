@@ -490,7 +490,7 @@
  {
   "id": "readme-count-23",
   "file": "README.md",
-  "old": "27 test suites",
+  "old": "28 test suites",
   "new": "23 test suites",
   "suites": [
    "tools/audit_docs.py"
@@ -500,8 +500,8 @@
  {
   "id": "readme-count-unstated",
   "file": "README.md",
-  "old": "27 test suites",
-  "new": "twenty-seven test suites",
+  "old": "28 test suites",
+  "new": "twenty-eight test suites",
   "suites": [
    "tools/audit_docs.py"
   ],
@@ -2868,5 +2868,65 @@
    "tests/test_gui.py"
   ],
   "why": "a put waits for the clipboard without running the window's messages, so a reader sitting on a promise of this process's (rdpclip.exe, after the app's Copy) and the put wait on each other until the put gives up: step2html's \"Ctrl+X cuts it\" failed so in 2 runs of 102 (23.10.2026, round 99)"
+ },
+ {
+  "id": "skill-body-line-as-format",
+  "file": "skill/s3d_export.il",
+  "old": "            fprintf( outPort \"\\t%s\\n\" line )\n",
+  "new": "            fprintf( outPort strcat( \"\\t\" line \"\\n\" ) )\n",
+  "suites": [
+   "tools/skill_checks.py"
+  ],
+  "why": "each JSON body line is the format of fprintf again: in Allegro 25.1 a variant named \"BOM 100%\" stopped the file at its third line (illegal format spec.), \"R_1%%\" came out as \"R_1%\" (finding R1-1 of the 23.10.2026 review, round 100)"
+ },
+ {
+  "id": "skill-variants-error-as-format",
+  "file": "skill/s3d_variants.il",
+  "old": "            error( \"%s\" strcat(\n",
+  "new": "            error( strcat(\n",
+  "suites": [
+   "tools/skill_checks.py"
+  ],
+  "why": "the 'Variants.lst does not describe this board' message - the file's path and the names it lists - is the format of error() again, so a per-cent sign in either is read as a conversion (round 100)"
+ },
+ {
+  "id": "skill-format-check-blind",
+  "file": "tools/skill_checks.py",
+  "old": "        if fmt is None or fmt in allowed or _constant_format(fmt):\n            continue\n",
+  "new": "        if True:\n            continue\n",
+  "suites": [
+   "tools/skill_checks.py"
+  ],
+  "why": "the format check passes everything, so data used as a format would slip through again; its self-test must say so before the check is used on anything real (round 100)"
+ },
+ {
+  "id": "allegro-runs-with-the-users-home",
+  "file": "tools/skill_export.py",
+  "old": "    env[\"HOME\"] = str(home)\n    return env\n",
+  "new": "    return env\n",
+  "suites": [
+   "tests/test_allegro_home.py"
+  ],
+  "why": "headless Allegro gets the user's HOME - here D:\\Projects\\OrCAD, closed to these tools - and loads his allegro.ilinit (the installed tools before this tree) and writes his pcbenv (round 100)"
+ },
+ {
+  "id": "allegro-path-keeps-the-closed-folder",
+  "file": "tools/skill_export.py",
+  "old": "            value = os.pathsep.join(p for p in value.split(os.pathsep) if not off_limits(p))\n",
+  "new": "            pass\n",
+  "suites": [
+   "tests/test_allegro_home.py"
+  ],
+  "why": "Allegro's PATH keeps the user's two entries in D:\\Projects\\OrCAD, along which Windows looks for DLLs (round 100)"
+ },
+ {
+  "id": "allegro-home-without-licences",
+  "file": "tools/skill_export.py",
+  "old": "    if not any(line.split(\"=\", 1)[0].strip() == \"base_license\" for line in lines):\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_allegro_home.py"
+  ],
+  "why": "a HOME without the licence lines is taken, and Allegro starts only to say \"No licenses available\" and exit (round 100)"
  }
 ]

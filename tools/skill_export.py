@@ -39,6 +39,19 @@ failed export explains itself.
 
 `-safe` is never passed: it drops the site configuration, which is where the
 licence server is named, and the run dies with "No licenses available".
+
+ALLEGRO RUNS WITH A HOME OF ITS OWN (round 100)
+
+With the user's HOME every `-nograph` session loads the user's
+pcbenv\\allegro.ilinit - the INSTALLED tools, Simple 3D among them, before
+this tree's code - and writes their pcbenv (allegro.mru, directory= in
+allegro.ini). And here the user's HOME is D:\\Projects\\OrCAD, which the
+owner has closed to me altogether (11.10.2026). So HOME is `--home`, by
+default build/allegro-home (gitignored): its pcbenv holds an allegro.ini with
+only the licence lines (base_license, option_licenses) and an env of
+`source $TELENV` plus the units a design without a board takes. Without the
+licence lines Allegro says "No licenses available" and exits, so the runner
+refuses before starting it; a HOME under D:\\Projects\\OrCAD is refused too.
 """
 
 from __future__ import annotations
@@ -64,6 +77,8 @@ ALLEGRO_CANDIDATES = (
     Path(r"D:\Cadence\SPB_24.1\tools\bin\allegro.exe"),
 )
 TIMEOUT = 900          # seconds per board; the 31 MB one takes well under that
+HOME = ROOT / "build" / "allegro-home"
+OFF_LIMITS = Path(r"D:\Projects\OrCAD")
 
 
 def slashes(p: Path | str) -> str:
@@ -82,7 +97,50 @@ def find_allegro(explicit: str | None) -> Path:
     sys.exit("allegro.exe not found; pass --allegro <path>")
 
 
-def export(brd: Path, out_dir: Path, allegro: Path, *, quiet: bool = False) -> list[Path]:
+def off_limits(path: str) -> bool:
+    """Whether `path` - a Windows or an MSYS spelling - is OFF_LIMITS or under
+    it. Judged on the string alone: Path.resolve() would open the folder to
+    find out, and even that is touching it (round 100)."""
+    norm = os.path.normcase(str(path).replace("/", "\\"))
+    if norm.startswith("\\") and len(norm) > 2 and norm[2:3] == "\\":    # \d\Projects -> d:\Projects
+        norm = norm[1] + ":" + norm[2:]
+    root = os.path.normcase(str(OFF_LIMITS))
+    return norm == root or norm.startswith(root + "\\")
+
+
+def allegro_home(explicit: str | None) -> Path:
+    """The HOME Allegro runs with: never the user's, never under OFF_LIMITS,
+    and one whose pcbenv\\allegro.ini names the licences."""
+    if explicit and off_limits(os.path.abspath(explicit)):
+        sys.exit(f"refused: {explicit} is under {OFF_LIMITS}, which this tool must not touch")
+    home = Path(os.path.abspath(explicit)) if explicit else HOME
+    ini = home / "pcbenv" / "allegro.ini"
+    lines = ini.read_text(encoding="utf-8", errors="replace").splitlines() if ini.is_file() else []
+    if not any(line.split("=", 1)[0].strip() == "base_license" for line in lines):
+        sys.exit(f"no licence lines in {ini}: give the runner a HOME of its own - a pcbenv with an "
+                 "allegro.ini holding base_license and option_licenses, and an env of "
+                 "source $TELENV and the units (see the docstring)")
+    return home
+
+
+def allegro_env(home: Path, environ=None) -> dict:
+    """The environment Allegro runs with - this process's (or *environ*) with
+    HOME its own and nothing that leads into OFF_LIMITS: here the user's
+    MAGICK_HOME and POTRACE_PATH do, and two entries of PATH (measured
+    25.10.2026), and Windows looks for DLLs along PATH."""
+    env = {}
+    for key, value in (os.environ if environ is None else environ).items():
+        if key.upper() == "PATH":
+            value = os.pathsep.join(p for p in value.split(os.pathsep) if not off_limits(p))
+        elif any(off_limits(p) for p in value.split(os.pathsep) if p):
+            continue
+        env[key] = value
+    env["HOME"] = str(home)
+    return env
+
+
+def export(brd: Path, out_dir: Path, allegro: Path, home: Path = HOME, *,
+           quiet: bool = False) -> list[Path]:
     """Export one board's intermediate(s) into out_dir; the JSON paths written.
 
     Returns [] when nothing was written; the console transcript is in
@@ -112,7 +170,7 @@ def export(brd: Path, out_dir: Path, allegro: Path, *, quiet: bool = False) -> l
             print(f"  {brd.name} ({brd.stat().st_size / 1e6:.1f} MB) ...", end="", flush=True)
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT,
-                               errors="replace")
+                               errors="replace", env=allegro_env(home))
             console = (r.stdout or "") + (r.stderr or "")
             rc: int | str = r.returncode
         except subprocess.TimeoutExpired as exc:
@@ -141,12 +199,12 @@ def boards() -> list[Path]:
     return found
 
 
-def record(allegro: Path) -> int:
+def record(allegro: Path, home: Path) -> int:
     if GOLDEN.exists():
         shutil.rmtree(GOLDEN)
     failed = []
     for brd in boards():
-        if not export(brd, GOLDEN / brd.stem, allegro):
+        if not export(brd, GOLDEN / brd.stem, allegro, home):
             failed.append(brd.name)
     n = len(list(GOLDEN.glob("*/*.json")))
     print(f"\nrecorded {n} intermediate(s) from {len(boards())} board(s) into {GOLDEN}")
@@ -155,7 +213,7 @@ def record(allegro: Path) -> int:
     return 1 if failed else 0
 
 
-def check(allegro: Path, keep: Path | None) -> int:
+def check(allegro: Path, keep: Path | None, home: Path) -> int:
     if not GOLDEN.exists():
         sys.exit(f"no record at {GOLDEN}; run --record first")
     work = keep or Path(tempfile.mkdtemp(prefix="s3dcheck_"))
@@ -167,7 +225,7 @@ def check(allegro: Path, keep: Path | None) -> int:
                 drift.append(f"{brd.name}: not in the record (recorded before it was added?)")
                 continue
             out = work / brd.stem
-            export(brd, out, allegro)
+            export(brd, out, allegro, home)
             expected = sorted(p.name for p in golden_dir.glob("*.json"))
             got = sorted(p.name for p in out.glob("*.json"))
             if expected != got:
@@ -202,13 +260,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--check", action="store_true", help="export again and compare to the record")
     ap.add_argument("--keep", default=None, help="with --check: keep the fresh exports in this folder")
     ap.add_argument("--allegro", default=None, help="path to allegro.exe")
+    ap.add_argument("--home", default=None,
+                    help="HOME for Allegro (default build/allegro-home; never the user's)")
     args = ap.parse_args(argv)
     allegro = find_allegro(args.allegro)
-    print(f"allegro: {allegro}")
+    home = allegro_home(args.home)
+    print(f"allegro: {allegro}  HOME={home}")
     if args.record:
-        return record(allegro)
+        return record(allegro, home)
     if args.check:
-        return check(allegro, Path(args.keep) if args.keep else None)
+        return check(allegro, Path(args.keep) if args.keep else None, home)
     if not args.boards:
         ap.print_help()
         return 2
@@ -219,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"no such board: {brd}")
             rc = 1
             continue
-        if not export(brd, Path(args.out) / brd.stem, allegro):
+        if not export(brd, Path(args.out) / brd.stem, allegro, home):
             rc = 1
     return rc
 

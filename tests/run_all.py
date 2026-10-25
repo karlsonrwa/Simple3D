@@ -28,6 +28,7 @@ TAIL_LINES = 12
 JOBS = [
     ("SKILL: parens, strings, calls, leaks",     TOOLS / "skill_checks.py", False),
     ("SKILL: call arity",                       TOOLS / "check_arity.py", False),
+    ("Allegro runner: a HOME of its own",       TESTS / "test_allegro_home.py", False),
     ("docs vs code",                            TOOLS / "audit_docs.py", False),
     ("Python: every name defined (pyflakes)",   TOOLS / "python_names.py", False),
     ("geometry regression (C++ baseline)",      TESTS / "test_regression_geometry.py", True),

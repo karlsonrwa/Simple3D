@@ -10,7 +10,7 @@ _OUT.mkdir(parents=True, exist_ok=True)
 if str(_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_ROOT))
 
-"""Five mechanical checks on the Simple3D SKILL sources (see round 14b notes):
+"""Six mechanical checks on the Simple3D SKILL sources (see round 14b notes):
   1. parenthesis balance (per file)
   2. string literals broken across a real newline
   3. calls to project-shaped procedures that are defined nowhere
@@ -19,6 +19,9 @@ if str(_ROOT) not in _sys.path:
   5. an assignment inside a procedure to a name it never declared (round
      75, plan D1): SKILL is dynamically scoped, so such a name lands in
      the nearest caller that has it, or becomes a session global
+  6. a format string that is not the author's own text (round 100): data
+     used as the format of printf, fprintf, sprintf, error and the like
+     turns a % in a name into a conversion
 
 Strings and ; comments are stripped before paren/call analysis so that parens or
 names inside them do not count.
@@ -186,6 +189,80 @@ def check_undeclared(nostr):
     return problems
 
 
+# Check 6 (round 100): a format is the author's text, never the board's.
+# printf, fprintf, sprintf, lsprintf, info, warn and error read their format
+# for % conversions, and so do axlUIWPrint and axlMsgPut; text built from the
+# board's data - a model, zone, layer or variant name, a path - used as the
+# format turns a % in it into a conversion. Measured in Allegro 25.1 on
+# 25.10.2026 (finding R1-1 of the 23.10 review): a variant named "BOM 100%"
+# stopped the JSON writer at its third line ("*Error* fprintf/sprintf:
+# illegal format spec."), and "R_1%%" came out as "R_1%". Data goes in as a
+# %s argument. A constant format - a literal, a strcat of literals, an if
+# whose branches are - is the author's own and passes.
+FORMAT_ARG = {"printf": 0, "lsprintf": 0, "info": 0, "warn": 0, "error": 0, "axlMsgPut": 0,
+              "fprintf": 1, "sprintf": 1}
+# A procedure that takes a format as a parameter by contract: inside it that
+# parameter may be the format, and its callers must pass a constant there
+# (the argument's index counts from 0).
+FORMAT_PARAMS = {"s3dSelectVisibleOn": ("t_missingFmt", 2)}
+_STRING = re.compile(r'"(\\.|[^"\\])*"')
+# The paren follows the name directly: `info ( n 0 )` in a let list is a
+# variable and a binding, not a call.
+_FORMAT_CALL = re.compile(r"(?<![\w>-])(" + "|".join([*FORMAT_ARG, "axlUIWPrint", *FORMAT_PARAMS])
+                          + r")\(")
+
+
+def _constant_format(arg):
+    """Whether *arg* (literals masked as '"<n>"') can only ever be the author's text."""
+    from check_arity import split_top_level  # noqa: E402 - the argument splitter lives there
+
+    arg = arg.strip()
+    if arg.startswith('"'):
+        return True
+    m = re.fullmatch(r"(strcat|if)\((.*)\)", arg, re.S)
+    if not m:
+        return False
+    parts = split_top_level(m.group(2))
+    if m.group(1) == "strcat":
+        return bool(parts) and all(_constant_format(p) for p in parts)
+    if "then" not in parts:                       # if( cond then a else b ): the branches make it
+        return False
+    branches = [p for p in parts[parts.index("then") + 1:] if p != "else"]
+    return bool(branches) and all(_constant_format(p) for p in branches)
+
+
+def check_formats(code):
+    """[(line, call)] for every format that is not constant, in *code* - the
+    source with comments removed and strings still in it."""
+    from check_arity import split_top_level  # noqa: E402
+
+    lits = []
+
+    def mask(m):
+        lits.append(m.group(0))
+        return f'"{len(lits) - 1}"'
+    masked = _STRING.sub(mask, code)
+    allowed = {param for param, _ in FORMAT_PARAMS.values()}
+    problems = []
+    for m in _FORMAT_CALL.finditer(masked):
+        name = m.group(1)
+        open_paren = m.end() - 1
+        args = split_top_level(masked[open_paren + 1:balanced_end(masked, open_paren) - 1])
+        if name in FORMAT_ARG:
+            fmt = args[FORMAT_ARG[name]] if len(args) > FORMAT_ARG[name] else None
+        elif name in FORMAT_PARAMS:
+            index = FORMAT_PARAMS[name][1]
+            fmt = args[index] if len(args) > index else None
+        else:                                     # axlUIWPrint( form [level] format args )
+            rest = args[1:]
+            fmt = rest[0] if rest and _constant_format(rest[0]) else (rest[1] if len(rest) > 1 else None)
+        if fmt is None or fmt in allowed or _constant_format(fmt):
+            continue
+        shown = re.sub(r'"(\d+)"', lambda k: lits[int(k.group(1))], fmt)
+        problems.append((masked.count("\n", 0, m.start()) + 1, f"{name}( ... {' '.join(shown.split())[:80]} ... )"))
+    return problems
+
+
 def analyze(path):
     text = Path(path).read_text(encoding="utf-8", errors="replace")
     # code with comments and strings removed, for parens + calls
@@ -202,9 +279,10 @@ def analyze(path):
     calls = set(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(", nostr))
     progs = check_prog_locals(text, nostr)
     undeclared = check_undeclared(nostr)
-    return text, bal, broken, defs, calls, progs, undeclared
+    formats = check_formats(nocomment)
+    return text, bal, broken, defs, calls, progs, undeclared, formats
 
-def report(path, bal, broken, calls, known, progs=(), undeclared=()):
+def report(path, bal, broken, calls, known, progs=(), undeclared=(), formats=()):
     """Print one file's findings; True if it is clean."""
     ok = True
     print(f"=== {Path(path).name} ===")
@@ -248,6 +326,14 @@ def report(path, bal, broken, calls, known, progs=(), undeclared=()):
             print(f"    {proc}: {', '.join(items)}")
     else:
         print("  undeclared assignments: none")
+
+    if formats:
+        ok = False
+        print("  formats that are not the author's own text (a % in the data becomes a conversion):")
+        for n, call in formats:
+            print(f"    line {n}: {call}")
+    else:
+        print("  formats: all constant")
     return ok
 
 
@@ -286,6 +372,28 @@ def self_test():
     wrong = check_undeclared(strip_strings(clean))
     if wrong:
         problems.append(f"the undeclared check fires on declared names: {wrong}")
+    # Check 6, the same way: the forms that carry the board's text into a
+    # format, and every constant form it must let pass.
+    fmt_bad = ('fprintf( port strcat( "\\t" line ) )\n'
+               'error( strcat( sprintf( nil "%s\\n" path ) "the rest" ) )\n'
+               's3dSelectVisibleOn( layers filter fmt )\n'
+               'printf( name )\n')
+    found = [call.split("(")[0] for _, call in check_formats(fmt_bad)]
+    if found != ["fprintf", "error", "s3dSelectVisibleOn", "printf"]:
+        problems.append(f"the format check sees {found}, not fprintf, error, s3dSelectVisibleOn and printf")
+    fmt_good = ('fprintf( port "\\t%s\\n" line )\n'
+                'printf( "a %d\\n" n )\n'
+                'axlUIWPrint( nil s_level "%s" msg )\n'
+                "axlUIWPrint( nil 'warn \"%s\" msg )\n"
+                'axlUIWPrint( nil "%s" msg )\n'
+                'sprintf( nil t_missingFmt layer )\n'
+                's3dSelectVisibleOn( layers filter "no layer %s" )\n'
+                'fprintf( port if( more then "\\t},\\n" else "\\t}\\n" ) )\n'
+                'error( strcat( "one, " "two\\n" ) )\n'
+                'let( ( info ( n 0 ) ) n )\n')
+    wrong = check_formats(fmt_good)
+    if wrong:
+        problems.append(f"the format check fires on constant formats: {wrong}")
     if problems:
         print("SELF-TEST FAILED:")
         for p in problems:
@@ -298,16 +406,16 @@ def main():
     all_defs = set()
     per_file = {}
     for f in FILES:
-        text, bal, broken, defs, calls, progs, undeclared = analyze(f)
-        per_file[f] = (bal, broken, calls, progs, undeclared)
+        text, bal, broken, defs, calls, progs, undeclared, formats = analyze(f)
+        per_file[f] = (bal, broken, calls, progs, undeclared, formats)
         all_defs |= defs
 
     ok = True
-    for f, (bal, broken, calls, progs, undeclared) in per_file.items():
-        ok = report(f, bal, broken, calls, all_defs, progs, undeclared) and ok
+    for f, (bal, broken, calls, progs, undeclared, formats) in per_file.items():
+        ok = report(f, bal, broken, calls, all_defs, progs, undeclared, formats) and ok
 
     for f in PROBES:
-        text, bal, broken, defs, calls, progs, undeclared = analyze(f)
+        text, bal, broken, defs, calls, progs, undeclared, formats = analyze(f)
         # A probe is checked against its OWN definitions, so that a typo in it
         # cannot be satisfied by a procedure in the exporter. One kind of probe
         # legitimately calls into the shipped files - a diagnostic ABOUT the
@@ -327,7 +435,7 @@ def main():
                 if Path(f2).name in name or (
                         Path(f2).parent.name == "skill" and "makeVariant3dIntermediates.il" in name):
                     known |= analyze(f2)[3]
-        ok = report(f, bal, broken, calls, known, progs, undeclared) and ok
+        ok = report(f, bal, broken, calls, known, progs, undeclared, formats) and ok
 
     print()
     print("ALL CHECKS PASS" if ok else "CHECKS FAILED")

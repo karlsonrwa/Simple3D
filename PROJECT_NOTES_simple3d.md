@@ -5,7 +5,20 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-25 (rounds 95-99, on `main`)
+## READ THIS FIRST — state as of 2026-10-25 (rounds 95-100, on `main`)
+
+**Round 100 (2026-10-25)**: the review's R1-1 - every line of the JSON body
+was the format of `fprintf`, so a `%` in a model, zone, layer or variant name
+was a conversion. Measured in Allegro 25.1 headless: a variant "BOM 100%"
+stopped its file at the third line ("illegal format spec.", exit 0) and lost
+the whole-board file too; "R_1%%" came out "R_1%". Now the line is a `%s`
+argument (`skill/s3d_export.il`), and so is the variant check's error
+message (`s3d_variants.il`); after: both files whole, both names exact.
+`tools/skill_checks.py` has a sixth check - a format must be constant, the
+author's own text - red on exactly those two places first. `tools/skill_export.py`
+and `run_probe.py` run Allegro with a HOME of their own (`build/allegro-home`,
+the licence lines only) and an environment with nothing leading into
+D:\Projects\OrCAD (`tests/test_allegro_home.py`). Rows 276. Read round 100.
 
 **Round 99 (2026-10-25)**: what step2html's round 98 (its `67014ad`) found,
 brought here. The put runs the window's messages while it waits
@@ -3158,6 +3171,92 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-25 (round 100) — a format is the author's text, never the board's (R1-1)
+
+The owner, after round 99: «Да, берись за оставшиеся блокирующие находки
+ревью по одной, начиная с той, что проще проверить; перед каждой правкой
+скажи, что собираешься менять.» Of the four open blocking findings of the
+23.10 review - R3-1 (a part on its zone's stackup top, not on the material
+under it), R4-2 (exposed copper and mask windows the same), R5-1 (BEND_6
+built silently into an invalid body) and R1-1 (`%` in a name) - R1-1 is the
+one a test can settle at once, and the one the review could only infer from
+the code and Cadence's fprintf page. The plan was told before the change,
+and the owner allowed the real export in Allegro with a HOME of its own made
+from the licence lines of ESKD_TEXT's runner copy (24.09.2026, before the
+ban on D:\Projects\OrCAD).
+
+### What the export did, measured
+
+`build/fix-2026-10-25/pct/`: `input/variants_test-b0.brd` beside a
+Variants.lst with two variants, "BOM 100%" and "R_1%%", exported by
+`tools/skill_export.py` in Allegro 25.1 (`-nograph`, 26-39 s a run).
+
+- Before: the "BOM 100%" file stopped after `"format_version": 12,` (51
+  bytes) - `E- *Error* fprintf/sprintf: illegal format spec. -
+  "\t\"name\": \"variants_test-b0_bom 100%\","` - and the whole-board
+  file, written after the variants, never came; the export's exit was 0. The
+  "R_1%%" file was whole, its name `variants_test-b0_r_1%`.
+- After: both variant files whole and parsing, the names
+  `variants_test-b0_bom 100%` and `variants_test-b0_r_1%%`; the whole-board
+  file written too, and equal to `build/skill_golden` but for the line
+  `"full_board": true`, which a later round added and the record (14.09)
+  predates.
+- Allegro's own BOM report failed in both runs for both variants ("Cannot
+  find temporary data file 'var-bom 100%.srt'", SPMHSK-7), not seen in the
+  record's run; that is Allegro's tool, not this exporter, and not looked
+  into.
+
+### What changed
+
+- `skill/s3d_export.il`: the body lines `fprintf( outPort "\t%s\n" line )`.
+- `skill/s3d_variants.il`: the "does not describe this board" error -
+  built from the file's path and the refdes it lists - `error( "%s" strcat(
+  ... ) )`.
+- `tools/skill_checks.py`, check 6: the format of printf, fprintf, sprintf,
+  lsprintf, info, warn, error, axlUIWPrint and axlMsgPut must be constant - a
+  literal, a strcat of literals, an if whose branches are; the one procedure
+  that takes a format by contract (`s3dSelectVisibleOn`'s `t_missingFmt`)
+  passes inside, and its callers must pass a constant there. A self-test
+  with four bad forms and ten good ones (`info ( n 0 )` in a let list is no
+  call: the paren follows a call's name directly). Red first on exactly the
+  two places above (`build/fix-2026-10-25/skill_checks_before.log`), green
+  after; `tests/test_skill_pins.py` and `test_variant_path.py` pin the new
+  shape of the error.
+- `tools/skill_export.py` (and `run_probe.py`, which imports the rule): HOME
+  is `--home`, by default `build/allegro-home` (gitignored: an allegro.ini of
+  the two licence lines and an env of `source $TELENV` and the units); a HOME
+  in D:\Projects\OrCAD is refused by its spelling alone - `Path.resolve()`
+  would open the folder to find out, which my first check of it did, once,
+  on 25.10 - and one without the licence lines before Allegro starts; the
+  environment drops everything that leads there (here the user's
+  MAGICK_HOME, POTRACE_PATH and two PATH entries). `tests/test_allegro_home.py`
+  (17 checks, no Allegro) in `run_all`.
+- Rows (270 -> 276): `skill-body-line-as-format`,
+  `skill-variants-error-as-format`, `skill-format-check-blind` (the
+  self-test catches it), `allegro-runs-with-the-users-home`,
+  `allegro-path-keeps-the-closed-folder`, `allegro-home-without-licences`;
+  `readme-count-23` and `readme-count-unstated` re-aimed at 28 suites.
+
+### Verified
+
+- Here: `skill_checks` ALL CHECKS PASS (33 files, every format constant),
+  `check_arity`, `audit_docs` no findings, `test_mutations` ALL PASS,
+  `test_allegro_home` ALL PASS; pyflakes clean.
+- Session 0 of the 4090 (no window, no clipboard; the mirror equal to this
+  tree in all 128 tracked files and the new suite): `run_all` 30/32 in 76 s -
+  only `test_gui` and `test_geom`, which need the owner's session, fail
+  there; the 47 rows of this round (every row on the changed files, every
+  row `skill_checks` must catch, the new ones) caught 47 of 47 in 6 s on 8
+  copies, the 41 old ones by the same check as in both of round 98's
+  whole-table runs (`readme-count-23` the same check, its message now saying
+  28 suites). The one row of the set that names `test_gui`,
+  `skill-launcher-flag-renamed`, was left for the owner's session - its file
+  and `test_gui` did not change - and was caught in round 99's job 14.
+- Not done: the SKILL golden corpus (`build/skill_golden`, 14.09) predates
+  `full_board` and was not recorded again; a model file name with `%` was not
+  exported (no board here has one) - the variant name goes through the same
+  writer line.
 
 ## Update 2026-10-25 (round 99) — a put runs the window's messages while it waits
 

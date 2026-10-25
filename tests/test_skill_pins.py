@@ -336,7 +336,9 @@ check("the empty-list branch is tested before the foreign-file one",
 check("the empty list warns and goes on rather than raising",
       "s3dWarn(" in fit_body.split("when( nKnown == 0")[1].split("return( t )")[0]
       and "error(" not in fit_body.split("when( nKnown == 0")[1].split("return( t )")[0])
-check("the foreign file raises", "error( strcat(" in
+# Its message carries the file's path and the names it lists, so it is the
+# %s argument of error(), never the format (round 100, finding R1-1's kin).
+check("the foreign file raises, its message a %s argument", 'error( "%s" strcat(' in
       fit_body.split("when( (nBoard > 0) && (onBoard == 0)")[1][:400])
 check("the copy names an empty list rather than refusing it",
       T.variant_fit([], ["C1", "R1"]) == "installs nothing")

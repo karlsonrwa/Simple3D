@@ -102,7 +102,7 @@ check("...and goes on to the export with a warning, not an error",
       empty_branch and "s3dWarn(" in empty_branch.group(0) and "error(" not in empty_branch.group(0),
       empty_branch and empty_branch.group(0)[:80])
 check("the foreign file still stops the export rather than exporting something wrong",
-      re.search(r"onBoard == 0\)[\s\S]{0,40}?error\(\s*strcat\(", src))
+      re.search(r'onBoard == 0\)[\s\S]{0,40}?error\(\s*"%s"\s+strcat\(', src))
 check("a file with no variant shape at all stops it too",
       re.search(r"variantCount == 0[\s\S]{0,40}?error\(\s*strcat\(", src))
 

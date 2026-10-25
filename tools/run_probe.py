@@ -5,9 +5,11 @@
 
 The same recipe as tools/skill_export.py (round 75): the board is COPIED to a
 scratch folder and Allegro is pointed at the copy, the `-s` script path is
-absolute, `-safe` is never passed. The probe file is load()ed, PROC is
-called inside errset so a SKILL error still reaches `exit`, and the whole
-console goes to <out>/<board stem>.<proc>.txt - which is the result.
+absolute, `-safe` is never passed, and Allegro runs with a HOME of its own
+(skill_export.allegro_home, round 100 - never the user's). The probe file is
+load()ed, PROC is called inside errset so a SKILL error still reaches `exit`,
+and the whole console goes to <out>/<board stem>.<proc>.txt - which is the
+result.
 
 Scratch and output stay under the repository's build/ (gitignored), never
 the C: drive.
@@ -21,6 +23,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from skill_export import HOME, allegro_env, allegro_home  # noqa: E402 - the HOME rule lives there
 
 ROOT = Path(__file__).resolve().parent.parent
 ALLEGRO_CANDIDATES = (
@@ -47,7 +52,7 @@ def find_allegro(explicit: str | None) -> Path:
 
 
 def run(probe: Path, proc: str, brd: Path, out_dir: Path, allegro: Path,
-        preload: list[Path] = ()) -> Path:
+        preload: list[Path] = (), home: Path = HOME) -> Path:
     """*preload*: .il files load()ed before the probe - the exporter itself
     (makeVariant3dIntermediates.il) when the probe calls its procedures;
     a probe that does and is loaded alone fails at the call, and inside a
@@ -82,7 +87,7 @@ def run(probe: Path, proc: str, brd: Path, out_dir: Path, allegro: Path,
         with open(result, "w", encoding="utf-8", errors="replace") as console:
             try:
                 r = subprocess.run(cmd, stdout=console, stderr=subprocess.STDOUT,
-                                   timeout=TIMEOUT)
+                                   timeout=TIMEOUT, env=allegro_env(home))
                 rc: int | str = r.returncode
             except subprocess.TimeoutExpired:
                 rc = f"TIMED OUT after {TIMEOUT}s"
@@ -102,16 +107,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--with-exporter", action="store_true",
                     help="load makeVariant3dIntermediates.il first, for a probe that "
                          "calls the exporter's procedures (s3dSelectVisibleOn and the like)")
+    ap.add_argument("--home", default=None,
+                    help="HOME for Allegro (default build/allegro-home; never the user's)")
     args = ap.parse_args(argv)
     allegro = find_allegro(args.allegro)
-    print(f"allegro: {allegro}")
+    home = allegro_home(args.home)
+    print(f"allegro: {allegro}  HOME={home}")
     preload = [ROOT / "makeVariant3dIntermediates.il"] if args.with_exporter else []
     for b in args.boards:
         brd = Path(b)
         if not brd.exists():
             print(f"no such board: {brd}")
             return 1
-        run(Path(args.probe), args.proc, brd, Path(args.out), allegro, preload)
+        run(Path(args.probe), args.proc, brd, Path(args.out), allegro, preload, home)
     return 0
 
 
