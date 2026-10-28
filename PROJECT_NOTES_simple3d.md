@@ -5,7 +5,24 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-28 (rounds 95-106 on `main`; pushed by the owner up to `fc75a18` at 18:03; the review's second round done 20:45)
+## READ THIS FIRST — state as of 2026-10-28 (rounds 95-107 on `main`; pushed by the owner up to `fc75a18` at 18:03; the review's second round done 20:45)
+
+**Round 107 (2026-10-28, evening), on `main`, not pushed.** The owner
+answered the second round's three questions: R3-17, a part's height stays
+decided at its origin («это ответственность человека, который рисовал
+компонент и размещал его на плате»); R5-1, a crooked bend is built and named
+by his decision («Иногда бывает сложно построить полностью правильный сгиб в
+аллегро»); R1-1 left to me - Allegro's console of round 100's `%` run is now
+in `docs/records/` (the JSONs, his board, stay out of git). Both decisions
+are in README, both languages. Then, at «начинай исправление как
+предлагаешь», the window's settings: R6-3 (layerColors one colour at a time;
+a key changed in the file and in the window gets the window's value and a
+warning at the close), R6-1/R6-2 (every gui key read by `Key.read`: flags,
+choices, texts), R6-4 (old keys migrated per file), and in passing round 1's
+R6-8, R6-10, R6-17 and R6-18 and the new R6-7 and R6-8. Red first, rows 345; on the 4090 in
+session 0 all green but the GUI suites' known FAILs, the 45 rows caught 45 of
+45, the 9 test_gui-only rows 7 of 9 (two swatch rows need the owner's session).
+Read round 107.
 
 **28.10.2026 19:34-20:57: the second round of the independent review, on
 `c352377`, no code change.** At the owner's «Второй круг ревью», runs on the
@@ -3306,6 +3323,117 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-28 (round 107) — the window's settings: one colour at a time, a key changed twice is named, every key is read, old keys migrate per file (R6-1..R6-4 of the second review round); the owner's three decisions
+
+The owner's answers to the three questions the second round's report left
+him (28.10.2026, evening):
+
+1. R3-17: «Точка начала. Высота размещения компонента это ответственность
+   человека, который рисовал компонент и размещал его на плате. Он должен
+   видеть то, что делал.» A part's height stays decided at its origin point
+   (round 103's rule); README §Multi-stackup now says so as his decision, with
+   his reason, in both languages.
+2. R5-1: «Да. Иногда бывает сложно построить полностью правильный сгиб в
+   аллегро.» README §Folding flex bends: building a crooked bend rather than
+   refusing it is his decision (25.10, confirmed 28.10), with his reason.
+3. R1-1: «Реши сам как лучше. я не совсем понимаю вопрос.» My call:
+   `docs/records/allegro-percent-names-2026-10-25.md`, written by
+   `build/fix-2026-10-28/make_pct_record.py` from round 100's run
+   (`build/fix-2026-10-25/pct/`) - the Variants.lst, Allegro's console before
+   (round 99's exporter, `4fcce38`) and after (round 100, `954cf89`) verbatim
+   but for the repository's absolute path, written `<repo>`, and each JSON's
+   first lines, size, SHA-256 and whether it parses (before: the "BOM 100%"
+   file 51 bytes and not JSON, no whole-board file; after: all three parse).
+   The JSON files are the owner's board and stay out of git (`input/` is
+   ignored); they go into the next review package's `data\`. The comment at
+   the body loop of `skill/s3d_export.il` points at the record.
+4. «Далее начинай исправление как предлагаешь.» - this round.
+
+### What changed (`stepbuilder/settings.py`, `gui.py`)
+
+- **R6-3 («срывает»).** `save_gui_settings` writes a dict one entry at a
+  time: only the layer colours the window changed, into the dict the local
+  file holds at the close; `_without_shipped` drops a colour equal to the
+  shipped one, as for any key (round 1's R6-10 with it: an unchanged colour
+  is no longer written).
+- **R6-3, the same key.** A key the window changed whose value moved in the
+  files since the load - by hand, or by another window closed first; found by
+  reading the pair again at the close and comparing decoded values - gets the
+  window's value, and the function returns one sentence per such value
+  ("stepDirs: the file held [...], this window wrote [...]"); `_on_close`
+  shows them in one `messagebox.showwarning`, since the log closes with the
+  window. `Key.last_wins` keys (windowGeometry, windowState, jsonFile,
+  outputDir) are a record of the last window and are written over without
+  one. A local file that cannot be written gives nothing to say.
+- **R6-1, R6-2, and round 1's R6-8.** `Key.read` reads every key: its own
+  `load` if it has one; `choices` (zDatum, boardColor - the eight themes,
+  boardEdge, silkColor - White/Black) matched in any case and padding and
+  given back as the table spells them; a flag takes true/false, 0/1 and the
+  words true/false/yes/no/on/off in any case (what Tk's BooleanVar used to
+  take, so a file that worked keeps working); a text must be a string;
+  anything else is the default. `unreadable_keys` names every such key, and
+  a layer colour of a known kind that does not parse by its kind
+  ("layerColors.copper"); `_same_in_file` reads a flag word as its flag. The
+  window no longer gets "maybe" (TclError) or zDatum "Bottom" (KeyError).
+- **R6-4.** `_migrated` turns stepDir / debugLayers into stepDirs / boardMode
+  in each file before the merge (`_gui_section`), so a local file's old keys
+  win over the shipped `stepDirs: []` / `boardMode: "solid"`; the close
+  writes them under the new names. The two loaders lost their `section`
+  lookups.
+- In passing: round 1's R6-18 (`_comment` only when the local file is
+  created), R6-7 and round 1's R6-17 (README: "missing" said of the shipped
+  file only; the log names the file it read, and the local one when there is
+  one), R6-8 (the module docstring: importing settings loads neither OCP nor
+  Tk).
+- README (EN, RU) §Two files: the close's promise narrowed as above, what
+  counts as unreadable, the migration per file. ARCHITECTURE: settings.py 677
+  lines, 27 definitions; gui.py 1363.
+
+### Tests, red first
+
+- `test_settings` [9], 22 checks, and [5]'s check that asserted R6-4 itself
+  ("with the shipped base, an old local stepDir is simply dropped") rewritten;
+  `test_gui` [R], 13 checks through a real close (two windows' colours, a
+  colour edited by hand, the same key with the warning recorded, odd values,
+  a legacy local stepDir), `messagebox.showwarning` recorded for the section.
+- Red on the old code (session 0 of the 4090, 22:29; the mirror's code was
+  HEAD's): `test_settings` 16 FAIL, `test_gui` 6 new FAIL in [R] beside the 7
+  known of [7i] - among them `TclError('expected boolean value but got
+  "maybe"')` (`build/fix-2026-10-28/r107/red_a.txt`).
+- Rows 329 -> 345 (`r107/rows107.py`): 16 new; 5 re-aimed at the code that
+  replaced theirs (settings-save-keeps-every-default,
+  settings-board-mode-migration-gone, settings-step-dir-migration-gone,
+  settings-close-rewrites-unchanged-keys, settings-migrated-key-not-written,
+  the last now naming `test_settings` too).
+
+### Verified (the 4090, session 0; the mirror equal to this tree in all 134 files by SHA-256)
+
+- 22:39 (`green_a.txt`): `test_settings` ALL PASS, `test_config_merge` ALL
+  PASS, `test_gui` only the 7 known FAILs of [7i], `test_mutations` ALL PASS,
+  `audit_docs` no findings, `python_names` no undefined names.
+- 22:40 (`rows_a.txt`): the rows on settings.py, the rows of `test_settings`
+  and `test_config_merge`, and those on README, ARCHITECTURE and
+  s3d_export.il - **caught 45 of 45** in 10 s on 8 copies; the re-aimed ones
+  by the checks that caught them before ("debugLayers true -> inspect",
+  "stepDir becomes a one-entry stepDirs", "a value equal to the shipped
+  default is not written", "a hand edit made while the window was open
+  survives"; settings-migrated-key-not-written now by `test_settings` [9]).
+- 22:41 (`premut_a.txt`): the 9 rows on gui.py that only `test_gui` names, by
+  `build/scratch/premutate_s3d.py`: 7 of 9 caught.
+  `swatch-greyed-still-picks` and `swatch-reset-rewrites-greyed` (round 93,
+  code untouched) are caught only by [7i]'s generated clicks, which never
+  arrive in session 0 - for the owner's session.
+- 22:42 (`runall_a.txt`): `run_all` 32/34 in 88 s, only `test_gui` and
+  `test_geom`; `test_geom`'s 13 FAIL lines (`geom_a.txt`) equal, name and
+  value, to round 106's session-0 run (`run106_a.txt`).
+- 22:47-22:49 (`final_a.txt`), after a docstring edit and these notes: the
+  mirror equal to this tree in all 134 files again, `run_all` 32/34 in 82 s,
+  the same two.
+- Not run: the GUI suites in the owner's session ([7i], `test_geom`, the two
+  swatch rows) - nobody was logged on to the 4090 at 22:29, and such a job
+  holds his clipboard for its length. Nothing on the SKILL side changed but a
+  comment, so no Allegro run.
 
 ## Update 2026-10-28 (round 106, branch `fix/doubled-back-outlines`, merged as `9e8698a`) — an outline that runs back over itself is built without that stretch
 

@@ -422,6 +422,8 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
         ; (round 100, finding R1-1 of the 23.10.2026 review). Measured in
         ; Allegro 25.1: a variant named "BOM 100%" stopped the file at its
         ; third line ("illegal format spec."), "R_1%%" came out as "R_1%".
+        ; Allegro's console of that run, before and after:
+        ; docs/records/allegro-percent-names-2026-10-25.md.
         foreach( line lines
             fprintf( outPort "\t%s\n" line )
         )

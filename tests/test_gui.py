@@ -1191,6 +1191,14 @@ def local_gui(base):
     return json.loads(local_of(base).read_text(encoding="utf-8"))["gui"]
 
 
+# Since round 107 a close that wrote over a value changed in the file meanwhile
+# says so in a warning box. A real one is MODAL and would wait for a click
+# nobody gives (see [9b]), so every box of this section is recorded instead.
+warned = []
+_real_showwarning = gui_mod.messagebox.showwarning
+gui_mod.messagebox.showwarning = lambda *a, **k: warned.append((a, k))
+
+
 def settle(window, seconds=0.6):
     """Let the start-up log lines (scheduled 150 and 160 ms out) land."""
     end = time.monotonic() + seconds
@@ -1221,6 +1229,7 @@ g = local_gui(two)
 check("two windows: the one closed last keeps what the first one changed",
       g.get("boardColor") == "Blue" and g.get("foldBends") is False
       and g.get("silkColor") == "Black", str(g))
+check("and neither close warns: they changed different settings", warned == [], str(warned))
 
 typed = close_pair("r_typed", {"stepDirs": "D:/models/lib", "foldAnchor": "10,20"})
 win = StepBuilderApp(typed); win.withdraw()
@@ -1256,6 +1265,80 @@ win._on_close()
 check("a layer unticked here and then gone from the panel is still excluded",
       local_gui(off).get("silkscreenLayersOff")
       == ["MANUFACTURING/AUTOSILK_TOP", "SILK_A", "SILK_B"], str(local_gui(off)))
+
+# The review's second round (28.10.2026): R6-3 one colour at a time and a key
+# changed twice, R6-1 / R6-2 every key read, R6-4 old keys in the local file.
+# tests/test_settings.py [9] checks the same rules on the functions.
+twoc = close_pair("r_two_colors", {})
+first = StepBuilderApp(twoc); first.withdraw()
+last = StepBuilderApp(twoc); last.withdraw()
+first.layer_colors["copper"] = (1, 2, 3)
+first._on_close()
+last.layer_colors["stiffener"] = (4, 5, 6)
+last._on_close()
+lc = local_gui(twoc).get("layerColors", {})
+check("two windows: each keeps the layer colour it changed",
+      lc.get("copper") == "#010203" and lc.get("stiffener") == "#040506", str(lc))
+
+handc = close_pair("r_hand_color", {})
+win = StepBuilderApp(handc); win.withdraw()
+local_of(handc).write_text(json.dumps({"gui": {"layerColors": {"stiffener": "#010101"}}}),
+                           encoding="utf-8")
+win.layer_colors["copper"] = (1, 2, 3)
+win._on_close()
+lc = local_gui(handc).get("layerColors", {})
+check("a layer colour edited by hand while the window was open survives its close",
+      lc.get("stiffener") == "#010101" and lc.get("copper") == "#010203", str(lc))
+check("and that close does not warn either", warned == [], str(warned))
+
+same = close_pair("r_same_key", {"stepDirs": ["D:/lib/old"]})
+win = StepBuilderApp(same); win.withdraw()
+local_of(same).write_text(json.dumps({"gui": {"stepDirs": ["D:/lib/hand-edit"]}}),
+                          encoding="utf-8")
+win.set_step_dirs(["D:/lib/old", "D:/lib/added-in-window"])
+win._on_close()
+check("a key changed by hand and in the window: the window's value is written",
+      local_gui(same).get("stepDirs") == ["D:/lib/old", "D:/lib/added-in-window"],
+      str(local_gui(same)))
+check("and the close says so in one warning, naming the key and what the file held",
+      len(warned) == 1 and "stepDirs" in str(warned[0]) and "D:/lib/hand-edit" in str(warned[0]),
+      str(warned))
+warned.clear()
+
+odd = close_pair("r_odd", {"silkscreenTop": "maybe", "minimizeFileSize": "nope",
+                           "zDatum": "Bottom", "boardColor": 5, "silkColor": "Red"})
+try:
+    win, problem = StepBuilderApp(odd), ""
+except Exception as exc:      # the window did not open: what R6-1 found
+    win, problem = None, repr(exc)
+check("the window opens on a flag it cannot read, a datum in capitals and colours "
+      "it has no swatch for", win is not None, problem)
+if win is not None:
+    win.withdraw()
+    settle(win)
+    shown = win.log_view.get("1.0", "end")
+    check("the datum in capitals reads as its name", win.z_datum.get() == "bottom",
+          win.z_datum.get())
+    check("and the log names every value it could not use",
+          all(name in shown for name in ("silkscreenTop", "minimizeFileSize", "boardColor",
+                                         "silkColor")), shown[-500:])
+    win._on_close()
+    g = local_gui(odd)
+    check("which the close leaves in the file as they were",
+          g.get("silkscreenTop") == "maybe" and g.get("minimizeFileSize") == "nope"
+          and g.get("zDatum") == "Bottom" and g.get("boardColor") == 5
+          and g.get("silkColor") == "Red", str(g))
+
+legacy = close_pair("r_legacy", {"stepDir": "D:/models/lib"})
+win = StepBuilderApp(legacy); win.withdraw()
+check("an old stepDir in the local file fills the model folders",
+      win.step_dirs() == ["D:/models/lib"], str(win.step_dirs()))
+win._on_close()
+check("and the close keeps it, as stepDirs",
+      local_gui(legacy).get("stepDirs") == ["D:/models/lib"]
+      and "stepDir" not in local_gui(legacy), str(local_gui(legacy)))
+check("no other close of this section warned", warned == [], str(warned))
+gui_mod.messagebox.showwarning = _real_showwarning
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

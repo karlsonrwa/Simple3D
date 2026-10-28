@@ -1987,8 +1987,8 @@
  {
   "id": "settings-save-keeps-every-default",
   "file": "stepbuilder/settings.py",
-  "old": "        section = {name: value for name, value in section.items()\n                   if name.startswith(\"_comment\")\n                   or name not in base_gui or base_gui[name] != value}",
-  "new": "        section = dict(section)",
+  "old": "                value = _without_shipped(value, base_gui[name])\n                if value is _SHIPPED:\n                    continue\n",
+  "new": "                value = value\n",
   "suites": [
    "tests/test_settings.py",
    "tests/test_gui.py"
@@ -2054,8 +2054,8 @@
  {
   "id": "settings-board-mode-migration-gone",
   "file": "stepbuilder/settings.py",
-  "old": "    return \"inspect\" if section.get(\"debugLayers\") else \"solid\"",
-  "new": "    return \"solid\"",
+  "old": "        out[\"boardMode\"] = \"inspect\" if out[\"debugLayers\"] else \"solid\"",
+  "new": "        out[\"boardMode\"] = \"solid\"",
   "suites": [
    "tests/test_settings.py",
    "tests/test_gui.py"
@@ -2065,8 +2065,8 @@
  {
   "id": "settings-step-dir-migration-gone",
   "file": "stepbuilder/settings.py",
-  "old": "    single = str(section.get(\"stepDir\", \"\")).strip()\n    return [single] if single else []",
-  "new": "    return []",
+  "old": "        single = str(out[\"stepDir\"]).strip()\n        out[\"stepDirs\"] = [single] if single else []",
+  "new": "        out[\"stepDirs\"] = []",
   "suites": [
    "tests/test_settings.py",
    "tests/test_gui.py"
@@ -2679,8 +2679,8 @@
  {
   "id": "settings-close-rewrites-unchanged-keys",
   "file": "stepbuilder/settings.py",
-  "old": "        if loaded is not None and key.name not in migrated:\n",
-  "new": "        if False:\n",
+  "old": "        if loaded is None or key.name in migrated:\n",
+  "new": "        if True:\n",
   "suites": [
    "tests/test_settings.py",
    "tests/test_gui.py"
@@ -2690,9 +2690,10 @@
  {
   "id": "settings-migrated-key-not-written",
   "file": "stepbuilder/settings.py",
-  "old": "        if loaded is not None and key.name not in migrated:\n",
-  "new": "        if loaded is not None:\n",
+  "old": "        if loaded is None or key.name in migrated:\n",
+  "new": "        if loaded is None:\n",
   "suites": [
+   "tests/test_settings.py",
    "tests/test_gui.py"
   ],
   "why": "a key migrated from stepDir or debugLayers is left alone like any unchanged one, so the setting lives only in the old key the save drops (round 95)"
@@ -3458,5 +3459,173 @@
    "tests/test_doubled_back.py"
   ],
   "why": "the shapes drawn on the stackup layers keep their spikes (round 106)"
+ },
+ {
+  "id": "settings-colours-written-whole",
+  "file": "stepbuilder/settings.py",
+  "old": "            changed = [k for k in value if value[k] != before.get(k)]\n",
+  "new": "            changed = list(value)\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "every layer colour is written when one changed: of two windows the later one undoes the other's colour (review 28.10.2026, R6-3; round 107)"
+ },
+ {
+  "id": "settings-colours-file-dict-dropped",
+  "file": "stepbuilder/settings.py",
+  "old": "            merged = dict(current) if isinstance(current, dict) else {}\n",
+  "new": "            merged = {}\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the colours this window changed replace the file's whole colour dict: one edited by hand while the window was open is lost (review 28.10.2026, R6-3; round 107)"
+ },
+ {
+  "id": "settings-shipped-colour-pinned",
+  "file": "stepbuilder/settings.py",
+  "old": "        rest = {k: v for k, v in value.items() if shipped.get(k) != v}\n",
+  "new": "        rest = dict(value)\n",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "a layer colour set back to the shipped one stays pinned in the local file, so a better shipped colour never reaches it (review 28.10.2026, R6-3; round 107)"
+ },
+ {
+  "id": "settings-overwrite-silent",
+  "file": "stepbuilder/settings.py",
+  "old": "        if not key.last_wins and there not in (before, value):\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a hand edit of a key the window then changed too is written over without a word (review 28.10.2026, R6-3; round 107)"
+ },
+ {
+  "id": "settings-colour-overwrite-silent",
+  "file": "stepbuilder/settings.py",
+  "old": "                if there.get(k) not in (before.get(k), value[k]):\n",
+  "new": "                if False:\n",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "a layer colour another window changed is written over by this one without a word (review 28.10.2026, R6-3; round 107)"
+ },
+ {
+  "id": "settings-overwrite-names-last-wins",
+  "file": "stepbuilder/settings.py",
+  "old": "        if not key.last_wins and there not in (before, value):\n",
+  "new": "        if there not in (before, value):\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "two windows open at once warn on close about the window's place and the paths picked, which are only the last window's record (review 28.10.2026, R6-3; round 107)"
+ },
+ {
+  "id": "settings-overwrite-said-unwritten",
+  "file": "stepbuilder/settings.py",
+  "old": "        return []           # nothing was written over, so nothing to say\n",
+  "new": "        return replaced           # nothing was written over, so nothing to say\n",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "a local file that cannot be written: the close still says the window's values were written over the file's (review 28.10.2026, R6-3; round 107)"
+ },
+ {
+  "id": "settings-flag-unread",
+  "file": "stepbuilder/settings.py",
+  "old": "        if isinstance(self.default, bool):\n            return _load_flag(raw, self.default)\n",
+  "new": "        if False:\n            return _load_flag(raw, self.default)\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a flag goes to the window as the file has it: \"maybe\" stops the window opening (review 28.10.2026, R6-1; round 107)"
+ },
+ {
+  "id": "settings-choice-unread",
+  "file": "stepbuilder/settings.py",
+  "old": "        if self.choices:\n            return _load_choice(raw, self.choices, self.default)\n",
+  "new": "        if False:\n            return _load_choice(raw, self.choices, self.default)\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a board colour, an ink, a rim or a datum goes to the window as the file has it: \"Red\" ink builds in the default, \"Bottom\" stops the window opening (review 28.10.2026, R6-2; round 107)"
+ },
+ {
+  "id": "settings-flag-words-unread",
+  "file": "stepbuilder/settings.py",
+  "old": "        return _FLAG_WORDS.get(raw.strip().casefold(), default)\n",
+  "new": "        return default\n",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "a flag written by hand as \"no\" or \"yes\", which the window's Tk variable used to take, falls back to the default (review 28.10.2026, R6-1; round 107)"
+ },
+ {
+  "id": "settings-flag-word-unreadable",
+  "file": "stepbuilder/settings.py",
+  "old": "        return _load_flag(raw, None) is form\n",
+  "new": "        return raw == form\n",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "a flag written as \"no\" where the default is false is reported as unreadable although the window reads it (review 28.10.2026, R6-1; round 107)"
+ },
+ {
+  "id": "settings-unreadable-simple-keys-skipped",
+  "file": "stepbuilder/settings.py",
+  "old": "        if key.name not in section:\n            continue\n        raw = section[key.name]\n",
+  "new": "        if key.load is None or key.name not in section:\n            continue\n        raw = section[key.name]\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "a flag, a choice or a text the window cannot read falls back without a word in the log (review 28.10.2026, R6-2; round 107)"
+ },
+ {
+  "id": "settings-unreadable-colour-unnamed",
+  "file": "stepbuilder/settings.py",
+  "old": "                if (kind in fallback and key.read({kind: value}, section)[kind] == fallback[kind]\n",
+  "new": "                if (False and key.read({kind: value}, section)[kind] == fallback[kind]\n",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "a layer colour that does not parse falls back without a word in the log (review 28.10.2026, R6-2; round 107)"
+ },
+ {
+  "id": "settings-legacy-migrated-after-merge",
+  "file": "stepbuilder/settings.py",
+  "old": "    files = [{\"gui\": _migrated(doc[\"gui\"])} if \"gui\" in doc else {} for doc in (base, local)]\n    section = merge_config(*files).get(\"gui\")\n",
+  "new": "    files = [base, local]\n    section = _migrated(merge_config(*files).get(\"gui\"))\n",
+  "suites": [
+   "tests/test_settings.py",
+   "tests/test_gui.py"
+  ],
+  "why": "the old stepDir / debugLayers are migrated on the merged section, where the shipped file's stepDirs and boardMode come first: the local file's are never read (review 28.10.2026, R6-4; round 107)"
+ },
+ {
+  "id": "settings-comment-on-every-file",
+  "file": "stepbuilder/settings.py",
+  "old": "    if creating:\n        data.setdefault(\n",
+  "new": "    if True:\n        data.setdefault(\n",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "the explanatory _comment is added to a local file that exists without one (review 23.10.2026, R6-18; round 107)"
+ },
+ {
+  "id": "gui-close-overwrite-unsaid",
+  "file": "stepbuilder/gui.py",
+  "old": "        if replaced:\n            # The log closes with the window",
+  "new": "        if False:\n            # The log closes with the window",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the close writes over a setting changed in the file meanwhile and the window, whose log goes with it, says nothing (review 28.10.2026, R6-3; round 107)"
  }
 ]

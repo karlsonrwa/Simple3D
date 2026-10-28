@@ -224,17 +224,24 @@ the shipped default.
 
 **On close the window writes only what you changed in it.** Every other key
 stays as the local file holds it at that moment, so a hand edit made while the
-window is open survives, two windows open at once each keep what they changed,
-and a silkscreen layer you switched off stays off on a board that does not carry
-it. A value the window cannot read (a folder list written as a single string, an
-anchor as `"10,20"`) falls back to the default on screen, is named in the log as
-a warning, and is left in the file until you change that setting in the window.
+window is open survives, two windows open at once each keep what they changed —
+down to a single layer colour — and a silkscreen layer you switched off stays
+off on a board that does not carry it. A setting changed both in the file (by
+hand, or by another window closed first) and in the window while it was open
+gets the window's value, and the close says so in a warning that names the
+setting and what the file held; the window's position and the last paths picked
+are simply the last window's. A value the window cannot read (a flag that reads
+as neither true nor false, a colour or a choice it has no entry for, a folder
+list written as a single string, an anchor as `"10,20"`) falls back to the
+default on screen, is named in the log as a warning, and is left in the file
+until you change that setting in the window.
 
-**If either file cannot be read — missing, or edited into invalid JSON —
-nothing is written back for the rest of the session**, even if you repair it
-while the window is open. The fields on screen are defaults at that point, not
-your settings, and saving them would overwrite the file you just fixed. The log
-names both files on every start.
+**If the shipped file is missing, or either file has been edited into invalid
+JSON, nothing is written back for the rest of the session**, even if you repair
+it while the window is open. The fields on screen are defaults at that point,
+not your settings, and saving them would overwrite the file you just fixed. The
+log names the settings file it read on every start, and the local one too when
+there is one.
 
 The keys worth setting by hand — the rest mirror controls in the window:
 
@@ -279,8 +286,10 @@ The rest of `gui` mirrors the window and is written back when it closes —
 
 Two keys are read but never written, so a config from an older build keeps
 working: `stepDir` (one folder, superseded by `stepDirs`) and `debugLayers`
-(superseded by `boardMode`). Each is migrated on load and dropped on save; do
-not add them by hand.
+(superseded by `boardMode`). Each is migrated on load in the file that holds it
+— so one in the local file wins over the shipped file's new key, as any local
+key does — written back under its new name on close, and dropped; do not add
+them by hand.
 
 ## What gets exported
 
@@ -665,6 +674,13 @@ so a layer holed to the drill does not drop the pad into the hole, and a drawn
 opening that lies over two levels at once stays on its zone's face, which the
 log counts.
 
+**A part's height is decided at one point, its origin.** That is the owner's
+decision (28.10.2026): how high a part sits is the responsibility of whoever
+drew the part and placed it on the board, and the model must show what they did.
+So a part whose origin falls in a small opening — a coverlay window under pin
+1, say — sits in that opening with its whole body, and the log says how far it
+stands below its zone's outer face.
+
 Thickness comes from Allegro's own per-stackup figure rather than being summed
 by layer name, because a flex stackup has no `SOLDERMASK` layer at all —
 coverlay, adhesive and stiffener sit in its place — and a name-based sum would
@@ -736,7 +752,9 @@ material the real board does not bend. The export builds it all the same, and
 the log says which bend is crooked, which zone it reaches into, how deep and over
 how much area, and roughly how many of the bend's degrees that zone is carried
 through. A zone drawn up to the edge of the bend area only touches it and is not
-reported. The folded board is then put through OpenCASCADE's own check
+reported. Building such a bend rather than refusing it is the owner's decision
+(25.10.2026, confirmed 28.10.2026): a fully correct bend is sometimes hard to
+build in Allegro. The folded board is then put through OpenCASCADE's own check
 (BRepCheck) twice: as built, and written to STEP and read back by
 OpenCASCADE's own reader — what a program built on OpenCASCADE is handed when
 it opens the file. The two can disagree either way: on the test boards one
@@ -1115,17 +1133,24 @@ stitched*, которая ничего не сшивает, или более г
 **При закрытии окно пишет только то, что вы в нём изменили.** Остальные ключи
 остаются такими, какие лежат в локальном файле в этот момент: правка руками,
 сделанная при открытом окне, сохраняется, два окна, открытых одновременно,
-сохраняют каждое свои изменения, а выключенный слой шелкографии остаётся
-выключенным и на плате, где его нет. Значение, которое окно не может прочесть
-(список папок, записанный одной строкой, привязка `"10,20"`), на экране
-заменяется умолчанием, называется в логе предупреждением и остаётся в файле,
-пока вы не поменяете эту настройку в окне.
+сохраняют каждое свои изменения, вплоть до отдельного цвета слоя, а
+выключенный слой шелкографии остаётся выключенным и на плате, где его нет.
+Если одну настройку при открытом окне поменяли и в файле (руками или другим
+окном, закрытым раньше), и в окне, записывается значение окна, а при закрытии
+окно об этом предупреждает: называет настройку и то, что было в файле.
+Положение окна и последние выбранные пути просто берутся от последнего окна.
+Значение, которое окно не может прочесть (флаг, который не читается ни как
+true, ни как false, цвет или выбор, которого нет в списке, список папок,
+записанный одной строкой, привязка `"10,20"`), на экране заменяется
+умолчанием, называется в логе предупреждением и остаётся в файле, пока вы не
+поменяете эту настройку в окне.
 
-**Если не читается любой из двух — его нет или он отредактирован в невалидный
-JSON — ничего не записывается до конца сессии**, даже если вы почините его при
+**Если поставляемого файла нет или любой из двух отредактирован в невалидный
+JSON, ничего не записывается до конца сессии**, даже если вы почините его при
 открытом окне. Поля на экране в этот момент содержат значения по умолчанию, а не
 ваши настройки, и их запись затёрла бы только что исправленный файл. Лог при
-каждом старте называет оба файла.
+каждом старте называет прочитанный файл настроек, а если есть локальный, то и
+его.
 
 Ключи, которые имеет смысл править руками, — остальные повторяют элементы окна:
 
@@ -1169,8 +1194,10 @@ JSON — ничего не записывается до конца сессии
 
 Два ключа читаются, но не записываются, чтобы конфиг от старой сборки
 продолжал работать: `stepDir` (одна папка, заменён на `stepDirs`) и
-`debugLayers` (заменён на `boardMode`). Каждый переносится при чтении и
-выбрасывается при записи; руками их добавлять не нужно.
+`debugLayers` (заменён на `boardMode`). Каждый переносится при чтении в том
+файле, где лежит, поэтому старый ключ из локального файла побеждает новый ключ
+поставляемого, как любой локальный ключ. При закрытии он записывается под
+новым именем, а старый выбрасывается. Руками их добавлять не нужно.
 
 ## Что попадает в экспорт
 
@@ -1558,6 +1585,12 @@ Rigid-flex — это несколько **зон**, у каждой свой с
 сверла не роняет площадку в отверстие. Нарисованное вскрытие, лежащее сразу на
 двух уровнях, остаётся на грани своей зоны, и лог такие вскрытия считает.
 
+**Высоту детали решает одна точка, её начало.** Это решение владельца
+(28.10.2026): за то, на какой высоте стоит деталь, отвечает тот, кто рисовал
+компонент и ставил его на плату, и модель должна показать то, что он сделал. Поэтому деталь, у которой начало попало в маленькое окно (например, в
+окно покровного слоя под первым выводом), стоит в этом окне всем корпусом, а
+лог говорит, насколько она ниже наружной грани своей зоны.
+
 Толщина берётся из собственной цифры Allegro на стекап, а не суммируется по
 именам слоёв: у флекс-стекапа слоя `SOLDERMASK` нет вообще — на его месте
 покрытие, клей и стиффенер — и сумма по именам молча посчитала бы их нулём.
@@ -1629,7 +1662,9 @@ Allegro есть та же идея (*Setup – Anchor 3D View*), но в 24.1 �
 всё равно строит такую плату, а в лог пишет, какой сгиб кривой, в какую зону он
 заходит, насколько глубоко и на какой площади и примерно на сколько градусов из
 угла сгиба поворачивается эта зона. Зона, нарисованная вплотную к краю области
-сгиба, только касается её, и о ней лог молчит. Сложенную плату экспорт
+сгиба, только касается её, и о ней лог молчит. Строить такой сгиб, а не
+отказываться, решил владелец (25.10.2026, подтвердил 28.10.2026): в Allegro
+полностью правильный сгиб иногда построить трудно. Сложенную плату экспорт
 дважды пропускает через собственную проверку OpenCASCADE (BRepCheck): в том
 виде, в каком она построена, и записанной в STEP и прочитанной обратно
 читателем OpenCASCADE, то есть такой, какой её получит программа на

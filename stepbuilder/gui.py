@@ -1278,7 +1278,7 @@ class StepBuilderApp(tk.Tk):
         self._saved_geometry = s.window_geometry
         self._saved_state = s.window_state
 
-    def _save_config(self) -> None:
+    def _save_config(self) -> list[str]:
         """Write the "gui" section into the LOCAL settings file.
 
         What the widgets hold, handed to settings.save_gui_settings, which
@@ -1286,7 +1286,8 @@ class StepBuilderApp(tk.Tk):
         unless both files were understood at load AND the local one reads
         cleanly now, only what differs from the shipped default is kept, and
         the paths Allegro supplied are not a setting. Why each of those is a
-        rule is said there.
+        rule is said there. Returns its sentences about values written over
+        a change made in the file while the window was open.
         """
         values = settings.GuiSettings(
             step_dirs=self.step_dirs(),
@@ -1321,7 +1322,7 @@ class StepBuilderApp(tk.Tk):
             json_file=self.json_file.get(),
             output_dir=self.output_dir.get(),
         )
-        settings.save_gui_settings(
+        return settings.save_gui_settings(
             self.config_path, values,
             paths_from_launcher=self._paths_from_launcher,
             loaded_cleanly=(self._config_problem is None
@@ -1329,7 +1330,16 @@ class StepBuilderApp(tk.Tk):
             loaded=self._loaded_settings)
 
     def _on_close(self) -> None:
-        self._save_config()
+        replaced = self._save_config()
+        if replaced:
+            # The log closes with the window, so this is where it is read: a
+            # setting changed in the file while the window was open and then
+            # in the window too was written over (review 28.10.2026, R6-3).
+            messagebox.showwarning(
+                "Simple 3D settings",
+                "These settings were changed in the settings file while this "
+                "window was open, and in this window as well. This window's "
+                "values were written:\n\n" + "\n".join(replaced), parent=self)
         # The queue drain reschedules itself every 100 ms. Left pending, it
         # fires once more against a destroyed widget and Tk prints
         # 'invalid command name "..._drain_queue"' - invisible under pythonw,
