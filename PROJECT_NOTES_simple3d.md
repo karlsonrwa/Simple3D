@@ -5,7 +5,37 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-28 (rounds 95-106 on `main`; pushed by the owner up to `fc75a18` at 18:03)
+## READ THIS FIRST — state as of 2026-10-28 (rounds 95-106 on `main`; pushed by the owner up to `fc75a18` at 18:03; the review's second round done 20:45)
+
+**28.10.2026 19:34-20:57: the second round of the independent review, on
+`c352377`, no code change.** At the owner's «Второй круг ревью», runs on the
+4090 at his choice. Eight fresh Opus reviewers (R1-R8; R9, the output-matrix
+proposal, unchanged since round 1), the same cards, the first round's findings
+in their reviewers' words, nothing about the fixes. Outcome: R6 (window,
+settings) FAIL, R1-R5 and R7 PASS_WITH_CONDITIONS, R8 INCONCLUSIVE (its
+setting finding again). Of round 1's 121 findings 8 cleared (R1-2, R3-1, R3-5,
+R4-2, R4-7, R6-1, R6-2, R6-3), 9 partly (R1-1, R1-5, R3-7, R5-1, R5-9, R7-14,
+R8-4, R8-10, R8-11), 104 open; 33 new (1 blocking, 9 «портит», 23 minor), 146
+open in all. The new blocking one, R6-3, is what round 95 left: `layerColors`
+is saved as one dict of all seven kinds and the "changed?" test is per
+top-level key (`settings.py:284-285`, `:468-477`), so of two windows the
+later one's colours win, a hand edit of a layer colour made while the window
+is open is undone, and a hand edit of the same key loses to the window with
+nothing in the log. The new «портит» that matter most: R4-11 (in overlapping
+zones `pads._Zones.mask_at` takes the FIRST zone in the file: flex-b2 42 and
+flex2-a0 33 mask windows not drawn, with a wrong reason in the log), R5-10
+(flex3-a0 at K=0.5 as built: valid=False, 2 free edges), R3-16 (datum top
+from the thickest stack even where its layer has no material), R3-17 (a part's
+height from its origin point only - round 103's deliberate rule, the owner's
+call), R6-1/R6-2/R6-4 (boolean and colour keys without a loader, legacy keys
+in the local file), R2-13 (the silk shape's `fill` is never read). I
+reproduced all ten new blocking/«портит» ones (eight by running the
+reviewers' scripts, here with windows on their own desktop and on the 4090,
+two by reading). Three questions for the owner: R3-17's rule, whether his
+25.10 «build and name» for BEND_6 goes into README as his decision (closes
+R5-1), whether the round-100 Allegro `%` record goes into the package (closes
+R1-1). Report: `build/review-2026-10-28/report.ru.md` (+ .html); verdicts,
+the log and my reruns beside it. Memory: simple3d-independent-review-2026-10-28.
 
 **Round 106 (2026-10-28), merged into `main`.** Made on the branch
 `fix/doubled-back-outlines` at the owner's word («сделай эту правку отдельной
