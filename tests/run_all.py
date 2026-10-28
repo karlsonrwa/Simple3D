@@ -40,6 +40,7 @@ JOBS = [
     ("board: negative layers",                  TESTS / "test_neg.py", True),
     ("board: duplicated cutouts",               TESTS / "test_dupcuts.py", True),
     ("board: overlapping cutouts",              TESTS / "test_overlapping_cutouts.py", True),
+    ("board: an outline walked twice",          TESTS / "test_doubled_back.py", True),
     ("board: folding flex bends",               TESTS / "test_bend.py", True),
     ("silkscreen",                              TESTS / "test_silk.py", True),
     ("copper pads",                             TESTS / "test_pads.py", True),

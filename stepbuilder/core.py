@@ -28,7 +28,7 @@ from OCP.gp import gp_Trsf
 # `core.StepBuilderError` for a year.
 from .contour import (  # noqa: F401 - re-exported
     WIRE_TOLERANCE, _face_from_wires, _open_wire_detail, build_contour,
-    contour_points, point_in_polygon,
+    contour_points, drop_doubled_back, point_in_polygon,
 )
 # The board builders (round 73, plan A4); re-exported, the tests call them
 # as core.make_board_geometry and friends.
@@ -182,6 +182,72 @@ class _Stack:
     # The board's faces at a point, from the layers that have material there
     # (surface.Surface, round 103); None on a board built as one prism.
     surface: object = None
+
+
+def _without_doubled_tracks(data: dict, log: LogFn) -> dict:
+    """The intermediate with every outline the body is built from cut short of
+    any stretch it walks twice (contour.drop_doubled_back, round 106), and a
+    warning for each: the board outline and its cutouts, the zones, and the
+    shapes drawn on the stackup layers.
+
+    The dict that was read is not touched. Copies are made along the way to
+    the outlines, and kept only when one of them changed - a board with
+    nothing to drop builds from the very dict it always did, and a second
+    build from the same Intermediate says it all again.
+    """
+    said: set[str] = set()
+    changed = False
+
+    def clean(contour, what: str):
+        nonlocal changed
+        if not isinstance(contour, list):
+            return contour
+        new, turns = drop_doubled_back(contour)
+        for (x, y), length in turns:
+            line = (f"warning: {what}: the outline turns at ({x:.3f}, {y:.3f}) and "
+                    f"runs {length:.3f} mm back along itself - a spike with no width, "
+                    f"left out (a mesher fills it with a wedge outside the board); "
+                    f"redraw it in Allegro to be rid of this line")
+            if line not in said:            # a layer's shapes repeat in every stackup
+                said.add(line)
+                log(line)
+        changed = changed or bool(turns)
+        return new
+
+    def shape_copy(shape, what: str):
+        if not isinstance(shape, dict):
+            return shape
+        new = dict(shape)
+        if "outline" in shape:
+            new["outline"] = clean(shape["outline"], what)
+        if isinstance(shape.get("voids"), list):
+            new["voids"] = [clean(v, f"{what}, void {m + 1}")
+                            for m, v in enumerate(shape["voids"])]
+        return new
+
+    def layer_copy(layer):
+        if not isinstance(layer, dict) or not isinstance(layer.get("shapes"), list):
+            return layer
+        name = layer.get("name")
+        return dict(layer, shapes=[shape_copy(shape, f"layer {name} shape {j + 1}")
+                                   for j, shape in enumerate(layer["shapes"])])
+
+    out = dict(data)
+    pcb = data.get("pcb")
+    if isinstance(pcb, dict) and isinstance(pcb.get("edges"), list):
+        out["pcb"] = dict(pcb, edges=[clean(c, "the board outline" if i == 0 else f"cutout {i}")
+                                      for i, c in enumerate(pcb["edges"])])
+    if isinstance(data.get("zones"), list):
+        out["zones"] = [dict(z, contour=clean(z["contour"], f"zone {z.get('name')}"))
+                        if isinstance(z, dict) and "contour" in z else z
+                        for z in data["zones"]]
+    if isinstance(data.get("stackups"), dict):
+        out["stackups"] = {
+            name: (dict(stackup, layers=[layer_copy(layer) for layer in stackup["layers"]])
+                   if isinstance(stackup, dict) and isinstance(stackup.get("layers"), list)
+                   else stackup)
+            for name, stackup in data["stackups"].items()}
+    return out if changed else data
 
 
 def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
@@ -984,7 +1050,9 @@ def generate(
     # silkscreen's warnings are logged where the legend is built.
     for message in inter.warnings:
         log(f"warning: {message}")
-    data = inter.data
+    # Every stage reads the outlines from here on, so every stage sees them
+    # without the spikes (round 106).
+    data = _without_doubled_tracks(inter.data, log)
 
     pcb_name = data["name"]
     json_stem = output_name or pcb_name

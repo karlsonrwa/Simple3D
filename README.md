@@ -670,6 +670,18 @@ by layer name, because a flex stackup has no `SOLDERMASK` layer at all —
 coverlay, adhesive and stiffener sit in its place — and a name-based sum would
 silently report them as nothing.
 
+**An outline that runs back over itself is built without that stretch.** A
+zone, a cutout or a shape drawn on a stackup layer whose outline turns round
+and walks back along its own track is a spike with no width; Allegro does not
+mind it, and the log names it with the point where it turns:
+`warning: zone FLEX: the outline turns at (0.867, 43.348) and runs 1.505 mm
+back along itself - …`. Left in, it encloses nothing, yet the mesher a STEP
+viewer meshes with cannot triangulate a face round it: flex2-a0, flat, showed a
+26 mm² wedge beside its strip in step2html. Two legs count as one track when
+they stay within 1 µm of each other the whole way; a notch of any real width
+is built as drawn, and an edge cut short stays on its own line or circle.
+Redraw the shape in Allegro to be rid of the warning.
+
 ## Folding flex bends
 
 A bend is not geometry in Allegro: it is a line on `RIGID FLEX/BEND_LINE`, an
@@ -871,7 +883,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 29 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 318 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 329 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1550,6 +1562,19 @@ Rigid-flex — это несколько **зон**, у каждой свой с
 именам слоёв: у флекс-стекапа слоя `SOLDERMASK` нет вообще — на его месте
 покрытие, клей и стиффенер — и сумма по именам молча посчитала бы их нулём.
 
+**Контур, который идёт назад по самому себе, строится без этого участка.**
+Если контур зоны, выреза или формы на слое стека разворачивается и проходит
+обратно по своему же следу, получается шип нулевой ширины. Allegro он не
+мешает, а журнал называет его вместе с точкой разворота:
+`warning: zone FLEX: the outline turns at (0.867, 43.348) and runs 1.505 mm
+back along itself - …`. Площади у такого шипа нет, но мешер, которым строят
+сетку просмотрщики STEP, не может обойти его на грани: у плоской flex2-a0
+step2html рисовал рядом с полосой клин площадью 26 мм². Две ветви считаются
+одним следом, если на всём протяжении они ближе 1 мкм друг к другу. Вырез
+настоящей ширины строится как нарисован, а укороченное ребро остаётся на своей
+прямой или окружности. Чтобы предупреждение ушло, форму надо перерисовать в
+Allegro.
+
 ## Сгибание гибких плат
 
 Сгиб в Allegro — не геометрия: это линия на `RIGID FLEX/BEND_LINE`, область на
@@ -1754,7 +1779,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 29 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 318 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 329 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

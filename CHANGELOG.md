@@ -11,6 +11,32 @@ to use the tool.
 
 ---
 
+- **2026-10-28** — **An outline that runs back over itself no longer leaves a
+  wedge.** flex2-a0's FLEX zone runs up the board circle and back down it:
+  1.50 mm walked twice, a spike with no width. Allegro does not mind it; the
+  mesher a STEP viewer uses does - step2html drew an orange triangle of
+  26.25 mm2 beside the flat board's strip, on the top and the bottom face of
+  every layer of the flex, and folded there was a smaller wedge and a BRepCheck
+  warning at BEND_6. Now every outline the board body is built from - the board
+  edge and its cutouts, the zones, the shapes drawn on stackup layers - is built
+  without a stretch it walks twice, and the log names each one with the point
+  where it turns, so the shape can be redrawn in Allegro. flex3-a0's FLEX zone
+  and flex-b2's STTIFFENER1 had such spikes too. A new suite,
+  tests/test_doubled_back.py; eleven rows added to the mutation table (329). /
+  **Контур, идущий назад по самому себе, больше не оставляет клина.** Контур
+  зоны FLEX у flex2-a0 поднимается по окружности платы и спускается обратно:
+  1,50 мм пройдены дважды, получается шип нулевой ширины. Allegro он не мешает,
+  а мешеру, которым строят сетку просмотрщики STEP, мешает: step2html рисовал
+  рядом с полосой плоской платы оранжевый треугольник площадью 26,25 мм² на
+  верхней и нижней гранях каждого слоя гибкой зоны, а в согнутой плате был клин
+  поменьше и предупреждение BRepCheck у BEND_6. Теперь каждый контур, из
+  которого строится тело платы (край платы с вырезами, зоны, формы на слоях
+  стека), строится без дважды пройденного участка, а журнал называет каждый
+  такой шип и точку разворота, чтобы форму можно было перерисовать в Allegro.
+  Такие же шипы нашлись у зоны FLEX платы flex3-a0 и у зоны STTIFFENER1 платы
+  flex-b2. Новый набор тестов tests/test_doubled_back.py; в таблицу мутаций
+  добавлено одиннадцать строк (329).
+
 - **2026-10-28** — **The bend-area warning counts only the pads drawn there.**
   A folded flex2-a0 said "44 pin(s) stand in a bend area … a pad there is a
   design rule violation", while none of its 44 drawn pads stands in a bend: the
