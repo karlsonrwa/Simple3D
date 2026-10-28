@@ -5,7 +5,20 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-28 (rounds 95-105 on `main`; 92-104 pushed by the owner 27.10)
+## READ THIS FIRST — state as of 2026-10-28 (rounds 95-105 on `main`; 92-104 pushed by the owner 27.10; 106 on branch `fix/doubled-back-outlines`)
+
+**Round 106 (2026-10-28), on branch `fix/doubled-back-outlines`, not merged.**
+At the owner's word («сделай эту правку отдельной веткой, посмотрим на
+итоговый результат на обсуждаемой плате»): every outline the body is built
+from is cut short of a stretch it walks out and back (`contour.drop_doubled_back`,
+`core._without_doubled_tracks`), with a warning naming the turn. flex2-a0's
+26.25 mm2 wedge is gone, flat and folded; the files sent to him are in
+`build/render/out_2026-10-28/` (`*_fix.step`, `*_fix.html`). A new suite
+`tests/test_doubled_back.py`, rows 329. Waits for his look at the files and his
+word on merging. Read round 106. **The working tree is left checked out on
+this branch** (28.10, 17:05), so a build he starts from this folder carries the
+fix; `main` is `4b67284`. No python process was left here or on the 4090
+(checked 17:07).
 
 **28.10.2026, no code change.** The owner: «Сделай экспорт платы flex2-a0 в
 несогнутом виде. Там площадки плавают не на той высоте. А в согнутом всё
@@ -3249,6 +3262,87 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-28 (round 106, branch `fix/doubled-back-outlines`) — an outline that runs back over itself is built without that stretch
+
+The owner, after the diagnosis below: «Если еще не делал, сделай эту правку
+отдельной веткой, посмотрим на итоговый результат на обсуждаемой плате. Если
+результат уже есть, я хочу посмотреть на файл step с обсуждаемой правкой.»
+The diagnosis notes went to `main` first (`4b67284`); the branch
+`fix/doubled-back-outlines` starts there. Not merged, not pushed.
+
+**The code.** `stepbuilder/contour.py`: `drop_doubled_back(contour)` ->
+(contour, [((x, y) of the turn, mm walked twice)]). `TRACK_WIDTH` 1 um,
+`_TRACK_STEP` 0.01 mm between compared points, `_TURN_COS` -0.99 as the filter
+for a turn. `_Walked` reads a primitive the way `contour_points` walks it
+(round 63: alpha..beta bound the arc, ccw is the end the contour enters by);
+`_walk_back` walks both legs from a turn, a primitive at a time, while
+`_same_track`; `_cut_out` drops what lies between, keeps the primitive the walk
+stopped inside on its own line or circle (`_Walked.part` rewrites only the
+angle of the end that moved) and spans the joint with a segment when it is
+wider than `WIRE_TOLERANCE`. Nothing to drop: the same list back. An outline
+that is all track: untouched. At most one pass per primitive.
+`stepbuilder/core.py`: `_without_doubled_tracks(data, log)`, called by
+`generate` right after the intermediate's own warnings - pcb edges (the
+outline, the cutouts), zones, stackup layer shapes and their voids; one
+warning per spike, a shape repeated in several stackups said once; copies
+along the way, the dict that was read untouched, the very same dict back when
+nothing changed (Cadence_Demo: 299 contours, none changed). Its output equals
+the prototype's (`spikes_proto.py` v2) on every contour of the four boards.
+
+**On flex2-a0, built on the 4090 from the original JSON by the branch**
+(`fix106_s0.ps1`): the log says `warning: zone FLEX: the outline turns at
+(0.867, 43.348) and runs 1.505 mm back along itself - a spike with no width,
+left out (a mesher fills it with a wedge outside the board); redraw it in
+Allegro to be rid of this line`. Flat layers, solid and inspect: the flex faces
+235.2311 mm2, meshed 0.0048 / 0.0004 / 0.0001 mm2 outside at quality 1 / 2 / 4
+(26.56 before - what is left is the thin triangles along the concave fillets),
+every one valid; folded layers and solid: the 0.12 mm2 face no longer meshed
+outside itself. step2html 0.16.0 on the flat layers STEP: "8 face(s) could not
+be meshed at all; largest is 2.46e-06 mm2 - too small to see" - the same 8
+faces as from the original JSON (hairlines at x 11.03-12.80 on the circle's
+right), not the bridge: its side faces (x 1.76840-1.76842, 7e-7 to 2.8e-6 mm2)
+mesh. The page's largest triangles are the strip's two halves, 77.39 and
+74.73 mm2; no 26.25. Sent to the owner: `build/render/out_2026-10-28/`
+`flex2-a0_flat_fix.step`, `flex2-a0_folded_fix.step` (layers mode, the face
+numbering of his own STEPs; models from demo/step_files) and
+`flex2-a0_flat_fix.html`.
+
+**Tests.** `tests/test_doubled_back.py`, 30 checks: [1] segments - a 3 mm
+spike, the same across the list's end, legs 0.4 um apart (joined by the
+stitcher) and 0.05 um apart (a segment must span the joint or the wire does
+not close); left alone: a notch 0.1 mm wide, a plain square (the same list), an
+outline that is all track, a circle. [2] made-up arcs with flex2-a0's shape of
+fault - the raw outline first shown to mesh outside its own face (0.10-0.47
+mm2: the bug's path), then the cleaned one meshing nothing outside at three
+deflections, valid, as big as the outline without the spike, every arc on a
+circle the outline already had. [3] `_without_doubled_tracks` over an
+intermediate: every place, one warning each, said once across stackups, the
+read dict untouched, a clean board's dict handed back. [4] the rigid-flex
+fixture with a spike down its flex zone's left edge into the stiffener's side,
+flat and folded: the warning, the same volume (647.7860 mm3) and face count
+(11 flat, 15 folded) as the clean fixture, the rest of the log the same.
+Without the repair that build fails: "Fusing the stackup layers produced
+nothing" (row doubled-build-not-cleaned). Eleven rows (329). Session 0 of the
+4090 (`run106_s0.ps1`): the 42 rows on `contour.py` and `core.py` caught 42 of
+42 in 124 s on 8 copies, the 31 old ones by the same checks as in round 105
+(two Russian check names garbled alike in both logs, same values). That run's
+`run_all` failed "docs vs code" on the mirror's README of round 105 (29 suites;
+the docs were written after). With the docs in, "mutation table: every pattern
+matches" failed: the two rows that break README's suite count
+(readme-count-23, readme-count-unstated) still looked for "29 test suites" -
+re-aimed at "30" (the unstated one now "thirty"), caught 2 of 2. The final run
+(`final106b_s0.ps1`, 17:03-17:04, every changed file compared by SHA-256):
+`run_all` 32/34, only `test_gui` (7) and `test_geom` (13), as always in
+session 0.
+
+**Seen in passing, not touched.** The fused flex2-a0 keeps other hairline faces
+where a zone's circle and a layer shape's circle differ by ~0.1 um: along the
+circle's top (x 0.12-8.51, 7e-5 to 8e-5 mm2, meshed) and on its right
+(x 11.03-12.80, 7e-7 to 2.5e-6 mm2, not meshable - step2html's "8 faces too
+small to see"), before and after this round. And in every folded build the
+strip's side walls across a bend (x 3.150 / 9.650) mesh 0.04 mm2 of 0.57
+outside themselves - in the owner's folded STEP of today and of 06.09 too.
 
 ## Update 2026-10-28 — the wedge in step2html's flat flex2-a0: a zone outline that runs back over itself
 

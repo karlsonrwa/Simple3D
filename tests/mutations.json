@@ -490,7 +490,7 @@
  {
   "id": "readme-count-23",
   "file": "README.md",
-  "old": "29 test suites",
+  "old": "30 test suites",
   "new": "23 test suites",
   "suites": [
    "tools/audit_docs.py"
@@ -500,8 +500,8 @@
  {
   "id": "readme-count-unstated",
   "file": "README.md",
-  "old": "29 test suites",
-  "new": "twenty-nine test suites",
+  "old": "30 test suites",
+  "new": "thirty test suites",
   "suites": [
    "tools/audit_docs.py"
   ],
@@ -3348,5 +3348,115 @@
    "tests/test_pads.py"
   ],
   "why": "the vias under the mask in a bend area are called pins (round 105)"
+ },
+ {
+  "id": "doubled-never-a-turn",
+  "file": "stepbuilder/contour.py",
+  "old": "            if h_in[0] * h_out[0] + h_in[1] * h_out[1] < _TURN_COS:\n",
+  "new": "            if h_in[0] * h_out[0] + h_in[1] * h_out[1] < -2.0:\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "no joint is ever a turn: flex2-a0's FLEX zone keeps its spike and the mesher its 26.25 mm2 wedge outside the board (round 106)"
+ },
+ {
+  "id": "doubled-width-a-millimetre",
+  "file": "stepbuilder/contour.py",
+  "old": "        if math.hypot(p[0] - q[0], p[1] - q[1]) > TRACK_WIDTH:\n",
+  "new": "        if math.hypot(p[0] - q[0], p[1] - q[1]) > 1.0:\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "legs a millimetre apart count as one track: a notch with real width is cut off the outline (round 106)"
+ },
+ {
+  "id": "doubled-cut-arc-off-its-circle",
+  "file": "stepbuilder/contour.py",
+  "old": "        prim = dict(self.prim)\n",
+  "new": "        prim = dict(self.prim, radius=self.r * (1.0 + 1.0e-6))\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "the arc a cut stops inside leaves the circle the next zone shares - rebuilt through three points it moved 0.17 um, and flex2-a0's folded build fused into nothing (round 106)"
+ },
+ {
+  "id": "doubled-cut-arc-wrong-end",
+  "file": "stepbuilder/contour.py",
+  "old": "        entry, leave = (\"alpha\", \"beta\") if prim.get(\"ccw\", True) else (\"beta\", \"alpha\")\n",
+  "new": "        entry, leave = (\"beta\", \"alpha\") if prim.get(\"ccw\", True) else (\"alpha\", \"beta\")\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "an arc cut short is cut at the end the contour leaves by instead of the one it enters by (round 106)"
+ },
+ {
+  "id": "doubled-no-bridge",
+  "file": "stepbuilder/contour.py",
+  "old": "              if math.hypot(q[0] - p[0], q[1] - p[1]) > WIRE_TOLERANCE else [])\n",
+  "new": "              if math.hypot(q[0] - p[0], q[1] - p[1]) > 1.0 else [])\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "the gap a cut leaves between two legs on circles of their own is never spanned, and an outline whose legs lie further apart than 1e-5 mm no longer closes into a wire (round 106)"
+ },
+ {
+  "id": "doubled-cut-keeps-all",
+  "file": "stepbuilder/contour.py",
+  "old": "        elif i not in gone:\n",
+  "new": "        elif True:\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "the primitives walked twice are kept after all (round 106)"
+ },
+ {
+  "id": "doubled-walk-stops-at-one",
+  "file": "stepbuilder/contour.py",
+  "old": "            ta, eaten = legs[a].length, eaten + 1\n",
+  "new": "            ta, eaten = 0.0, eaten + 1\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "the walk back loses its place at the first joint, so a spike over several primitives - flex2-a0's four arcs - is not cut (round 106)"
+ },
+ {
+  "id": "doubled-build-not-cleaned",
+  "file": "stepbuilder/core.py",
+  "old": "    data = _without_doubled_tracks(inter.data, log)\n",
+  "new": "    data = inter.data\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "a build reads the outlines as the file has them, spikes and all (round 106)"
+ },
+ {
+  "id": "doubled-file-touched",
+  "file": "stepbuilder/core.py",
+  "old": "    out = dict(data)\n",
+  "new": "    out = data\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "the cleaned outlines are written into the dict that was read, so a second build from the same Intermediate says nothing (round 106)"
+ },
+ {
+  "id": "doubled-said-per-stackup",
+  "file": "stepbuilder/core.py",
+  "old": "            if line not in said:            # a layer's shapes repeat in every stackup\n",
+  "new": "            if True:            # a layer's shapes repeat in every stackup\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "a layer's shape is warned about once for every stackup that lists it (round 106)"
+ },
+ {
+  "id": "doubled-layer-shapes-skipped",
+  "file": "stepbuilder/core.py",
+  "old": "    if isinstance(data.get(\"stackups\"), dict):\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_doubled_back.py"
+  ],
+  "why": "the shapes drawn on the stackup layers keep their spikes (round 106)"
  }
 ]

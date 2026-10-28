@@ -733,3 +733,30 @@ equivalent mutant.
   rows on the changed files and on `test_pads` caught 97 of 97, the 91 old
   ones by the same checks as before. **A count is tested by what it counts:
   put beside each thing it should count one it should not.**
+- **Round 106** (branch `fix/doubled-back-outlines`). Not a review finding:
+  the owner's step2html page of flex2-a0, flat, showed a 26.25 mm2 wedge
+  outside the board - OCCT's mesher on a face whose outline (the FLEX zone)
+  runs back over its own track. No test had ever given the builder such an
+  outline. `tests/test_doubled_back.py` (30 checks) does, with none of the
+  owner's data: segments ([1]: a 3 mm spike, the same spike across the list's
+  end, legs 0.4 um and 0.05 um apart - the latter needs a segment across the
+  joint or the wire does not close - and, left alone, a notch 0.1 mm wide, a
+  plain square as the very same list, an outline that is all track, a
+  circle); made-up arcs with flex2-a0's shape of fault ([2]: the raw outline
+  first shown to mesh outside its own face - the bug's path - then the
+  cleaned one meshing nothing outside at three deflections, valid, as big as
+  the outline without the spike, and every arc left on a circle the outline
+  already had, number for number: the prototype that rebuilt an arc through
+  three points moved it 0.17 um and the folded flex2-a0 fused into nothing);
+  the walk over an intermediate ([3]: board edge, cutouts, zones, layer shapes
+  and voids, one warning each, a shape repeated in two stackups said once,
+  the read dict untouched, a clean board handed back as the same dict); and
+  two builds of the rigid-flex fixture with a spike in its flex zone, flat
+  and folded ([4]: the warning, the same volume and face count as the clean
+  fixture, the rest of the log unchanged - without the repair that build
+  fails outright, "Fusing the stackup layers produced nothing"). Eleven rows
+  (329). Session 0 of the 4090: the 42 rows on `contour.py` and `core.py`
+  caught 42 of 42, the 31 old ones by the same checks as before; `run_all`
+  as in round 105 (the two suites that need a window). **A repair of
+  geometry is tested on the geometry next to it: a curve another shape
+  shares must come out of the repair bit for bit.**
