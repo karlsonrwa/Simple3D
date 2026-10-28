@@ -21,6 +21,15 @@ tented vias that draw nothing, now counts only the pads drawn in a bend area,
 and the vias and pins under the mask there get a note of their own. Read the
 28.10 update and round 105.
 
+**28.10.2026 later, no code change yet.** His step2html page of flex2-a0 flat
+showed a wedge beside the strip. Cause: the FLEX zone's contour runs 1.50 mm up
+the board circle and back down it (a spike with no width), and OCCT's mesher
+lays a 26.25 mm2 triangle over it; the same in the flat build of 06.09, so not
+the recent rounds; flex3-a0 and flex-b2 have such spikes too. A repair at load
+(drop what a contour walks twice, the cut primitive kept on its own curve) is
+prototyped and measured on the three boards; it waits for his word. Read the
+update "the wedge in step2html's flat flex2-a0".
+
 **Open, 2026-10-25 22:20** (the list given to the owner that evening). His
 decisions: the push of rounds 92-104 (13 commits; «пока не отправляй»), a
 second round of the review, the order of its remaining findings, the output
@@ -3240,6 +3249,73 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-28 — the wedge in step2html's flat flex2-a0: a zone outline that runs back over itself
+
+The owner (after confirming the pads): «теперь появилась проблема с экспортом
+step2html» - a screenshot of flex2-a0 flat with an orange wedge beside the
+strip, from the circle down to the strip's jog; «До предыдущих правок такого
+не было». His files of today in `input\`: `flex2-a0_simple_28_10_2026_.step`
+(flat, 14:52) and its page `flex2-a0_simple_28_10_2026_.html` (step2html
+0.16.0 · 67014ad), the folded `flex2-a0_simple_28_10_2026.step`, and a BOM
+variant pair from 15:11.
+
+**What the wedge is.** One triangle of OCCT's mesher (BRepMesh, which
+step2html meshes with) on the top and on the bottom face of every layer of
+the FLEX zone: in his page two triangles of 26.2471 mm2 (decoded with
+step2html's own `payload.decode/unpack`, `build/fix-2026-10-28/html_wedge.py`),
+vertices (3.150, 38.698), (0.867, 43.349), (3.150, 15.704) in the STEP's frame.
+`build/fix-2026-10-28/sliver_check.py` meshes a STEP the way step2html does
+(its own xcaf/meshing, automatic deflection, 15 deg) and classifies every
+triangle's centroid against its face: the flex faces (235.2312 mm2) carry
+26.56 mm2 outside, in solid, layers and inspect alike, at quality 1, 2 and 4.
+
+**Cause: the FLEX zone's contour.** In flex2-a0.json the zone's first four arcs
+go up the board circle from 223.64 deg to 210.17 deg (0.867, 43.349), turn and
+come back down it - a spike with no width, 1.5045 mm walked twice, the two
+legs at most 0.044 um apart (on circles 0.2 um apart). BRepCheck calls the
+face valid; the mesher cannot triangulate around it. In the solid build the
+fused body also gets four faces of zero area there (x 0.87..1.77, y 42.15..43.35)
+that BRepCheck rejects. ShapeFix does not see it: `ShapeFix_Wire` with
+FixNotchedEdges, FixSmall and FixSelfIntersection at precision 1e-5..1e-2, and
+`ShapeFix_Face` at 1e-4 and 1e-3, return the wire unchanged (`spike_proto.py`).
+
+**Not the recent rounds.** The same 26.56 mm2 triangle is in the flat build
+made by the code of 06.09 (`build/test-output/flex2-repro/flex2-a0_flat.step`)
+and in the 23.10 review's flat builds - before rounds 103-105. His older pair
+(`input\flex2-a0_simple_06_09_2026.step`, step2html's
+`input\flex2-a0_simple_06_09_2026_.html`, made by step2html 0.11.2) is folded:
+half-height 13.6 mm against 10.1 flat, no such triangle. Folded, the spike
+leaves only a small wedge (a 0.12 mm2 face meshed 0.31 mm2 outside it, at
+x 0.867) and, in the solid fold, BRepCheck's "1 face, 1 wire and 2 edges
+rejected - in panel after BEND_6".
+
+**Elsewhere.** `spikes_proto.py` over every contour of every board on hand
+(pcb edges, zones, stackup layer shapes): flex3-a0's FLEX zone turns back at
+(2.410, 38.752) for 0.785 mm, flex-b2's STTIFFENER1 at (24.951, 30.043) and
+(41.049, 30.043) for 0.19 mm each, legs 0.004-0.033 um apart; Cadence_Demo's
+299 contours and the test fixtures, none.
+
+**The repair, prototyped (not in the tree; waiting for the owner's word).**
+At a joint where the contour reverses, walk both legs together, a primitive at
+a time, while they stay within 1 um of each other; drop what was walked twice.
+First version rebuilt the primitive cut short as a three-point arc: that moved
+flex2-a0's FLEX arc 0.17 um off the circle (6.4, 46.56487; 6.39987) it shares
+with STIFF_TOP_500_2, and the folded build failed outright ("Fusing the stackup
+layers produced nothing") while the inspect faces turned invalid - **a cut
+primitive must stay on its own line or circle**. Second version: trimmed on its
+own curve, the residual gap at the joint (2.82e-5 mm on flex2-a0, 3.30e-5 on
+flex3-a0, 2.73e-5 and 4.0e-6 on flex-b2) closed by a segment when wider than
+the 1e-5 stitching tolerance. Built on the 4090 from cleaned copies of the
+three JSONs (`build/fix-2026-10-28/clean_json/`, `e2e2_s0.ps1`): flex2-a0's flex
+faces 235.2311 mm2 with 0.0048 mm2 "outside" (the thin triangles along the
+concave fillets every face has; was 26.56), every face valid, the folded build
+fine and its small wedge gone; every build's log the same as from the original
+JSON, except that the folded flex2-a0 loses the BRepCheck warning above.
+A made-up contour of the same shape (`synth_proto.py`: r 6.4 disc, 6.5 mm
+strip, r 5 fillets, the spike) meshes 0.10-0.47 mm2 outside its face raw and
+exactly as the clean contour once cleaned - a test that needs none of the
+owner's data.
 
 ## Update 2026-10-28 (round 105) — in a bend area, the pads drawn are warned of and the vias under the mask named apart
 
