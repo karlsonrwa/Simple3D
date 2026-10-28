@@ -5,7 +5,19 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-25 (rounds 95-104, on `main`)
+## READ THIS FIRST — state as of 2026-10-28 (rounds 95-104 on `main`, pushed by the owner 27.10)
+
+**28.10.2026, no code change.** The owner: «Сделай экспорт платы flex2-a0 в
+несогнутом виде. Там площадки плавают не на той высоте. А в согнутом всё
+правильно. Подтверди или опровергни.» Refuted for the code on `main` (=
+GitHub, `6d4a1a2`, which he pushed from another machine on 27.10): every one
+of flex2-a0's 44 pads stands 2 h off the body, flat and folded, in every body
+mode, from a fresh export of the board. What he saw is not explained yet - his
+install in D:\Projects\OrCAD is closed to me; code older than round 103 would
+show it (the top pads then hung 0.50-0.58 mm over LDI2, in both views). Waits
+for his flat STEP in `input\` to be measured. Parked: the folded log's "44
+pin(s) stand in a bend area" counts tented vias that draw nothing. Read the
+28.10 update.
 
 **Open, 2026-10-25 22:20** (the list given to the owner that evening). His
 decisions: the push of rounds 92-104 (13 commits; «пока не отправляй»), a
@@ -3226,6 +3238,71 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-28 — "flex2-a0's pads float when it is flat": measured, refuted for `main`
+
+The owner: «Сделай экспорт платы flex2-a0 в несогнутом виде. Там площадки
+плавают не на той высоте. А в согнутом всё правильно. Подтверди или
+опровергни.» Then: he had copied the whole folder the day before and run the
+latest version («но проверь сам, может я ошибся где-то»), and he had pushed
+the updates to GitHub from another machine (`origin/main` = `6d4a1a2`, seen
+here by a fetch at 13:45). His install, `D:\Projects\OrCAD\Scripts\Simple3D\`,
+and its `simple3d_config.local.json` are closed to me (11.10), so everything
+below is measured from this side. No code changed.
+
+### Measured
+
+- **The JSON.** `input/flex2-a0.brd` (27.07) was open in his Allegro
+  (`flex2-a0.brd.lck` from 13:47); told so, he closed it («Освободил плату.
+  Если плата занята, сразу говори мне»). Exported again with HEAD's SKILL and
+  the tracked config (`tools/skill_export.py`, 26 s): byte-identical to the
+  23.10 golden JSON every build here used (sha256 969130...). The SKILL has
+  changed since 24f61ac by R1-1's `%s` only, and this JSON has no `%`.
+- **The builds**, through the window's own `worker.run_jobs` with a
+  `BuildSettings` of the tracked config's values, exposed copper and mask
+  openings on (`build/fix-2026-10-28/pads_check.py`, session 0 of the 4090,
+  the mirror equal to this tree, 136 files by sha256): flat and folded in
+  *Solid*, *Solid colored layers* and *Not stitched*, flat at datum bottom,
+  flat without the soldermask. In all eight: 44 pads (34 bottom, 10 top),
+  each 0.002 mm (2 h) from the body; none of the 848 points on them inside
+  the body; flat, a vertical ray at every point: 0.000 mm beyond the lift.
+- **Heights, flat, datum top:** the top pads at -0.573 (LDI2's surface is at
+  -0.575: STIFFENER_TOP, ADHESIVE_TOP2 and COVERLAY_TOP have no material
+  there), the bottom pads at -0.792 (33) and -0.767 (1). Before round 103
+  (measured 25.10, same JSON): +0.002 and -0.817 - the envelope of the stack,
+  0.506-0.577 mm over LDI2 at the top and 0.027 at the bottom, and the same
+  in the folded build. A STEP whose top pads stand at about 0 was built by
+  older code.
+- **The 25.10 13:59 folded file** (`build/render/out/flex2-a0.step`, beside
+  the BEND_6 pictures) has no `pads_` node at all: built without exposed
+  copper, and before round 103.
+- **A window left open during the copy is not a cause:** every Generate
+  spawns a fresh process (`worker_bridge`, multiprocessing spawn) that
+  imports the code from disk.
+- The STEP header names no Simple 3D version ("Open CASCADE STEP processor
+  7.9"): a file tells which code built it only by its geometry.
+
+### Found in passing (parked)
+
+- The folded log's "warning: 44 pin(s) stand in a bend area - placed on the
+  curve's tangent, but a pad there is a design rule violation" counts 44
+  TENTED VIAS (BEND_1 3, BEND_2 12, BEND_3 9, BEND_4 6, BEND_5 3, BEND_6 11)
+  that draw nothing: `pads.py` adds to `result.in_bend` before the covered-pad
+  check. No drawn pad of flex2-a0 stands in a bend; the count equalling the
+  44 pads drawn is a coincidence. `FoldPlan.in_bend_area` tests a band
+  unbounded along the bend's line, yet on every pin of flex2-a0, flex-b2 and
+  flex3-a0 it agrees with `region_at` (`bend_band_check.py`): their bend lines
+  cross the whole board.
+- `tools/skill_export.py` makes its scratch folder with `tempfile.mkdtemp`,
+  in the system TEMP on C:, and Allegro writes its logs and an NVIDIA cache
+  there as well; this run set TEMP/TMP to `build/fix-2026-10-28/tmp`
+  (removed after).
+
+### Delivered
+
+`build/render/out_2026-10-28/flex2-a0_flat.step` and `flex2-a0_folded.step`
+(*Solid*, pads on; no component models - the two the board names are not on
+disk here). On the 4090: `Simple3D_mirror_env/r1028/` (the eight builds).
 
 ## Update 2026-10-25 (round 104) — a face with no volume is wrapped onto its own cylinder (R4-7)
 
