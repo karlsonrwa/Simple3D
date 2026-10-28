@@ -5,7 +5,7 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-28 (rounds 95-106 on `main`; 92-104 pushed by the owner 27.10)
+## READ THIS FIRST — state as of 2026-10-28 (rounds 95-106 on `main`; pushed by the owner up to `fc75a18` at 18:03)
 
 **Round 106 (2026-10-28), merged into `main`.** Made on the branch
 `fix/doubled-back-outlines` at the owner's word («сделай эту правку отдельной
@@ -18,9 +18,21 @@ files sent to him are in `build/render/out_2026-10-28/` (`*_fix.step`,
 «Слей в main» the branch went in as the merge commit `9e8698a` (17:48), the
 way branches have always been merged here (`--no-ff`); main's tree is the
 branch's, and the ten changed files are, CR for CR aside, the copies the 4090
-ran. The working tree is on `main` again; the branch is kept, merged. Not
-pushed: `main` is 7 commits ahead of `origin` (3ef2fb1 .. this notes commit).
-Read round 106.
+ran. The working tree is on `main` again; the branch is kept, merged. The
+owner pushed `main` up to `fc75a18` at 18:03 (this checkout's reflog: "update
+by push"; `git ls-remote` agrees). Read round 106.
+
+**28.10.2026 18:40: the review's R3-5 is closed by round 106, measured.** "The
+flat build of flex2-a0 in Solid and Layers gives a body the kernel's check
+rejects" - BRepCheck over every solid of the 4090's builds
+(`build/fix-2026-10-28/brepcheck_steps.py`): from the original JSON the flat
+solid and the flat layers body, and the folded solid, are rejected (1 solid of
+1 each; inspect's 37 pass); built by round 106, all of them pass. The folded
+solid's "1 face, 1 wire and 2 edges rejected - in panel after BEND_6" (round
+101's check) was the FLEX zone's spike too. The review: 123 of 134 open. And
+the 28.10 wait for the owner's flat STEP is over: he looked at the exports
+himself - «Ты прав. Это странно. Площадки не висят.» This notes commit is the
+one `main` is ahead of `origin` by.
 
 **28.10.2026, no code change.** The owner: «Сделай экспорт платы flex2-a0 в
 несогнутом виде. Там площадки плавают не на той высоте. А в согнутом всё
