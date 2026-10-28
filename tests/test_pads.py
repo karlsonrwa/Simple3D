@@ -1062,5 +1062,59 @@ check("on a zoned board a cutout inside a masked zone is taken out of the drawn 
       (built_rc, comp_rc is not None and P.shape_area(comp_rc), logs_rc))
 
 print()
+print("[11] in a bend area: the pads drawn there are warned of, the vias under the mask named apart")
+
+# flex2-a0 folded said "44 pin(s) stand in a bend area - placed on the curve's
+# tangent, but a pad there is a design rule violation" (28.10.2026): the 44
+# were tented vias, which draw nothing - counted before the per-side check
+# that finds no mask opening - and none of the board's 44 drawn pads stands in
+# a bend. The rigid-flex fixture's B1 runs along y = 20 through the flex F2.
+rf11 = json.loads((ROOT / "tests/fixtures/rigidflex.json").read_text())
+rf11.update({"format_version": 12, "name": "rfbend", "components": {}})
+rf11["pads"] = {
+    "padstacks": {"SMD": smd, "BARE": bare,
+                  "VIA": {"usage": "Via", "drill": circle(0.15),
+                          "pads": {"ETCH/TOP": DISC, "ETCH/BOTTOM": DISC, "PIN/SOLDERMASK_TOP": MASK}},
+                  "TENTED": {"usage": "Via", "drill": circle(0.15),
+                             "pads": {"ETCH/TOP": DISC, "ETCH/BOTTOM": DISC}}},
+    "pins": [[10.0, 20.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],                 # drawn
+             [12.0, 20.0, 0.0, False, "VIA", "ETCH/TOP", "ETCH/BOTTOM", "via"],      # its top drawn, its bottom tented
+             [14.0, 20.0, 0.0, False, "TENTED", "ETCH/TOP", "ETCH/BOTTOM", "via"],   # under the mask
+             [16.0, 20.0, 0.0, False, "TENTED", "ETCH/TOP", "ETCH/BOTTOM", "via"],   # under the mask
+             [18.0, 20.0, 0.0, False, "BARE", "ETCH/TOP", "ETCH/TOP"],               # a pin with no mask opening
+             [8.0, 5.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],                  # on S2, held: drawn
+             [10.0, 5.0, 0.0, False, "TENTED", "ETCH/TOP", "ETCH/BOTTOM", "via"]],   # on S2, held: under the mask
+    "exposed": {"top": [], "bottom": []}, "bare": {"top": [], "bottom": []}}
+plan11 = plan_from_json(rf11, 0.0, -2.44, zones=rf11["zones"],
+                        levels={"S2": (0.0, -2.44), "F2": (-2.05, -2.415)})
+check("the fixture: the five pins at y = 20 stand in B1, the two on S2 do not",
+      all(plan11.in_bend_area(x, 20.0) == "B1" for x in (10.0, 12.0, 14.0, 16.0, 18.0))
+      and plan11.in_bend_area(8.0, 5.0) is None and plan11.in_bend_area(10.0, 5.0) is None)
+jf.write_text(json.dumps(rf11))
+res11, logs11, _ = build("rf_bend", exposed_copper=True, mask_openings=True)
+res11o, logs11o, _ = build("rf_bend_windows", mask_openings=True)
+res11s, logs11s, _ = build("rf_bend_flat", exposed_copper=True, mask_openings=True, fold_bends=False)
+jf.write_text(json.dumps(board))
+
+
+def bend_lines(logs):
+    return [m for m in logs if "in a bend area" in m]
+
+
+check("three pads are drawn, folded and flat alike: the two SMD pins' and the untented via's top",
+      res11.pads_placed == 3 and res11s.pads_placed == 3, (res11.pads_placed, res11s.pads_placed))
+check("folded: the warning counts the two pads drawn in B1 - the pin's and the via's top - and only them",
+      "warning: 2 pad(s) drawn in a bend area (B1 2) - placed on the curve's tangent, but a pad there "
+      "is a design rule violation" in logs11, bend_lines(logs11))
+check("folded: the two tented vias and the pin with no mask opening in B1 are named apart, drawing nothing",
+      "note: 2 via(s) and 1 pin(s) under the mask stand in a bend area (B1 3) - nothing is drawn for them"
+      in logs11, bend_lines(logs11))
+check("folded: those two lines and no third", len(bend_lines(logs11)) == 2, bend_lines(logs11))
+check("the copper off: nothing is drawn in B1 (the flex has no mask for a window), no warning; the note stays",
+      bend_lines(logs11o) == ["note: 2 via(s) and 1 pin(s) under the mask stand in a bend area (B1 3) - "
+                              "nothing is drawn for them"], bend_lines(logs11o))
+check("flat, nothing is folded and neither is said", bend_lines(logs11s) == [], bend_lines(logs11s))
+
+print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

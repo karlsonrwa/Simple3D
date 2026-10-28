@@ -755,10 +755,25 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
         log(f"warning: {result.no_padstack} pin(s) name a padstack the file does not carry")
     if result.unbuildable:
         log(f"warning: {result.unbuildable} pad placement(s) could not be built (see above)")
+    # What is drawn in a bend area and what only stands there, apart: a pad
+    # drawn is placed on the curve's tangent; a via under the mask draws
+    # nothing, and is named for the design's sake (round 105).
     if result.in_bend:
-        log(f"warning: {result.in_bend} pin(s) stand in a bend area - placed on the "
-            f"curve's tangent, but a pad there is a design rule violation")
+        log(f"warning: {result.in_bend} pad(s) drawn in a bend area "
+            f"({_per_bend(result.in_bend_where)}) - placed on the curve's tangent, "
+            f"but a pad there is a design rule violation")
+    if result.bend_covered_vias or result.bend_covered_pins:
+        kinds = " and ".join(f"{n} {kind}" for n, kind in ((result.bend_covered_vias, "via(s)"),
+                                                          (result.bend_covered_pins, "pin(s)")) if n)
+        log(f"note: {kinds} under the mask stand in a bend area "
+            f"({_per_bend(result.bend_covered_where)}) - nothing is drawn for them")
     return result
+
+
+def _per_bend(counts: dict) -> str:
+    """The counts as "BEND_1 3, BEND_2 12", by name - BEND_10 after BEND_9."""
+    return ", ".join(f"{name} {n}" for name, n in
+                     sorted(counts.items(), key=lambda kv: (len(kv[0]), kv[0])))
 
 
 def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOptions,

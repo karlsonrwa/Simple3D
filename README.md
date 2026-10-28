@@ -679,7 +679,10 @@ side and the order. Simple 3D reads all three and folds the model.
 **Everything moves together.** Board, legend and components are placed flat
 first and then carried by the fold, so a part cannot drift off the surface it
 was placed on. A component standing inside a bend area is placed on the curve
-and reported — that is a design rule violation, not a modelling choice.
+and reported — that is a design rule violation, not a modelling choice. A
+copper pad drawn there is placed on the curve's tangent and reported the same
+way, with its bend; a via or a pin under the mask there draws nothing and gets
+a note of its own, by bend.
 
 **The radius is measured from the local stack**, since the flex surface can sit
 two millimetres below the top of a stiffener.
@@ -868,7 +871,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 29 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 312 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 29 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 318 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1557,7 +1560,10 @@ Simple 3D читает все три и складывает модель.
 плоско, а потом переносятся сгибом, поэтому деталь не может съехать с
 поверхности, на которую её поставили. Компонент, стоящий в области сгиба,
 размещается на дуге и отмечается в логе — это нарушение правил проектирования, а
-не выбор модели.
+не выбор модели. Медная площадка, нарисованная в области сгиба, ставится на
+касательную к дуге и отмечается так же, с именем сгиба. Переходное или вывод
+под маской в области сгиба ничего не рисует, и лог называет их отдельной
+заметкой, тоже по сгибам.
 
 **Радиус отсчитывается от местного стека**: поверхность флекса может лежать на
 два миллиметра ниже верха стиффенера.
@@ -1748,7 +1754,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 29 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 312 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 29 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 318 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

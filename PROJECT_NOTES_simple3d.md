@@ -5,7 +5,7 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-28 (rounds 95-104 on `main`, pushed by the owner 27.10)
+## READ THIS FIRST — state as of 2026-10-28 (rounds 95-105 on `main`; 92-104 pushed by the owner 27.10)
 
 **28.10.2026, no code change.** The owner: «Сделай экспорт платы flex2-a0 в
 несогнутом виде. Там площадки плавают не на той высоте. А в согнутом всё
@@ -15,9 +15,11 @@ of flex2-a0's 44 pads stands 2 h off the body, flat and folded, in every body
 mode, from a fresh export of the board. What he saw is not explained yet - his
 install in D:\Projects\OrCAD is closed to me; code older than round 103 would
 show it (the top pads then hung 0.50-0.58 mm over LDI2, in both views). Waits
-for his flat STEP in `input\` to be measured. Parked: the folded log's "44
-pin(s) stand in a bend area" counts tented vias that draw nothing. Read the
-28.10 update.
+for his flat STEP in `input\` to be measured. Round 105, at his «Да,
+поправь»: the folded log's "44 pin(s) stand in a bend area", which counted
+tented vias that draw nothing, now counts only the pads drawn in a bend area,
+and the vias and pins under the mask there get a note of their own. Read the
+28.10 update and round 105.
 
 **Open, 2026-10-25 22:20** (the list given to the owner that evening). His
 decisions: the push of rounds 92-104 (13 commits; «пока не отправляй»), a
@@ -3239,6 +3241,73 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-10-28 (round 105) — in a bend area, the pads drawn are warned of and the vias under the mask named apart
+
+At the owner's «Да, поправь» (the next-step box after the 28.10 check below:
+"Поправь предупреждение про сгибы: пусть считает только нарисованные
+площадки, а переходные под маской называет отдельно. Перед правкой скажи,
+что меняешь"); what would change was said first.
+
+### What it was
+
+`pads.build_pads` added to `result.in_bend` for every pin row standing in a
+bend area right after its sides were worked out - before the per-side check
+that finds no mask opening (`covered`) and before anything was placed - and
+`core` said "N pin(s) stand in a bend area - placed on the curve's tangent,
+but a pad there is a design rule violation". On the folded flex2-a0 N was 44:
+44 tented vias (BEND_1 3, BEND_2 12, BEND_3 9, BEND_4 6, BEND_5 3, BEND_6 11)
+that draw nothing; none of its 44 drawn pads stands in a bend. No test looked
+at the count.
+
+### What changed
+
+- `pads.build_pads`: the bend is asked before the sides are drawn and told
+  after them. `in_bend` counts the copper pads placed in a bend area, as
+  `placed` counts them (a clipped one included), `in_bend_where` by bend;
+  a pin or via there with every side under the mask counts in
+  `bend_covered_vias` or `bend_covered_pins`, `bend_covered_where` by bend.
+  One with a window on one side and the mask on the other, drawing nothing
+  (the copper off), is in neither.
+- `core._build_pads`: "warning: N pad(s) drawn in a bend area (B1 2) - placed
+  on the curve's tangent, but a pad there is a design rule violation" only
+  when pads are drawn there; "note: 2 via(s) and 1 pin(s) under the mask stand
+  in a bend area (B1 3) - nothing is drawn for them" apart. `_per_bend` lists
+  the bends by name, BEND_10 after BEND_9 (by length, then by name).
+- `tests/test_pads.py` [11]: the rigid-flex fixture's B1 (y = 20, through the
+  flex F2) holds a drawn SMD pin, an untented via (its top drawn, its bottom
+  tented), two tented vias and a BARE pin; the held S2 a drawn SMD pin and a
+  tented via. Folded: "2 pad(s) drawn … (B1 2)" and "2 via(s) and 1 pin(s) …
+  (B1 3)", no third line; the copper off: the note alone; flat: neither.
+  Against the old code: 4 FAIL ("5 pin(s) stand in a bend area"), the
+  fixture's own two checks passing.
+- README (EN/RU) *Everything moves together*; CHANGELOG; ARCHITECTURE (core
+  1030/19, pads 1565/61).
+- Rows (312 -> 318): `bend-pads-every-pin`, `bend-pads-partly-covered`
+  (caught only by the copper-off check), `bend-pads-where-lost`,
+  `bend-covered-where-lost`, `bend-covered-unsaid`,
+  `bend-covered-kinds-swapped` (`build/fix-2026-10-28/add_rows105.py`).
+
+### Verified
+
+- flex2-a0 through the window's `run_jobs` on the 4090: folded, the warning
+  gone and "note: 44 via(s) under the mask stand in a bend area (BEND_1 3,
+  BEND_2 12, BEND_3 9, BEND_4 6, BEND_5 3, BEND_6 11) - nothing is drawn for
+  them"; flat, neither line; the pads where they were (0.002 mm off the body,
+  none of 848 points inside it).
+- Session 0 of the 4090 (the mirror equal to this tree, 137 files by sha256):
+  `test_pads` ALL PASS, `test_surface` and `test_bend` no failures; `run_all`
+  31/33 in 73 s - only `test_gui` (the 7 known FAILs of generated clicks) and
+  `test_geom` (13, the 1024x768 screen), which need the owner's session; the
+  97 rows on pads.py, core.py and README and every row naming `test_pads`
+  caught 97 of 97 in 125 s on 8 copies, the 91 old ones by the same checks
+  as before (`compare_rows105.py`; two of them differ only in their Russian
+  check names, which this run's capture through ps_remote turned into
+  U+FFFD replacement characters, letter for letter).
+- Not run: the GUI suites in the owner's session (no GUI file changed).
+- In passing: `sed -i` in Git Bash rewrote README.md with LF line ends
+  (`git ls-files --eol`: `w/lf` beside every other file's `w/crlf`); put back
+  to CRLF; `sed -b -i` keeps them.
+
 ## Update 2026-10-28 — "flex2-a0's pads float when it is flat": measured, refuted for `main`
 
 The owner: «Сделай экспорт платы flex2-a0 в несогнутом виде. Там площадки
@@ -3282,9 +3351,9 @@ below is measured from this side. No code changed.
 - The STEP header names no Simple 3D version ("Open CASCADE STEP processor
   7.9"): a file tells which code built it only by its geometry.
 
-### Found in passing (parked)
+### Found in passing
 
-- The folded log's "warning: 44 pin(s) stand in a bend area - placed on the
+- (Fixed in round 105.) The folded log's "warning: 44 pin(s) stand in a bend area - placed on the
   curve's tangent, but a pad there is a design rule violation" counts 44
   TENTED VIAS (BEND_1 3, BEND_2 12, BEND_3 9, BEND_4 6, BEND_5 3, BEND_6 11)
   that draw nothing: `pads.py` adds to `result.in_bend` before the covered-pad

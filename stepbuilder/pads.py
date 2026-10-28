@@ -968,7 +968,11 @@ class PadsResult:
     no_mask_data: bool = False      # a format_version 10 library: no openings known, copper drawn whole
     vias: int = 0                   # via rows read (format_version 12)
     via_placed: int = 0             # of the placements, those that are vias - untented ones
-    in_bend: int = 0                # pins standing in a bend area
+    in_bend: int = 0                # copper pads placed in a bend area (counted as `placed` is)
+    in_bend_where: dict = field(default_factory=dict)       # bend name -> its share of in_bend
+    bend_covered_vias: int = 0      # vias in a bend area with every side under the mask: nothing drawn
+    bend_covered_pins: int = 0      # pins likewise - a padstack with no mask opening
+    bend_covered_where: dict = field(default_factory=dict)  # bend name -> its share of the two
     openings_placed: int = 0        # opening faces placed (the mask-openings option)
     opening_figures: int = 0        # distinct opening faces built
     openings_filled: int = 0        # placements whose copper fills the opening: nothing left to draw
@@ -1207,12 +1211,16 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
         if not sides:
             result.no_outer_face += 1
             continue
-        if fold is not None and fold.in_bend_area(x, y):
-            result.in_bend += 1
+        # A pin in a bend area is told of by what it draws, so it is counted
+        # after its sides: flex2-a0 folded said "44 pin(s) stand in a bend
+        # area" for 44 tented vias that draw nothing (28.10.2026).
+        bend = fold.in_bend_area(x, y) if fold is not None else None
+        placed_before, covered_sides = result.placed, 0
 
         for face_side, pad, mask in sides:
             if mask is None and masks_known:
                 result.covered += 1
+                covered_sides += 1
                 continue
             layer = next((lay for lay, p in (padstack.get("pads") or {}).items() if p is pad), "?")
             tag = "m" if mirrored else ""
@@ -1323,6 +1331,18 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
                         result.openings_placed += 1
                         if done == "clipped":
                             result.openings_clipped += 1
+
+        if bend:
+            drawn = result.placed - placed_before
+            if drawn:
+                result.in_bend += drawn
+                result.in_bend_where[bend] = result.in_bend_where.get(bend, 0) + drawn
+            elif covered_sides == len(sides):
+                if is_via:
+                    result.bend_covered_vias += 1
+                else:
+                    result.bend_covered_pins += 1
+                result.bend_covered_where[bend] = result.bend_covered_where.get(bend, 0) + 1
 
     return result
 

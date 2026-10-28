@@ -716,3 +716,20 @@ equivalent mutant.
   window), the 54 rows caught 54 of 54, the 50 old ones by the same checks.
   **A distance says how near, not on which side: against a solid it is zero
   inside, against a compound it is not.**
+- **Round 105.** Not a review finding: the owner's flex2-a0, folded, said
+  "44 pin(s) stand in a bend area - placed on the curve's tangent, but a pad
+  there is a design rule violation", and none of its 44 drawn pads stands in
+  a bend - the 44 were tented vias, counted before the per-side check that
+  finds no mask opening. No test had ever looked at that count. A section of
+  `test_pads` on the rigid-flex fixture puts in B1 a drawn pin, an untented
+  via (its top drawn, its bottom tented), two tented vias and a pin with no
+  mask opening, with a drawn pin and a tented via on the held stiffener;
+  against the old code it failed four checks ("5 pin(s) stand in a bend
+  area"). Now the warning counts the copper pads placed there, by bend, and a
+  note names the vias and pins with every side under the mask; with the copper
+  off the untented via draws nothing and is not called covered - the check that
+  catches the row making any covered side enough. Six rows (318). Session 0
+  of the 4090: `run_all` 31/33 (the two suites that need a window), the 97
+  rows on the changed files and on `test_pads` caught 97 of 97, the 91 old
+  ones by the same checks as before. **A count is tested by what it counts:
+  put beside each thing it should count one it should not.**

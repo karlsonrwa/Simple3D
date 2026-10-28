@@ -3288,5 +3288,65 @@
    "tests/test_bend.py"
   ],
   "why": "a face wrapped across a bend that an earlier bend carries is left where the flat board had it, not where the board went (round 104)"
+ },
+ {
+  "id": "bend-pads-every-pin",
+  "file": "stepbuilder/pads.py",
+  "old": "            drawn = result.placed - placed_before\n",
+  "new": "            drawn = 1\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "every pin and via in a bend area is counted as a pad drawn there, drawn or not: flex2-a0 folded said \"44 pin(s) stand in a bend area\" for 44 tented vias that draw nothing (round 105)"
+ },
+ {
+  "id": "bend-pads-partly-covered",
+  "file": "stepbuilder/pads.py",
+  "old": "            elif covered_sides == len(sides):\n",
+  "new": "            elif covered_sides:\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a via with a mask opening on one side and none on the other is said to stand under the mask (round 105)"
+ },
+ {
+  "id": "bend-pads-where-lost",
+  "file": "stepbuilder/pads.py",
+  "old": "                result.in_bend_where[bend] = result.in_bend_where.get(bend, 0) + drawn\n",
+  "new": "                pass\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the warning about pads drawn in a bend area no longer says which bend (round 105)"
+ },
+ {
+  "id": "bend-covered-where-lost",
+  "file": "stepbuilder/pads.py",
+  "old": "                result.bend_covered_where[bend] = result.bend_covered_where.get(bend, 0) + 1\n",
+  "new": "                pass\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the note about vias under the mask in a bend area no longer says which bend (round 105)"
+ },
+ {
+  "id": "bend-covered-unsaid",
+  "file": "stepbuilder/core.py",
+  "old": "    if result.bend_covered_vias or result.bend_covered_pins:\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the vias and pins under the mask in a bend area are counted and never named (round 105)"
+ },
+ {
+  "id": "bend-covered-kinds-swapped",
+  "file": "stepbuilder/core.py",
+  "old": "        kinds = \" and \".join(f\"{n} {kind}\" for n, kind in ((result.bend_covered_vias, \"via(s)\"),\n",
+  "new": "        kinds = \" and \".join(f\"{n} {kind}\" for n, kind in ((result.bend_covered_vias, \"pin(s)\"),\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the vias under the mask in a bend area are called pins (round 105)"
  }
 ]

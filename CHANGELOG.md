@@ -11,6 +11,22 @@ to use the tool.
 
 ---
 
+- **2026-10-28** — **The bend-area warning counts only the pads drawn there.**
+  A folded flex2-a0 said "44 pin(s) stand in a bend area … a pad there is a
+  design rule violation", while none of its 44 drawn pads stands in a bend: the
+  44 were vias under the mask, which draw nothing. Now the warning counts the
+  copper pads actually drawn in a bend area and names the bend; the vias and
+  pins under the mask there get a note of their own, by bend, saying that
+  nothing is drawn for them. Six rows added to the mutation table (318). /
+  **Предупреждение о зоне сгиба считает только нарисованные там площадки.**
+  Согнутая flex2-a0 писала «44 pin(s) stand in a bend area … a pad there is a
+  design rule violation», хотя ни одна из её 44 нарисованных площадок на сгиб
+  не попадает: это были 44 переходных под маской, которые ничего не рисуют.
+  Теперь предупреждение считает только медные площадки, действительно
+  нарисованные в зоне сгиба, и называет сгиб. Переходные и выводы под маской
+  получают отдельную заметку, тоже по сгибам, где сказано, что для них ничего
+  не рисуется. В таблицу мутаций добавлено шесть строк (318).
+
 - **2026-10-25** — **Drawn openings and a flat legend follow a bend exactly.**
   A surface with no thickness - the copper and laminate of drawn mask openings,
   a flat silkscreen - could not be bent the way the board is, so across a bend
