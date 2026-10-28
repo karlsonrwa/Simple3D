@@ -5,7 +5,16 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-28 (rounds 95-107 on `main`; pushed by the owner up to `fc75a18` at 18:03; the review's second round done 20:45)
+## READ THIS FIRST — state as of 2026-10-28 (rounds 95-108 on `main`; pushed by the owner up to `fc75a18` at 18:03; the review's second round done 20:45)
+
+**Round 108 (2026-10-28, late evening), on `main`, not pushed.** At the
+owner's «Да, R4-11»: where zones overlap, a pin's mask window is decided by
+the zone whose layers make the board's face there (`Surface.face_zones`,
+`_Zones.mask_at(x, y, side, padstack)`), no longer by the first zone in the
+file. flex-b2 0 -> 42 windows and flex2-a0 0 -> 33 (each 0.001 mm off the
+body), flex3-a0 and Cadence_Demo unchanged; the log names the zone that made
+the face. test_pads [12] red first (7 FAIL), rows 353, the 113 rows on the
+changed files caught 113 of 113, run_all 32/34 in session 0. Read round 108.
 
 **Round 107 (2026-10-28, evening), on `main`, not pushed.** The owner
 answered the second round's three questions: R3-17, a part's height stays
@@ -3324,6 +3333,90 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-10-28 (round 108) — where zones overlap, the zone that makes the board's face decides a pin's mask window (R4-11 of the second review round)
+
+At the owner's «Да, R4-11» (28.10.2026, late evening). The finding:
+`pads._Zones.mask_at` asked the FIRST zone in the file that holds a pin, by
+its stackup alone, while the pin's heights came from the surface (every zone
+holding the point). flex-b2's 21 connector pins stand in STIFFENER2 (no mask;
+its stiffener layers opened over the pins) and in SOLDERMASK1 (a mask on both
+sides), whose mask makes both faces there: 42 windows not drawn, "their zone
+carries no soldermask on that side (STIFFENER2)". flex2-a0's 33 pins in
+STIFF_TOP_500(_2) and LDI/LDI2 (SOLDERMASK_BOTTOM without shapes, so the
+whole zone) lost their bottom windows the same way.
+
+### The rule, and why not "the outermost material is a mask"
+
+Measured first (`build/fix-2026-10-28/r108/probe_masks.py`, the 4090, 23:30)
+over the review's eight boards: the zone(s) whose layers make the face at the
+pin - at its centre, or on its drill ring - give flex-b2 42 windows
+(SOLDERMASK1 makes both faces) and flex2-a0 33 (LDI/LDI2 the bottom; the top
+a tie of the two zones, neither masked there); flex3-a0 and Cadence_Demo
+unchanged; ring and centre never disagree; the zones that overlap at a pin
+name the same outer conductors on every board (TOP, BOTTOM), so `_Zones.at`'s
+first-zone conductors are left alone. "Is the outermost layer at the pin a
+soldermask" was set aside: a stackup whose mask layer is drawn with openings
+over its pads would lose those windows, and a single zone's pins would change
+(a pin under its own masked zone's stiffener or coverlay, drawn so far).
+
+### What changed
+
+- `surface.Surface.face_zones(x, y)`: the zones whose layers make the top face
+  and the bottom face at a point, two within `FACE_TIE` (1e-6 mm) both;
+  `_material`, the per-point loop `at` used, is kept per point - a pin is asked
+  for its heights and again for its mask.
+- `pads._Zones.mask_at(x, y, side, padstack)` -> (a mask on that side, the
+  zones asked): the face zones decide, at the pin or on `_drill_ring` (now
+  shared with `around_drill`), one with a mask being enough; without a surface
+  (no stackup layers) the first zone holding the point, as before; off every
+  zone the plain board's stackup, with no name.
+- core's log: "N opening(s) not drawn: the zone that makes the board's face
+  there carries no soldermask on that side (names)"; on a plain board "N
+  opening(s) not drawn: the board carries no soldermask on that side" (it read
+  "their zone ... (the board)").
+- README (EN, RU) §Only where there is a mask: the rule for overlapping zones,
+  and that the log names the zone that decided. ARCHITECTURE: pads.py 1602
+  lines, 62 definitions; surface.py 154, 10; and settings.py corrected to 678
+  and 29 - round 107 wrote 677 and 27, counting top-level definitions only,
+  while the table counts every def and class (surface 8, pads 61, gui 64 at
+  the commits before).
+
+### Tests, red first
+
+- `test_pads` [12], 7 checks (the pin in both zones, the flex pin and its
+  log, the face and its zone, `mask_at` per side, a zone masked on the top
+  only, no surface), and [7]'s two message checks reworded. Red on the old
+  code (the 4090, 23:33): 7 FAIL - the pin in both zones not drawn, "2
+  opening(s) not drawn: their zone carries no soldermask on that side (F2,
+  ST)", no `face_zones`, `mask_at`'s old signature, [7]'s wording.
+- Rows 345 -> 353 (`r108/rows108.py`): 8 new, `no-mask-zone-inverted`
+  re-aimed at `if not has_mask:`.
+
+### Verified (the 4090, session 0; the mirror equal to this tree in all 134 files by SHA-256)
+
+- 23:40 (`green_a.txt`): `test_pads` ALL PASS, `test_surface` no failures,
+  `test_mutations` ALL PASS, `audit_docs` no findings, `python_names` no
+  undefined names.
+- 23:38 with the old code and 23:41 with the new (`boards_before.txt`,
+  `boards_after.txt`; the reviewer's `r4build.py` and `r4scan.py` on the
+  review's data): flex-b2 flat and folded 0 -> 42 windows, each 0.001 mm off
+  the body on both sides; flex2-a0 flat and folded 0 -> 33, 0.001 mm, the 11
+  left out "(LDI2, STIFF_TOP_500_2)"; flex3-a0 (90 placed, 2 filled, 2 not
+  drawn) and Cadence_Demo (2080, 3294, 102) the same before and after; every
+  pad 0.002 mm, as before.
+- 23:42-23:44 (`rows_a.txt`): every row on pads.py, surface.py, core.py,
+  README and ARCHITECTURE and every row of `test_pads` and `test_surface` -
+  **caught 113 of 113** in 129 s on 8 copies, the new ones by [12]'s checks,
+  `pads-drill-ring-never` by `test_surface`'s drilled pin, the re-aimed
+  `no-mask-zone-inverted` by [6] as before. None of them names only
+  `test_gui`.
+- 23:45-23:46 (`final_a.txt`), the final tree: the mirror equal in all 134
+  files, `run_all` 32/34 in 84 s, only the two window suites, as always in
+  session 0.
+- Not touched: the drawn openings (`mask_zones`: clipped per masked zone, at
+  the zone's face - round 104's oracle had flex-b2's on the body at 3 um) and
+  `_Zones.at`'s conductors (the same on every board's overlapping zones).
+
 ## Update 2026-10-28 (round 107) — the window's settings: one colour at a time, a key changed twice is named, every key is read, old keys migrate per file (R6-1..R6-4 of the second review round); the owner's three decisions
 
 The owner's answers to the three questions the second round's report left
@@ -3388,7 +3481,9 @@ him (28.10.2026, evening):
   Tk).
 - README (EN, RU) §Two files: the close's promise narrowed as above, what
   counts as unreadable, the migration per file. ARCHITECTURE: settings.py 677
-  lines, 27 definitions; gui.py 1363.
+  lines, 27 definitions; gui.py 1363. (Wrong: the table counts every def and
+  class, so 29, and 678 lines after the last docstring edit - corrected in
+  round 108.)
 
 ### Tests, red first
 

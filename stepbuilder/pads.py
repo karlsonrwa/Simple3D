@@ -1023,6 +1023,18 @@ def _drill_reach(padstack: dict) -> float | None:
     return (hole + min(edges)) / 2.0
 
 
+def _drill_ring(x: float, y: float, padstack: dict | None) -> list[tuple[float, float]] | None:
+    """The points round a drilled pin that lie on its copper, where its faces
+    are asked (`_drill_reach`); None for a pin without a drill, or one whose
+    pad does not reach past it."""
+    reach = _drill_reach(padstack) if padstack and padstack.get("drill") else None
+    if reach is None:
+        return None
+    ring = DRILL_RING_POINTS
+    return [(x + reach * math.cos(2 * math.pi * k / ring), y + reach * math.sin(2 * math.pi * k / ring))
+            for k in range(ring)]
+
+
 class _Zones:
     """Which zone a point is in, and that zone's outer conductors, faces and
     soldermask sides."""
@@ -1046,6 +1058,9 @@ class _Zones:
             self.entries.append((name, polygon, outer_conductors(stackup), levels[name],
                                  mask_sides(stackup), contour,
                                  (min(xs), min(ys), max(xs), max(ys))))
+        # Every zone's mask sides, for the zone the surface says makes a face.
+        self.zone_masks = {str(zone.get("name")): mask_sides((stackups or {}).get(str(zone.get("stackup"))))
+                           for zone in zones or [] if (stackups or {}).get(str(zone.get("stackup")))}
         # A plain board: the one stackup, the two board faces.
         chosen = board_stackup(stackups or {})
         self.default = (outer_conductors(chosen[1]) if chosen else ("", ""),
@@ -1073,24 +1088,45 @@ class _Zones:
         hole too: flex3-a0's top pins have a hole of the drill's radius in the
         layers over their copper, the face around them 0.525 mm higher than
         under it (round 103)."""
-        ring = DRILL_RING_POINTS
-        reach = _drill_reach(padstack)
-        if reach is None:
+        points = _drill_ring(x, y, padstack)
+        if points is None:
             return faces
-        found = [self.surface.at(x + reach * math.cos(2 * math.pi * k / ring),
-                                 y + reach * math.sin(2 * math.pi * k / ring)) for k in range(ring)]
+        found = [self.surface.at(px, py) for px, py in points]
         found = [f for f in found if f is not None]
         if not found:
             return faces
         return max(f[0] for f in found), min(f[1] for f in found)
 
-    def mask_at(self, x: float, y: float) -> tuple[bool, bool, str | None]:
-        """(mask on top, mask on the bottom, zone name) for a point; the
-        plain board's stackup answers for a point on no zone."""
+    def mask_at(self, x: float, y: float, side: str,
+                padstack: dict | None = None) -> tuple[bool, set[str]]:
+        """(a soldermask on *side*, the zones that answered) for a pin.
+
+        The zone whose layers make the board's face on that side answers,
+        through the surface - at the point, or on the ring round a drilled
+        pin's copper where its heights are asked - and one with a mask on
+        that side is enough. Where zones overlap, that is the zone the board
+        is there. Until round 108 the first zone in the file holding the
+        point answered: flex-b2's connector stands in STIFFENER2 (no mask,
+        its layers opened over the pins) and in SOLDERMASK1, whose mask makes
+        both faces there, and lost its 42 windows; flex2-a0's LDI under
+        STIFF_TOP_500 lost 33; the log named the zone without the mask
+        (second review round, 28.10.2026, R4-11). Without a surface - a file
+        with no stackup layers - the first zone holding the point still
+        answers; on no zone the plain board's stackup does, with no name.
+        """
+        i = 0 if side == "top" else 1
+        if self.surface:
+            names = set()
+            for px, py in _drill_ring(x, y, padstack) or [(x, y)]:
+                found = self.surface.face_zones(px, py)
+                if found is not None:
+                    names |= found[i]
+            if names:
+                return any(self.zone_masks.get(name, (True, True))[i] for name in names), names
         for name, polygon, _conductors, _faces, masks, *_rest in self.entries:
             if point_in_polygon((x, y), polygon):
-                return masks[0], masks[1], name
-        return self.default_masks[0], self.default_masks[1], None
+                return masks[i], {name}
+        return self.default_masks[i], set()
 
     def mask_zones(self, side: str) -> list:
         """The zones that carry a soldermask on *side*, as
@@ -1289,12 +1325,13 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
             # for a solder-mask-defined pad), the opening whole otherwise.
             # Only where the pin's zone HAS a mask on that side: a pin on a
             # flex or stiffener zone sits under coverlay, and its padstack's
-            # mask pad is a window in nothing.
+            # mask pad is a window in nothing. Where zones overlap, the zone
+            # that makes the board's face there (_Zones.mask_at, round 108).
             if openings and mask is not None:
-                mask_top, mask_bottom, zone_name = where.mask_at(x, y)
-                if not (mask_top if face_side == "top" else mask_bottom):
+                has_mask, asked = where.mask_at(x, y, face_side, padstack)
+                if not has_mask:
                     result.no_mask_zone += 1
-                    result.no_mask_zone_names.add(zone_name or "the board")
+                    result.no_mask_zone_names |= asked or {"the board"}
                     continue
                 mask_layer = next((lay for lay, p in (padstack.get("pads") or {}).items() if p is mask), "?")
                 okey = (name, mask_layer, mirrored, face_side, "opening")

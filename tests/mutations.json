@@ -391,8 +391,8 @@
  {
   "id": "no-mask-zone-inverted",
   "file": "stepbuilder/pads.py",
-  "old": "            if not (mask_top if face_side == \"top\" else mask_bottom):",
-  "new": "            if (mask_top if face_side == \"top\" else mask_bottom):",
+  "old": "                if not has_mask:\n",
+  "new": "                if has_mask:\n",
   "suites": [
    "tests/test_pads.py"
   ],
@@ -3627,5 +3627,86 @@
    "tests/test_gui.py"
   ],
   "why": "the close writes over a setting changed in the file meanwhile and the window, whose log goes with it, says nothing (review 28.10.2026, R6-3; round 107)"
+ },
+ {
+  "id": "pads-mask-first-zone-decides",
+  "file": "stepbuilder/pads.py",
+  "old": "        if self.surface:\n            names = set()\n",
+  "new": "        if False:\n            names = set()\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the first zone in the file holding a pin decides its mask again: flex-b2's connector loses its 42 windows to STIFFENER2, whose layers are opened over it (review 28.10.2026, R4-11; round 108)"
+ },
+ {
+  "id": "pads-mask-side-swapped",
+  "file": "stepbuilder/pads.py",
+  "old": "        i = 0 if side == \"top\" else 1\n        if self.surface:\n",
+  "new": "        i = 1 if side == \"top\" else 0\n        if self.surface:\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a pin's top window is asked of the zone that makes the bottom face, and the reverse (review 28.10.2026, R4-11; round 108)"
+ },
+ {
+  "id": "pads-mask-without-surface-masked",
+  "file": "stepbuilder/pads.py",
+  "old": "                return masks[i], {name}\n",
+  "new": "                return True, {name}\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "without a surface (a file with no stackup layers) every zone is taken to carry a mask (review 28.10.2026, R4-11; round 108)"
+ },
+ {
+  "id": "pads-mask-zone-unnamed",
+  "file": "stepbuilder/pads.py",
+  "old": "                    result.no_mask_zone_names |= asked or {\"the board\"}\n",
+  "new": "                    result.no_mask_zone_names |= {\"the board\"}\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a window left out on a zoned board is blamed on the board, not on the zone that made its face (review 28.10.2026, R4-11; round 108)"
+ },
+ {
+  "id": "core-no-mask-board-wording",
+  "file": "stepbuilder/core.py",
+  "old": "            if names == [\"the board\"]:\n",
+  "new": "            if False:\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a plain board's windows left out are said to be a zone's (\"the zone that makes the board's face there ... (the board)\") (review 28.10.2026, R4-11; round 108)"
+ },
+ {
+  "id": "pads-drill-ring-never",
+  "file": "stepbuilder/pads.py",
+  "old": "    if reach is None:\n        return None\n    ring = DRILL_RING_POINTS\n",
+  "new": "    if True:\n        return None\n    ring = DRILL_RING_POINTS\n",
+  "suites": [
+   "tests/test_surface.py",
+   "tests/test_pads.py"
+  ],
+  "why": "a drilled pin is asked at its centre, over its own drill, for its heights and its mask alike: flex3-a0's top pads drop into a hole of the drill's radius (round 103) (review 28.10.2026, R4-11; round 108)"
+ },
+ {
+  "id": "surface-face-zones-lowest-top",
+  "file": "stepbuilder/surface.py",
+  "old": "        top = max(t for _name, t, _b in found)\n",
+  "new": "        top = min(t for _name, t, _b in found)\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the zones said to make the top face are measured from the lowest top, so every zone holding the point makes it (review 28.10.2026, R4-11; round 108)"
+ },
+ {
+  "id": "surface-face-tie-a-millimetre",
+  "file": "stepbuilder/surface.py",
+  "old": "FACE_TIE = 1e-6         # mm\n",
+  "new": "FACE_TIE = 1.0          # mm\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "layers a millimetre apart count as one face: a zone opened over a pin still makes the face there (review 28.10.2026, R4-11; round 108)"
  }
 ]

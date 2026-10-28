@@ -675,7 +675,8 @@ jf.write_text(json.dumps(rf))
 res_rf, logs_rf, text_rf = build("rf_open", exposed_copper=True, mask_openings=True, fold_bends=False)
 check("both pins keep their copper, only the one on the masked zone gets a window",
       res_rf.pads_placed == 2 and res_rf.openings_placed == 1
-      and any("1 opening(s) not drawn: their zone carries no soldermask on that side (F2)" in m for m in logs_rf),
+      and any("1 opening(s) not drawn: the zone that makes the board's face there carries no soldermask "
+              "on that side (F2)" in m for m in logs_rf),
       (res_rf.pads_placed, res_rf.openings_placed, [m for m in logs_rf if "opening" in m]))
 check("the drawn opening on the flex is left out, the one across the boundary clipped, the log says so",
       any("bare_top: the mask is only on S2 - 1 drawn-opening polygon(s) clipped to it, 1 left out" in m for m in logs_rf)
@@ -700,7 +701,7 @@ jf.write_text(json.dumps(flex_only))
 res_fo, logs_fo, text_fo = build("flex_only", exposed_copper=True, mask_openings=True)
 check("a plain board without a soldermask gets its copper and no window anywhere",
       res_fo.pads_placed == 5 and res_fo.openings_placed == 0 and "openings_top" not in text_fo
-      and any("5 opening(s) not drawn: their zone carries no soldermask on that side (the board)" in m for m in logs_fo)
+      and any("5 opening(s) not drawn: the board carries no soldermask on that side" in m for m in logs_fo)
       and any("bare_bottom: 1 drawn-opening polygon(s) left out - the board carries no soldermask on the bottom" in m
               for m in logs_fo),
       (res_fo.pads_placed, res_fo.openings_placed, [m for m in logs_fo if "soldermask" in m]))
@@ -1114,6 +1115,92 @@ check("the copper off: nothing is drawn in B1 (the flex has no mask for a window
       bend_lines(logs11o) == ["note: 2 via(s) and 1 pin(s) under the mask stand in a bend area (B1 3) - "
                               "nothing is drawn for them"], bend_lines(logs11o))
 check("flat, nothing is folded and neither is said", bend_lines(logs11s) == [], bend_lines(logs11s))
+
+print()
+print("[12] where zones overlap, the zone that makes the board's face decides the mask")
+# The review's second round (28.10.2026, R4-11): the mask was asked of the FIRST
+# zone in the file holding the pin. flex-b2's connector stands in STIFFENER2 (no
+# mask; its stiffener and adhesive opened over the pins) and in SOLDERMASK1 (a
+# mask on both sides), the board's faces there are SOLDERMASK1's mask - and its
+# 42 windows were not drawn, the log blaming STIFFENER2; flex2-a0's LDI under
+# STIFF_TOP_500 lost 33 bottom windows so. Here zone ST comes first in the file,
+# on S2's stack without its two masks, inside S2 (masked); both have their
+# stiffener and its adhesive opened round (8, 5), as flex-b2's, and a pin there.
+ov = json.loads((ROOT / "tests/fixtures/rigidflex.json").read_text())
+ov.update({"format_version": 12, "name": "overlap", "components": {}})
+OPEN_AT = (8.0, 5.0)
+for layer in ov["stackups"]["STIFFENER2"]["layers"]:
+    if layer["name"] in ("STIFFENER_TOP2", "ADHESIVE_TOP2"):
+        layer["shapes"] = [{"outline": rect(0, 0, 16, 11.38), "voids": [circle(1.5, *OPEN_AT)]}]
+        layer["negative"] = False
+nomask = json.loads(json.dumps(ov["stackups"]["STIFFENER2"]))
+nomask["layers"] = [lay for lay in nomask["layers"] if not lay["name"].startswith("SOLDERMASK")]
+nomask["thickness"] = sum(float(lay["z_top"]) - float(lay["z_bottom"]) for lay in nomask["layers"])
+for layer in nomask["layers"]:
+    if layer["name"] in ("STIFFENER_TOP2", "ADHESIVE_TOP2"):
+        layer["shapes"] = [{"outline": rect(4, 2, 12, 8), "voids": [circle(1.5, *OPEN_AT)]}]
+ov["stackups"]["NOMASK"] = nomask
+ov["zones"] = [{"name": "ST", "stackup": "NOMASK", "contour": rect(4, 2, 12, 8)}] + ov["zones"]
+ov["pads"] = {"padstacks": {"SMD": smd},
+              "pins": [[OPEN_AT[0], OPEN_AT[1], 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],   # ST and S2
+                       [20.0, 20.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"]],             # F2 alone
+              "exposed": {"top": [], "bottom": []}, "bare": {"top": [], "bottom": []}}
+check("the premise: ST holds the pin first and has no mask, S2 holds it too and has one",
+      P.mask_sides(nomask) == (False, False) and P.mask_sides(ov["stackups"]["STIFFENER2"]) == (True, True)
+      and [z["name"] for z in ov["zones"]][:2] == ["ST", "S2"])
+jf.write_text(json.dumps(ov))
+res_ov, logs_ov, text_ov = build("overlap", exposed_copper=False, mask_openings=True, fold_bends=False)
+check("the pin in both zones gets its window: S2's mask makes the board's face there",
+      res_ov.openings_placed == 1, (res_ov.openings_placed, [m for m in logs_ov if "pening" in m]))
+check("the pin on the flex alone still gets none, and the log names the zone that makes its face",
+      any("1 opening(s) not drawn: the zone that makes the board's face there carries no soldermask "
+          "on that side (F2)" in m for m in logs_ov), [m for m in logs_ov if "not drawn" in m])
+stack_ov = core._prepare_stackups(ov, core.BuildOptions(mask_openings=True, fold_bends=False), lambda *_: None)
+where_ov = P._Zones(stack_ov.zones, stack_ov.stackups, stack_ov.levels, stack_ov.board_top_z,
+                    stack_ov.board_bottom_z, stack_ov.surface)
+
+
+def asked(call, *args):
+    """A call that a build before round 108 does not have, or takes otherwise."""
+    try:
+        return call(*args)
+    except (AttributeError, TypeError) as exc:
+        return repr(exc)
+
+
+mask_top_z = next(float(lay["z_top"]) for lay in stack_ov.stackups["STIFFENER2"]["layers"]
+                  if lay["name"] == "SOLDERMASK_TOP") + stack_ov.shift
+top_here = stack_ov.surface.at(*OPEN_AT)
+faces_here = asked(lambda: stack_ov.surface.face_zones(*OPEN_AT))
+check("the face there is S2's mask: ST's layers above its copper are opened, and S2 makes the face",
+      top_here is not None and abs(top_here[0] - mask_top_z) < 1e-9
+      and isinstance(faces_here, tuple) and faces_here[0] == {"S2"}, (top_here, mask_top_z, faces_here))
+check("mask_at answers for the side asked and names the zones it asked",
+      asked(where_ov.mask_at, *OPEN_AT, "top") == (True, {"S2"})
+      and asked(where_ov.mask_at, 20.0, 20.0, "top") == (False, {"F2"}),
+      (asked(where_ov.mask_at, *OPEN_AT, "top"), asked(where_ov.mask_at, 20.0, 20.0, "top")))
+# Every stack above is masked on both sides or on neither, which cannot tell
+# the top's answer from the bottom's: S2 masked on the top only can.
+one = json.loads(json.dumps(ov))
+for layer in one["stackups"]["STIFFENER2"]["layers"]:
+    if layer["name"] == "SOLDERMASK_BOTTOM":
+        layer["name"] = "COVERLAY_BOTTOM2"
+stack_one = core._prepare_stackups(one, core.BuildOptions(mask_openings=True, fold_bends=False), lambda *_: None)
+where_one = P._Zones(stack_one.zones, stack_one.stackups, stack_one.levels, stack_one.board_top_z,
+                     stack_one.board_bottom_z, stack_one.surface)
+check("a zone masked on the top only answers yes for the top and no for the bottom",
+      P.mask_sides(stack_one.stackups["STIFFENER2"]) == (True, False)
+      and asked(where_one.mask_at, *OPEN_AT, "top") == (True, {"S2"})
+      and asked(where_one.mask_at, *OPEN_AT, "bottom")[0] is False,
+      (asked(where_one.mask_at, *OPEN_AT, "top"), asked(where_one.mask_at, *OPEN_AT, "bottom")))
+# A file without stackup layers has no surface to ask: the zone's stackup
+# answers, the first one holding the point, as before round 108.
+bare_where = P._Zones(stack_ov.zones, stack_ov.stackups, stack_ov.levels, stack_ov.board_top_z,
+                      stack_ov.board_bottom_z, None)
+check("without a surface the first zone holding the point still answers",
+      asked(bare_where.mask_at, *OPEN_AT, "top") == (False, {"ST"}),
+      asked(bare_where.mask_at, *OPEN_AT, "top"))
+jf.write_text(json.dumps(board))
 
 print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")

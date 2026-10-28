@@ -25,12 +25,15 @@ from .reporting import LogFn, _noop_log
 
 # How far outside a face's box a point may lie and still be asked about.
 BOX_GAP = 1e-6          # mm
+# Two layers ending this close to each other make one face (face_zones).
+FACE_TIE = 1e-6         # mm
 
 
 class Surface:
     """`at(x, y)`: (top, bottom) of the material at a flat point, or None
-    where no zone holds it. A layer's region is worked out the first time a
-    point of its zone asks, then kept."""
+    where no zone holds it; `face_zones(x, y)`: the zones that material
+    belongs to on each face. A layer's region is worked out the first time a
+    point of its zone asks, then kept, and so is what a point found."""
 
     def __init__(self, zones: list[dict] | None, stackups: dict | None, shift: float,
                  log: LogFn = _noop_log) -> None:
@@ -54,6 +57,8 @@ class Surface:
                                (min(xs) - BOX_GAP, min(ys) - BOX_GAP, max(xs) + BOX_GAP, max(ys) + BOX_GAP)))
         self._regions: dict[tuple[int, int], list] = {}
         self._zone_faces: dict[int, object] = {}
+        # A pin's point is asked for its heights and again for its mask.
+        self._found: dict[tuple[float, float], list] = {}
 
     def __bool__(self) -> bool:
         return bool(self.zones)
@@ -104,16 +109,40 @@ class Surface:
         return any(not box.IsOut(point) and _on_face(face, x, y)
                    for face, box in self._faces(zone_index, layer_index))
 
+    def _material(self, x: float, y: float) -> list:
+        """(zone name, top, bottom) of every layer with material at a flat
+        point, in every zone whose contour holds it."""
+        key = (x, y)
+        if key not in self._found:
+            found = []
+            for zi, (name, _polygon, _contour, layers, (x0, y0, x1, y1)) in enumerate(self.zones):
+                if not (x0 <= x <= x1 and y0 <= y <= y1) or not self._in_zone(zi, x, y):
+                    continue
+                for li, (_layer, top, bottom) in enumerate(layers):
+                    if self._holds(zi, li, x, y):
+                        found.append((name, top, bottom))
+            self._found[key] = found
+        return self._found[key]
+
     def at(self, x: float, y: float) -> tuple[float, float] | None:
-        tops, bottoms = [], []
-        for zi, (_name, polygon, _contour, layers, (x0, y0, x1, y1)) in enumerate(self.zones):
-            if not (x0 <= x <= x1 and y0 <= y <= y1) or not self._in_zone(zi, x, y):
-                continue
-            for li, (_layer, top, bottom) in enumerate(layers):
-                if self._holds(zi, li, x, y):
-                    tops.append(top)
-                    bottoms.append(bottom)
+        found = self._material(x, y)
+        tops = [top for _name, top, _bottom in found]
+        bottoms = [bottom for _name, _top, bottom in found]
         return (max(tops), min(bottoms)) if tops else None
+
+    def face_zones(self, x: float, y: float) -> tuple[set[str], set[str]] | None:
+        """The zones whose layers make the board's top face and its bottom
+        face at a flat point - more than one where two zones' layers end
+        within FACE_TIE of each other - or None where no zone holds it. Where
+        zones overlap, that is the zone the board IS there, on that side:
+        what a pin's mask window is asked of since round 108 (pads._Zones.mask_at)."""
+        found = self._material(x, y)
+        if not found:
+            return None
+        top = max(t for _name, t, _b in found)
+        bottom = min(b for _name, _t, b in found)
+        return ({name for name, t, _b in found if t >= top - FACE_TIE},
+                {name for name, _t, b in found if b <= bottom + FACE_TIE})
 
 
 def _on_face(face, x: float, y: float) -> bool:

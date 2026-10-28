@@ -629,7 +629,11 @@ the checkbox draws the openings whole: the mask's windows on a board without
 its copper.
 
 **Only where there is a mask.** A window is drawn only on a zone whose stackup
-carries a soldermask layer on that side. A flex or stiffener zone has coverlay
+carries a soldermask layer on that side. Where zones overlap, the zone whose
+layers make the board's face at the pin on that side decides: flex-b2's
+connector stands both in a stiffener zone and in a masked one, the stiffener is
+opened over its pins, and the face there is the mask. The log names the zone
+that decided when a window is left out. A flex or stiffener zone has coverlay
 and adhesive there and no soldermask, so a pin on it gets no window (its copper
 is still drawn), a drawn opening lying on it is left out, and one that runs
 across a zone boundary — Cadence's demo draws its outline as strokes on the
@@ -1540,7 +1544,11 @@ select-all Allegro (не интерактивным поиском по рамк
 рисует вскрытия целиком: окна маски на плате без её меди.
 
 **Только там, где маска есть.** Окно рисуется только в зоне, чей стек несёт
-слой паяльной маски с этой стороны. У зоны флекса или стиффенера там
+слой паяльной маски с этой стороны. Где зоны перекрываются, решает зона, чьи
+слои образуют грань платы у вывода с этой стороны: разъём flex-b2 стоит и в
+зоне стиффенера, и в зоне с маской, стиффенер над его выводами вскрыт, и грань
+там даёт маска. Если окно не нарисовано, лог называет зону, которая так
+решила. У зоны флекса или стиффенера там
 коверлей и клей, а маски нет, поэтому вывод на ней окна не получает (его
 медь рисуется по-прежнему), нарисованное вскрытие, лежащее на ней,
 пропускается, а пересекающее границу зон — демо-плата Cadence рисует свой

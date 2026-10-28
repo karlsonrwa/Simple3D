@@ -740,8 +740,15 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
             log("note: this JSON carries no mask openings (format_version 10); re-export from "
                 "Allegro to draw them")
         if result.no_mask_zone:
-            log(f"  {result.no_mask_zone} opening(s) not drawn: their zone carries no soldermask "
-                f"on that side ({', '.join(sorted(result.no_mask_zone_names))})")
+            names = sorted(result.no_mask_zone_names)
+            if names == ["the board"]:
+                log(f"  {result.no_mask_zone} opening(s) not drawn: the board carries no "
+                    f"soldermask on that side")
+            else:
+                # The zone the pads module asked: where zones overlap, the one
+                # whose layers make the board's face at the pin (round 108).
+                log(f"  {result.no_mask_zone} opening(s) not drawn: the zone that makes the "
+                    f"board's face there carries no soldermask on that side ({', '.join(names)})")
         if result.openings_clipped:
             log(f"  {result.openings_clipped} opening(s) reach the board's edge or a cutout and are "
                 f"clipped to it")
