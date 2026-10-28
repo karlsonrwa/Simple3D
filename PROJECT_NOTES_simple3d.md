@@ -15,7 +15,10 @@ from is cut short of a stretch it walks out and back (`contour.drop_doubled_back
 26.25 mm2 wedge is gone, flat and folded; the files sent to him are in
 `build/render/out_2026-10-28/` (`*_fix.step`, `*_fix.html`). A new suite
 `tests/test_doubled_back.py`, rows 329. Waits for his look at the files and his
-word on merging. Read round 106.
+word on merging. Read round 106. **The working tree is left checked out on
+this branch** (28.10, 17:05), so a build he starts from this folder carries the
+fix; `main` is `4b67284`. No python process was left here or on the 4090
+(checked 17:07).
 
 **28.10.2026, no code change.** The owner: «Сделай экспорт платы flex2-a0 в
 несогнутом виде. Там площадки плавают не на той высоте. А в согнутом всё
