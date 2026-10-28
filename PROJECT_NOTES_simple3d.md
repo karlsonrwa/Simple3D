@@ -5,20 +5,22 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-28 (rounds 95-105 on `main`; 92-104 pushed by the owner 27.10; 106 on branch `fix/doubled-back-outlines`)
+## READ THIS FIRST — state as of 2026-10-28 (rounds 95-106 on `main`; 92-104 pushed by the owner 27.10)
 
-**Round 106 (2026-10-28), on branch `fix/doubled-back-outlines`, not merged.**
-At the owner's word («сделай эту правку отдельной веткой, посмотрим на
-итоговый результат на обсуждаемой плате»): every outline the body is built
-from is cut short of a stretch it walks out and back (`contour.drop_doubled_back`,
-`core._without_doubled_tracks`), with a warning naming the turn. flex2-a0's
-26.25 mm2 wedge is gone, flat and folded; the files sent to him are in
-`build/render/out_2026-10-28/` (`*_fix.step`, `*_fix.html`). A new suite
-`tests/test_doubled_back.py`, rows 329. Waits for his look at the files and his
-word on merging. Read round 106. **The working tree is left checked out on
-this branch** (28.10, 17:05), so a build he starts from this folder carries the
-fix; `main` is `4b67284`. No python process was left here or on the 4090
-(checked 17:07).
+**Round 106 (2026-10-28), merged into `main`.** Made on the branch
+`fix/doubled-back-outlines` at the owner's word («сделай эту правку отдельной
+веткой, посмотрим на итоговый результат на обсуждаемой плате»): every outline
+the body is built from is cut short of a stretch it walks out and back
+(`contour.drop_doubled_back`, `core._without_doubled_tracks`), with a warning
+naming the turn. flex2-a0's 26.25 mm2 wedge is gone, flat and folded; the
+files sent to him are in `build/render/out_2026-10-28/` (`*_fix.step`,
+`*_fix.html`). A new suite `tests/test_doubled_back.py`, rows 329. At his
+«Слей в main» the branch went in as the merge commit `9e8698a` (17:48), the
+way branches have always been merged here (`--no-ff`); main's tree is the
+branch's, and the ten changed files are, CR for CR aside, the copies the 4090
+ran. The working tree is on `main` again; the branch is kept, merged. Not
+pushed: `main` is 7 commits ahead of `origin` (3ef2fb1 .. this notes commit).
+Read round 106.
 
 **28.10.2026, no code change.** The owner: «Сделай экспорт платы flex2-a0 в
 несогнутом виде. Там площадки плавают не на той высоте. А в согнутом всё
@@ -3263,13 +3265,14 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
-## Update 2026-10-28 (round 106, branch `fix/doubled-back-outlines`) — an outline that runs back over itself is built without that stretch
+## Update 2026-10-28 (round 106, branch `fix/doubled-back-outlines`, merged as `9e8698a`) — an outline that runs back over itself is built without that stretch
 
 The owner, after the diagnosis below: «Если еще не делал, сделай эту правку
 отдельной веткой, посмотрим на итоговый результат на обсуждаемой плате. Если
 результат уже есть, я хочу посмотреть на файл step с обсуждаемой правкой.»
 The diagnosis notes went to `main` first (`4b67284`); the branch
-`fix/doubled-back-outlines` starts there. Not merged, not pushed.
+`fix/doubled-back-outlines` starts there. After he had the files, his «Слей в
+main»: merged as `9e8698a` (28.10, 17:48), not pushed.
 
 **The code.** `stepbuilder/contour.py`: `drop_doubled_back(contour)` ->
 (contour, [((x, y) of the turn, mm walked twice)]). `TRACK_WIDTH` 1 um,
