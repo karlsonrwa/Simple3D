@@ -736,7 +736,11 @@ outside the board outline and exactly along the bend seams. Allegro's zone
 contours carry hairlines - an arc out along a stiffener's edge and back on a
 circle a fraction of a micron off - and a cutter sharing that wall once cost
 a flex layer a whole corner (2026-09-06); the margin keeps the two apart
-without adding anything a layer does not already have.
+without adding anything a layer does not already have. Where an arm's side
+crosses a seam, those ten microns outside the outline belong to the bend strip
+alone, inside its band: a layer a little wider than the outline used to be cut
+into the strip and the panel both there, and on flex3-a0 that hairline left
+the folded board with free edges and a face of no area.
 
 **The bend surfaces are true cylinders.** Where the board is the same shape all
 the way across a bend, the cross-section is revolved about the axis; otherwise
@@ -1651,7 +1655,10 @@ Allegro есть та же идея (*Setup – Anchor 3D View*), но в 24.1 �
 «волоски» — дугу вдоль края стиффенера и обратно по окружности, смещённой на
 долю микрона, — и резак, деливший с ними стенку, однажды стоил слою флекса
 целого угла (2026-09-06); отступ разводит их, ничего не добавляя к тому, что у
-слоя и так есть.
+слоя и так есть. Там, где бок рукава пересекает шов, эти десять микрон снаружи
+контура принадлежат только полосе сгиба, в пределах её полосы. Слой чуть шире
+контура раньше попадал там и в полосу, и в панель, и на flex3-a0 этот волосок
+оставлял в сложенной плате свободные рёбра и грань нулевой площади.
 
 **Поверхности сгибов — истинные цилиндры.** Там, где плата поперёк области сгиба
 одинакова, сечение вращается вокруг оси; иначе на цилиндр переносится сам

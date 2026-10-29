@@ -19,9 +19,10 @@ from OCP.gp import gp_Pnt, gp_Trsf
 from ..contour import clip_halfplane, contour_points, point_in_polygon, point_on_polygon, polygon_area
 from .apply import apply_plan
 from .constants import CLAIM_GRID, CUTTER_MARGIN, DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, DOUBLE_CLAIM_WARN, DRAWN_AREA_TOL_ABS, DRAWN_AREA_TOL_REL, EPS, FLAT_FRAME_MARGIN, LogFn, SEAM_TOL, SEAM_WARN, SLICE_OVERLAP_MIN, _noop_log
+from .cut import _slab
 from .info import Bend, bends_from_json
-from .pieces import _closest_point, _cut_into_pieces, _cutters, _touching, shared_strips
-from .regions import _Region, _slice_trsf, _Strip
+from .pieces import _closest_point, _cut_into_pieces, _cutters, _faces_of, _touching, shared_strips
+from .regions import _bbox, _Region, _slice_trsf, _Strip
 
 
 @dataclass
@@ -330,6 +331,45 @@ def _side_of(kept: list, parts: list, npanel: int, polys: list,
     values = [nx * vx + ny * vy for vx, vy in polys[part]]
     return -1.0 if max(values) <= base + half + EPS else 1.0
 
+def _strip_claim(strip: _Strip):
+    """What *strip* is cut with inside its band - all `_cut_to_region` gives
+    it of any shape - or None when that cannot be made."""
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
+
+    claim = strip.cutter_face()
+    box = _bbox(claim)
+    if box is None:
+        return None
+    for nx, ny, lo, hi in strip.bounds:
+        common = BRepAlgoAPI_Common(claim, _slab(nx, ny, lo, hi, box))
+        if not common.IsDone():
+            return None
+        claim = common.Shape()
+    return claim
+
+
+def _boxes_meet(a, b) -> bool:
+    """Do two (xmin, ymin, zmin, xmax, ymax, zmax) boxes overlap in x and y?"""
+    return not (a[0] > b[3] + EPS or a[3] < b[0] - EPS
+                or a[1] > b[4] + EPS or a[4] < b[1] - EPS)
+
+
+def _without_claims(cutter, claims: list):
+    """*cutter* less each of *claims* its box meets; a cut that fails, or
+    that would leave nothing, keeps the cutter as it was."""
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+
+    box = _bbox(cutter)
+    for claim in claims:
+        other = _bbox(claim) if claim is not None else None
+        if box is None or other is None or not _boxes_meet(box, other):
+            continue
+        cut = BRepAlgoAPI_Cut(cutter, claim)
+        if cut.IsDone() and _faces_of(cut.Shape()):
+            cutter = cut.Shape()
+    return cutter
+
+
 def _walk(plan: FoldPlan, kept: list, strip_pieces: list, parts: list, polys: list,
           npanel: int, neighbours: list, held: int,
           slice_angle: float, cutters: list) -> tuple[dict, dict]:
@@ -620,6 +660,21 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
             plan.notes.append(
                 f"  note: {bend.name} is not reachable from the held piece, so "
                 f"nothing says which way it folds; left flat")
+
+    # What a strip claims of a layer - its cutter inside its band, all that
+    # _cut_to_region ever gives it - comes out of every panel's cutter. A
+    # panel's cutter is grown along its whole boundary, the seams too, less
+    # the other pieces' exact faces, and a strip's exact face ends at the
+    # outline: outside it the panel's cutter still reached past the seam into
+    # the band, where the strip's reaches as well. A layer a little wider than
+    # the outline was cut into both pieces at the corner where an arm's side
+    # crosses a seam, the strip bending its copy and the panel carrying its
+    # own; on flex3-a0's BEND_3 that hairline (2.5e-9 mm3) left the folded
+    # board with free edges and a face of no area at either neutral factor
+    # (second review round, 28.10.2026, R5-10 and R5-3).
+    claims = [_strip_claim(strip) for strip in plan.strips]
+    for i in range(npanel):
+        cutters[i] = _without_claims(cutters[i], claims)
 
     for i, (rs, face) in enumerate(panels):
         plan.regions.append(_Region(

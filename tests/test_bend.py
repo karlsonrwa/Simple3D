@@ -844,6 +844,49 @@ check("a layer on the outline itself is cut to exactly its own volume",
       near(_pieces_of(plain_layer, spiked_pieces), volume(plain_layer), 1e-6),
       (_pieces_of(plain_layer, spiked_pieces), volume(plain_layer)))
 
+print("\n[7c5] where an arm's side crosses a seam, its material is claimed once")
+# The review's second round (28.10.2026, R5-10 and R5-3): a piece's cutter was
+# its face grown CUTTER_MARGIN along its WHOLE boundary, the seams too, less the
+# other pieces' exact faces. A strip's exact face ends at the outline, so outside
+# the outline a panel's cutter still reached past the seam into the strip's band,
+# where the strip's own cutter reaches as well: a layer even a little wider than
+# the outline was cut into both pieces there, the strip bending its copy and the
+# panel carrying its own. On flex3-a0's BEND_3 that hairline, 2.5e-9 mm3, left
+# the folded board with free edges and a face of no area, at either K. Here the
+# layer is 5 um wider than the outline all round.
+from OCP.BRepAlgoAPI import BRepAlgoAPI_Common as _Common
+
+
+def _rect(x0, y0, x1, y1):
+    return [_seg((x0, y0), (x1, y0)), _seg((x1, y0), (x1, y1)),
+            _seg((x1, y1), (x0, y1)), _seg((x0, y1), (x0, y0))]
+
+
+arm = _rect(0.0, 0.0, 10.0, 30.0)
+arm_bend = bend_from_dict({
+    "name": "BEND_A", "line": {"start": [-1.0, 15.0], "end": [11.0, 15.0]},
+    "inner_radius": 2.0, "width": 3.1416,
+    "info": "TYPE=CircularBend, INNER_SIDE=BOTTOM, INNER_ANGLE=90.0000, "
+            "INNER_RADIUS=2.0000 MILLIMETERS, ORDER=0"})
+arm_plan = plan_fold([arm_bend], contour_points(arm), 0.0, -0.815,
+                     stack_at=lambda x, y: (-0.525, -0.815), outline_curves=arm)
+arm_panels = [r for r in arm_plan.regions if r.kind == "panel"]
+check("the premise: one bend across the arm, two panels and one strip",
+      len(arm_panels) == 2 and len(arm_plan.strips) == 1,
+      (len(arm_panels), len(arm_plan.strips)))
+wide_layer = _layer_from(_rect(-0.005, -0.005, 10.005, 30.005))
+wide_box = _bbox(wide_layer)
+arm_cut = [_cut_to_region(wide_layer, p.bounds, wide_box, p)
+           for p in arm_panels + list(arm_plan.strips)]
+claimed_twice = max(volume(_Common(arm_cut[i], arm_cut[-1]).Shape())
+                    for i in range(len(arm_panels))
+                    if arm_cut[i] is not None and arm_cut[-1] is not None)
+check("no panel is cut any of the material its strip is cut",
+      claimed_twice < 1e-12, claimed_twice)
+check("and the pieces of the wider layer sum to the layer",
+      near(sum(volume(c) for c in arm_cut if c is not None), volume(wide_layer), 1e-8),
+      (sum(volume(c) for c in arm_cut if c is not None), volume(wide_layer)))
+
 # --------------------------------------------------------------------------- #
 print("\n[7d] the fold joins up - every seam, every shape")
 

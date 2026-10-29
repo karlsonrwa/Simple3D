@@ -3708,5 +3708,35 @@
    "tests/test_pads.py"
   ],
   "why": "layers a millimetre apart count as one face: a zone opened over a pin still makes the face there (review 28.10.2026, R4-11; round 108)"
+ },
+ {
+  "id": "bend-panels-keep-strip-claims",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        cutters[i] = _without_claims(cutters[i], claims)\n",
+  "new": "        cutters[i] = cutters[i]\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a panel's cutter keeps reaching past a seam outside the outline, into the strip's band: a layer a little wider than the outline is cut into both, and flex3-a0 folds with free edges (review 28.10.2026, R5-10 and R5-3; round 109)"
+ },
+ {
+  "id": "bend-strip-claim-unbanded",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        common = BRepAlgoAPI_Common(claim, _slab(nx, ny, lo, hi, box))\n        if not common.IsDone():\n            return None\n        claim = common.Shape()\n",
+  "new": "        claim = claim\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a strip's whole cutter is taken out of the panels, its margin beyond its band too: the material outside the outline on the panel's side of the seam belongs to nobody (review 28.10.2026, R5-10 and R5-3; round 109)"
+ },
+ {
+  "id": "bend-claim-boxes-never-meet",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "    return not (a[0] > b[3] + EPS or a[3] < b[0] - EPS\n",
+  "new": "    return False and not (a[0] > b[3] + EPS or a[3] < b[0] - EPS\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "every claim is skipped by its box, so no panel's cutter loses anything (review 28.10.2026, R5-10 and R5-3; round 109)"
  }
 ]

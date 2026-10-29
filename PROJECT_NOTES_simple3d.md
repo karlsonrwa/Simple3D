@@ -5,7 +5,21 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-28 (rounds 95-108 on `main`; pushed by the owner up to `fc75a18` at 18:03; the review's second round done 20:45)
+## READ THIS FIRST — state as of 2026-10-29 (rounds 95-109 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 109 (2026-10-29), on `main`, not pushed.** At the owner's «Да,
+R5-10»: flex3-a0 folded in Solid failed BRepCheck at K = 0.5 (a face of no
+area, two free edges at the end of BEND_3) and kept a free edge at K = 0. A
+panel's cutter, grown ten microns along its whole boundary, reached past a
+seam outside the outline into the strip's band, so a layer a little wider
+than the outline was cut into both pieces at the corner (2.5e-9 mm3). Now
+every strip's claim - its cutter inside its band - comes out of every
+panel's cutter (`bend/plan.py`). flex3-a0 valid with no free edge at both K,
+read back valid; the other bend boards identical in volume and faces. test_bend
+[7c5] red first, rows 356, the 56 rows caught 56 of 56, run_all 32/34 in
+session 0. The same morning, at his «4090 доступна, rdp туда сделан», job 16
+ran rounds 107-108's window suites in his session: run_all 34/34, the 9 rows
+on gui.py 9 of 9. Read round 109.
 
 **Round 108 (2026-10-28, late evening), on `main`, not pushed.** At the
 owner's «Да, R4-11»: where zones overlap, a pin's mask window is decided by
@@ -3333,6 +3347,83 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-10-29 (round 109) — where an arm's side crosses a seam, its material is claimed once (R5-10 and R5-3 of the second review round)
+
+At the owner's «Да, R5-10» (29.10.2026). The findings: flex3-a0 folded in
+*Solid* at K = 0.5, the default, fails BRepCheck as built - a face of no area
+and two free edges of 4.9 and 10.3 um at the end of BEND_3, where the crooked
+bend reaches into STIFFENER2 (R5-10); at K = 0 it passes as built with one
+free edge of 11 um, and read back from STEP one face is rejected (R5-3, the
+first round's).
+
+### Where it came from, measured (the 4090, session 0, 12:04-12:12)
+
+- `build/fix-2026-10-29/r109/probe_r5.py`: both are already in ONE folded
+  layer before the board's fuse - at K = 0.5 STIFFENER2's dielectric (z
+  -0.035..-0.06), at K = 0 FLEX/COVERLAY_BOTTOM. `ShapeFix_Shape` makes the
+  fused board pass BRepCheck and keeps the free edges: no cure.
+- `probe_r5b.py`: every piece of that layer - the panel, the strip flat and
+  wrapped - is valid with no free edge; their fuse makes them. Both pieces
+  carry edges of about 10 nm at the seam near x 16.8, the arm's side.
+- `probe_r5c.py`: the strip's 10 nm edges lie on its band's end, the panel's
+  10 um before it, inside the band. A fuzzy fuse of the pieces at 1e-5 mm
+  cleared the layers but left the board one free edge at K = 0.5; at 1e-4 mm
+  a layer came out empty and the board lost 3.9 mm3 at K = 0 - set aside.
+- `probe_r5d.py`: the panel and strip pieces of those layers overlap,
+  2.46e-9 mm3 at K = 0.5 and 2.68e-9 at K = 0. A panel's cutter is grown
+  CUTTER_MARGIN (10 um) along its WHOLE boundary, less the other pieces'
+  exact faces; a strip's exact face ends at the outline, so outside it the
+  panel's cutter still reached past the seam into the band, where the strip's
+  own cutter reaches too. Taking each strip's claim out of the panels'
+  cutters: no overlap, both layers fold with no free edge, the whole board
+  valid with no free edge at both K, read back valid.
+
+### What changed
+
+- `bend/plan.py`: `_strip_claim(strip)` - the strip's cutter inside its band,
+  all `_cut_to_region` ever gives it; `_without_claims(cutter, claims)`, with
+  `_boxes_meet` for the cheap rejection; after `_walk`, every panel's cutter
+  loses every strip's claim. Inside the outline nothing changes: the strip's
+  cutter already excludes the panel's exact face.
+- README (EN, RU) §Folding: the ten microns outside the outline at a seam's
+  corner belong to the strip alone. ARCHITECTURE: plan.py 1001 lines, 30
+  definitions.
+
+### Tests, red first
+
+- `test_bend` [7c5], 3 checks: a straight 10 x 30 mm arm, one 90 deg bend
+  across it, a coverlay layer 5 um wider than the outline all round; no panel
+  piece shares material with the strip piece, and the pieces sum to the
+  layer. Red on the old code (12:15): 2.39e-6 mm3 claimed twice, the pieces
+  7.5100073 against the layer's 7.5100025.
+- Rows 353 -> 356 (`r109/rows109.py`).
+
+### Verified (the 4090, session 0; the mirror equal to this tree in all 134 files)
+
+- `boards_r5.py` (old code 12:17, new 12:18; solid, fused as the build fuses
+  it): flex3-a0 at K = 0.5 valid False -> True, free edges 2 -> 0, faces 210
+  -> 201, read back valid, volume 292.454534 -> 292.454530; at K = 0 free
+  edges 1 -> 0, read back rejected -> valid, faces 197 -> 180, volume
+  292.484540 -> 292.484483 (the copy the panel carried away, gone).
+  flex-b2, flex2-a0 and Cadence_Demo: volume and face count identical;
+  Cadence_Demo's plan 0.95 -> 1.06 s, one run each.
+- 12:21-12:22 (`green_a.txt`): `test_bend` no failures, `test_doubled_back`,
+  `test_zones`, `test_modes` ALL PASS, `test_mutations` ALL PASS,
+  `audit_docs` no findings, `python_names` no undefined names.
+- 12:22-12:31 (`rows_a.txt`): every row on bend/plan.py, README and
+  ARCHITECTURE and every row of `test_bend` - **caught 56 of 56** in 560 s
+  on 8 copies; the three new ones by [7c5]: a panel keeping the strip's claim
+  or every claim skipped by its box shows the 2.39e-6 mm3 claimed twice, the
+  strip's whole cutter taken out leaves the pieces short of the layer
+  (7.5099977 against 7.5100025).
+- 12:33 (`log_flex3_a.txt`), flex3-a0 through `core.generate`, folded in
+  Solid: at K = 0.5 the log no longer says the folded board fails
+  OpenCASCADE's check, and still names BEND_3 crooked (the owner's rule); at
+  K = 0 neither line - the strip fits the drawn bend area there.
+- 12:33-12:35 (`final_a.txt`), the final tree: the mirror equal in all 134
+  files, `run_all` 32/34 in 100 s, only the two window suites. No GUI file
+  changed, so no run in the owner's session.
+
 ## Update 2026-10-28 (round 108) — where zones overlap, the zone that makes the board's face decides a pin's mask window (R4-11 of the second review round)
 
 At the owner's «Да, R4-11» (28.10.2026, late evening). The finding:
@@ -3525,10 +3616,15 @@ him (28.10.2026, evening):
 - 22:47-22:49 (`final_a.txt`), after a docstring edit and these notes: the
   mirror equal to this tree in all 134 files again, `run_all` 32/34 in 82 s,
   the same two.
-- Not run: the GUI suites in the owner's session ([7i], `test_geom`, the two
-  swatch rows) - nobody was logged on to the 4090 at 22:29, and such a job
-  holds his clipboard for its length. Nothing on the SKILL side changed but a
-  comment, so no Allegro run.
+- Not run that evening: the GUI suites in the owner's session - nobody was
+  logged on to the 4090 at 22:29, and such a job holds his clipboard for its
+  length. Run on 29.10.2026 at his «4090 доступна, rdp туда сделан» as job 16
+  (`build/fix-2026-10-29/r109/job16.json`, 12:00:30-12:02:39, the tree of
+  `94a8a5f`, so rounds 107 and 108 both): `run_all` **34/34 in 87 s**,
+  `test_gui` and `test_geom` included; the 9 rows on gui.py **9 of 9** in 42 s
+  on 8 copies, the two swatch rows by [7i]'s clicks; his clipboard text (1104
+  characters) put back. Nothing on the SKILL side changed but a comment, so no
+  Allegro run.
 
 ## Update 2026-10-28 (round 106, branch `fix/doubled-back-outlines`, merged as `9e8698a`) — an outline that runs back over itself is built without that stretch
 
