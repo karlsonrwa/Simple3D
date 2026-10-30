@@ -496,10 +496,12 @@ A line with no width, text with a zero pen width, or an unfilled shape (Allegro
 layer and position, in the Allegro console and in the window's log both,
 because the console has usually scrolled past by the time you look at the
 model. **Allegro's artwork does draw such a figure**, at the *Undefined line
-width* of the film its layer goes to, and leaves it out only when that is 0;
-the export reads no films. On the boards here that width is 0 on some
-silkscreen films and 0.1 or 0.254 mm on others, and where it is not 0 the
-Gerber carries ink the model lacks (measured in round 111).
+width* of the film its layer goes to; at 0, the default, it leaves an unfilled
+outline out with a warning in `photoplot.log` and draws a line with the
+smallest aperture the board's accuracy allows, about a micron. The export
+reads no films. On the boards here that width is 0 on some silkscreen films
+and 0.1 or 0.254 mm on others, and where it is not 0 the Gerber carries ink
+the model lacks (measured in round 111).
 
 **Solid or flat.** Flat is about a quarter of the size, and its faces are
 unioned — coplanar faces at one z flicker against each other where strokes
@@ -1440,8 +1442,10 @@ Allegro, где его набирают руками, а файл на диск�
 25.1 всегда делает нулевой толщины) экспорт пропускает и называет вместе со
 слоем и координатами, и в консоли Allegro, и в логе окна: консоль обычно уже
 прокручена к моменту, когда вы смотрите на модель. **Сам Allegro такую фигуру
-печатает**: толщиной, которая задана в плёнке как Undefined line width, и
-пропускает её, только если там 0. Плёнки экспорт не читает. На платах здесь
+печатает**: толщиной, которая задана в плёнке как Undefined line width. Если
+там 0 (так по умолчанию), контур незалитой формы он пропускает с
+предупреждением в `photoplot.log`, а линию рисует самой маленькой апертурой,
+какую допускает точность платы, около микрона. Плёнки экспорт не читает. На платах здесь
 эта толщина у одних плёнок шелкографии 0, у других 0,1 или 0,254 мм, и там, где
 она не 0, в Gerber есть краска, которой нет в модели (измерено в раунде 111).
 

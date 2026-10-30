@@ -41,7 +41,7 @@ What `axlPolyFromDB` gives (areas in mm2):
 
 `S3D_SILKB.art`, RS274X, `%FSLAX35Y35*MOMM*%`: the solid G as a region (`G36`/`G37`); every hatch line a stroke of `D10` (round, 0.1); each hatched shape's border its boundary stroked with `D11` (0.15), H's void a full circle of `D11` (`G02` from a point back to it, `G75`); A and C their boundary stroked with `D12` (0.05) - the film's undefined line width. `S3D_SILKB0` (undefined width 0) has no `D12` and no A or C at all; `photoplot.log` says so: `WARNING: rectangle or unfilled shape composed 0 width line found at (2.0000 2.0000)` and `WARNING: rectangle or unfilled shape having Multiple 0 width lines; all will be treated the same as the first.`
 
-So a figure with no width - an unfilled outline, and likewise a line or a text with no pen - is drawn by the artwork at its film's undefined line width, and left out only when that is 0.
+So an unfilled outline, which has no width, is drawn by the artwork at its film's undefined line width, and left out with a warning when that is 0. A line with no width at 0 is drawn with the smallest aperture the board's accuracy allows, a micron on Cadence's demo (`%ADD10C,.000039*%`, measured on 20.08.2026 in AllegroBaseStructure); text with no pen was not measured.
 
 ## Before: round 110's exporter (`56a24ae`), film S3D_SILKB
 
