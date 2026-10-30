@@ -236,6 +236,59 @@ where = P._Zones(stack.zones, stack.stackups, stack.levels, stack.board_top_z, s
 check("the pads' own lookup gives the surface, the zone's conductors beside it",
       where.at(*WINDOW) == (("TOP", "BOTTOM"), stack.surface.at(*WINDOW)), where.at(*WINDOW))
 
+print("\n[4] a zone's faces, and the datum, come from the layers with material in it")
+# The review's second round (28.10.2026, R3-16): a zone's faces were its whole
+# stack's, and the board's top the highest of them, whether the outer layer had
+# material in the zone or not. The reviewer's board - a stiffener whose only
+# shape lies outside its zone - came out 0.5 mm below z = 0 at the top datum,
+# its thickness logged with the empty stiffener in it; on the owner's boards the
+# log said LDI2 (flex2-a0) 0.790 mm where its material is 0.215. Here S2's
+# stiffener has one shape, in F2's corner, outside S2.
+empty = json.loads((ROOT / "tests/fixtures/rigidflex.json").read_text(encoding="utf-8"))
+empty.update({"format_version": 12, "name": "emptystiff", "components": {}})
+for layer in empty["stackups"]["STIFFENER2"]["layers"]:
+    if layer["name"] == "STIFFENER_TOP2":
+        layer["shapes"] = [{"outline": rect(30.0, 20.0, 35.0, 25.0)}]
+        layer["negative"] = False
+ej = OUT / "emptystiff.json"
+ej.write_text(json.dumps(empty), encoding="utf-8")
+empty_logs = []
+core.generate(step_dir=ROOT / "demo/step_files", json_file=ej, output_dir=OUT, output_name="emptystiff",
+              fold_bends=False, log=empty_logs.append)
+empty_solids, ex = [], TopExp_Explorer(read_step(OUT / "emptystiff.step"), TopAbs_SOLID)
+while ex.More():
+    empty_solids.append(ex.Current())
+    ex.Next()
+empty_box = Bnd_Box()
+for solid in empty_solids:
+    BRepBndLib.Add_s(solid, empty_box, False)
+check("at the top datum the body's top is at z = 0, the empty stiffener counting for nothing",
+      near(empty_box.Get()[5], 0.0), empty_box.Get())
+check("and the log gives the board's thickness from its material, 0.365 mm",
+      any("2 zone(s), 0.365 mm at its thickest" in m for m in empty_logs),
+      [m for m in empty_logs if "thickest" in m])
+check("S2's own line gives its material, 0.315 mm, and names the layer that has none there",
+      any(m.startswith("  S2 (STIFFENER2): 0.315 mm") and "STIFFENER_TOP2" in m for m in empty_logs),
+      [m for m in empty_logs if m.startswith("  S2")])
+# A bend measures its radius and thickness from its zone's whole stack, as
+# before: whether it should take the material there is the owner's question
+# (Cadence's demo: STIFFNER_INNER1, 0.203 mm, holds nothing in its flex
+# zones), so the log names such a bend and the fold is left as it was.
+empty["bends"].append({"name": "B2", "line": {"start": [0.0, 5.0], "end": [16.0, 5.0]},
+                       "inner_radius": 0.5, "width": 0.7854,
+                       "info": "TYPE=CircularBend, INNER_SIDE=TOP, INNER_ANGLE=90.0000, "
+                               "INNER_RADIUS=0.5000 MILLIMETERS, ORDER=0"})
+bend_logs = []
+bent_stack = core._prepare_stackups(empty, BuildOptions(), bend_logs.append)
+bent_plan = core._plan_fold(empty, bent_stack, BuildOptions(), bend_logs.append)
+b2 = next((s for s in (bent_plan.strips if bent_plan else []) if s.bend.name == "B2"), None)
+stack_top = 2.05 + bent_stack.shift        # STIFFENER_TOP2's top, in the frame the board was built in
+check("the bend across S2 is still curled about S2's whole stack: its axis the radius above the stiffener's top",
+      b2 is not None and near(b2.axis_z, stack_top + 0.5), (b2.axis_z if b2 else None, stack_top + 0.5))
+check("and the log names it, with the material it would have been measured from",
+      any("B2" in m and "STIFFENER_TOP2" in m and "0.315" in m for m in bend_logs),
+      [m for m in bend_logs if "B2" in m])
+
 print()
 print("FAILURES:", fails if fails else "none")
 sys.exit(1 if fails else 0)

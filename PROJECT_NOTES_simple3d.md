@@ -5,7 +5,21 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-29 (rounds 95-109 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-30 (rounds 95-110 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 110 (2026-10-30), on `main`, not pushed.** At «Давай продолжим
+работу над проектом»: R3-16 - a zone's faces and the datum now come from the
+layers with material in it (`board.layer_holds_material`,
+`stackup_levels(holds=)`), and its log line names the empty layers: the
+owner's logs had said LDI2 (flex2-a0) 0.790 mm where its material is 0.215,
+FLEX1 (flex-b2) 0.365 for 0.290. The datum moves on none of his boards. A
+bend is still curled about its zone's whole stack (`fold_levels`) and named
+when that stack counts empty layers - only Cadence's demo (STIFFNER_INNER1,
+0.203 mm under four bend axes); whether it should take the material is the
+owner's call, unverified against Allegro. STEP DATA identical on the three
+flex boards, the demo's colours the same with its styles reordered;
+test_surface [4] red first, rows 363, 90 of 90 caught, run_all 32/34 in
+session 0. Read round 110.
 
 **Round 109 (2026-10-29), on `main`, not pushed.** At the owner's «Да,
 R5-10»: flex3-a0 folded in Solid failed BRepCheck at K = 0.5 (a face of no
@@ -3346,6 +3360,90 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-30 (round 110) — a zone's faces and the datum come from the layers with material in it; a bend is still curled about the whole stack, and named (R3-16 of the second review round)
+
+At the owner's «Давай продолжим работу над проектом» (30.10.2026), after the
+power cut the 4090 came through (memory: the-4090-mirror-of-simple3d). The
+finding: `stackup.stackup_levels` took a zone's faces from ALL its stack's
+layers and the board's top from the highest of them, material or not; the
+reviewer's board (a stiffener whose only shape lies outside its zone) came
+out 0.5 mm below z = 0 at the top datum with its thickness logged wrong.
+
+### Measured first (the 4090, session 0, 18:54-18:56)
+
+- `build/fix-2026-10-30/r110/probe_levels.py` over the review's eight boards:
+  the board's extent, so the datum, is the same either way on every one; but
+  seven zones' faces were their whole stack's where outer layers hold nothing
+  in them: flex2-a0's LDI2 (STIFFENER_TOP, ADHESIVE_TOP2, COVERLAY_TOP,
+  ADHESIVE_TOP: 0.575 -> 0.000 at the top), flex-b2's FLEX1 (COVERLAY_TOP,
+  ADHESIVE_TOP: 0.075 -> 0.000), and five flex zones of Cadence_Demo
+  (STIFFNER_INNER1: -0.267 -> -0.470). The owner's logs said "LDI2 (LDI):
+  0.790 mm" and "FLEX1 (FLEX): 0.365 mm". The probe's first version counted
+  an empty region as material: `_layer_region` hands back a negative layer's
+  cut even when nothing is left, and `layer_solids` is what tests for a face.
+- `probe_bends.py`: every bend of flex-b2, flex2-a0 and flex3-a0 lies in a
+  zone whose layers all hold material - nothing of their folds would move.
+  Cadence_Demo's six bends all lie in FLEXI1 zones: their local stack counts
+  STIFFNER_INNER1 (0.203 mm), 0.625 mm thick against 0.422 of material, and
+  BEND_2..5 (inner side top) have their axis 0.203 mm above the flex's
+  material. Whether Allegro curls them about the material is not known here:
+  no folded STEP of the demo made by Allegro itself is on hand (the
+  `input\Cadence_Demo_simple_*.step` are this exporter's).
+
+### What changed
+
+- `board.layer_holds_material(layer, contour)`: no shapes, or a region with a
+  face; `stackup.stackup_levels(..., holds=)` takes each zone's faces from the
+  layers with material (a zone where none has keeps its stack's);
+  `stackup.stack_faces` gives the whole stacks. `core._prepare_stackups` asks
+  every (zone, layer) once and logs a zone's thickness from its material,
+  with the empty layers named: "LDI2 (LDI): 0.215 mm; its stack is 0.790, but
+  STIFFENER_TOP, ADHESIVE_TOP2, COVERLAY_TOP, ADHESIVE_TOP hold no material in
+  it". `_Stack` carries `fold_levels` (the whole stacks, same frame) and
+  `empty_layers`.
+- The fold is left as it was: `_plan_fold` hands `fold_levels` to the plan,
+  and `_note_bends_over_empty_layers` names each bend whose stack counts
+  layers holding nothing at its middle - the owner's call.
+- README (EN, RU) §Multi-stackup: the rule and the one exception.
+  ARCHITECTURE: core.py 1163 / 25 (its row had stood at 1098 since round
+  108's log change), board.py 709 / 16, stackup.py 273 / 11.
+
+### Tests, red first
+
+- `test_surface` [4], 5 checks: rigidflex.json with S2's stiffener given one
+  shape in F2's corner - at the top datum the body's top at 0; "2 zone(s),
+  0.365 mm at its thickest"; "S2 (STIFFENER2): 0.315 mm" naming
+  STIFFENER_TOP2; a bend B2 across S2 still curled about S2's whole stack
+  (its axis 0.5 above the stiffener's top - a guard, green on the old code
+  too); and named in the log. Red on the old code (19:01): 4 FAIL - the body
+  1.975 mm below 0, "2.340 mm at its thickest", "2.315 mm", no note.
+- Rows 356 -> 362 (`r110/rows110.py`).
+
+### Verified (the 4090, session 0; the mirror equal to this tree in all 134 files)
+
+- 19:04: `test_surface` no failures.
+- 19:05-19:07 (`r110/step_compare.py`; HEAD `3c937e3` from `git archive` and
+  this tree, the four bend boards folded and flat in Solid): flex-b2,
+  flex2-a0, flex3-a0 - STEP DATA identical, only the zone lines above in the
+  logs. Cadence_Demo - all 1 920 415 / 1 928 740 entities the same but the
+  style block reordered (only style entities differ: STYLED_ITEM,
+  SURFACE_STYLE_*, FILL_AREA_*, CURVE_STYLE, the curve font), its 2258
+  (styled item, colour) pairs the same flat and folded - memory:
+  an-occt-step-file-is-deterministic-but-its-styles-follow-allocation; and
+  its log gives the five zones' material and names its six bends.
+- 19:11-19:13 (rows on stackup.py, core.py, board.py, README, ARCHITECTURE and
+  every row of `test_surface`): **caught 88 of 89** in 135 s on 8 copies, the
+  six new ones by [4]; `board-stackup-levels-top-from-bottom` SURVIVED - its
+  pattern now matched the start of `stack_faces`' line, the whole stack that
+  the material overrides. Re-aimed at the material's top (`rows110b.py`) and
+  a row of its own added for the whole stack's top: 19:16-19:17, **2 of 2**
+  (`test_layers` "the rigid zone is still the datum face", `test_surface`
+  S2's line). Rows 363.
+- 19:17-19:19, the final tree: the mirror equal in all 134 files, `run_all`
+  32/34 in 81 s, only the two window suites; no GUI file changed. Today's
+  comparison folders on the 4090 removed (`head110`, `r110_old`, `r110_new`,
+  0.36 GB); the r101-r104 check builds stay, at the owner's «Оставь».
 
 ## Update 2026-10-29 (round 109) — where an arm's side crosses a seam, its material is claimed once (R5-10 and R5-3 of the second review round)
 

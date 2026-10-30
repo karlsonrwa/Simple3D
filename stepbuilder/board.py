@@ -251,6 +251,22 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
     return parts
 
 
+def layer_holds_material(layer: dict, zone_contour: list) -> bool:
+    """Has *layer* any material inside the zone? A layer without shapes always
+    does; otherwise its region (`_layer_region`) must have a face - a positive
+    stiffener whose shapes miss the zone, or a coverlay whose openings cover
+    all of it, has none. What a zone's faces and the datum are measured from
+    (stackup.stackup_levels, round 110). The region's own warnings are left
+    to the body's build, which asks again."""
+    if not layer.get("shapes"):
+        return True
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp_Explorer
+
+    region = _layer_region(layer, zone_contour, 0.0, _noop_log)
+    return region is not None and not region.IsNull() and TopExp_Explorer(region, TopAbs_FACE).More()
+
+
 def has_solid(shape: TopoDS_Shape) -> bool:
     """True if *shape* contains at least one solid.
 

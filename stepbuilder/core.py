@@ -68,7 +68,7 @@ from .pads import PadsResult, build_exposed, build_pads
 # as core.restack and friends.
 from .stackup import (  # noqa: F401 - re-exported
     SOLDERMASK_MARKER, _is_conductor, _is_soldermask, align_stackups,
-    board_stackup, drop_soldermask, restack, stackup_levels, thickness_parts,
+    board_stackup, drop_soldermask, restack, stack_faces, stackup_levels, thickness_parts,
     zone_levels,
 )
 # The intermediate is read once per file (round 72, plan A2); the probes
@@ -182,6 +182,12 @@ class _Stack:
     # The board's faces at a point, from the layers that have material there
     # (surface.Surface, round 103); None on a board built as one prism.
     surface: object = None
+    # Each zone's WHOLE stack, every layer counted, in the same frame as
+    # `levels` (which count only the layers with material, round 110): what a
+    # bend is curled about (_plan_fold). None on a board without layers.
+    fold_levels: dict | None = None
+    # zone -> the names of its stack's layers that hold no material in it.
+    empty_layers: dict | None = None
 
 
 def _without_doubled_tracks(data: dict, log: LogFn) -> dict:
@@ -305,12 +311,26 @@ def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
     if stackups:
         stackups = align_stackups(stackups, log)
 
+    fold_levels, empty_layers = None, {}
     if zones:
         if stackups:
             # format_version 6: every layer carries its own extent, so the
             # board is built layer by layer rather than as one prism per zone.
+            # A zone's faces, and the datum, are its MATERIAL's - a layer with
+            # nothing in the zone counts for nothing (round 110, R3-16) - and
+            # a bend is still curled about the whole stack: see _plan_fold.
+            from .board import layer_holds_material
+
+            for zone in zones:
+                layers = (stackups.get(str(zone["stackup"])) or {}).get("layers") or []
+                empty_layers[str(zone["name"])] = [
+                    lay for lay in layers
+                    if zone.get("contour") and not layer_holds_material(lay, zone["contour"])]
             levels, board_top_z, board_bottom_z, shift = stackup_levels(
-                stackups, zones, z_datum)
+                stackups, zones, z_datum,
+                holds=lambda zone, lay: not any(lay is e for e in empty_layers[str(zone["name"])]))
+            whole_tops, whole_bottoms = stack_faces(stackups, zones, shift)
+            fold_levels = {n: (whole_tops[n], whole_bottoms[n]) for n in whole_tops}
         else:
             levels, board_top_z, board_bottom_z = zone_levels(zones, z_datum)
         extrude_z_offset = board_top_z
@@ -320,7 +340,12 @@ def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
             name = str(zone["name"])
             if name in levels:
                 top, bottom = levels[name]
-                log(f"  {name} ({zone['stackup']}): {top - bottom:.3f} mm")
+                line = f"  {name} ({zone['stackup']}): {top - bottom:.3f} mm"
+                whole = (fold_levels or {}).get(name)
+                if whole and (abs(whole[0] - top) > 1e-9 or abs(whole[1] - bottom) > 1e-9):
+                    line += (f"; its stack is {whole[0] - whole[1]:.3f}, but "
+                             f"{_layer_names(empty_layers[name])} hold no material in it")
+                log(line)
     elif z_datum == "top":
         # Where the two board faces live, given the datum choice.
         board_top_z, board_bottom_z = 0.0, -thickness
@@ -337,7 +362,13 @@ def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
 
         surface = Surface(zones, stackups, shift, log)
 
-    return _Stack(thickness=thickness, zones=zones, stackups=stackups, levels=levels, shift=shift, board_top_z=board_top_z, board_bottom_z=board_bottom_z, extrude_z_offset=extrude_z_offset, surface=surface)
+    return _Stack(thickness=thickness, zones=zones, stackups=stackups, levels=levels, shift=shift, board_top_z=board_top_z, board_bottom_z=board_bottom_z, extrude_z_offset=extrude_z_offset, surface=surface,
+                  fold_levels=fold_levels, empty_layers={n: _layer_names(e) for n, e in empty_layers.items() if e})
+
+
+def _layer_names(layers: list) -> str:
+    """'COVERLAY_TOP, ADHESIVE_TOP' - a layer without a name by its type."""
+    return ", ".join(str(lay.get("name") or lay.get("type") or "?") for lay in layers)
 
 
 def _plan_fold(data: dict, stack: _Stack, options: BuildOptions, log: LogFn):
@@ -352,7 +383,12 @@ def _plan_fold(data: dict, stack: _Stack, options: BuildOptions, log: LogFn):
     fold_neutral = options.fold_neutral
     fold_slice_angle = options.fold_slice_angle
     zones = stack.zones
-    levels = stack.levels
+    # A bend is curled about its zone's WHOLE stack, as it always was, not
+    # about the material there (round 110 moved every other zone face to the
+    # material). Whether it should be is open: on Cadence's demo board
+    # STIFFNER_INNER1 (0.203 mm) holds nothing in the flex zones, and four
+    # bends' axes would move by that much - so each such bend is named.
+    levels = stack.fold_levels if stack.fold_levels is not None else stack.levels
     board_top_z = stack.board_top_z
     board_bottom_z = stack.board_bottom_z
 
@@ -387,10 +423,32 @@ def _plan_fold(data: dict, stack: _Stack, options: BuildOptions, log: LogFn):
             for line in plan.describe():
                 log(line)
             fold = plan
+            _note_bends_over_empty_layers(plan, stack, log)
     elif data.get("bends"):
         log("Bend folding is off: the board is exported flat")
 
     return fold
+
+
+def _note_bends_over_empty_layers(plan, stack: _Stack, log: LogFn) -> None:
+    """A note per bend whose zone's whole stack, which it is curled about,
+    counts layers that hold no material there - zone found as the plan's own
+    stack_at finds it, the first in the file holding the bend line's middle."""
+    if not stack.zones or not stack.fold_levels or not stack.empty_layers:
+        return
+    polys = [(str(z["name"]), contour_points(z.get("contour"))) for z in stack.zones if z.get("contour")]
+    for bend in plan.bends:
+        px, py = bend.midpoint
+        name = next((n for n, poly in polys if poly and point_in_polygon((px, py), poly)), None)
+        if name not in stack.empty_layers or name not in stack.levels:
+            continue
+        whole, held = stack.fold_levels[name], stack.levels[name]
+        if abs(whole[0] - held[0]) <= 1e-9 and abs(whole[1] - held[1]) <= 1e-9:
+            continue
+        log(f"note: {bend.name} is curled about zone {name}'s whole stack, "
+            f"{whole[0] - whole[1]:.3f} mm, though {stack.empty_layers[name]} hold no "
+            f"material there ({held[0] - held[1]:.3f} mm does); its radius and "
+            f"thickness are the stack's, as before")
 
 
 def _compound_of(shapes: list) -> TopoDS_Shape:

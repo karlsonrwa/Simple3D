@@ -678,6 +678,14 @@ so a layer holed to the drill does not drop the pad into the hole, and a drawn
 opening that lies over two levels at once stays on its zone's face, which the
 log counts.
 
+A zone's own faces, the board's datum and the thickness the log gives each zone
+are its material's in the same way: a layer with nothing in the zone - a
+stiffener whose shapes miss it, a coverlay opened over all of it - counts for
+nothing, and the log names it beside the zone's thickness. A bend is the one
+exception: it is still curled about its zone's whole stack, as it always was,
+and the log names a bend whose stack counts such a layer (Cadence's demo board:
+STIFFNER_INNER1 holds nothing in its flex zones).
+
 **A part's height is decided at one point, its origin.** That is the owner's
 decision (28.10.2026): how high a part sits is the responsibility of whoever
 drew the part and placed it on the board, and the model must show what they did.
@@ -1596,6 +1604,14 @@ Rigid-flex — это несколько **зон**, у каждой свой с
 спрашивается вокруг сверла, на его меди, поэтому слой с дыркой по размеру
 сверла не роняет площадку в отверстие. Нарисованное вскрытие, лежащее сразу на
 двух уровнях, остаётся на грани своей зоны, и лог такие вскрытия считает.
+
+Так же по материалу считаются и собственные грани зоны, датум платы и
+толщина, которую лог даёт для каждой зоны. Слой, у которого в зоне ничего нет
+(стиффенер, чьи фигуры в неё не попадают, коверлей, вскрытый целиком), не
+считается, и лог называет его рядом с толщиной зоны. Исключение одно: сгиб
+по-прежнему заворачивается вокруг всего стека своей зоны, а лог называет
+сгиб, чей стек считает такой слой (демо-плата Cadence: у STIFFNER_INNER1 в
+зонах флекса материала нет).
 
 **Высоту детали решает одна точка, её начало.** Это решение владельца
 (28.10.2026): за то, на какой высоте стоит деталь, отвечает тот, кто рисовал

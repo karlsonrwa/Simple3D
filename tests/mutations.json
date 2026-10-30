@@ -665,8 +665,8 @@
  {
   "id": "board-stackup-levels-top-from-bottom",
   "file": "stepbuilder/stackup.py",
-  "old": "        tops[name] = max(float(lay[\"z_top\"]) for lay in layers)",
-  "new": "        tops[name] = max(float(lay[\"z_bottom\"]) for lay in layers)",
+  "old": "            tops[name] = max(float(lay[\"z_top\"]) for lay in held)",
+  "new": "            tops[name] = max(float(lay[\"z_bottom\"]) for lay in held)",
   "suites": [
    "tests/test_layers.py"
   ],
@@ -3738,5 +3738,76 @@
    "tests/test_bend.py"
   ],
   "why": "every claim is skipped by its box, so no panel's cutter loses anything (review 28.10.2026, R5-10 and R5-3; round 109)"
+ },
+ {
+  "id": "levels-from-whole-stack",
+  "file": "stepbuilder/stackup.py",
+  "old": "        held = [lay for lay in layers if holds(zone, lay)] if holds else []\n",
+  "new": "        held = []\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a zone's faces are its whole stack's again: a stiffener with nothing in its zone puts the board below z = 0 at the top datum and in the logged thickness (review 28.10.2026, R3-16; round 110)"
+ },
+ {
+  "id": "levels-empty-layer-holds",
+  "file": "stepbuilder/core.py",
+  "old": "                holds=lambda zone, lay: not any(lay is e for e in empty_layers[str(zone[\"name\"])]))\n",
+  "new": "                holds=lambda zone, lay: True)\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "every layer is taken to hold material in every zone, so the empty ones set the faces again (review 28.10.2026, R3-16; round 110)"
+ },
+ {
+  "id": "layer-material-any-region",
+  "file": "stepbuilder/board.py",
+  "old": "    return region is not None and not region.IsNull() and TopExp_Explorer(region, TopAbs_FACE).More()\n",
+  "new": "    return region is not None\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a layer whose region in a zone came back empty - a stiffener whose shapes miss it, a coverlay opened over all of it - counts as material (review 28.10.2026, R3-16; round 110)"
+ },
+ {
+  "id": "fold-curls-about-material",
+  "file": "stepbuilder/core.py",
+  "old": "    levels = stack.fold_levels if stack.fold_levels is not None else stack.levels\n",
+  "new": "    levels = stack.levels if stack.levels is not None else stack.fold_levels\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a bend is curled about the material at it instead of its zone's whole stack: Cadence's demo moves four bend axes by 0.203 mm with nobody having decided it (review 28.10.2026, R3-16; round 110)"
+ },
+ {
+  "id": "bend-over-empty-layers-unsaid",
+  "file": "stepbuilder/core.py",
+  "old": "            _note_bends_over_empty_layers(plan, stack, log)\n",
+  "new": "            _note_bends_over_empty_layers(plan, stack, lambda *_: None)\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a bend curled about a stack whose layers hold nothing there is not named in the log (review 28.10.2026, R3-16; round 110)"
+ },
+ {
+  "id": "zone-line-empty-layers-unnamed",
+  "file": "stepbuilder/core.py",
+  "old": "                if whole and (abs(whole[0] - top) > 1e-9 or abs(whole[1] - bottom) > 1e-9):\n",
+  "new": "                if False:\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a zone's logged thickness no longer says which of its stack's layers hold nothing in it (review 28.10.2026, R3-16; round 110)"
+ },
+ {
+  "id": "stack-faces-top-from-bottom",
+  "file": "stepbuilder/stackup.py",
+  "old": "        tops[name] = max(float(lay[\"z_top\"]) for lay in layers) + shift\n",
+  "new": "        tops[name] = max(float(lay[\"z_bottom\"]) for lay in layers) + shift\n",
+  "suites": [
+   "tests/test_surface.py",
+   "tests/test_bend.py"
+  ],
+  "why": "a zone's whole stack, which a bend is curled about, is measured from the layer BOTTOMS: an inner-side-top bend's axis drops one layer (review 28.10.2026, R3-16; round 110)"
  }
 ]

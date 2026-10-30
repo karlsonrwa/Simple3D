@@ -185,8 +185,8 @@ def align_stackups(stackups: dict, log: LogFn = _noop_log) -> dict:
     return out
 
 
-def stackup_levels(stackups: dict, zones: list[dict],
-                   z_datum: str) -> tuple[dict, float, float, float]:
+def stackup_levels(stackups: dict, zones: list[dict], z_datum: str,
+                   holds=None) -> tuple[dict, float, float, float]:
     """Zone faces, board extent and the datum shift, from the per-layer data.
 
     Returns ({zone: (top, bottom)}, board_top, board_bottom, shift).
@@ -199,15 +199,23 @@ def stackup_levels(stackups: dict, zones: list[dict],
 
     Verified against Allegro's own export of the same board, which spans
     -0.315 .. 2.125 in exactly this frame.
+
+    *holds(zone, layer)*, when given, says whether a layer has material in a
+    zone, and a zone's faces are then its material's, not its whole stack's
+    (round 110). The stack's own outer layer used to set them, material or
+    not: a stiffener whose only shape lies outside its zone put the board 0.5
+    mm below z = 0 at the top datum, and flex2-a0's LDI2 was logged 0.790 mm
+    where its material is 0.215 (second review round, 28.10.2026, R3-16). A
+    zone with no layer holding anything keeps its stack's faces.
     """
-    tops, bottoms = {}, {}
+    tops, bottoms = stack_faces(stackups, zones)
     for zone in zones:
         layers = stackups.get(str(zone["stackup"]), {}).get("layers") or []
-        if not layers:
-            continue
-        name = str(zone["name"])
-        tops[name] = max(float(lay["z_top"]) for lay in layers)
-        bottoms[name] = min(float(lay["z_bottom"]) for lay in layers)
+        held = [lay for lay in layers if holds(zone, lay)] if holds else []
+        if held:
+            name = str(zone["name"])
+            tops[name] = max(float(lay["z_top"]) for lay in held)
+            bottoms[name] = min(float(lay["z_bottom"]) for lay in held)
 
     if not tops:
         raise StepBuilderError("No zone resolved to a stackup with layers")
@@ -217,6 +225,21 @@ def stackup_levels(stackups: dict, zones: list[dict],
     shift = -board_top if z_datum == "top" else -board_bottom
     levels = {n: (tops[n] + shift, bottoms[n] + shift) for n in tops}
     return levels, board_top + shift, board_bottom + shift, shift
+
+
+def stack_faces(stackups: dict, zones: list[dict], shift: float = 0.0) -> tuple[dict, dict]:
+    """({zone: top}, {zone: bottom}) of each zone's WHOLE stack, every layer
+    counted, moved by *shift* - what a bend is still curled about
+    (core._plan_fold), and what stackup_levels starts from."""
+    tops, bottoms = {}, {}
+    for zone in zones:
+        layers = stackups.get(str(zone["stackup"]), {}).get("layers") or []
+        if not layers:
+            continue
+        name = str(zone["name"])
+        tops[name] = max(float(lay["z_top"]) for lay in layers) + shift
+        bottoms[name] = min(float(lay["z_bottom"]) for lay in layers) + shift
+    return tops, bottoms
 
 
 def zone_levels(zones: list[dict], z_datum: str) -> tuple[dict, float, float]:
