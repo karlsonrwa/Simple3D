@@ -5,7 +5,26 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-30 (rounds 95-110 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-30 (rounds 95-111 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 111 (2026-10-30, evening), on `main`, not pushed.** At «Да, R2-13»:
+a shape is drawn the way it is filled, as Allegro's artwork plots it -
+`s3dPolysFromDbid` reads `fill`: a cross-hatch is its hatch lines and border
+(`axlPolyFromDB ?xhatch t`; it had gone as 16 mm2 of ink for the artwork's
+4.87), an unfilled shape its outline, never its area; `s3dCopperPolys` the
+same for a hatched pour under a drawn mask opening. Measured against
+Allegro's own Gerber (`tools/silk_artwork.py`, recorded in
+`docs/records/silk-fill-artwork-2026-10-30.md`): 100.00 % on every hatched
+case. None of the nine boards has such a figure: their intermediates are
+identical but for the zero-width warning's words. Found: round 16's "a
+zero-width figure cannot be plotted" is false - the artwork draws it at its
+film's undefined line width (0.1 mm on 5988-a1's SST, where two refdes with
+no pen are printed and missing from the model); whether to draw them is the
+owner's call. In passing: the SKILL silk defaults gained the shipped
+config's AUTOSILK layers, `skill_export.py`'s board copies moved from C:'s
+TEMP to `build/tmp`. Red first, rows 369, 56 of 56 caught, run_all 32/34 in
+session 0. The owner's PC blue-screened (0x9F) two minutes into the round's
+first Allegro run; cause unknown. Read round 111.
 
 **Round 110 (2026-10-30), on `main`, not pushed.** At «Давай продолжим
 работу над проектом»: R3-16 - a zone's faces and the datum now come from the
@@ -3360,6 +3379,130 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-30 (round 111) — a shape is drawn the way it is filled, as Allegro's artwork plots it (R2-13 of the second review round)
+
+At the owner's «Да, R2-13». The finding: `s3dPolysFromDbid` converted every
+shape, rect and filled area whole and never read `fill` (`nil` unfilled, `t`
+solid, a list of `axlFill` a cross-hatch), while `axlPolyFromDB` "by
+default" treats a cross-hatch as solid. The reviewer asked for a board with
+an unfilled rect and shape and a hatched shape on a silkscreen layer that
+matches the Gerber, or `fill` read with a message, or a README limitation.
+
+**The PC rebooted mid-round.** My first survey probe started at 19:30; at
+19:32:52 the owner's PC (this one) blue-screened - bugcheck 0x9F
+DRIVER_POWER_STATE_FAILURE, parameter 1 = 3 (a driver held a power IRP too
+long), dump `C:\WINDOWS\Minidump\103026-7671-01.dmp` (reading it needs admin);
+then two ordinary restarts (19:50, 20:15), and the owner had Bluetooth to
+fix. Whether the Allegro run had a part in it is not known; nothing of the
+work was lost (HEAD and the vault committed, the probe's scratch folder left
+behind and removed). No later Allegro run of this round brought one.
+
+### Measured first
+
+- `tools/probes/probe_silkfill.il` (new; its first two versions had real
+  newlines in their strings from a `python - <<EOF` edit, which
+  `tools/skill_checks.py` caught - memory: the-bash-tool-halves-double-
+  backslashes; the file was rewritten with the editor, and merged with the
+  case probe because a probe may not call a sibling probe's procedures).
+  The survey (`s3dProbeSilkFill`) on the nine boards of `input/`: no
+  unfilled or hatched figure on any silkscreen, AUTOSILK or soldermask
+  layer; no unfilled shape with a boundary width anywhere; hatches only on
+  ETCH, BOUNDARY and MANUFACTURING/XSECTION_CHART. An unfilled shape is
+  objType `"polygon"` with `fill` nil - not `"shape"`.
+- The cases (`s3dProbeSilkCases`, on a copy of my_test_board2's empty
+  `BOARD GEOMETRY/SILKSCREEN_BOTTOM`): an unfilled shape with a boundary
+  width is refused three ways (`axlDBCreateShape`, the open/close pair, a
+  circle) and `axlChangeWidth` cannot set a shape's border, so every
+  unfilled outline in Allegro 25.1 has width 0 - and the exporter's
+  zero-width check already skipped those; the hatched ones went whole:
+  16.000 mm2 for 4.865 (one direction), 16.000 for 6.924, 13.989 for 6.684.
+- Allegro's own artwork of the same figures (`tools/silk_artwork.py`, new:
+  films made with `axlFilmCreate` in the copy, `axlSaveDesign`, the `artwork`
+  batch with an `art_param.txt` for RS274X millimetres - without one it is
+  Gerber 6x00 in inches at 1 mil; gerbonara reads the Gerber, both are
+  rasterised at 5 um): the hatched shapes are their hatch lines and a border
+  stroked along the boundary, `axlPolyFromDB ?xhatch t` to the pixel; the
+  unfilled ones are their outline at the film's **undefined line width**
+  (0.05 on the test film), and on a film left at 0 they are not drawn at
+  all and photoplot.log warns. Round 16's "a zero-width figure cannot be
+  plotted - the artwork has nothing to draw with either" was never measured,
+  and it is wrong wherever a film's undefined width is not 0.
+- The films of the nine boards (`axlGetParam( "artwork:<film>" )`): 5988-a1
+  SST 0.1 mm, Cadence_Demo SS_TOP/SS_BOT 0.254, my_test_board-a0 SST/SSB 0.1,
+  variants_test-b0 SSB 0.1; 0 or no silkscreen film on the rest. So on
+  5988-a1 two reference designators with no pen (REF DES/SILKSCREEN_TOP at
+  (9.180, 3.222) and (45.180, 3.222)) are printed by Allegro at 0.1 mm and
+  missing from the model, and so is one zero-width path of the demo. Drawing
+  zero-width figures at their film's width is the owner's call (asked at the
+  end of the round). Also seen: several boards' silkscreen films print
+  MANUFACTURING/AUTOSILK_* and not REF DES/SILKSCREEN_*, while the exporter
+  collects both (the window's ticks choose).
+- The first survey version stalled Allegro twice with no CPU (Cadence_Demo,
+  circle-A0) after printing its tables; the rewritten one did not, on any
+  board. Not explained. `taskkill` said the process did not exist while
+  `Get-Process` listed it; `Invoke-CimMethod ... Terminate` ended it.
+
+### What changed
+
+- `skill/s3d_silk.il` `s3dPolysFromDbid`: `fill` decides - nil (unfilled):
+  the outline, its boundary segments converted one by one like a line's, and
+  never the shape whole; a list (cross-hatch): `axlPolyFromDB ?xhatch t`;
+  t: whole, as before. `s3dZeroWidth`'s comment says what the artwork does;
+  the warning says "skipped; Allegro's artwork draws it only at a film's
+  undefined line width" (was "it cannot be plotted"), and `s3dDescribeObject`
+  calls a `"polygon"` an "unfilled shape". `S3D_SilkDefaultTop/Bottom` gained
+  `MANUFACTURING/AUTOSILK_TOP/_BOTTOM`: the shipped config had them, the
+  SKILL defaults ("keep the two in step") had not.
+- `skill/s3d_pads.il` `s3dCopperPolys`: a hatched pour under a drawn mask
+  opening is its hatch lines (`?xhatch` from its `fill`); the drawn-opening
+  zero-width warning reworded the same way. Drawn mask openings go through
+  `s3dPolysFromDbid`, so a hatched opening opens its lines.
+- `tools/skill_export.py`: the board copies and a check's exports are made
+  under `build/tmp` (`scratch_dir`), not in tempfile's default - the system
+  TEMP, on C:. `tools/skill_checks.py` allows `make_axlFill`.
+- README (EN, RU): §Silkscreen "a shape is drawn the way it is filled", the
+  zero-width paragraph rewritten, a limitation; the file map's counts.
+  CHANGELOG. ARCHITECTURE: the tools row and the commands table.
+  `docs/records/silk-fill-artwork-2026-10-30.md`: the record.
+
+### Tests, red first
+
+- `test_skill_pins` [5b2]: `s3dPolysFromDbid`'s fill dispatch and
+  `s3dCopperPolys`' `?xhatch`, pinned by source (both read a design); red on
+  round 110's SKILL: 9 FAIL. `test_config_merge` [5]: the SKILL defaults
+  against the shipped file's lists and thickness, read out of both; red: 2
+  FAIL (the AUTOSILK layers). `test_allegro_home` [4]: a scratch folder is
+  made under build/, not under the system TEMP.
+- Rows 363 -> 369 (`r111/rows111.py`).
+
+### Verified
+
+- Here, Allegro 25.1 headless, `tools/silk_artwork.py` (22:11-22:16), Gerber
+  against export in mm2: film S3D_SILKB - E 4.8666 / 4.8666, F 6.9277 /
+  6.9277, G 16.0000 / 16.0000, H 6.6841 / 6.6841, agreement 100.00 % each
+  (before: 21.19, 33.16, 100, 32.81 %); A and C 0.7995 in the Gerber and
+  skipped by the export with the new warning. Film S3D_SILKB0: A and C in
+  neither. Every polygon rebuilt within 0.5 % of Allegro's own area.
+- The nine boards exported by round 110's SKILL and by this one on the same
+  inputs (`r111/compare_json.py`): 14 intermediates, 8 identical, 6
+  differing only in the warning's words (5988-a1 2 and its BOM 2, flex2-a0
+  2 and 2, Cadence_Demo 6, flex-b2 1). Cadence_Demo, circle-A0, flex-b2 and
+  my_test_board-a0 from copies in a folder of their own: `input/Variants.LST`
+  (the owner's, 28.10) lists XP1 only, and beside those four the exporter
+  refuses it ("does not describe this board"). For the same reason
+  `skill_export.py --check` against the record of 14.09 now fails on all
+  eight boards (four export nothing, four gained a BOM variant); the record
+  was not re-recorded - `--record` would lose the four.
+- The 4090, session 0, the mirror equal to this tree in all 137 files: 21:49
+  the 56 rows on the changed files and suites, caught 56 of 56 in 11 s on 8
+  copies (the six new ones by test_skill_pins [5b2], test_config_merge [5],
+  test_allegro_home [4]); 22:17 `r111/step_cases.py` - silkcases.json built
+  by `python -m stepbuilder` (flat, bottom only), the STEP read back: one face
+  per case at z -1.605, under the board's bottom face at -1.604: E 4.8668, F
+  6.9255, G 16.0000, H 6.6840 mm2, A and C none; 22:19 `run_all` 32/34 in 88
+  s, only the two window suites (test_gui 7 FAIL, all in [7i]; test_geom 13 -
+  their known session-0 failures); no window file changed.
 
 ## Update 2026-10-30 (round 110) — a zone's faces and the datum come from the layers with material in it; a bend is still curled about the whole stack, and named (R3-16 of the second review round)
 

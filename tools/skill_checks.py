@@ -53,7 +53,10 @@ PROJECT_RE = re.compile(r"^(s3d|make|add|symbolReturn|gdsys|create3d|calculateBo
 
 # SKILL builtins that happen to match a project-shaped prefix but are not ours
 BUILTIN_ALLOW = {"makeTable", "makeVector", "makeString", "makeInstance",
-                 "makeSymbol", "makeList"}
+                 "makeSymbol", "makeList",
+                 # the axlFill defstruct's constructor (axlDBCreateShape's
+                 # reference), which probe_silkfill.il's cross-hatches use
+                 "make_axlFill"}
 
 def check_broken_strings(path, text):
     """Flag a " that opens on one line and does not close on the same line."""

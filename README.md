@@ -454,6 +454,16 @@ Nothing is stroked or offset by hand, so what lands in the STEP is the geometry
 that goes to the Gerber. Every polygon is then checked against the area Allegro
 reported for it, so a curve rebuilt the wrong way round cannot pass silently.
 
+**A shape is drawn the way it is filled.** A solid shape is its area. A
+cross-hatched one is its hatch lines and its border: `axlPolyFromDB` gives those
+only when asked, and by default "cross-hatch shapes are treated as solid", so
+until round 111 the export drew a hatched 4 mm square as 16 mm² of ink where
+Allegro's own artwork prints 4.87. An unfilled shape or rectangle is its
+outline, never its area. The same holds for a shape drawn as a mask opening
+and for a hatched pour under one. Measured against the Gerber Allegro writes
+for the same figures: `tools/silk_artwork.py`, recorded in
+`docs/records/silk-fill-artwork-2026-10-30.md`.
+
 **The legend is the same for every assembly variant.** The bare board is
 manufactured once and serves all of them, so the legend of a component that is
 not installed is still physically printed. It is collected once per design.
@@ -481,10 +491,15 @@ left out of the config lists is never collected and cannot be ticked back on
 without re-exporting: keeping an expensive layer out (reference designators
 vectorise every glyph) saves collection time, keeping it in buys the choice.
 
-A line with no width, or text with a zero pen width, cannot be plotted — the
-artwork has nothing to draw with either — so it is skipped and reported by layer
-and position, in the Allegro console and in the window's log both, because the
-console has usually scrolled past by the time you look at the model.
+A line with no width, text with a zero pen width, or an unfilled shape (Allegro
+25.1 gives every unfilled outline a width of zero) is skipped and reported by
+layer and position, in the Allegro console and in the window's log both,
+because the console has usually scrolled past by the time you look at the
+model. **Allegro's artwork does draw such a figure**, at the *Undefined line
+width* of the film its layer goes to, and leaves it out only when that is 0;
+the export reads no films. On the boards here that width is 0 on some
+silkscreen films and 0.1 or 0.254 mm on others, and where it is not 0 the
+Gerber carries ink the model lacks (measured in round 111).
 
 **Solid or flat.** Flat is about a quarter of the size, and its faces are
 unioned — coplanar faces at one z flicker against each other where strokes
@@ -847,6 +862,11 @@ inside them.
 and its cutouts, not the drill holes. Legend is not printed over holes anyway,
 so this shows only if the artwork deliberately runs a line across one.
 
+**A figure with no width is left out even where Allegro plots it.** The artwork
+draws a zero-width line, text or unfilled outline at its film's undefined line
+width; the export reads no films, so it skips the figure and names it. See
+*Silkscreen*.
+
 **Exposed copper is a picture, not copper.** It is surfaces floating a micron
 or two above the mask, in the mask's own plane rather than in a window cut through it;
 they have no thickness and take part in no boolean. What is drawn is the pins'
@@ -917,7 +937,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 329 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar two that draw a test object into the runner's scratch copy) and the runner that drives one against a board headless (run_probe.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 369 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch), the runner that drives one against a board headless (run_probe.py) and the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1379,6 +1399,16 @@ Allegro, где его набирают руками, а файл на диск�
 которую сообщил Allegro, — кривая, восстановленная не в ту сторону, молча не
 пройдёт.
 
+**Форма рисуется так, как она залита.** Залитая форма даёт свою площадь.
+Заштрихованная даёт линии штриховки и рамку: `axlPolyFromDB` отдаёт их только
+по просьбе, а по умолчанию считает штриховку сплошной. Поэтому до раунда 111
+экспорт рисовал заштрихованный квадрат 4 мм как 16 мм² краски, хотя Allegro
+печатает на фотошаблоне 4,87 мм². Незалитая форма или прямоугольник дают
+контур, а не площадь. Так же рисуются форма, нарисованная как вскрытие маски,
+и заштрихованный полигон меди под таким вскрытием. Проверено по Gerber,
+который Allegro пишет для тех же фигур: `tools/silk_artwork.py`, запись в
+`docs/records/silk-fill-artwork-2026-10-30.md`.
+
 **Легенда одинакова для всех вариантов сборки.** Текстолит изготавливается один
 раз на все варианты, поэтому маркировка неустановленного компонента физически
 на плате есть. Она собирается один раз на проект.
@@ -1406,10 +1436,14 @@ Allegro, где его набирают руками, а файл на диск�
 нельзя: держать дорогой слой вне конфига (позиционные обозначения векторизуют
 каждый глиф) — экономия времени сбора, держать внутри — свобода выбора.
 
-Линия без ширины или текст с нулевым пером не могут быть отпечатаны — рисовать
-нечем и самой фотошаблонной программе, — поэтому объект пропускается и
-называется вместе со слоем и координатами, и в консоли Allegro, и в логе окна:
-консоль обычно уже прокручена к моменту, когда вы смотрите на модель.
+Линию без ширины, текст с нулевым пером и незалитую форму (её контур Allegro
+25.1 всегда делает нулевой толщины) экспорт пропускает и называет вместе со
+слоем и координатами, и в консоли Allegro, и в логе окна: консоль обычно уже
+прокручена к моменту, когда вы смотрите на модель. **Сам Allegro такую фигуру
+печатает**: толщиной, которая задана в плёнке как Undefined line width, и
+пропускает её, только если там 0. Плёнки экспорт не читает. На платах здесь
+эта толщина у одних плёнок шелкографии 0, у других 0,1 или 0,254 мм, и там, где
+она не 0, в Gerber есть краска, которой нет в модели (измерено в раунде 111).
 
 **Тела или поверхности.** Поверхности примерно вчетверо компактнее, и они
 объединяются: копланарные грани на одном z мерцают друг об друга там, где штрихи
@@ -1775,6 +1809,11 @@ Allegro построена при `k = 0`. На плате с запасом р�
 вырезам, но не по сверловке. Легенду поверх отверстий всё равно не печатают,
 так что это заметно, только если линия проведена через отверстие намеренно.
 
+**Фигура без толщины пропускается, даже если Allegro её печатает.** Нулевую
+линию, такой же текст или контур незалитой формы фотошаблон рисует
+неопределённой толщиной линии своей плёнки. Экспорт плёнок не читает, поэтому
+фигуру пропускает и называет. См. *Шелкография*.
+
 **Открытая медь — картинка, а не медь.** Это поверхности на микрон-другой над маской,
 в плоскости самой маски, а не в вырезанном в ней окне; толщины у них нет, и в
 булевых операциях они не участвуют. Рисуются площадки выводов и переходных
@@ -1845,7 +1884,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 329 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме двух, рисующих тестовый объект в черновую копию платы) и запускалка зонда против платы без окна (run_probe.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 369 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы; один из них сохраняет её для пакетной команды artwork), запускалка зонда против платы без окна (run_probe.py) и сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

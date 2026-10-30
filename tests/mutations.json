@@ -3809,5 +3809,65 @@
    "tests/test_bend.py"
   ],
   "why": "a zone's whole stack, which a bend is curled about, is measured from the layer BOTTOMS: an inner-side-top bend's axis drops one layer (review 28.10.2026, R3-16; round 110)"
+ },
+ {
+  "id": "silk-xhatch-drawn-solid",
+  "file": "skill/s3d_silk.il",
+  "old": "                        errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ?xhatch t ) )\n",
+  "new": "                        errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ?xhatch nil ) )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a cross-hatched shape on a silkscreen or mask layer is converted as solid again: a hatched 4 mm square is 16 mm2 of ink where Allegro's artwork prints 4.87 (review 28.10.2026, R2-13; round 111)"
+ },
+ {
+  "id": "silk-unfilled-drawn-whole",
+  "file": "skill/s3d_silk.il",
+  "old": "                    ( null( fill )\n                        segments = nil\n",
+  "new": "                    ( null( fill )\n                        errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )\n                        segments = nil\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "an unfilled shape is converted to its area as well as its outline - solid paint where the board has a line (review 28.10.2026, R2-13; round 111)"
+ },
+ {
+  "id": "silk-fill-never-read",
+  "file": "skill/s3d_silk.il",
+  "old": "                errset( fill = o_dbid->fill )\n",
+  "new": "                fill = t\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the fill is not read, so every shape goes as solid, the state R2-13 found (review 28.10.2026, R2-13; round 111)"
+ },
+ {
+  "id": "copper-xhatch-drawn-solid",
+  "file": "skill/s3d_pads.il",
+  "old": "                hatched = hatched && listp( hatched )\n",
+  "new": "                hatched = hatched && nil\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a cross-hatched pour under a drawn mask opening shows as solid copper again (review 28.10.2026, R2-13; round 111)"
+ },
+ {
+  "id": "silk-defaults-drift-from-config",
+  "file": "skill/s3d_silk.il",
+  "old": "    \"COMPONENT VALUE/SILKSCREEN_TOP\"\n    \"MANUFACTURING/AUTOSILK_TOP\"\n",
+  "new": "    \"COMPONENT VALUE/SILKSCREEN_TOP\"\n    \"MANUFACTURING/AUTOSILK_TOPX\"\n",
+  "suites": [
+   "tests/test_config_merge.py"
+  ],
+  "why": "the SKILL side's built-in layer list drifts from the shipped simple3d_config.json, as the AUTOSILK layers had until round 111; an export with no config collects other layers"
+ },
+ {
+  "id": "export-scratch-on-c",
+  "file": "tools/skill_export.py",
+  "old": "    return Path(tempfile.mkdtemp(prefix=prefix, dir=SCRATCH))\n",
+  "new": "    return Path(tempfile.mkdtemp(prefix=prefix))\n",
+  "suites": [
+   "tests/test_allegro_home.py"
+  ],
+  "why": "the copies of the owner's board and a check's exports go to the system TEMP again, on C:, whose writes the owner saves (round 111)"
  }
 ]

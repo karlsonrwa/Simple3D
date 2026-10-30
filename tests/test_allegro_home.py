@@ -68,5 +68,18 @@ check("and every other variable is kept as it was",
       env.get("CDS_LIC_FILE") == "5280@licence-host" and env.get("TEMP") == r"D:\tmp", env)
 check("this process's own environment is left alone", os.environ.get("HOME") != str(home))
 
+print("\n[4] where the board copies are made")
+# Every export and every check copies the owner's board into a scratch folder
+# first. Until round 111 that was tempfile's default, the system TEMP - on C:,
+# whose writes the owner saves.
+made = se.scratch_dir("s3dtest_")
+try:
+    check("a scratch folder is made under build/ of this tree",
+          made.is_dir() and made.resolve().is_relative_to((ROOT / "build").resolve()), made)
+    check("not under the system TEMP", not made.resolve().is_relative_to(Path(tempfile.gettempdir()).resolve()),
+          (made, tempfile.gettempdir()))
+finally:
+    made.rmdir()
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

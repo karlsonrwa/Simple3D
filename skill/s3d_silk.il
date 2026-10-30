@@ -21,6 +21,11 @@
 ;  the idiom the axlText2Lines documentation itself recommends). Nothing here
 ;  offsets or strokes geometry by hand.
 ;
+;  A shape goes the way its `fill` says, which is how Allegro's artwork plots
+;  it (round 111, measured against the artwork batch's own Gerber): a solid
+;  one as its area, a cross-hatched one as its hatch lines and border, an
+;  unfilled one as its outline. See s3dPolysFromDbid.
+;
 ;  Each polygon is written out in the SAME primitive vocabulary the board
 ;  outline already uses (segment / arc / circle), so the Python reader needs no
 ;  new geometry parser - build_contour() handles both.
@@ -32,18 +37,22 @@
 ;=====================================================================
 
 ; Built-in defaults, used when no config file is found (or it fails to parse).
-; Mirrors simple3d_config.json - keep the two in step.
+; Mirrors simple3d_config.json - keep the two in step (test_config_merge [5]
+; reads both: the AUTOSILK layers were in the file and not here until round
+; 111).
 S3D_SilkDefaultTop = list(
     "BOARD GEOMETRY/SILKSCREEN_TOP"
     "PACKAGE GEOMETRY/SILKSCREEN_TOP"
     "REF DES/SILKSCREEN_TOP"
     "COMPONENT VALUE/SILKSCREEN_TOP"
+    "MANUFACTURING/AUTOSILK_TOP"
 )
 S3D_SilkDefaultBottom = list(
     "BOARD GEOMETRY/SILKSCREEN_BOTTOM"
     "PACKAGE GEOMETRY/SILKSCREEN_BOTTOM"
     "REF DES/SILKSCREEN_BOTTOM"
     "COMPONENT VALUE/SILKSCREEN_BOTTOM"
+    "MANUFACTURING/AUTOSILK_BOTTOM"
 )
 ; Ink thickness in mm. 25 um is a typical cured screen-printed legend.
 S3D_SilkDefaultThickness = 0.025
@@ -227,16 +236,23 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
 ; through it and through the clipper would obscure both for the sake of a
 ; message. (A session global until round 77, D7.)
 
-; t if this object has no plotted width, and so would vanish in the artwork.
+; t if this object has no width of its own.
 ;
-; A zero-width line or a text block with zero pen width is a design mistake -
-; Allegro's own plot has nothing to draw with either - but axlPolyFromDB does
-; not object: it returns nil, or a degenerate polygon that fails later with a
-; message about geometry rather than about width. Catching it here lets the
-; report name the layer and the place.
+; Allegro's artwork draws such a figure at the Undefined line width of its
+; film, and leaves it out when that is 0, the default (round 111: an unfilled
+; rectangle came out as its outline at 0.05 mm on a film set so, and was left
+; out with a warning on one left at 0). The export reads no films, so it
+; skips the figure and says so. axlPolyFromDB would not object: it returns
+; nil, or a degenerate polygon that fails later with a message about geometry
+; rather than about width. Catching it here lets the report name the layer
+; and the place.
 ;
-; Shapes are filled areas with no width to speak of, and true-type text is a
-; filled outline with no pen, so neither can be zero-width.
+; A solid or cross-hatched shape has no width to speak of, and true-type
+; text is a filled outline with no pen, so neither can be zero-width. An
+; UNFILLED shape (objType "polygon") is its outline, and Allegro 25.1 gives
+; every one a zero-width outline - axlDBCreateShape and the open/close pair
+; refuse one with a width, axlChangeWidth "does not support" a shape's
+; border - so it lands in the last branch like a line and is reported so.
 procedure( s3dZeroWidth( o_dbid )
     let( ( w tb ( allZero nil ) segments )
         cond(
@@ -278,16 +294,19 @@ procedure( s3dZeroWidth( o_dbid )
 )
 
 ; "text on REF DES/SILKSCREEN_TOP at (12.500, 4.000)" - enough to find it.
+; An unfilled shape is objType "polygon" to SKILL, a word that names nothing
+; on Allegro's screen, so it is called what the screen calls it.
 procedure( s3dDescribeObject( o_dbid t_layer )
-    let( ( box corner )
+    let( ( box corner what )
         box = nil
         errset( box = o_dbid->bBox )
         corner = when( box  car( box ) )
+        what = if( o_dbid->objType == "polygon" then "unfilled shape" else o_dbid->objType )
         if( corner then
             sprintf( nil "%s on %s at (%.3f, %.3f)"
-                     o_dbid->objType t_layer xCoord( corner ) yCoord( corner ) )
+                     what t_layer xCoord( corner ) yCoord( corner ) )
         else
-            sprintf( nil "%s on %s" o_dbid->objType t_layer )
+            sprintf( nil "%s on %s" what t_layer )
         )
     )
 )
@@ -313,7 +332,7 @@ procedure( s3dDescribeObject( o_dbid t_layer )
 ; overlapping solids anyway, and when clipping is on axlPolyOperation unions
 ; them as a side effect of the AND.
 procedure( s3dPolysFromDbid( o_dbid s_endCap )
-    let( ( polys lines flat segments )
+    let( ( polys lines flat segments fill where )
         polys = nil
         cond(
             ( o_dbid->objType == "text"
@@ -366,9 +385,49 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
                 )
             )
             ( t
-                ; shapes, rects, filled areas: a boundary already, nothing to
-                ; sweep, so convert whole.
-                errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
+                ; Shapes, rects, filled areas: a boundary already, nothing to
+                ; sweep - converted as Allegro's artwork draws them, which is
+                ; what `fill` says (axlDbidDoc, SHAPE attributes; round 111
+                ; compared each kind with the artwork batch's own Gerber,
+                ; tools/silk_artwork.py):
+                ;   nil    unfilled (objType "polygon"): the OUTLINE, stroked
+                ;          segment by segment like a line and never converted
+                ;          whole, which is its area in solid paint. Allegro
+                ;          25.1 makes every one with a zero-width outline,
+                ;          which s3dZeroWidth stops before this; one with a
+                ;          width (none was found on nine boards) is drawn at it.
+                ;   a list cross-hatch: the hatch lines and the border, which
+                ;          axlPolyFromDB gives only when asked ?xhatch t - "by
+                ;          default, cross-hatch shapes are treated as solid",
+                ;          and they were: a hatched 4 mm square came out as
+                ;          16 mm2 of ink where the artwork prints 4.87.
+                ;   t      solid: the area, whole.
+                fill = nil
+                errset( fill = o_dbid->fill )
+                cond(
+                    ( null( fill )
+                        segments = nil
+                        errset( segments = o_dbid->segments )
+                        foreach( segment segments
+                            errset(
+                                polys = append( polys
+                                    axlPolyFromDB( segment ?endCapType s_endCap ) )
+                            )
+                        )
+                        unless( polys
+                            where = "an unfilled shape"
+                            errset( where = s3dDescribeObject( o_dbid o_dbid->layer ) )
+                            s3dWarn( sprintf( nil "Simple 3D: %s: its outline would not convert; skipped."
+                                              where ) )
+                        )
+                    )
+                    ( listp( fill )
+                        errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ?xhatch t ) )
+                    )
+                    ( t
+                        errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
+                    )
+                )
             )
         )
         polys
@@ -415,7 +474,7 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap g_state )
                 errset( zero = s3dZeroWidth( elem ) )
                 when( zero
                     message = strcat( "zero width: " s3dDescribeObject( elem key )
-                                      " - skipped, it cannot be plotted" )
+                                      " - skipped; Allegro's artwork draws it only at a film's undefined line width" )
                     s3dWarn( sprintf( nil "Simple 3D: %s." message ) )
                     g_state['silkWarnings] = cons( message g_state['silkWarnings] )
                 )

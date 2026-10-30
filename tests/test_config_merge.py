@@ -99,5 +99,25 @@ check("and no value in it looks like an absolute path",
            if re.match(r"^[a-zA-Z]:[/\\]", v)],
       str([v for v in json.dumps(cfg).split('"') if re.match(r"^[a-zA-Z]:[/\\]", v)]))
 
+print("\n[5] the SKILL side's own defaults are the shipped file's")
+# Used when no config is found or it fails to parse; "Mirrors
+# simple3d_config.json - keep the two in step", the source says, and until
+# round 111 the two layer lists were not: the shipped file had gained
+# MANUFACTURING/AUTOSILK_TOP and _BOTTOM and the SKILL defaults had not. Read
+# out of both, so neither can drift alone.
+il = exporter_source()
+shipped = json.loads((ROOT / "simple3d_config.json").read_text(encoding="utf-8"))
+for name, want in (("S3D_SilkDefaultTop", shipped["silkscreen"]["top"]),
+                   ("S3D_SilkDefaultBottom", shipped["silkscreen"]["bottom"]),
+                   ("S3D_MaskDefaultTop", shipped["soldermask"]["top"]),
+                   ("S3D_MaskDefaultBottom", shipped["soldermask"]["bottom"])):
+    m = re.search(r"^" + name + r" = list\((.*?)^\)", il, re.S | re.M)
+    got = re.findall(r'"([^"]*)"', m.group(1)) if m else None
+    check(f"{name} lists what the shipped file lists", got == want, (got, want))
+m = re.search(r"^S3D_SilkDefaultThickness = ([0-9.]+)", il, re.M)
+check("and the ink thickness is the file's",
+      m is not None and float(m.group(1)) == shipped["settings"]["silkscreenThickness"],
+      (m and m.group(1), shipped["settings"]["silkscreenThickness"]))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

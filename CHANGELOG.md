@@ -11,6 +11,33 @@ to use the tool.
 
 ---
 
+- **2026-10-30** — **A cross-hatched shape on the silkscreen is drawn as its
+  hatching.** Allegro hands a hatched shape over as solid unless asked, and the
+  export never asked: a hatched 4 mm square came out as 16 mm² of ink where
+  Allegro's own artwork prints 4.87 mm². Now a shape goes the way it is filled,
+  as the artwork plots it - a solid one as its area, a hatched one as its lines
+  and border, an unfilled one as its outline - on the silkscreen, on drawn mask
+  openings and for a hatched pour under one; checked against the Gerber of the
+  same figures (`tools/silk_artwork.py`). None of the nine boards here has such
+  a shape, so their models do not change. The warning for a figure with no
+  width no longer says it "cannot be plotted": Allegro plots it at its film's
+  undefined line width when that is not 0 - 0.1 mm on 5988-a1's top
+  silkscreen, where two reference designators are left out for that reason.
+  Six rows added to the mutation table (369). /
+  **Заштрихованная форма на шелкографии рисуется штриховкой.** Allegro отдаёт
+  заштрихованную форму как сплошную, если его не попросить, а экспорт не
+  просил: заштрихованный квадрат 4 мм получался 16 мм² краски, хотя на
+  фотошаблоне её 4,87 мм². Теперь форма идёт так, как она залита, и так, как её
+  печатает сам Allegro: залитая площадью, заштрихованная линиями и рамкой,
+  незалитая контуром. Это касается шелкографии, нарисованных вскрытий маски и
+  заштрихованной меди под ними; проверено по Gerber тех же фигур
+  (`tools/silk_artwork.py`). Ни на одной из девяти плат здесь таких форм нет,
+  их модели не меняются. Предупреждение о фигуре без толщины больше не говорит,
+  что её «нельзя отпечатать»: Allegro печатает её неопределённой толщиной линии
+  своей плёнки, если та не 0. У верхней шелкографии 5988-a1 это 0,1 мм, и
+  по этой причине там пропущены два позиционных обозначения. В таблицу мутаций
+  добавлено шесть строк (369).
+
 - **2026-10-28** — **An outline that runs back over itself no longer leaves a
   wedge.** flex2-a0's FLEX zone runs up the board circle and back down it:
   1.50 mm walked twice, a spike with no width. Allegro does not mind it; the

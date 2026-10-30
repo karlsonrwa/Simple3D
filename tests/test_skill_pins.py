@@ -286,6 +286,40 @@ check("the sweep never calls the interactive box select",
 check("and the selection it takes is the one it asked for, once",
       sweep_body.count("found = axlGetSelSet()") == 1 and sweep_body.count("found = nil") == 1)
 
+print("\n[5b2] a shape as its fill draws it: s3dPolysFromDbid, s3dCopperPolys (round 111)")
+
+# R2-13 of the 28.10.2026 review: `fill` was never read, so a cross-hatched
+# shape on a silkscreen or mask layer was converted the way axlPolyFromDB
+# converts one by default - "cross-hatch shapes are treated as solid" - and an
+# unfilled one would have been converted to its area too, but for the zero
+# width Allegro 25.1 gives every unfilled outline. Round 111 measured both
+# against Allegro's own artwork of the same figures (tools/silk_artwork.py,
+# docs/records/silk-fill-artwork-2026-10-30.md): 16 mm2 of ink where the
+# Gerber has 4.87. Both procedures read a design, so no recorded answer can
+# stand in for them; the statements that decide are pinned.
+pin("s3dPolysFromDbid",
+    "errset( fill = o_dbid->fill )",
+    "( null( fill ) segments = nil errset( segments = o_dbid->segments ) "
+    "foreach( segment segments errset( polys = append( polys "
+    "axlPolyFromDB( segment ?endCapType s_endCap ) ) ) )",
+    "( listp( fill ) errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ?xhatch t ) ) )")
+silk_poly_body = normalise(body("s3dPolysFromDbid") or "")
+unfilled = silk_poly_body.split("( null( fill )", 1)[-1].split("( listp( fill )", 1)[0]
+check("an unfilled shape is stroked, never converted whole: its branch holds no "
+      "axlPolyFromDB of the shape itself", "axlPolyFromDB( o_dbid" not in unfilled, unfilled[:160])
+check("and the fill is asked in that order: unfilled, cross-hatch, then solid",
+      0 < silk_poly_body.find("( null( fill )") < silk_poly_body.find("( listp( fill )")
+      < silk_poly_body.rfind("( t errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) ) )"),
+      silk_poly_body[-400:])
+
+# The copper under a drawn mask opening is a shape too: a cross-hatched pour
+# exposes its hatch lines, not its area.
+pin("s3dCopperPolys",
+    "errset( hatched = o_obj->fill )",
+    "hatched = hatched && listp( hatched )",
+    "errset( polys = axlPolyFromDB( o_obj ?window l_window ?xhatch hatched ) )",
+    "errset( polys = axlPolyFromDB( o_obj ?xhatch hatched ) )")
+
 # --------------------------------------------------------------------------- #
 # [5c] - the eleven the audit left "pinned by name only"
 # --------------------------------------------------------------------------- #
@@ -671,7 +705,9 @@ MUST_PIN = {"s3dLayerIsNegative", "s3dDrillXY", "rotateXY", "s3dBoxesMeet",
             "s3dJsonMerge", "s3dJsonQuote"}
 # And the sweep of round 87, pinned by its source alone: it reads a design,
 # so no recorded Allegro answer can stand in for it (see [5b]).
-MUST_PIN_SOURCE_ONLY = {"s3dCollectExposed"}
+MUST_PIN_SOURCE_ONLY = {"s3dCollectExposed",
+                        # and round 111's fill dispatch, for the same reason ([5b2])
+                        "s3dPolysFromDbid", "s3dCopperPolys"}
 check("every procedure the audit found unpinned is pinned here",
       (MUST_PIN | MUST_PIN_SOURCE_ONLY) <= set(PINNED),
       sorted((MUST_PIN | MUST_PIN_SOURCE_ONLY) - set(PINNED)))

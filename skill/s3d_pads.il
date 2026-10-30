@@ -447,25 +447,32 @@ procedure( s3dBoxesMeet( l_a l_b )
 )
 
 ; The polygons of one copper object, for the AND: a pin or via's pad on the
-; side's etch layer, a shape - clipped to l_window when one is given, whole
-; when it is not - a cline, or a no-net line on the etch layer (a label in
-; copper) widened with round caps; anything else whole.
+; side's etch layer, a shape - its area, or a cross-hatch's hatch lines and
+; border; clipped to l_window when one is given, whole when it is not - a
+; cline, or a no-net line on the etch layer (a label in copper) widened with
+; round caps; anything else whole.
 ;
 ; l_window is an optimisation and nothing more: the AND against the opening
 ; clips the result either way. s3dCollectExposed converts each object ONCE
 ; for the whole side now and so passes nil; probe_openings still passes a box.
 procedure( s3dCopperPolys( o_obj t_etch l_window s_endCap )
-    let( ( polys )
+    let( ( polys hatched )
         polys = nil
         cond(
             ( (o_obj->objType == "pin") || (o_obj->objType == "via")
                 errset( polys = axlPolyFromDB( o_obj ?layer t_etch ?padType 'REGULAR ) )
             )
             ( o_obj->objType == "shape"
+                ; A cross-hatched pour is its hatch lines, not its area:
+                ; axlPolyFromDB treats it as solid unless asked (round 111,
+                ; see s3dPolysFromDbid). An etch layer takes no unfilled shape.
+                hatched = nil
+                errset( hatched = o_obj->fill )
+                hatched = hatched && listp( hatched )
                 if( l_window then
-                    errset( polys = axlPolyFromDB( o_obj ?window l_window ) )
+                    errset( polys = axlPolyFromDB( o_obj ?window l_window ?xhatch hatched ) )
                 else
-                    errset( polys = axlPolyFromDB( o_obj ) )
+                    errset( polys = axlPolyFromDB( o_obj ?xhatch hatched ) )
                 )
             )
             ( t
@@ -499,9 +506,12 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
         ; 1. the openings, as polygons, before any visibility is touched.
         ; Lines, shapes AND text: a string on a mask layer is an opening in
         ; the shape of its letters (a part number showing the laminate), and
-        ; the silkscreen's converter already vectorises text. A zero-width
-        ; object cannot be plotted and is skipped with a word, as the legend
-        ; does it, rather than handed to the converter to fail on.
+        ; the silkscreen's converter already vectorises text, and draws a
+        ; shape as its fill says (a cross-hatched one opens its hatch lines).
+        ; A zero-width object is skipped with a word, as the legend does it,
+        ; rather than handed to the converter to fail on: the artwork opens
+        ; it only at its film's undefined line width, and the export reads
+        ; no films (round 111).
         elems = s3dSelectVisibleOn( l_layers list( "noall" "lines" "shapes" "text" )
                                     "Simple 3D: no such layer: %s" )
         openings = nil
@@ -513,7 +523,7 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
             zero = nil
             errset( zero = s3dZeroWidth( elem ) )
             when( zero
-                s3dWarn( sprintf( nil "Simple 3D: zero width: %s - skipped, it opens nothing."
+                s3dWarn( sprintf( nil "Simple 3D: zero width: %s - skipped; Allegro's artwork opens it only at a film's undefined line width."
                                   s3dDescribeObject( elem key ) ) )
             )
             unless( zero || errset( polys = s3dPolysFromDbid( elem s_endCap ) )

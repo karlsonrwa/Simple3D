@@ -79,6 +79,15 @@ ALLEGRO_CANDIDATES = (
 TIMEOUT = 900          # seconds per board; the 31 MB one takes well under that
 HOME = ROOT / "build" / "allegro-home"
 OFF_LIMITS = Path(r"D:\Projects\OrCAD")
+# Where the board copies and a check's exports are made: under build/, on D:,
+# not tempfile's default - the system TEMP is on C:, whose writes the owner
+# saves (until round 111 every export put a copy of the board there).
+SCRATCH = ROOT / "build" / "tmp"
+
+
+def scratch_dir(prefix: str) -> Path:
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=SCRATCH))
 
 
 def slashes(p: Path | str) -> str:
@@ -148,7 +157,7 @@ def export(brd: Path, out_dir: Path, allegro: Path, home: Path = HOME, *,
     """
     out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix="s3dexport_"))
+    work = scratch_dir("s3dexport_")
     try:
         copy = work / brd.name
         shutil.copy2(brd, copy)
@@ -216,7 +225,7 @@ def record(allegro: Path, home: Path) -> int:
 def check(allegro: Path, keep: Path | None, home: Path) -> int:
     if not GOLDEN.exists():
         sys.exit(f"no record at {GOLDEN}; run --record first")
-    work = keep or Path(tempfile.mkdtemp(prefix="s3dcheck_"))
+    work = keep or scratch_dir("s3dcheck_")
     drift: list[str] = []
     try:
         for brd in boards():
