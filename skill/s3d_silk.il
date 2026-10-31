@@ -239,11 +239,12 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
 ; t if this object has no width of its own.
 ;
 ; Allegro's artwork draws such a figure at the Undefined line width of its
-; film; at 0, the default, an unfilled outline is left out with a warning and
-; a line drawn with the smallest aperture the accuracy allows, about a micron
-; (round 111: an unfilled rectangle came out as its outline at 0.05 mm on a
-; film set so, and not at all on one left at 0). The export reads no films, so it
-; skips the figure and says so. axlPolyFromDB would not object: it returns
+; film, and leaves it out with a warning when that is 0, the default - a line,
+; a text and an unfilled outline alike (round 111, Allegro 25.1: an unfilled
+; rectangle and a line came out at 0.05 mm on a film set so and not at all on
+; one left at 0; 5988-a1's MH2 at 0.1 on its SST and not at all on a copy of
+; it at 0). The export reads no films, so it skips the figure and says so.
+; axlPolyFromDB would not object: it returns
 ; nil, or a degenerate polygon that fails later with a message about geometry
 ; rather than about width. Catching it here lets the report name the layer
 ; and the place.

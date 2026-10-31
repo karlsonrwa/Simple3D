@@ -3503,6 +3503,19 @@ behind and removed). No later Allegro run of this round brought one.
   6.9255, G 16.0000, H 6.6840 mm2, A and C none; 22:19 `run_all` 32/34 in 88
   s, only the two window suites (test_gui 7 FAIL, all in [7i]; test_geom 13 -
   their known session-0 failures); no window file changed.
+- 31.10, at the owner's «Покажи картинкой что ты имеешь в виду под
+  штриховкой? Ты имеешь в виду, что на слоях могут быть линии нулевой
+  толщины, которые в гербер могут попасть а могут не попасть?» - two
+  pictures drawn from the Gerbers and intermediates themselves
+  (`r111/pictures/draw.py`, `hatch.png`, `zero_width.png`), and with them two
+  more measurements in Allegro 25.1: a zero-width LINE on a copy of
+  silkcases.brd is drawn at 0.05 and absent at 0 ("0 width line found"), and
+  5988-a1's designators with no pen (MH2 and the one at 45.180) are drawn at
+  SST's 0.1 and absent from a copy of SST at 0 ("text composed 0 width line
+  found"). So at 0 every zero-width figure is left out here - not drawn with
+  a one-micron aperture, as AllegroBaseStructure's note of 20.08 had it and
+  b71d422's README said for lines; README, the record and the comment now
+  say so.
 
 ## Update 2026-10-30 (round 110) — a zone's faces and the datum come from the layers with material in it; a bend is still curled about the whole stack, and named (R3-16 of the second review round)
 

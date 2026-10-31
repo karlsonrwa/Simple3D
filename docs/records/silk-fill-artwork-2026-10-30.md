@@ -41,7 +41,12 @@ What `axlPolyFromDB` gives (areas in mm2):
 
 `S3D_SILKB.art`, RS274X, `%FSLAX35Y35*MOMM*%`: the solid G as a region (`G36`/`G37`); every hatch line a stroke of `D10` (round, 0.1); each hatched shape's border its boundary stroked with `D11` (0.15), H's void a full circle of `D11` (`G02` from a point back to it, `G75`); A and C their boundary stroked with `D12` (0.05) - the film's undefined line width. `S3D_SILKB0` (undefined width 0) has no `D12` and no A or C at all; `photoplot.log` says so: `WARNING: rectangle or unfilled shape composed 0 width line found at (2.0000 2.0000)` and `WARNING: rectangle or unfilled shape having Multiple 0 width lines; all will be treated the same as the first.`
 
-So an unfilled outline, which has no width, is drawn by the artwork at its film's undefined line width, and left out with a warning when that is 0. A line with no width at 0 is drawn with the smallest aperture the board's accuracy allows, a micron on Cadence's demo (`%ADD10C,.000039*%`, measured on 20.08.2026 in AllegroBaseStructure); text with no pen was not measured.
+So an unfilled outline, which has no width, is drawn by the artwork at its film's undefined line width, and left out with a warning when that is 0. The same holds for a line and a text with no width (31.10.2026, Allegro 25.1, files under `build/fix-2026-10-30/r111/pictures/`):
+
+- a zero-width L-shaped line added to a copy of `silkcases.brd` (2..6 x 15..19): stroked with the 0.05 aperture on S3D_SILKB, absent from S3D_SILKB0, whose log says `WARNING: 0 width line found at (2.0000 19.0000)`;
+- 5988-a1's designator MH2 with no pen, REF DES/SILKSCREEN_TOP at (9.180, 3.222): on a copy of the board, film SST (0.1) has an aperture of 0.1 and 62 draws, a film S3D_SST0 with SST's layers and width 0 has no such aperture and 32 draws - MH2 and the second designator gone - and both logs say `WARNING: text composed 0 width line found at (10.4500 5.0000)`.
+
+An earlier measurement (20.08.2026, AllegroBaseStructure) had seen zero-width lines at 0 drawn with a one-micron aperture (`%ADD10C,.000039*%`); that is not what Allegro 25.1 does here. `build/fix-2026-10-30/r111/pictures/draw.py` draws these cases and the hatched ones from the Gerbers and the intermediates.
 
 ## Before: round 110's exporter (`56a24ae`), film S3D_SILKB
 
