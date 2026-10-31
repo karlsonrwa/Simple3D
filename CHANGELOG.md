@@ -11,6 +11,29 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **The log names the components a missing model leaves
+  out.** It named the model file once ("could not find NOT_THERE.step") and
+  the summaries counted files, so when a model was missing for several
+  positions nothing said which parts the assembly was without; the window's
+  last line read "Done: 1 file(s), 1 component(s) placed" with 19 left out.
+  Measured on the demo board on the 4090. Now, after placing, one line per
+  model that could not be used names its components in refdes order, the
+  first 20 when there are more (`warning: NOT_THERE.step not found - 2
+  component(s) left out: R77, U9`), the command line's summary and the
+  window's per-file line count them, and the window's last line ends `…, 29
+  left out`. Eight rows added to the mutation table (454). /
+  **Журнал называет компоненты, оставшиеся без модели.** Раньше он один раз
+  называл файл модели («could not find NOT_THERE.step»), а итоговые строки
+  считали файлы. Если модели не было для нескольких позиций, журнал не говорил,
+  каких деталей нет в сборке, а последняя строка окна при 19 пропущенных
+  сообщала «Done: 1 file(s), 1 component(s) placed». Замерено на демо-плате на
+  4090. Теперь после расстановки для каждой модели, которую не удалось
+  использовать, пишется строка с её компонентами по порядку обозначений, при
+  большом числе первые 20 (`warning: NOT_THERE.step not found - 2 component(s)
+  left out: R77, U9`). Итог командной строки и строка окна по файлу их считают,
+  а последняя строка окна кончается на `…, 29 left out`. В таблицу мутаций
+  добавлено восемь строк (454).
+
 - **2026-10-31** — **The STEP builder refuses a JSON it does not know, and
   says why.** It asked for neither `"format"` nor `"format_version"`: another
   program's JSON, a file of a newer exporter (`format_version` 99, 13), a

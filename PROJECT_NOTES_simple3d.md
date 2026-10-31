@@ -5,7 +5,14 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-121 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-122 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 122 (2026-10-31), on `main`, not pushed.** At «Да, R3-3»: the
+components a missing or unusable model leaves out are named, one log line
+per model in refdes order (the first 20), and counted in the CLI's and the
+window's summaries (the Done line ends ", N left out"); before, only the file
+was named and 19 left out went unsaid in all three logs. test_embedded [9];
+rows 454, 56 of 56; run_all 32/34. Read round 122.
 
 **Round 121 (2026-10-31), on `main`, not pushed.** At «Да, R3-2»: the STEP
 builder refuses a JSON it does not know. `Intermediate.validate()` now asks
@@ -3513,6 +3520,42 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 122) — the components a missing model leaves out are named (R3-3 of the first review round)
+
+At the owner's «Да, R3-3». The record is
+`docs/records/left-out-components-2026-10-31.md`; the evidence is in
+`build/fix-2026-10-31/r122/`.
+
+### Measured first
+
+- `repro.py` on the 4090: the demo with U9/R77 on a model no folder holds,
+  C2/C3 on an unusable `broken.step`, R1-R15 on one shared missing model.
+  generate(), the CLI and the window's worker (`run_jobs`, a list for a
+  channel): 19 left out, none named - "could not find <file>" once per file,
+  counts of files in the summaries, the window's last line "Done: 1 file(s),
+  1 component(s) placed".
+
+### What changed
+
+- `stepbuilder/core.py` `_place_components`: `left_out` (model -> refdes);
+  after the loop one warning per model, "not found" or "could not be used",
+  its components in `_refdes_order`, the first `LEFT_OUT_SHOWN` = 20 and "and
+  N more".
+- `__main__.py`: "N component(s) left out of the model (named above)";
+  `worker.py`: the same per file, and ", N left out" on the Done line.
+- `tests/test_embedded.py` [9]; README (both halves), CHANGELOG,
+  ARCHITECTURE.
+
+### Verified
+
+- Red first: test_embedded [9] 7 FAIL on the old code.
+- The input again: the three lines (R77, U9 / C2, C3 / R1-R15) in all three
+  logs; the window's last line "Done: 1 file(s), 1 component(s) placed, 19
+  left out".
+- Rows 446 -> 454; the 56 rows on core.py, worker.py, __main__.py and of
+  test_embedded 56 of 56 on the 4090; run_all 32/34 in 88 s (the two window
+  suites).
 
 ## Update 2026-10-31 (round 121) — a JSON the reader does not know is refused, by name (R3-2 of the first review round)
 

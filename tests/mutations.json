@@ -4660,5 +4660,85 @@
    "tests/test_variant_path.py"
   ],
   "why": "the reader claims a version the exporter does not write: a file of 13, from an exporter it has not seen, would be built (round 121, R3-2 of the 23.10.2026 review)"
+ },
+ {
+  "id": "core-left-out-not-collected",
+  "file": "stepbuilder/core.py",
+  "old": "            left_out.setdefault(step_name, []).append(ref_des)\n",
+  "new": "            pass\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "the components a missing model costs are counted and never named, as before (round 122, R3-3 of the 23.10.2026 review)"
+ },
+ {
+  "id": "core-left-out-not-said",
+  "file": "stepbuilder/core.py",
+  "old": "    for step_name, refs in left_out.items():\n",
+  "new": "    for step_name, refs in {}.items():\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "the per-model line naming the components left out is not written (round 122, R3-3 of the 23.10.2026 review)"
+ },
+ {
+  "id": "core-left-out-text-order",
+  "file": "stepbuilder/core.py",
+  "old": "        refs = sorted(refs, key=_refdes_order)\n",
+  "new": "        refs = sorted(refs)\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "the components are named in text order, R10 before R2 (round 122, R3-3 of the 23.10.2026 review)"
+ },
+ {
+  "id": "core-left-out-uncapped",
+  "file": "stepbuilder/core.py",
+  "old": "            f\"{', '.join(refs[:LEFT_OUT_SHOWN])}{more}\")\n",
+  "new": "            f\"{', '.join(refs)}{more}\")\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "a model shared by many positions lists every one and still says how many more (round 122, R3-3 of the 23.10.2026 review)"
+ },
+ {
+  "id": "core-left-out-unusable-called-missing",
+  "file": "stepbuilder/core.py",
+  "old": "        how = \"not found\" if step_name in result.missing_step_files else \"could not be used\"\n",
+  "new": "        how = \"not found\"\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "a model on disk that could not be used is reported as not found, which sends the user looking for a file they have (round 122, R3-3 of the 23.10.2026 review)"
+ },
+ {
+  "id": "cli-left-out-not-counted",
+  "file": "stepbuilder/__main__.py",
+  "old": "        if result.components_skipped:\n",
+  "new": "        if result.components_skipped and False:\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "the CLI's summary counts files and not the components they cost (round 122, R3-3 of the 23.10.2026 review)"
+ },
+ {
+  "id": "worker-left-out-not-counted",
+  "file": "stepbuilder/worker.py",
+  "old": "        if result.components_skipped:\n",
+  "new": "        if result.components_skipped and False:\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "the window's per-file summary counts files and not the components they cost (round 122, R3-3 of the 23.10.2026 review)"
+ },
+ {
+  "id": "worker-done-says-placed-only",
+  "file": "stepbuilder/worker.py",
+  "old": "    if total_left_out:\n",
+  "new": "    if total_left_out and False:\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "the window's last line says \"Done ... placed\" and nothing of what is left out (round 122, R3-3 of the 23.10.2026 review)"
  }
 ]

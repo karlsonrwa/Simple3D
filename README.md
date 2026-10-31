@@ -436,6 +436,14 @@ are told apart, because the fix differs:
   and the path; that component is left out and **the rest of the board is still
   built**.
 
+Whichever the case, the log then names the components the model leaves out, one
+line per model and in refdes order: `warning: NOT_THERE.step not found - 2
+component(s) left out: R77, U9`. A model shared by many positions names the first
+20 and counts the rest. The command line's summary and the window's last line
+count them too (`Done: 1 file(s), 1 component(s) placed, 29 left out`). Until
+round 122 only the file was named, so a model the library lacked for a dozen
+positions never said which parts the assembly was without.
+
 The case of a filename does not matter. The name comes from Allegro's mapping
 table, where it is typed by hand, and the file on disk is named by whoever
 supplied the library, so `MODEL.STEP` and `model.step` are the same file here —
@@ -1057,7 +1065,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 446 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 454 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1501,6 +1509,15 @@ Simple 3D этими копиями не пользуется — он соби�
 * **Есть на диске, но не читается** — занят другим приложением, нулевой после
   сорвавшегося копирования, диалект, который OpenCASCADE не принимает. Причина и
   путь называются, компонент пропускается, **остальная плата собирается**.
+
+В любом из трёх случаев журнал затем называет компоненты, оставшиеся без модели:
+одна строка на модель, позиции по порядку обозначений, например `warning:
+NOT_THERE.step not found - 2 component(s) left out: R77, U9`. Если модель общая
+для многих позиций, называются первые 20, а остальные считаются числом. Итог
+командной строки и последняя строка окна их тоже считают (`Done: 1 file(s), 1
+component(s) placed, 29 left out`). До раунда 122 называлось только имя файла,
+и если модели не было в библиотеке для десятка позиций, журнал не говорил, каких
+деталей нет в сборке.
 
 Регистр имени файла значения не имеет. Имя приходит из таблицы сопоставления
 Allegro, где его набирают руками, а файл на диске назван поставщиком библиотеки,
@@ -2130,7 +2147,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 446 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 454 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

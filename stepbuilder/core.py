@@ -8,6 +8,7 @@ from the GUI, from the CLI, or from tests.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -974,6 +975,9 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
     # One shared part per distinct STEP model: models.ModelCache reads each
     # file once and names the part after it.
     models = ModelCache(index, doc, shape_tool, log)
+    # step_name -> the components it leaves out, for want of the file or
+    # because it could not be used; said after the loop (round 122)
+    left_out: dict[str, list[str]] = {}
 
     total = len(components)
     lowered = []            # (ref_des, zone, bottom side, how far inside its zone's face), round 103
@@ -995,6 +999,7 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
             result.unreadable_step_files.append(step_name)
         if not roots:
             result.components_skipped.append(ref_des)
+            left_out.setdefault(step_name, []).append(ref_des)
             continue
 
         # MFRPN tracking DISABLED (property attachment unreliable); keep for future:
@@ -1034,6 +1039,18 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
             shape_tool.AddComponent(parent, root, TopLoc_Location(trsf))
         result.components_placed += 1
 
+    # The components each unusable model leaves out, one line per model, in
+    # refdes order (round 122, R3-3 of the 23.10.2026 review). The log named
+    # the FILE once and the summaries counted files, so a model shared by many
+    # positions never said which parts the assembly lacks: U9 and R77 went into
+    # components_skipped and nowhere else, in the window and the CLI alike.
+    for step_name, refs in left_out.items():
+        how = "not found" if step_name in result.missing_step_files else "could not be used"
+        refs = sorted(refs, key=_refdes_order)
+        more = f" and {len(refs) - LEFT_OUT_SHOWN} more" if len(refs) > LEFT_OUT_SHOWN else ""
+        log(f"warning: {step_name} {how} - {len(refs)} component(s) left out: "
+            f"{', '.join(refs[:LEFT_OUT_SHOWN])}{more}")
+
     # A part stands on the board's surface under it, and where that is not
     # its zone's face - a window in a stiffener, an opening in a coverlay -
     # the log says so: the zone's stack had put X1 on flex2-a0 0.575 mm in
@@ -1052,6 +1069,16 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
 
 # How many parts standing inside their zone's face the log names one by one.
 LOWERED_SHOWN = 12
+
+# How many components one unusable model's line names one by one; a model
+# shared by hundreds of resistors is its own message.
+LEFT_OUT_SHOWN = 20
+
+
+def _refdes_order(ref_des: str) -> list:
+    """C2 before C10: the runs of digits compared as numbers, the rest as text."""
+    return [(0, int(run)) if run.isdigit() else (1, run)
+            for run in re.split(r"(\d+)", str(ref_des)) if run]
 
 
 def _below_zone_face(component: dict, levels: dict | None, surface) -> float:

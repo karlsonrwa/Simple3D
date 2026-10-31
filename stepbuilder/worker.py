@@ -120,6 +120,7 @@ def _run(settings: BuildSettings, channel) -> None:
                                 f"as is; read as such."))
 
     total_placed = 0
+    total_left_out = 0
     outputs: list[str] = []
     warnings: list[str] = []
     failures: list[str] = []
@@ -162,6 +163,7 @@ def _run(settings: BuildSettings, channel) -> None:
             continue
 
         total_placed += result.components_placed
+        total_left_out += len(result.components_skipped)
         outputs.append(result.output.name)
         if result.silkscreen_solids:
             channel.put(("log", f"{result.output.name}: silkscreen "
@@ -181,6 +183,12 @@ def _run(settings: BuildSettings, channel) -> None:
             warnings.append(
                 f"{result.output.name}: {len(result.embedded_not_on_disk)} of "
                 f"those are in the board but not on disk (see the log)")
+        # Counted here, named in the build's own log one line per model
+        # (round 122, R3-3): the summary used to say "Done ... placed" and
+        # nothing of the components the model is without.
+        if result.components_skipped:
+            warnings.append(f"{result.output.name}: {len(result.components_skipped)} "
+                            f"component(s) left out (named above)")
 
     for w in warnings:
         channel.put(("log", "warning: " + w))
@@ -192,6 +200,8 @@ def _run(settings: BuildSettings, channel) -> None:
         return
 
     summary = f"Done: {len(outputs)} file(s), {total_placed} component(s) placed"
+    if total_left_out:
+        summary += f", {total_left_out} left out"
     if failures:
         summary += f", {len(failures)} failed"
     channel.put(("done", summary))

@@ -396,6 +396,11 @@ def main(argv: list[str] | None = None) -> int:
         if result.embedded_not_on_disk:
             log(f"warning: {len(result.embedded_not_on_disk)} of them are stored "
                 f"inside the board (see above for what to do)")
+        # The files above are counted; the components they cost are named in
+        # the build's own log, one line per model (round 122, R3-3).
+        if result.components_skipped:
+            log(f"warning: {len(result.components_skipped)} component(s) left out "
+                f"of the model (named above)")
         if result.silkscreen_solids:
             log(f"silkscreen: {result.silkscreen_solids} solid(s)")
         # MFRPN DISABLED (kept for future):
