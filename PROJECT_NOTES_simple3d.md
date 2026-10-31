@@ -5,13 +5,29 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-114 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-115 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 115 (2026-10-31), on `main`, not pushed.** At «Да, R2-3»: the export
+writes beside its own board. `s3dDesignDir` was `getWorkingDir()`; in
+Allegro 25.1 with the working directory moved to project A's pcb folder
+(`changeWorkingDir`, the state File > Open leaves with "Change directory"
+unticked) and project B's board open, the command wrote B's JSON into A's
+cad folder. Now the board's own path (`s3dDesignFolder`), the working
+directory only as a fallback; the same scene writes into B's cad.
+`tools/probes/probe_outdir.il` runs the real command with the pre-flight
+stubbed. **The owner's screen:** Windows Terminal takes every new console
+onto his desktop whatever desktop asked, so round 114's probe runs most
+likely showed him Terminal windows; this round's runs start no console and
+showed none (watched). Record `docs/records/export-folder-2026-10-31.md`.
+Red first, rows 399, the whole table run by accident: 356 caught, 43
+UNPROVEN (window suites), none survived; run_all 32/34. Read round 115.
 
 **Round 114 (2026-10-31), on `main`, not pushed.** At «Да, R2-2»: the
 pre-flight check runs the interpreter the window runs. It ran `python` while
 the window ran `pythonw`; now both ask `s3dWindowPython` (`pythonw`, or
 `python` when pythonw is `""`). Measured in Allegro 25.1 headless
-(`tools/probes/probe_preflight.il`, on a hidden desktop): python 3.14 with
+(`tools/probes/probe_preflight.il`, on a hidden desktop - which, round 115
+found, does not keep consoles' Terminal windows off the owner's screen): python 3.14 with
 OCP + pythonw 3.11 without passed the old check (the window would have died
 silently) and fails the new one, naming 3.11's pythonw; the reverse pair,
 stopped by the old check, passes. pythonw's output reaches the check's log
@@ -3421,6 +3437,70 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-10-31 (round 115) — the export writes beside its own board, not into the working directory (R2-3 of the first review round)
+
+At the owner's «Да, R2-3». The finding (23.10, open in both rounds):
+`s3dDesignDir` was `getWorkingDir()`, on the comment "when a board is open,
+getWorkingDir() is that directory", while the exporter reads Variants.lst
+beside the board (`s3dDesignFolder`). The record is
+`docs/records/export-folder-2026-10-31.md`.
+
+### Measured first (`build/fix-2026-10-31/r115/`)
+
+- `scene.py` + `tools/probes/probe_outdir.il` (new): A/rev/{pcb,cad} and
+  B/rev/{pcb,cad}, a copy of circle-A0.brd in B/rev/pcb, Allegro 25.1
+  headless on it. Opened from the command line, Allegro's working directory
+  is the board's folder (B/rev/pcb), whatever the starting process's was;
+  `changeWorkingDir` moves it to A/rev/pcb - File > Open's "Change directory
+  unticked" state, the dialog not driven - and the real `s3dExportCommand`
+  runs with the pre-flight check stubbed by `putd` (starts nothing, answers
+  nil). Round 114's code (`8c93b78`, as `r115/head/`): "JSON + STEP output
+  -> A/rev/cad", circle-a0.json written there, Variants.lst looked for in
+  B/rev/pcb. Exactly the reviewer's scene.
+- **The owner's screen.** The first attempt ran `cmd /c allegro ...` on a
+  desktop of its own with the real check, and the user's desktop, watched
+  every 50 ms, got a Windows Terminal window (outside the run's process tree)
+  and a PseudoConsoleWindow of a cmd.exe inside it: this machine's default
+  terminal takes every new console onto the user's desktop, whatever desktop
+  asked. So round 114's runs, built the same way, most likely showed
+  Terminal windows to the owner (its record and notes corrected). Allegro is
+  a GUI program and makes no console; started directly with the check
+  stubbed, the two runs below showed nothing and left nothing running. Not
+  measured: whether the real check's cmd, started by Allegro's `system()`,
+  shows a Terminal window on an ordinary export.
+
+### What changed
+
+- `simple3d.il`: `s3dDesignDir` asks `s3dDesignFolder` (the board's own
+  path) first, `getWorkingDir` only when that gives no folder; the comment
+  says why, and the nil-folder warning names both.
+- `tests/test_launch_cmd.py` [8] (new): the order and the fallback in
+  `s3dDesignDir`, and `s3dExportCommand` taking its folder from it alone.
+- README (both halves: a paragraph under "How it works"; the map's probe
+  note and table count 396 -> 399), CHANGELOG, ARCHITECTURE (`simple3d.il`
+  959 lines, 23 probes).
+
+### Verified
+
+- `scene.py` on round 115's code: `s3dDesignDir` B/rev/pcb, output
+  B/rev/cad, circle-a0.json there and A/rev/cad empty; no new window on the
+  user's desktop, nothing left running.
+- Red on round 114's code (`head115` on the 4090): `test_launch_cmd` 2 FAIL,
+  [8]'s checks on `s3dDesignDir`; the third, on `s3dExportCommand`, passes
+  there too - the command always took `s3dDesignDir`, the fault was inside it.
+- Rows 396 -> 399: skill-design-dir-working-dir,
+  skill-design-dir-fallback-always, skill-export-uses-working-dir. The job
+  meant to run the 13 rows on `simple3d.il` / `test_launch_cmd`, but its
+  script was copied from round 114's by `sed s#r114#r115#`, which does not
+  touch `ids114.txt`: the id list came back empty and `mutate.py` ran the
+  WHOLE table - 356 of 399 caught in 616 s of wall on 8 copies (4483 s of
+  suite runs, a flutter test of another session on the machine meanwhile),
+  none survived; the other 43 UNPROVEN, all rows needing `test_gui` or
+  `test_geom`, red in session 0 - the owner's session would judge them. The
+  round's three among the caught.
+- `skill_checks` passes `simple3d.il` and `probe_outdir.il`; `run_all`
+  32/34 in 94 s, only the two window suites.
+
 ## Update 2026-10-31 (round 114) — the pre-flight check runs the interpreter the window runs (R2-2 of the first review round)
 
 At the owner's «Да, R2-2». The finding (23.10, open in both rounds):
@@ -3443,7 +3523,10 @@ copied the same split and reproduced it. The record is
   round went through `on_desktop.py` (CreateProcessW with lpDesktop
   "Simple3D-tests", inherited by everything below it). The owner's desktop
   was not watched meanwhile; BaroSim's `tools/desktop_run.py --wait`, which
-  does both, was already there and I did not look for it first.
+  does both, was already there and I did not look for it first. Corrected in
+  round 115: a desktop of its own does not keep a console off the owner's
+  screen here (Windows Terminal takes every new console onto his desktop), so
+  these runs most likely showed him Terminal windows.
 - `tools/probes/probe_preflight.il` (new) loads a tree's `simple3d.il`, sets
   `noconfirm`, and calls the real `s3dPreflight` per (python, pythonw) case.
   Round 113's code (`58d46f2`, as `r114/head/`): good t; python 3.14 with OCP

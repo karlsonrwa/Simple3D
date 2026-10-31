@@ -266,16 +266,17 @@ s3dLoadSettings()
 ; goes into the SAME folder as the .brd, so the tool works regardless of how
 ; the project is organised. The output folder is always created if missing.
 ;
-; nil in means the working directory could not be read at all, which is what
-; the load-time self-test at the bottom of this file warns about. Say the same
-; thing here rather than letting parseString fail on nil: a raw SKILL trace is
-; exactly what that self-test exists to prevent.
+; nil in means neither the board's own path nor the working directory could be
+; read (s3dDesignDir), the second of which the load-time self-test at the
+; bottom of this file warns about. Say so here rather than letting parseString
+; fail on nil: a raw SKILL trace is exactly what that self-test exists to
+; prevent.
 ; NOTE: if/else, not an early return - return() is legal only inside a prog,
 ; and this is a let. (The same trap s3dExportCommand's own note describes.)
 procedure( s3dResolveCadDir( t_designDir )
     let( ( parts n leaf parent cad )
         if( !stringp( t_designDir ) then
-            s3dWarn( "Simple 3D: could not read the design's folder - getWorkingDir() answered nothing. Edit s3dDesignDir() in simple3d.il to use your install's working-directory function." )
+            s3dWarn( "Simple 3D: could not read the design's folder - neither the board's own path (axlGetDrawingName) nor getWorkingDir() answered. See s3dDesignDir() in simple3d.il." )
             nil
         else
             t_designDir = s3dSlashes( t_designDir )
@@ -328,12 +329,29 @@ procedure( s3dHeadList( lst x_n )
 ; is produced by the Python side (--dated-name), which has a tested date
 ; formatter and can check for existing files. Nothing here needs the date.
 
-; Return the design directory. When a board is open, getWorkingDir() is that
-; directory. (If getWorkingDir is spelled differently in your install, this is
-; the ONE line to adjust - see the load-time self-test at the bottom.)
+; Return the design directory: the folder holding the open .brd, read off the
+; board's own path by the exporter's s3dDesignFolder - the same answer
+; Variants.lst is looked for by, so the export cannot read one board's folder
+; and write into another's.
+;
+; Until round 115 this was getWorkingDir(), on the comment "when a board is
+; open, getWorkingDir() is that directory". Allegro does not promise that:
+; File > Open with "Change directory" unticked (browser_nodircheck) opens a
+; board and leaves the working directory where it was. Measured in Allegro
+; 25.1: started on a board, the working directory is the board's folder; moved
+; to another project's pcb folder, the command wrote board B's JSON into
+; project A's cad folder while it looked for Variants.lst beside B (review
+; 23.10.2026, R2-3). The working directory is now only the answer when the
+; board's path cannot be read or holds no folder - a bare name, which can only
+; mean the working directory anyway.
 procedure( s3dDesignDir()
     let( ( dir )
-        errset( dir = getWorkingDir() )
+        dir = ""
+        errset( dir = s3dDesignFolder() )
+        unless( stringp( dir ) && (dir != "")
+            dir = nil
+            errset( dir = getWorkingDir() )
+        )
         when( dir  s3dSlashes( dir ) )
     )
 )

@@ -11,6 +11,25 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **The export writes beside its own board, not into Allegro's
+  working directory.** The command took its folder from `getWorkingDir()`,
+  while the exporter reads `Variants.lst` beside the board. *File → Open* with
+  *Change directory* unticked leaves the working directory in the project open
+  before, and measured in Allegro 25.1 with the working directory on project
+  A's `rev/pcb` and board B open, the JSON of B was written into A's `rev/cad`,
+  and the window would have been opened on A's folder. The folder now comes from the board's own path, as `Variants.lst`
+  does; the working directory only when that path cannot be read. Three rows
+  added to the mutation table (399). /
+  **Экспорт пишет рядом со своей платой, а не в рабочую папку Allegro.**
+  Команда брала папку из `getWorkingDir()`, а экспортёр читает `Variants.lst`
+  рядом с платой. *File → Open* со снятой галочкой *Change directory* оставляет
+  рабочую папку в проекте, открытом раньше. Замерено в Allegro 25.1: рабочая
+  папка на `rev/pcb` проекта A, открыта плата B, и JSON платы B записался в
+  `rev/cad` проекта A, а окно открылось бы на папке A.
+  Теперь папка берётся из пути самой платы, как и `Variants.lst`; рабочая папка
+  только тогда, когда путь прочитать нельзя. В таблицу мутаций добавлены три
+  строки (399).
+
 - **2026-10-31** — **The pre-flight check runs the interpreter the window
   runs.** It ran `python`, while the window is opened with `pythonw`, so the
   check could answer for the wrong program. Measured in Allegro 25.1 with

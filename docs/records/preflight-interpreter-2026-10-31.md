@@ -15,6 +15,8 @@ Made on the owner's machine with Allegro X Venture 25.1 (`allegro -nograph`, `to
 
 `allegro.exe` is a GUI program (PE subsystem 2) and has no console to lend the `cmd` its `system()` starts, so a check's `cmd` may get a console window of its own. These runs were started through `build/fix-2026-10-31/r114/on_desktop.py`, which runs the command on the desktop "Simple3D-tests" the GUI suites use (`CreateProcessW` with `lpDesktop`); a child process lands on its parent's desktop unless told otherwise, so Allegro and its `cmd` ran there. The owner's desktop was not watched during the runs; BaroSim's `tools/desktop_run.py --wait` does both and would have been the better tool.
 
+**Correction (round 115, the same day).** A desktop of its own does not keep a console off the owner's screen on this machine: its default terminal, Windows Terminal, takes every new console and opens its window on the user's desktop (`docs/records/export-folder-2026-10-31.md`, "The owner's screen"). These runs started `cmd /c python tools/run_probe.py ...`, and the real check started a `cmd` four times in each, so they most likely showed Terminal windows on the owner's screen. `desktop_run.py` watches only the program's own windows and would not have seen a Terminal window either: it belongs to WindowsTerminal.exe.
+
 ## The cases, and what `s3dPreflight` returned
 
 | case | python | pythonw | round 113's code (`58d46f2`) | round 114's |

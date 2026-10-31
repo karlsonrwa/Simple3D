@@ -4142,5 +4142,38 @@
    "tools/skill_checks.py"
   ],
   "why": "the one rule turns round: python first, pythonw only when python is empty - the window gets a console, and a configured pythonw is never used (review 23.10.2026, R2-2; round 114)"
+ },
+ {
+  "id": "skill-design-dir-working-dir",
+  "file": "simple3d.il",
+  "old": "        errset( dir = s3dDesignFolder() )\n",
+  "new": "        errset( dir = nil )\n",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the board's own path is never asked, so the export writes wherever Allegro's working directory is: in Allegro, board B's JSON went into project A's cad folder while Variants.lst was looked for beside B (review 23.10.2026, R2-3; round 115)"
+ },
+ {
+  "id": "skill-design-dir-fallback-always",
+  "file": "simple3d.il",
+  "old": "        unless( stringp( dir ) && (dir != \"\")\n",
+  "new": "        when( t\n",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the working directory overrides the board's own folder every time, the fallback taken as the rule (review 23.10.2026, R2-3; round 115)"
+ },
+ {
+  "id": "skill-export-uses-working-dir",
+  "file": "simple3d.il",
+  "old": "        designDir = s3dDesignDir()\n",
+  "new": "        designDir = getWorkingDir()\n",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the export command reads the working directory itself and passes s3dDesignDir by (review 23.10.2026, R2-3; round 115)"
  }
 ]

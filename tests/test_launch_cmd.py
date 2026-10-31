@@ -301,5 +301,26 @@ for proc in ("s3dPreflight", "s3dLaunch"):
     check(f"{proc} takes its interpreter from s3dWindowPython, and from nowhere else",
           assigned == ["s3dWindowPython()"], assigned)
 
+print("\n[8] the export writes beside its own board, not into the working directory "
+      "(round 115, review 23.10.2026 R2-3)")
+# getWorkingDir() is wherever File > Open left Allegro - with "Change
+# directory" unticked, another project's folder - while Variants.lst is looked
+# for beside the board itself (s3dDesignFolder, the board's own path). In
+# Allegro 25.1, with the working directory moved to project A, the command
+# wrote board B's JSON into A's cad folder (docs/records/
+# export-folder-2026-10-31.md). [6] above holds the pcb -> cad rule applied
+# to the folder; this holds which folder it is applied to.
+dd = body("s3dDesignDir")
+first, fallback = dd.find("dir = s3dDesignFolder()"), dd.find("dir = getWorkingDir()")
+check("s3dDesignDir asks the board's own path first",
+      0 <= first < fallback, dd)
+check("and the working directory only when that gives no folder, once",
+      'unless( stringp( dir ) && (dir != "")' in dd and dd.count("getWorkingDir()") == 1, dd)
+command = body("s3dExportCommand")
+check("s3dExportCommand takes its folder from s3dDesignDir, and from nowhere else",
+      command.count("designDir = s3dDesignDir()") == 1 and "getWorkingDir" not in command
+      and "cadDir = s3dResolveCadDir( designDir )" in command,
+      [m for m in re.findall(r"designDir = \S+|getWorkingDir", command)])
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

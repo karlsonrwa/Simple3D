@@ -44,6 +44,12 @@ File → Export → Simple 3D          (simple3d.il, inside Allegro)
             └─ <board>_simple_DD_MM_YYYY.step
 ```
 
+Step 1 starts from the board's own path, the folder holding the open `.brd`
+(the one `Variants.lst` is read from too), not from Allegro's working
+directory: *File → Open* with *Change directory* unticked leaves that in
+whatever project was open before, and until round 115 the JSON and the STEP of
+the new board went there.
+
 The two halves talk through that JSON because neither can do the other's job:
 SKILL reads the Allegro database but cannot build B-rep, OpenCASCADE builds
 STEP but knows nothing about Allegro. Everything the export decides in Allegro
@@ -989,7 +995,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 396 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 399 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1039,6 +1045,12 @@ File → Export → Simple 3D          (simple3d.il, внутри Allegro)
    └─ 4. открывает окно с уже заполненными путями
             └─ <плата>_simple_ДД_ММ_ГГГГ.step
 ```
+
+Шаг 1 отталкивается от пути самой платы, то есть от папки, где лежит открытый
+`.brd` (из неё же читается `Variants.lst`), а не от рабочей папки Allegro.
+*File → Open* со снятой галочкой *Change directory* оставляет рабочую папку в
+проекте, который был открыт раньше, и до раунда 115 JSON и STEP новой платы
+уходили туда.
 
 Половины общаются через этот JSON, потому что ни одна не умеет работу другой:
 SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE строит STEP, но
@@ -1992,7 +2004,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 396 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы; один из них сохраняет её для пакетной команды artwork), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 399 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.
