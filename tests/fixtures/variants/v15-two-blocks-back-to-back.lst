@@ -1,0 +1,10 @@
+(
+	("TWO"
+		(base
+			(R1 )
+		)
+		(C43 VALUE="12pF" )
+		(C44 VALUE="1uF" )
+
+	)
+)

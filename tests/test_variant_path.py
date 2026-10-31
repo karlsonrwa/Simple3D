@@ -263,14 +263,13 @@ ALT = '\t\t(C43 VALUE="12pF" JEDEC_TYPE="CAPC100X50X55L25N" TOL="1" )\n'
 refdes, _, ends = alternate_line(ALT)
 check("the refdes is what reaches the symbol list", refdes == "C43", refdes)
 check("not the first property", refdes != 'VALUE="12pF"')
-# A block closes where its last piece is ")\n", and parseString breaks the
-# "\n" off a line's last piece: so the parser closes even a one-line block on
-# the line AFTER it, the blank one Capture writes. This suite said "it ends on
-# its own line" until round 118, a reading of the copy that Allegro 25.1 does
-# not share (tests/fixtures/variants, test_skill_pins [7]).
-check("a one-line block is not closed on its own line", not ends)
+# parseString breaks the "\n" off a line's last piece, so a block closed on
+# its own line ends in ")". Until round 119 the parser looked for ")\n" there,
+# which never came: a one-line block was closed by the line after it - the
+# blank one Capture writes - or, with none, never (Allegro 25.1, round 118).
+check("a one-line block is closed on its own line", ends)
 USERS = (ROOT / "tests/fixtures/variants/v6-users-alternate-line.lst").read_bytes().decode("ascii")
-check("but by the blank line after it: in a file of the user's shape the part is installed",
+check("and in a file of the user's shape the part is installed",
       parse_variants(USERS).get("A", [])[-1:] == ["C43"], parse_variants(USERS))
 check("a continued block is not mistaken for a finished one",
       not alternate_line('\t\t(C43 VALUE="12pF" JEDEC_TYPE="CAPC\n')[2])
@@ -279,8 +278,9 @@ check("a continued block is not mistaken for a finished one",
 # both, every suite had stayed green). Whole-line comments off - the FIX note
 # quotes the old line.
 code = "\n".join(line for line in src.splitlines() if not line.lstrip().startswith(";"))
-check("and the SKILL appends the refdes, not the first property, in both branches",
-      code.count("symbols = nconc( symbols list( refDes ) )") == 2
+check("and the SKILL appends the refdes, not the first property, wherever a block ends: "
+      "on its line, after its wrapped lines, and where its variant or the next block ends it",
+      code.count("symbols = nconc( symbols list( refDes ) )") == 3
       and "list( nth( 0 subStrings ) )" not in code,
       code.count("symbols = nconc( symbols list( refDes ) )"))
 
@@ -540,15 +540,14 @@ check("Capture's own shape: the six refdes, in order",
 # files of tests/fixtures/variants (round 118).
 check("...and no stray token beside them: parseString breaks the line end off",
       got["BOM"] == ["VT1", "VT2", "VT3", "VT4", "X1", "X2"], got)
-# What the parser does when the blank line is missing, as Allegro 25.1 answers
-# on tests/fixtures/variants v10 and v11: the block's end is looked for to the
-# end of the file, so that variant and every one after it are lost. Capture
-# writes the blank line in both of the user's files; README, Known
-# limitations, says so.
+# Without the blank line, until round 119 the block's end was looked for down
+# to the end of the file, and that variant and every one after it were lost
+# (Allegro 25.1 on tests/fixtures/variants v10 and v11, round 118).
 lost = NORMAL.replace(' )\n\n\t)', ' )\n\t)')
-check("without the blank line after a block the variant is lost, and the next with it",
-      parse_variants(lost) == {}
-      and parse_variants(lost.replace(")\n)\n", ")\n\t(\"V9\"\n\t\t(base\n\t\t\tR9 \n\t\t)\n\n\t)\n)\n")) == {},
+check("without the blank line after a block the variant is still found, and the next with it",
+      parse_variants(lost) == {"V1": ["C1", "C2", "R1", "C43"]}
+      and parse_variants(lost.replace(")\n)\n", ")\n\t(\"V9\"\n\t\t(base\n\t\t\tR9 \n\t\t)\n\n\t)\n)\n"))
+      == {"V1": ["C1", "C2", "R1", "C43"], "V9": ["R9"]},
       parse_variants(lost))
 check("the SKILL parser has the same branch, ahead of its case",
       re.search(r'when\(\s*\(state == "awaitStartCondition"\)\s*&&[\s\S]{0,200}?'
@@ -594,6 +593,35 @@ lines = []
 core.generate(step_dir=ROOT / "demo/step_files", json_file=wf, output_dir=OUT, log=lines.append)
 check("the window's log repeats it, prefixed as a warning",
       any(l == "warning: " + fx["warnings"][0] for l in lines), lines[:6])
+
+print("\n[14] no shape of block loses its part, its variant or the next one (round 119)")
+# Every file of tests/fixtures/variants that the parser of round 118 lost
+# something on - Allegro 25.1's own answers, recorded then - with what each
+# holds. The parser of round 119 answers so in Allegro too (test_skill_pins [7]
+# holds the copy to those answers); here they are written out, so a change
+# that loses a part or a variant again fails by name.
+LOST_BEFORE = {
+    # a refdes alone on the block's first line: the part was not installed
+    "v3-refdes-alone.lst": {"LSM": ["R1", "C43"]},
+    "v19-refdes-alone-then-close.lst": {"ALONE": ["R1", "C43"]},
+    # a one-line block with the variant's close straight after it: that
+    # variant and every one after it were lost
+    "v8-wrapped-three-lines.lst": {"W3": ["R1", "C43", "C44"]},
+    "v10-block-then-close.lst": {"V1": ["C1", "C2", "R1", "C43"]},
+    "v11-block-then-close-then-another.lst": {"V1": ["C1", "C2", "R1", "C43"], "V9": ["R9"]},
+    "v12-alternate-only.lst": {"V2": ["C43"]},
+    # two one-line blocks back to back: the second was read into the first
+    "v15-two-blocks-back-to-back.lst": {"TWO": ["R1", "C43", "C44"]},
+    # a block never closed the way the parser looks for: the variant's close,
+    # or the next block, ends it
+    "v16-wrapped-never-closed-then-close.lst": {"OPEN": ["R1", "C43"], "NEXT": ["R9"]},
+    "v17-wrapped-never-closed-then-block.lst": {"OPEN": ["R1", "C43", "C44"]},
+    # a base list with no close of its own: the next variant was read into it
+    "v18-base-list-never-closed.lst": {"NOBASECLOSE": ["R1", "R2"], "NEXT": ["R9"]},
+}
+for name, want in LOST_BEFORE.items():
+    got = parse_variants((ROOT / "tests/fixtures/variants" / name).read_bytes().decode("ascii"))
+    check(f"{name}: {want}", got == want, got)
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

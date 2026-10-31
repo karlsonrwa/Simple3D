@@ -1290,7 +1290,17 @@
    "inputs": {
     "file": "tests/fixtures/variants/v10-block-then-close.lst"
    },
-   "answer": null
+   "answer": [
+    [
+     "V1",
+     [
+      "C1",
+      "C2",
+      "R1",
+      "C43"
+     ]
+    ]
+   ]
   },
   {
    "procedure": "gdsysGetVariantInfo",
@@ -1298,7 +1308,23 @@
    "inputs": {
     "file": "tests/fixtures/variants/v11-block-then-close-then-another.lst"
    },
-   "answer": null
+   "answer": [
+    [
+     "V1",
+     [
+      "C1",
+      "C2",
+      "R1",
+      "C43"
+     ]
+    ],
+    [
+     "V9",
+     [
+      "R9"
+     ]
+    ]
+   ]
   },
   {
    "procedure": "gdsysGetVariantInfo",
@@ -1306,7 +1332,14 @@
    "inputs": {
     "file": "tests/fixtures/variants/v12-alternate-only.lst"
    },
-   "answer": null
+   "answer": [
+    [
+     "V2",
+     [
+      "C43"
+     ]
+    ]
+   ]
   },
   {
    "procedure": "gdsysGetVariantInfo",
@@ -1341,6 +1374,100 @@
   },
   {
    "procedure": "gdsysGetVariantInfo",
+   "case": "v15-two-blocks-back-to-back.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v15-two-blocks-back-to-back.lst"
+   },
+   "answer": [
+    [
+     "TWO",
+     [
+      "R1",
+      "C43",
+      "C44"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v16-wrapped-never-closed-then-close.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v16-wrapped-never-closed-then-close.lst"
+   },
+   "answer": [
+    [
+     "NEXT",
+     [
+      "R9"
+     ]
+    ],
+    [
+     "OPEN",
+     [
+      "R1",
+      "C43"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v17-wrapped-never-closed-then-block.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v17-wrapped-never-closed-then-block.lst"
+   },
+   "answer": [
+    [
+     "OPEN",
+     [
+      "R1",
+      "C43",
+      "C44"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v18-base-list-never-closed.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v18-base-list-never-closed.lst"
+   },
+   "answer": [
+    [
+     "NEXT",
+     [
+      "R9"
+     ]
+    ],
+    [
+     "NOBASECLOSE",
+     [
+      "R1",
+      "R2"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v19-refdes-alone-then-close.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v19-refdes-alone-then-close.lst"
+   },
+   "answer": [
+    [
+     "ALONE",
+     [
+      "R1",
+      "C43"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
    "case": "v2-wrapped-properties.lst",
    "inputs": {
     "file": "tests/fixtures/variants/v2-wrapped-properties.lst"
@@ -1366,7 +1493,8 @@
     [
      "LSM",
      [
-      "R1"
+      "R1",
+      "C43"
      ]
     ]
    ]
@@ -1456,7 +1584,16 @@
    "inputs": {
     "file": "tests/fixtures/variants/v8-wrapped-three-lines.lst"
    },
-   "answer": null
+   "answer": [
+    [
+     "W3",
+     [
+      "R1",
+      "C43",
+      "C44"
+     ]
+    ]
+   ]
   },
   {
    "procedure": "gdsysGetVariantInfo",

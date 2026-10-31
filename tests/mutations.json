@@ -4446,5 +4446,56 @@
    "tests/test_launch_cmd.py"
   ],
   "why": "a board name with a space reaches the window in pieces - test_launch_cmd [1] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-variant-one-line-block-left-open",
+  "file": "skill/s3d_variants.il",
+  "old": "                                    if( member( car(last(subStrings)) list( \")\" \")\\n\" ) ) then\n",
+  "new": "                                    if( strcmp( car(last(subStrings)) \")\\n\" ) == 0 then\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a one-line block is closed by the line after it again: with the variant's close straight after it, that variant and every one after it are lost (round 119, after R2-9 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-open-block-swallows-the-rest",
+  "file": "skill/s3d_variants.il",
+  "old": "                when( (state == \"awaitMoreProperties\") &&\n",
+  "new": "                when( nil && (state == \"awaitMoreProperties\") &&\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a block never closed reads on to the end of the file: its variant and the ones after it are lost again (round 119, after R2-9 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-open-base-list-swallows-the-next",
+  "file": "skill/s3d_variants.il",
+  "old": "                when( (state == \"appendSymbols\") && (strcmp( line \"\\t)\\n\" ) == 0)\n",
+  "new": "                when( nil && (state == \"appendSymbols\") && (strcmp( line \"\\t)\\n\" ) == 0)\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a base list with no close of its own takes the next variant's lines as parts (round 119, after R2-9 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-refdes-alone-opens-nothing",
+  "file": "skill/s3d_variants.il",
+  "old": "                                when( (length( subStrings ) == 1) && (strcmp( line \"\\t\\t(base\\n\" ) != 0)\n",
+  "new": "                                when( nil && (length( subStrings ) == 1) && (strcmp( line \"\\t\\t(base\\n\" ) != 0)\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a refdes alone on its block's first line opens nothing again, and the part is not installed (round 119, after R2-9 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-open-block-part-dropped",
+  "file": "skill/s3d_variants.il",
+  "old": "                    partProperties = makeTable( \"partProperties\" nil )\n                    symbols = nconc( symbols list( refDes ) )\n                    properties = \"\"\n",
+  "new": "                    partProperties = makeTable( \"partProperties\" nil )\n                    properties = \"\"\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_variant_path.py"
+  ],
+  "why": "a block its variant's close ends is ended, but its part is not installed (round 119, after R2-9 of the 23.10.2026 review)"
  }
 ]

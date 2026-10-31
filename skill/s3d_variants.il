@@ -409,6 +409,27 @@ procedure( gdsysGetVariantInfo()
                     state = "awaitEndCondition"
                 )
 
+                ; A block of alternate-part properties still open when its
+                ; variant closes or the next block begins, and a base list
+                ; still open when its variant closes (round 119): it ends
+                ; there - a block's part installed - and the line is read by
+                ; the state that knows it. Until then the machine read on for
+                ; the end down to the end of the file, and that variant and
+                ; every one after it were lost (Allegro 25.1, 31.10.2026). A
+                ; continuation line begins "\t\t " - newLineEnd and
+                ; newLineWithinProperty say so - so "\t\t(" is a new block.
+                when( (state == "awaitMoreProperties") &&
+                      ((strcmp( line "\t)\n" ) == 0) || pcreMatchp( propertyStart line ))
+                    parts[refDes] = partProperties
+                    partProperties = makeTable( "partProperties" nil )
+                    symbols = nconc( symbols list( refDes ) )
+                    properties = ""
+                    state = "awaitEndCondition"
+                )
+                when( (state == "appendSymbols") && (strcmp( line "\t)\n" ) == 0)
+                    state = "awaitEndCondition"
+                )
+
                 case( state
                     (
                         "findVariant"
@@ -458,6 +479,20 @@ procedure( gdsysGetVariantInfo()
                                 ; find variant specific information
                                 subStrings = parseString( line )
 
+                                ; The refdes alone on the block's first line,
+                                ; its properties on the lines after (round
+                                ; 119): the block is open with nothing in it
+                                ; yet. It used to open nothing, and the part
+                                ; was not installed. "(base" matches
+                                ; propertyStart too and is no block.
+                                when( (length( subStrings ) == 1) && (strcmp( line "\t\t(base\n" ) != 0)
+                                    refDes = pcreReplace( pattern car( subStrings ) "" 0 )
+                                    when( refDes != ""
+                                        properties = ""
+                                        state = "awaitMoreProperties"
+                                    )
+                                )
+
                                 when( length( subStrings ) > 1
                                     refDes = pcreReplace( pattern nth( 0 subStrings ) "" 0 )
 
@@ -468,7 +503,12 @@ procedure( gdsysGetVariantInfo()
                                     subStrings = parseString( temp "\\\\" )
 
                                     ; check, if property information ends in this line
-                                    if( strcmp( car(last(subStrings)) ")\n" ) == 0 then
+                                    ; - in ")": parseString broke the line end
+                                    ; off the line's last piece, so the ")\n"
+                                    ; this looked for alone never came, and a
+                                    ; block was closed by the line after it,
+                                    ; or never (round 119)
+                                    if( member( car(last(subStrings)) list( ")" ")\n" ) ) then
 
                                         foreach( subString subStrings
                                             ; parse properties

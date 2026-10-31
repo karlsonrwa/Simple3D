@@ -490,7 +490,19 @@ pin("gdsysGetVariantInfo",
     # R2-9: reverted in both, every suite stayed green).
     'partProperties = makeTable( "partProperties" nil ) '
     'symbols = nconc( symbols list( refDes ) ) else state = "awaitMoreProperties"',
-    'symbols = nconc( symbols list( refDes ) ) properties = "" state = "awaitEndCondition"')
+    'symbols = nconc( symbols list( refDes ) ) properties = "" state = "awaitEndCondition" ) ) ( t warn(',
+    # Round 119, the parser no longer loses a variant or a part: a block, or
+    # a base list, still open when its variant closes - or a block when the
+    # next one begins - ends there with its part installed; a refdes alone on
+    # its line opens a block (Allegro 25.1 lost all three, round 118).
+    'when( (state == "awaitMoreProperties") && ((strcmp( line "\\t)\\n" ) == 0) || '
+    'pcreMatchp( propertyStart line )) parts[refDes] = partProperties '
+    'partProperties = makeTable( "partProperties" nil ) symbols = nconc( symbols list( refDes ) ) '
+    'properties = "" state = "awaitEndCondition" )',
+    'when( (state == "appendSymbols") && (strcmp( line "\\t)\\n" ) == 0) state = "awaitEndCondition" )',
+    'when( (length( subStrings ) == 1) && (strcmp( line "\\t\\t(base\\n" ) != 0) '
+    'refDes = pcreReplace( pattern car( subStrings ) "" 0 ) '
+    'when( refDes != "" properties = "" state = "awaitMoreProperties" ) )')
 
 # Derived, and the strongest pin in this section: the three literal lines the
 # machine compares against are READ OUT OF THE SKILL, a Variants.lst is built
@@ -560,7 +572,9 @@ if strip:
 # not, and lost a part the SKILL installs): where a block ends, on its line
 # and after it, and what is put together on the way.
 pin("gdsysGetVariantInfo",
-    'if( strcmp( car(last(subStrings)) ")\\n" ) == 0 then',
+    # a block closed on its own line ends in ")": parseString broke the "\n"
+    # off its last piece, and ")\n" alone, asked until round 119, never came
+    'if( member( car(last(subStrings)) list( ")" ")\\n" ) ) then',
     'properties = strcat( properties pcreReplace( newLineEnd line " )" 0 ) )',
     'properties = pcreReplace( newLine properties "" 0 )',
     'when( strcmp( car(last(subStrings)) ")\\n" ) == 0')

@@ -289,12 +289,12 @@ _PROPERTY_SEPARATOR = re.compile('(" )')             # propertySeparator
 
 
 def alternate_line(line):
-    """The parser's awaitEndCondition branch on an alternate-part line:
-    (refdes, properties, ends_on_this_line), or (None, "", False) for a line
-    with a refdes alone. A block ends where its last piece, split at `" `, is
-    ")\\n" - and on a line of its own a one-line block's last piece is ")",
-    parseString having broken the "\\n" off: so the SKILL closes even a
-    one-line block on the line AFTER it, the blank one Capture writes
+    """The parser's awaitEndCondition branch on an alternate-part line with
+    properties on it: (refdes, properties, ends_on_this_line), or
+    (None, "", False) for a line with a refdes alone. A block ends on its line
+    where its last piece, split at `" `, is ")" - parseString has broken the
+    "\\n" off - or ")\\n". Until round 119 only ")\\n" was asked, which never
+    came: a one-line block was closed by the line after it, or never
     (Allegro 25.1, round 118)."""
     tokens = parse_string(line)
     if len(tokens) <= 1:
@@ -302,7 +302,7 @@ def alternate_line(line):
     refdes = _STRIP.sub("", tokens[0])
     properties = " ".join(tokens[1:])                # buildString
     chunks = parse_string(_PROPERTY_SEPARATOR.sub(r"\\", properties), "\\")
-    return refdes, properties, bool(chunks) and chunks[-1] == ")\n"
+    return refdes, properties, bool(chunks) and chunks[-1] in (")", ")\n")
 
 
 # mirrors skill/s3d_variants.il: s3dIsRefdesToken
@@ -332,14 +332,14 @@ def parse_variants(text):
     answers on the files of tests/fixtures/variants (test_skill_pins [7],
     review 23.10.2026 R2-9): the pieces come from parseString as SKILL breaks
     them, and a block that does not end on its line goes on in
-    awaitMoreProperties, as a property wrapped onto the next line does -
-    where the copy used to drop the part. Two things the SKILL does that
-    this follows rather than mends: a refdes alone on its line opens no block
-    (the part is not installed), and a one-line block with no line after it
-    before "\t)" leaves the machine in awaitMoreProperties to the end of the
-    file, so that variant is never registered. Not mirrored: the property
-    values (alternateParts). Line ends are normalised the way gets() does in
-    text mode (a CRLF and an LF file answered alike).
+    awaitMoreProperties, as a property wrapped onto the next line does.
+    Since round 119, as the SKILL: a one-line block ends on its own line; a
+    refdes alone on its line opens a block; and a block still open when its
+    variant closes or the next block begins, or a base list still open when
+    its variant closes, ends there - where the machine used to read on to the
+    end of the file and lose that variant and every one after it. Not
+    mirrored: the property values (alternateParts). Line ends are normalised
+    the way gets() does in text mode (a CRLF and an LF file answered alike).
     """
     table, state, current, symbols = {}, "findVariant", None, []
     refdes, properties = None, ""
@@ -347,6 +347,11 @@ def parse_variants(text):
         if (state == "awaitStartCondition" and line != "\t\t(base\n"
                 and (line == "\t)\n" or _PROPERTY_START.search(line))):
             symbols, state = [], "awaitEndCondition"
+        if state == "awaitMoreProperties" and (line == "\t)\n" or _PROPERTY_START.search(line)):
+            symbols = symbols + [refdes]
+            properties, state = "", "awaitEndCondition"
+        if state == "appendSymbols" and line == "\t)\n":
+            state = "awaitEndCondition"
         if state == "findVariant":
             parts = parse_string(line, '"')
             if len(parts) == 3:
@@ -364,6 +369,11 @@ def parse_variants(text):
                 table[current] = [_STRIP.sub("", t) for t in symbols if t != ")"]
                 state = "findVariant"
             elif _PROPERTY_START.search(line):
+                tokens = parse_string(line)
+                if len(tokens) == 1 and line != "\t\t(base\n":
+                    alone = _STRIP.sub("", tokens[0])
+                    if alone != "":
+                        refdes, properties, state = alone, "", "awaitMoreProperties"
                 found, more, ends = alternate_line(line)
                 if found is not None:
                     refdes, properties = found, more

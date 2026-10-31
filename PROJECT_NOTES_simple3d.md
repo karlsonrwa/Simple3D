@@ -5,7 +5,20 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-118 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-119 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 119 (2026-10-31), on `main`, not pushed.** At «Да, чини» after round
+118: the Variants.lst parser (`gdsysGetVariantInfo`) loses no variant and no
+part. It closed a property block only on the line after it, so with the
+variant's "\t)" straight after a block that variant and all after it were
+lost; also two blocks back to back, a refdes alone, a base list with no close.
+Now a block ends on its line (")" as well as ")\n"), a refdes alone opens one,
+and a block or base list still open when its variant closes - a block when the
+next begins - ends there. On a copy of variants_test-b0 with four variants: 2
+parsed before (LAST and ALONE no JSON, silently), 4 after, the old three JSON
+byte-identical; the user's two Variants.lst answer the same before and after.
+Fixture 108 (19 files); rows 430, 64 of 64; run_all 32/34. R2-10 (case twins)
+still open. Read round 119.
 
 **Round 118 (2026-10-31), on `main`, not pushed.** At «Да, R2-9»: every check
 the finding named now holds the product, each with a row that turns it red
@@ -3478,6 +3491,52 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 119) — the Variants.lst parser loses no variant and no part
+
+At the owner's «Да, чини», after round 118 measured the parser's losses. The
+record is `docs/records/variant-parser-fix-2026-10-31.md`.
+
+### Measured first (`build/fix-2026-10-31/r119/`)
+
+- Five more fixture files (v15-v19) through round 118's parser in Allegro:
+  two blocks back to back lose the second; a wrapped block never closed the
+  way the parser looks loses its variant and the next (or the next block); a
+  base list with no close of its own takes the next variant's lines as parts.
+- A real export, `tools/skill_export.py` on a copy of variants_test-b0 with a
+  crafted Variants.lst (FULL, ALT with a block straight before "\t)", LAST,
+  ALONE with a refdes alone): "2 variant(s) parsed", JSON for FULL and ALT
+  only; ALT survived by chance, closed by ALONE's property line two variants
+  down. Allegro's own variant support (variants.cxt) made BOMs for all four.
+
+### What changed
+
+- `skill/s3d_variants.il`: the one-line end check takes ")" (what
+  parseString leaves of " )\n") as well as ")\n"; a refdes alone on a block's
+  first line opens it ("(base" excepted); two checks before the state's own
+  reading - a block still open (awaitMoreProperties) on "\t)" or a new
+  "\t\t(" ends with its part installed, a base list still open on "\t)" ends.
+- The copy in `tests/skill_transliterations.py` follows; `test_variant_path`
+  [7] and [12] turned to the fixed behaviour, [14] the ten lossy files with
+  what each holds; `test_skill_pins` [5d] pins the new statements.
+- README (both halves: the alternate-block paragraph says what a block may
+  look like now; the round-118 Known limitations entry gone; the map's 430),
+  CHANGELOG, ARCHITECTURE.
+
+### Verified
+
+- Red first: test_variant_path 12 FAIL on the old copy.
+- The fixed parser in Allegro on all 19 files: 98 of round 118's 103 answers
+  the same, the 5 lossy ones now whole, the 5 new as [14] expects; fixture
+  108. The user's two Variants.lst: the same answers from a worktree of
+  e4d86d6 and from this tree (temporary copies, removed).
+- The export again: "4 variant(s) parsed", `_last` (A2 R2 XP2) and `_alone`
+  (A1 C1 R1) written, the whole-board, `_full` and `_alt` JSON identical to
+  before.
+- Rows 425 -> 430; the 64 rows on s3d_variants.il and of the two suites 64 of
+  64 on the 4090. Four of the five new are caught by test_skill_pins's pins
+  only (test_variant_path alone stays green: it asks the copy), so their
+  suites name test_skill_pins alone. run_all 32/34 in 86 s.
 
 ## Update 2026-10-31 (round 118) — the checks R2-9 named hold the product, and the Variants.lst parser is measured (R2-9 of the first review round)
 

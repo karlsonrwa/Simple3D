@@ -11,6 +11,36 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **The Variants.lst parser no longer loses a variant or an
+  alternate part.** It closed a block of alternate-part properties
+  (`(C43 VALUE="12pF" … )`) only on the line after it: with the variant's
+  closing `)` straight after the block, it read on for the block's end to the
+  end of the file, and that variant and every one after it got no JSON, with
+  nothing said; two blocks with no blank line between them lost the second; a
+  refdes alone on its block's first line installed nothing; a base list with no
+  close of its own took the next variant's lines as parts. Measured on a copy of
+  variants_test-b0 with four variants: 2 of 4 parsed before, 4 of 4 after, the
+  two that came through before byte for byte the same. A block now ends on its
+  own line; a refdes alone opens one; a block or base list still open when its
+  variant closes, or a block when the next begins, ends there. Capture's own
+  files, which have the blank lines, parse as before - the user's two among
+  them, measured. Five rows added to the mutation table (430). /
+  **Разборщик Variants.lst больше не теряет ни вариант, ни альтернативный
+  компонент.** Блок свойств альтернативного компонента (`(C43 VALUE="12pF" … )`)
+  он закрывал только следующей за ним строкой. Если сразу за блоком стояла
+  закрывающая скобка варианта, он искал конец блока до конца файла, и этот
+  вариант и все следующие оставались без JSON, молча. Из двух блоков без пустой
+  строки между ними второй терялся; обозначение, стоящее одно в первой строке
+  блока, ничего не устанавливало; список base без своей закрывающей строки
+  забирал строки следующего варианта как детали. Замерено на копии
+  variants_test-b0 с четырьмя вариантами: до правки разобрано 2 из 4, после
+  4 из 4, а два прошедших и раньше совпали байт в байт. Теперь блок кончается на
+  своей строке, обозначение, стоящее одно, открывает блок, а блок или список
+  base, ещё открытый, когда вариант закрывается, или блок, когда начинается
+  следующий, на этом кончается. Файлы Capture, в которых пустые строки есть,
+  разбираются как прежде, оба файла пользователя тоже (замерено). В таблицу
+  мутаций добавлено пять строк (430).
+
 - **2026-10-31** — **The tests that could not fail now hold the product, and
   the Variants.lst parser's limits are measured.** A review asked, for every
   check it named, for a change to the product that turns it red; reverting the

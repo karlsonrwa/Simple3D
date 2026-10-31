@@ -393,7 +393,13 @@ of the board than the one open.
 A variant may also override properties on individual components, as a block
 after its base list. Those components **are** installed in that variant — they
 are simply built from a different part — so they are exported with it, and only
-with it.
+with it. The block may sit on one line or wrap onto the lines after it, its
+refdes may stand alone on its first line, and the blank line Capture writes
+after it is not needed. Until round 119 a block with the variant's closing `)`
+straight after it lost that variant and every one after it, and a refdes alone
+installed nothing (measured in Allegro 25.1; `tests/fixtures/variants` holds
+every shape tried, and the tests hold the parser and its Python copy to the
+answers Allegro gives on them).
 
 ### When a model is not in the assembly
 
@@ -944,15 +950,6 @@ draws a zero-width line, text or unfilled outline at its film's undefined line
 width; the export reads no films, so it skips the figure and names it. Kept
 so by the owner's decision (31.10.2026). See *Silkscreen*.
 
-**A Variants.lst of a shape Capture's files do not have can lose a part or a
-variant.** The parser closes an alternate-part block (`(C43 VALUE="12pF" … )`)
-on the line after it, the blank one Capture writes; with the variant's closing
-`)` straight after the block instead, it looks for the block's end down to the
-end of the file, and that variant and every one after it are lost. A block whose
-refdes stands alone on its first line installs nothing. Measured in Allegro 25.1
-on the files of `tests/fixtures/variants` (round 118); both of the user's own
-Variants.lst files have the blank lines and no such block.
-
 **A drawn mask opening that converts to nothing is left out unsaid.** The
 legend names every object it loses (see *Silkscreen*). The openings go through
 the same converter, but of theirs an error is only counted on the console, and
@@ -1042,7 +1039,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 425 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 430 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1444,6 +1441,13 @@ VT1, VT2, VT3, VT4` — в консоли и ещё раз в логе окна:
 Вариант может ещё и переопределять свойства отдельных компонентов блоком после
 базового списка. Такие компоненты в этом варианте **установлены**, просто
 собираются из другой детали, — и экспортируются вместе с ним, и только с ним.
+Блок может стоять на одной строке или переноситься на следующие, обозначение
+может стоять одно в его первой строке, а пустая строка, которую Capture пишет
+после блока, не обязательна. До раунда 119 блок, сразу за которым стояла
+закрывающая скобка варианта, терял этот вариант и все следующие, а обозначение,
+стоящее одно, ничего не устанавливало (замерено в Allegro 25.1; в
+`tests/fixtures/variants` лежат все проверенные формы, и тесты сверяют
+разборщик и его Python-копию с ответами Allegro на них).
 
 ### Когда модели нет в сборке
 
@@ -2001,15 +2005,6 @@ Allegro построена при `k = 0`. На плате с запасом р�
 фигуру пропускает и называет. Так решил владелец (31.10.2026). См.
 *Шелкография*.
 
-**Variants.lst непривычной для Capture формы может потерять компонент или целый
-вариант.** Блок свойств альтернативного компонента (`(C43 VALUE="12pF" … )`)
-разборщик закрывает следующей за ним строкой, той пустой, что пишет Capture.
-Если сразу за блоком стоит закрывающая скобка варианта, он ищет конец блока до
-конца файла, и этот вариант теряется вместе со всеми следующими. Блок, у
-которого обозначение стоит одно в первой строке, ничего не устанавливает.
-Замерено в Allegro 25.1 на файлах `tests/fixtures/variants` (раунд 118); в обоих
-файлах Variants.lst пользователя пустые строки есть, а таких блоков нет.
-
 **Нарисованное вскрытие маски, которое не дало многоугольника, пропадает молча.**
 Шелкография называет каждый потерянный объект (см. *Шелкография*). Вскрытия идут
 через тот же преобразователь, но у них ошибка только подсчитывается в консоли,
@@ -2099,7 +2094,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 425 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 430 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

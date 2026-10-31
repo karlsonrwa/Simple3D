@@ -1,0 +1,11 @@
+(
+	("OPEN"
+		(base
+			(R1 )
+		)
+		(C43 VALUE="12pF"
+		 TOL=1 )
+		(C44 VALUE="1uF" )
+
+	)
+)
