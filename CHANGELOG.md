@@ -11,6 +11,37 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **Every variant gets a file of its own, or the export says
+  why it cannot.** Windows does not tell letter case apart in a file name, for
+  Cyrillic as for Latin, so `Full` and `FULL` went to one file, the later over
+  the earlier, with `3 variant(s) written` printed after it; one name given to
+  two variants lost the earlier the same way; a colon in a name hid the variant
+  in an NTFS stream the window never sees, and `/` stopped the export half way
+  with a message about the folder. Measured on five copies of variants_test-b0.
+  The export now asks the file system itself, before it writes anything,
+  whether two variants would share a file, and refuses such a Variants.lst,
+  naming the variants and the file; the parser refuses one name given twice,
+  naming its lines. A character no file name takes (`\ / : * ? " < > |` or a
+  control one) is written as `_` (`Rev:A` → `<design>_rev_a.json`), with a
+  warning in the console and the window's log. Capture's ordinary files, the
+  user's two among them, are not affected. Ten rows added to the mutation
+  table (440). /
+  **Каждый вариант получает свой файл, а если не может, экспорт говорит
+  почему.** Windows не различает регистр в имени файла, у кириллицы так же, как
+  у латиницы, поэтому `Full` и `FULL` попадали в один файл, второй поверх
+  первого, а консоль после этого писала `3 variant(s) written`. Одно имя у двух
+  вариантов так же теряло первый. Двоеточие в имени прятало вариант в поток
+  NTFS, которого окно не видит, а `/` обрывал экспорт на середине с сообщением
+  про папку. Замерено на пяти копиях variants_test-b0. Теперь экспорт до записи
+  спрашивает саму файловую систему, не достанется ли двум вариантам один файл,
+  и такой Variants.lst не принимает: сообщение называет варианты и файл.
+  Разборщик не принимает одно имя у двух вариантов и называет строки, где оно
+  стоит. Символ, которого не бывает в имени файла (`\ / : * ? " < > |` или
+  управляющий), пишется как `_` (`Rev:A` → `<плата>_rev_a.json`), с
+  предупреждением в консоли и в логе окна. Обычных файлов Capture, в том числе
+  обоих файлов пользователя, это не касается. В таблицу мутаций добавлено
+  десять строк (440).
+
 - **2026-10-31** — **The Variants.lst parser no longer loses a variant or an
   alternate part.** It closed a block of alternate-part properties
   (`(C43 VALUE="12pF" … )`) only on the line after it: with the variant's

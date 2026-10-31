@@ -1,6 +1,6 @@
 {
- "_comment": "What Allegro's own SKILL interpreter answered, run by tools/probes/probe_translit.il on demo.s3dProbeTranslit.txt and turned into this file by tools/skill_answers.py. The oracle for the Python copies in tests/skill_transliterations.py, compared against it in test_skill_pins [7]. `inputs` are this repository's; `answer` is Allegro's.",
- "source": "demo.s3dProbeTranslit.txt",
+ "_comment": "What Allegro's own SKILL interpreter answered, run by tools/probes/probe_translit.il on Cadence_Demo.s3dProbeTranslit.txt and turned into this file by tools/skill_answers.py. The oracle for the Python copies in tests/skill_transliterations.py, compared against it in test_skill_pins [7]. `inputs` are this repository's; `answer` is Allegro's.",
+ "source": "Cadence_Demo.s3dProbeTranslit.txt",
  "skipped": [
   "s3dJsonQuote | control 0x01 | sprintf %c is not available here",
   "s3dJsonQuote | control 0x08 | sprintf %c is not available here",
@@ -1485,6 +1485,36 @@
   },
   {
    "procedure": "gdsysGetVariantInfo",
+   "case": "v20-one-name-twice.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v20-one-name-twice.lst"
+   },
+   "answer": "error"
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v21-cyrillic-case-twins.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v21-cyrillic-case-twins.lst"
+   },
+   "answer": [
+    [
+     "\u00cf\u00ce\u00cb\u00cd\u00db\u00c9",
+     [
+      "R1"
+     ]
+    ],
+    [
+     "\u00cf\u00ee\u00eb\u00ed\u00fb\u00e9",
+     [
+      "R1",
+      "R2"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
    "case": "v3-refdes-alone.lst",
    "inputs": {
     "file": "tests/fixtures/variants/v3-refdes-alone.lst"
@@ -1612,6 +1642,223 @@
      ]
     ]
    ]
+  },
+  {
+   "procedure": "s3dFileNameSafe",
+   "case": "plain",
+   "inputs": {
+    "text": "Full"
+   },
+   "answer": "Full"
+  },
+  {
+   "procedure": "s3dFileNameSafe",
+   "case": "a colon",
+   "inputs": {
+    "text": "Rev:A"
+   },
+   "answer": "Rev_A"
+  },
+  {
+   "procedure": "s3dFileNameSafe",
+   "case": "a slash",
+   "inputs": {
+    "text": "A/B"
+   },
+   "answer": "A_B"
+  },
+  {
+   "procedure": "s3dFileNameSafe",
+   "case": "a backslash",
+   "inputs": {
+    "text": "A\\B"
+   },
+   "answer": "A_B"
+  },
+  {
+   "procedure": "s3dFileNameSafe",
+   "case": "the rest",
+   "inputs": {
+    "text": "x*?\"<>|y"
+   },
+   "answer": "x______y"
+  },
+  {
+   "procedure": "s3dFileNameSafe",
+   "case": "a tab",
+   "inputs": {
+    "text": "a\tb"
+   },
+   "answer": "a_b"
+  },
+  {
+   "procedure": "s3dFileNameSafe",
+   "case": "control 0x08",
+   "inputs": {
+    "text": "a\bb"
+   },
+   "answer": "a_b"
+  },
+  {
+   "procedure": "s3dFileNameSafe",
+   "case": "kept",
+   "inputs": {
+    "text": "BOM 100% #1 (v2) [x] {y} a.b ~!@$^&=+,;'`"
+   },
+   "answer": "BOM 100% #1 (v2) [x] {y} a.b ~!@$^&=+,;'`"
+  },
+  {
+   "procedure": "s3dFileNameSafe",
+   "case": "empty",
+   "inputs": {
+    "text": ""
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dVariantFileName",
+   "case": "design=Variants_Test-B0 variant=Full",
+   "inputs": {
+    "design": "Variants_Test-B0",
+    "variant": "Full"
+   },
+   "answer": "variants_test-b0_full"
+  },
+  {
+   "procedure": "s3dVariantFileName",
+   "case": "design=brd variant=FULL",
+   "inputs": {
+    "design": "brd",
+    "variant": "FULL"
+   },
+   "answer": "brd_full"
+  },
+  {
+   "procedure": "s3dVariantFileName",
+   "case": "design=brd variant=Rev:A",
+   "inputs": {
+    "design": "brd",
+    "variant": "Rev:A"
+   },
+   "answer": "brd_rev_a"
+  },
+  {
+   "procedure": "s3dVariantFileName",
+   "case": "design=brd variant=A b",
+   "inputs": {
+    "design": "brd",
+    "variant": "A b"
+   },
+   "answer": "brd_a b"
+  },
+  {
+   "procedure": "s3dVariantFileClashes",
+   "case": "Full FULL ALT",
+   "inputs": {
+    "variants": [
+     "Full",
+     "FULL",
+     "ALT"
+    ]
+   },
+   "answer": [
+    "\"Full\" and \"FULL\" both go to brd_full.json"
+   ]
+  },
+  {
+   "procedure": "s3dVariantFileClashes",
+   "case": "full Full FULL",
+   "inputs": {
+    "variants": [
+     "full",
+     "Full",
+     "FULL"
+    ]
+   },
+   "answer": [
+    "\"full\" and \"Full\" both go to brd_full.json",
+    "\"full\" and \"FULL\" both go to brd_full.json"
+   ]
+  },
+  {
+   "procedure": "s3dVariantFileClashes",
+   "case": "A a b B",
+   "inputs": {
+    "variants": [
+     "A",
+     "a",
+     "b",
+     "B"
+    ]
+   },
+   "answer": [
+    "\"A\" and \"a\" both go to brd_a.json",
+    "\"b\" and \"B\" both go to brd_b.json"
+   ]
+  },
+  {
+   "procedure": "s3dVariantFileClashes",
+   "case": "Rev:A Rev_A",
+   "inputs": {
+    "variants": [
+     "Rev:A",
+     "Rev_A"
+    ]
+   },
+   "answer": [
+    "\"Rev:A\" and \"Rev_A\" both go to brd_rev_a.json"
+   ]
+  },
+  {
+   "procedure": "s3dVariantFileClashes",
+   "case": "Rev:A Rev:B",
+   "inputs": {
+    "variants": [
+     "Rev:A",
+     "Rev:B"
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dVariantFileClashes",
+   "case": "a, a and a space",
+   "inputs": {
+    "variants": [
+     "a",
+     "a "
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dVariantFileClashes",
+   "case": "x, x and a dot",
+   "inputs": {
+    "variants": [
+     "x",
+     "x."
+    ]
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dVariantFileClashes",
+   "case": "the names of v21-cyrillic-case-twins.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v21-cyrillic-case-twins.lst"
+   },
+   "answer": [
+    "\"\u00cf\u00ce\u00cb\u00cd\u00db\u00c9\" and \"\u00cf\u00ee\u00eb\u00ed\u00fb\u00e9\" both go to brd_\u00cf\u00ce\u00cb\u00cd\u00db\u00c9.json"
+   ]
+  },
+  {
+   "procedure": "s3dVariantFileClashes",
+   "case": "left behind",
+   "inputs": {
+    "left": true
+   },
+   "answer": null
   }
  ]
 }

@@ -2883,8 +2883,8 @@
  {
   "id": "skill-variants-error-as-format",
   "file": "skill/s3d_variants.il",
-  "old": "            error( \"%s\" strcat(\n",
-  "new": "            error( strcat(\n",
+  "old": "        when( (nBoard > 0) && (onBoard == 0)\n            error( \"%s\" strcat(\n",
+  "new": "        when( (nBoard > 0) && (onBoard == 0)\n            error( strcat(\n",
   "suites": [
    "tools/skill_checks.py"
   ],
@@ -4497,5 +4497,108 @@
    "tests/test_variant_path.py"
   ],
   "why": "a block its variant's close ends is ended, but its part is not installed (round 119, after R2-9 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-clash-not-asked",
+  "file": "skill/s3d_export.il",
+  "old": "                clashes = s3dVariantFileClashes( dir dsnName reverse( variantNames ) )\n",
+  "new": "                clashes = nil\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_variant_path.py"
+  ],
+  "why": "the export no longer asks which variants would share a file: \"Full\" and \"FULL\" go to one file again, the later over the earlier (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-clash-not-refused",
+  "file": "skill/s3d_export.il",
+  "old": "                when( clashes\n",
+  "new": "                when( nil && clashes\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_variant_path.py"
+  ],
+  "why": "the variants that would share a file are found and written anyway (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-clash-fs-not-asked",
+  "file": "skill/s3d_variants.il",
+  "old": "            if( isFile( path ) then\n",
+  "new": "            if( nil && isFile( path ) then\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the check never finds a name's file already made, so it answers that every variant has a file of its own (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-file-name-not-shared",
+  "file": "skill/s3d_export.il",
+  "old": "                    variantName = s3dVariantFileName( dsnName variant )\n",
+  "new": "                    variantName = lowerCase( strcat( dsnName \"_\" variant ) )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the writer names the file by its own rule again, not the one the check asked: a colon makes it a stream no listing shows (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-folder-lowercased-again",
+  "file": "skill/s3d_export.il",
+  "old": "                    fileName = strcat( dir \"/\" variantName \".json\" )\n                    ; A name a file name cannot carry",
+  "new": "                    fileName = lowerCase( strcat( dir \"/\" variantName \".json\" ) )\n                    ; A name a file name cannot carry",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the folder is lower-cased with the variant's name again, so the console names a folder spelled unlike the real one (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-name-colon-kept",
+  "file": "skill/s3d_variants.il",
+  "old": "    pcreReplace( pcreCompile( \"[\\\\\\\\/:*?\\\"<>|\\\\x01-\\\\x1f]\" ) t_text \"_\" 0 )\n",
+  "new": "    pcreReplace( pcreCompile( \"[\\\\\\\\/*?\\\"<>|\\\\x01-\\\\x1f]\" ) t_text \"_\" 0 )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a colon stays in the file name: NTFS writes the variant into a stream of an empty file the window never lists (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-name-made-safe-unsaid",
+  "file": "skill/s3d_export.il",
+  "old": "                    unless( s3dFileNameSafe( variant ) == variant\n",
+  "new": "                    unless( t\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a variant written under a name made safe is not said, in the console or the window's log (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-clash-check-left-behind",
+  "file": "skill/s3d_variants.il",
+  "old": "        foreach( path made  deleteFile( path ) )\n",
+  "new": "        foreach( path nil  deleteFile( path ) )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the check's files are not deleted, so its folder stays beside the export (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-name-twice-not-noted",
+  "file": "skill/s3d_variants.il",
+  "old": "                            if( namedOn[currentVariant] then\n",
+  "new": "                            if( nil && namedOn[currentVariant] then\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a name given to two variants is not noticed: the later replaces the earlier in the table without a word (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "skill-variant-name-twice-unsaid",
+  "file": "skill/s3d_variants.il",
+  "old": "            when( repeated\n",
+  "new": "            when( nil && repeated\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_variant_path.py"
+  ],
+  "why": "a name given to two variants is noticed and not said: one variant is lost without a word (round 120, R2-10 of the 23.10.2026 review)"
  }
 ]

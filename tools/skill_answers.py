@@ -124,6 +124,33 @@ VARIANT_FILES = sorted((ROOT / "tests" / "fixtures" / "variants").glob("*.lst"))
 CASES["gdsysGetVariantInfo"] = {f.name: {"file": f"tests/fixtures/variants/{f.name}"}
                                 for f in VARIANT_FILES}
 
+# The names the variants' files get (round 120, review 23.10.2026 R2-10): what
+# a file name cannot carry made "_", the design and the variant lower-cased,
+# and which variants would share a file - the last asked of the real file
+# system, in the order given, design "brd".
+CASES["s3dFileNameSafe"] = {
+    "plain": {"text": "Full"}, "a colon": {"text": "Rev:A"}, "a slash": {"text": "A/B"},
+    "a backslash": {"text": "A\\B"}, "the rest": {"text": 'x*?"<>|y'},
+    "a tab": {"text": "a\tb"}, "control 0x08": {"text": "a\x08b"},
+    "kept": {"text": "BOM 100% #1 (v2) [x] {y} a.b ~!@$^&=+,;'`"}, "empty": {"text": ""}}
+CASES["s3dVariantFileName"] = {
+    f"design={d} variant={v}": {"design": d, "variant": v}
+    for d, v in (("Variants_Test-B0", "Full"), ("brd", "FULL"), ("brd", "Rev:A"), ("brd", "A b"))}
+CASES["s3dVariantFileClashes"] = {
+    "Full FULL ALT": {"variants": ["Full", "FULL", "ALT"]},
+    "full Full FULL": {"variants": ["full", "Full", "FULL"]},
+    "A a b B": {"variants": ["A", "a", "b", "B"]},
+    "Rev:A Rev_A": {"variants": ["Rev:A", "Rev_A"]},
+    "Rev:A Rev:B": {"variants": ["Rev:A", "Rev:B"]},
+    "a, a and a space": {"variants": ["a", "a "]},
+    "x, x and a dot": {"variants": ["x", "x."]},
+    # the names as the parser hands them over, in name order
+    "the names of v21-cyrillic-case-twins.lst":
+        {"file": "tests/fixtures/variants/v21-cyrillic-case-twins.lst"},
+    # what the cases above left in the folder they were asked in
+    "left behind": {"left": True},
+}
+
 # Cases the probe prints for its own sake, not for the copies to answer.
 IGNORE = {("s3dJsonQuote", "control 0x08 (escape \\b) byte"),
           ("s3dJsonQuote", "control 0x0c (escape \\f) byte")}
@@ -145,11 +172,32 @@ def _atom(text: str):
         return text
 
 
+_ESCAPE = re.compile(r'\\(?:([0-7]{3})|(.))|([^\\]+)', re.S)
+
+
+def skill_string(quoted: str) -> str:
+    """One `%L` string, quotes included, as the characters it holds. %L
+    escapes the way JSON does, and a byte beyond ASCII as three octal digits
+    ("\\317"): Allegro 25.1, the Cyrillic names of v21 (round 120). The run is
+    read as latin-1, one character per byte, so such a byte comes back as the
+    same one character either way."""
+    out = []
+    for octal, escaped, plain in _ESCAPE.findall(quoted[1:-1]):
+        if octal:
+            out.append(f"\\u{int(octal, 8):04x}")
+        elif escaped:
+            out.append("\\" + escaped)
+        else:
+            out.append(plain)
+    return json.loads('"' + "".join(out) + '"')
+
+
 def skill_value(text: str):
     """One `%L` rendering, as a Python value: t, nil, numbers, strings (%L
-    escapes them the way JSON does) and lists of them, nested - the variant
-    table is a list of ( name symbols ) pairs since round 118. A flat list
-    reads as it did before; a string holding a space no longer splits."""
+    escapes them the way JSON does, see skill_string) and lists of them,
+    nested - the variant table is a list of ( name symbols ) pairs since round
+    118. A flat list reads as it did before; a string holding a space no
+    longer splits."""
     stack: list[list] = [[]]
     text = text.strip()
     pos = 0
@@ -167,7 +215,7 @@ def skill_value(text: str):
             inner = stack.pop()
             stack[-1].append(inner)
         elif string is not None:
-            stack[-1].append(json.loads(string))
+            stack[-1].append(skill_string(string))
         else:
             stack[-1].append(_atom(atom))
         while pos < len(text) and text[pos].isspace():
@@ -182,7 +230,9 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     run = Path(argv[1])
-    text = run.read_text(encoding="utf-8", errors="replace")
+    # One character per byte: SKILL's strings are bytes, and a name beyond
+    # ASCII has to come back as the bytes it was (round 120).
+    text = run.read_text(encoding="latin-1")
 
     seen: dict[tuple[str, str], object] = {}
     skipped = []

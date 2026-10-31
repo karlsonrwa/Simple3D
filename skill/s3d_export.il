@@ -454,7 +454,8 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 )
 
 procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configFile nil ) )
-    let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk silkConfig pads variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName state )
+    let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk silkConfig pads variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName state
+            variantNames clashes message )
         ; The list used to go on: a second `thicknesses`, and `elements placement
         ; outFile outPort pcb lines` - names this procedure never touches. They
         ; were create3dIntermediateFormat's, reaching its let through SKILL's
@@ -571,8 +572,50 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
                 ; the whole board under variant names and says nothing.
                 s3dVariantFit( variantSymbolList variantFile )
 
+                ; Does every variant get a file of its own? (round 120, R2-10
+                ; of the 23.10.2026 review.) Windows does not tell letter case
+                ; apart, so "Full" and "FULL" went to one file, the later over
+                ; the earlier, with "3 variant(s) written" printed after it.
+                ; Asked before anything is written, in the order the loop below
+                ; writes (both walk the same table), and refused with the
+                ; evidence: which variant the user meant to keep is theirs to
+                ; say, and Allegro's own variant reports (var-<name>.rpt) are
+                ; named the same way and collide the same way.
+                variantNames = nil
+                foreach( variant variantSymbolList
+                    variantNames = cons( variant variantNames )
+                )
+                clashes = s3dVariantFileClashes( dir dsnName reverse( variantNames ) )
+                when( clashes
+                    error( "%s" strcat(
+                        sprintf( nil "Simple 3D: in %s, variants would share a file:\n  %s\n"
+                                 variantFile buildString( clashes "\n  " ) )
+                        "Windows does not tell letter case apart in a file name, and a character\n"
+                        "no file name takes is written as \"_\", so the later variant would overwrite\n"
+                        "the earlier and one would be lost without a word. Rename one of each pair\n"
+                        "in Capture so that the names differ in more than that, and export the\n"
+                        "Variants.lst again.\n" ) )
+                )
+
                 foreach( variant variantSymbolList
                     printf( "Exporting .json for variant: %s\n" variant )
+                    state['warnings] = nil
+
+                    ; The file's name from the one procedure that makes it,
+                    ; the check above asked it too. The folder keeps its own
+                    ; case (round 120): it was lower-cased with the name, so
+                    ; the console named a folder spelled unlike the real one.
+                    variantName = s3dVariantFileName( dsnName variant )
+                    fileName = strcat( dir "/" variantName ".json" )
+                    ; A name a file name cannot carry is written with "_"
+                    ; (s3dFileNameSafe), said in the console and in the
+                    ; window's log, so the file can be found by its variant.
+                    unless( s3dFileNameSafe( variant ) == variant
+                        message = sprintf( nil "variant %s is written as %s.json: a file name takes none of \\ / : * ? \" < > | nor a control character"
+                                           variant variantName )
+                        s3dWarn( strcat( "Simple 3D: " message ) )
+                        state['warnings] = cons( message state['warnings] )
+                    )
 
                     ; FIX (simple3d 2026-07-21): was
                     ;   symbols = append( variantSymbolList[variant]
@@ -602,11 +645,7 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
                     ; all - which is how mechanical components went missing.
                     ; The list now comes from the design and the variant table
                     ; only removes from it. See s3dSymbolsToExport.
-                    state['warnings] = nil
                     symbols = s3dSymbolsToExport( variantSymbolList variant state )
-
-                    variantName = lowerCase( strcat( dsnName "_" variant ) )
-                    fileName = lowerCase( strcat( dir "/" variantName ".json" ) )
                     create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols variantName fileName state silk nil pads )
                 )
 

@@ -1,7 +1,7 @@
 # Paths, the output folder, check() and the STEP measuring helpers come from
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
-from _support import ROOT, fails, check, exporter_source
+from _support import ROOT, OUT, fails, check, exporter_source
 
 """Every Python copy of a SKILL procedure, pinned to the procedure it copies.
 
@@ -39,6 +39,7 @@ fails here rather than silently going unwatched.
 """
 import json
 import re
+import shutil
 import sys
 
 import skill_transliterations as T
@@ -47,8 +48,10 @@ IL = exporter_source()
 
 
 def body(name):
-    """One procedure's text, to the start of the next top-level procedure."""
-    m = re.search(r"^procedure\( " + re.escape(name) + r"\(.*?(?=^procedure\()",
+    """One procedure's text, to the start of the next top-level procedure -
+    or to the end of the source, for the last one (makeVariant3dIntermediates,
+    pinned since round 120)."""
+    m = re.search(r"^procedure\( " + re.escape(name) + r"\(.*?(?=^procedure\(|\Z)",
                   IL, re.S | re.M)
     if not m:
         return None
@@ -589,6 +592,76 @@ differ = {k: (compiled.get(k), c.pattern) for k, c in copies.items() if compiled
 check(f"the copy's {len(copies)} regexes are the SKILL's own, read out of its pcreCompile calls",
       not differ and set(copies) <= set(compiled), differ or sorted(compiled))
 
+# Round 120 (review 23.10.2026, R2-10): a name given to two variants. The
+# table keeps one entry per name, so the later replaced the earlier and the
+# export lost it without a word (Allegro 25.1: "1 variant(s) parsed"). Noted
+# on the line the name stands on, said once the file is shut - an error with
+# the port still open would keep Variants.lst locked for the session.
+pin("gdsysGetVariantInfo",
+    'lineNo = lineNo + 1',
+    'if( namedOn[currentVariant] then repeated = cons( sprintf( nil "\\"%s\\" (lines %d and %d)" '
+    'currentVariant namedOn[currentVariant] lineNo ) repeated ) else namedOn[currentVariant] = lineNo )',
+    'close( inPort ) when( repeated error(')
+
+print("\n[5f] every variant a file of its own (round 120)")
+
+# The name a variant's file gets, the one place it is made; what no Windows
+# file name carries made "_"; and which variants would share a file, asked of
+# the file system itself (review 23.10.2026, R2-10: "Full" and "FULL" were
+# written to one file, the later over the earlier).
+pin("s3dFileNameSafe",
+    'pcreReplace( pcreCompile( "[\\\\\\\\/:*?\\"<>|\\\\x01-\\\\x1f]" ) t_text "_" 0 )')
+pin("s3dVariantFileName",
+    'lowerCase( strcat( t_design "_" s3dFileNameSafe( t_variant ) ) )')
+pin("s3dVariantFileClashes",
+    'probe = strcat( t_dir "/simple3d-name-check" )',
+    'while( isDir( probe ) || isFile( probe )',
+    'unless( createDir( probe )',
+    'name = strcat( s3dVariantFileName( t_design variant ) ".json" )',
+    'path = strcat( probe "/" name )',
+    'if( isFile( path ) then',
+    'clashes = cons( sprintf( nil "\\"%s\\" and \\"%s\\" both go to %s.json" earlier variant '
+    's3dVariantFileName( t_design earlier ) ) clashes )',
+    'port = outfile( path )',
+    'fprintf( port "%s\\n" variant )',
+    'made = cons( path made )',
+    'foreach( path made deleteFile( path ) )',
+    'unless( deleteDir( probe )',
+    'reverse( clashes )')
+
+# The export asks it before it writes anything, in the order its loop writes
+# (both walk the variant table), and refuses on any answer; the loop's file
+# name comes from the same procedure, the folder no longer lower-cased with
+# it; a name made safe is said, in the console and in the file.
+pin("makeVariant3dIntermediates",
+    'foreach( variant variantSymbolList variantNames = cons( variant variantNames ) )',
+    'clashes = s3dVariantFileClashes( dir dsnName reverse( variantNames ) )',
+    'when( clashes error(',
+    'variantName = s3dVariantFileName( dsnName variant ) fileName = strcat( dir "/" variantName ".json" )',
+    'unless( s3dFileNameSafe( variant ) == variant',
+    "state['warnings] = cons( message state['warnings] )")
+export_body = normalise(body("makeVariant3dIntermediates") or "")
+asked = export_body.find("clashes = s3dVariantFileClashes(")
+writes = export_body.find('foreach( variant variantSymbolList printf( "Exporting .json for variant: %s\\n" variant )')
+check("the check is asked before the loop that writes the variants",
+      0 <= asked < writes, (asked, writes))
+check("no variant's path is lower-cased with its folder any more",
+      'lowerCase( strcat( dir' not in export_body, export_body[writes:writes + 300])
+
+# Derived: the class is read out of the SKILL, as the regex it is, and run
+# beside the copy's on every character a name could hold - so a class that
+# lost the colon, or a control character, differs here by name.
+safe = re.search(r'pcreCompile\( "((?:[^"\\]|\\.)*)" \)', normalise(body("s3dFileNameSafe") or ""))
+check("the class of s3dFileNameSafe is in the SKILL source", bool(safe))
+if safe:
+    klass = re.compile(skill_string(safe.group(1)))
+    every = "".join(chr(c) for c in range(1, 256))
+    takes = {c for c in every if klass.match(c)}
+    check(f"the copy makes the same {len(takes)} characters \"_\" - \\ / : * ? \" < > | and 31 control ones",
+          takes == {c for c in every if T._UNSAFE.match(c)} and set(T.UNSAFE) <= takes
+          and len(takes) == len(T.UNSAFE) + 31,
+          sorted(takes ^ {c for c in every if T._UNSAFE.match(c)}))
+
 print("\n[5e] where Variants.lst is, and what the stackup body is")
 
 pin("s3dDesignFolder",
@@ -839,7 +912,9 @@ check("every procedure a copy names exists in the SKILL source", not missing, mi
 MUST_PIN = {"s3dLayerIsNegative", "s3dDrillXY", "rotateXY", "s3dBoxesMeet",
             "s3dJsonMerge", "s3dJsonQuote",
             # round 116: what cmd would replace, answered by Allegro too
-            "s3dCmdExpands"}
+            "s3dCmdExpands",
+            # round 120: the variants' file names, answered by Allegro too
+            "s3dFileNameSafe", "s3dVariantFileName", "s3dVariantFileClashes"}
 # And the sweep of round 87, pinned by its source alone: it reads a design,
 # so no recorded Allegro answer can stand in for it (see [5b]).
 MUST_PIN_SOURCE_ONLY = {"s3dCollectExposed",
@@ -915,10 +990,37 @@ def ask_copy(procedure, inputs):
         copy = getattr(T, "parse_string", None)
         return copy(inputs["text"]) or None if copy else "no copy of parseString"
     if procedure == "gdsysGetVariantInfo":
-        # the variant table, variants in name order, an empty list nil
-        table = T.parse_variants((ROOT / inputs["file"]).read_bytes().decode("ascii"))
+        # the variant table, variants in name order, an empty list nil; the
+        # file's bytes one character each, as SKILL holds them (round 120:
+        # v21 is cp1251); "error" where the SKILL raised
+        try:
+            table = T.parse_variants((ROOT / inputs["file"]).read_bytes().decode("latin-1"))
+        except T.VariantFileError:
+            return "error"
         return [[name, table[name] or None] for name in sorted(table)] or None
+    if procedure == "s3dFileNameSafe":
+        return T.file_name_safe(inputs["text"])
+    if procedure == "s3dVariantFileName":
+        return T.variant_file_name(inputs["design"], inputs["variant"])
+    if procedure == "s3dVariantFileClashes":
+        # asked of the real file system, in a folder of this run's own, as
+        # the probe asks it in build/probe-names; the last case is what the
+        # others left there
+        if inputs.get("left"):
+            left = sorted(p.name for p in CLASH_DIR.iterdir())
+            return left or None
+        if "file" in inputs:
+            table = T.parse_variants((ROOT / inputs["file"]).read_bytes().decode("latin-1"))
+            variants = sorted(table)
+        else:
+            variants = inputs["variants"]
+        return T.variant_file_clashes(str(CLASH_DIR), "brd", variants) or None
     raise AssertionError(f"no copy wired up for {procedure}")
+
+
+CLASH_DIR = OUT / "probe-names"
+shutil.rmtree(CLASH_DIR, ignore_errors=True)
+CLASH_DIR.mkdir(parents=True)
 
 
 def same(got, want, tol=1e-9):

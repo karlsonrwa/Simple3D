@@ -340,10 +340,14 @@ def parse_variants(text):
     end of the file and lose that variant and every one after it. Not
     mirrored: the property values (alternateParts). Line ends are normalised
     the way gets() does in text mode (a CRLF and an LF file answered alike).
+    Since round 120 a name given to two variants raises once the file is
+    read, as the SKILL does (VariantFileError), where the later used to
+    replace the earlier in the table without a word.
     """
     table, state, current, symbols = {}, "findVariant", None, []
     refdes, properties = None, ""
-    for line in text.replace("\r\n", "\n").splitlines(keepends=True):
+    named_on, repeated = {}, []
+    for line_no, line in enumerate(text.replace("\r\n", "\n").splitlines(keepends=True), 1):
         if (state == "awaitStartCondition" and line != "\t\t(base\n"
                 and (line == "\t)\n" or _PROPERTY_START.search(line))):
             symbols, state = [], "awaitEndCondition"
@@ -355,7 +359,12 @@ def parse_variants(text):
         if state == "findVariant":
             parts = parse_string(line, '"')
             if len(parts) == 3:
-                current, state = parts[1], "awaitStartCondition"
+                current = parts[1]
+                if current in named_on:
+                    repeated.append(f'"{current}" (lines {named_on[current]} and {line_no})')
+                else:
+                    named_on[current] = line_no
+                state = "awaitStartCondition"
         elif state == "awaitStartCondition":
             if line == "\t\t(base\n":
                 symbols, state = [], "appendSymbols"
@@ -392,7 +401,83 @@ def parse_variants(text):
                 symbols = symbols + [refdes]
                 properties = ""
                 state = "awaitEndCondition"
+    if repeated:
+        raise VariantFileError("gives one name to two variants: " + ", ".join(repeated))
     return table
+
+
+class VariantFileError(ValueError):
+    """What the SKILL's error() says about a Variants.lst, as an exception."""
+
+
+# mirrors skill/s3d_variants.il: s3dFileNameSafe  -- what no Windows file name takes, made "_"
+UNSAFE = '\\/:*?"<>|'                                 # and every control character
+_UNSAFE = re.compile('[\\\\/:*?"<>|\\x01-\\x1f]')     # the class pcreCompile is given
+
+
+def file_name_safe(text):
+    """The text with every character a Windows file name cannot carry made
+    "_" (round 120, review 23.10.2026 R2-10): \\ / * ? " < > | and a control
+    character are refused by outfile, and a colon is taken by NTFS as the
+    start of a stream's name, which no listing shows."""
+    return _UNSAFE.sub("_", text)
+
+
+def skill_lower(text):
+    """SKILL's lowerCase: the Latin capitals and nothing else. A byte beyond
+    ASCII - here a latin-1 character standing for it - stays as it is
+    (Allegro 25.1, 31.10.2026: cp1251 "ПОЛНЫЙ" came back unchanged), so
+    str.lower(), which would fold it, is not the copy."""
+    return "".join(chr(ord(c) + 32) if "A" <= c <= "Z" else c for c in text)
+
+
+# mirrors skill/s3d_variants.il: s3dVariantFileName
+def variant_file_name(design, variant):
+    return skill_lower(design + "_" + file_name_safe(variant))
+
+
+# mirrors skill/s3d_variants.il: s3dVariantFileClashes  -- the file system asked, as the SKILL asks it
+def variant_file_clashes(folder, design, variants, code_page="cp1251"):
+    """Which variants would share a file, asked of the real file system as
+    the SKILL asks it: a folder made fresh in `folder`, one small file per
+    variant in the order given, carrying its name; a name that finds its file
+    there already shares it with the variant written in it. What was made is
+    deleted, the folder after it. `variants` hold SKILL strings - bytes, as
+    latin-1 characters - and Windows reads a name through the ANSI code page,
+    cp1251 where Allegro was measured, so that is how each file is named.
+    One line per later variant that finds an earlier one's file, naming the
+    file as the earlier one spells it."""
+    import os
+    probe = os.path.join(folder, "simple3d-name-check")
+    n = 1
+    while os.path.isdir(probe) or os.path.isfile(probe):
+        n += 1
+        probe = os.path.join(folder, f"simple3d-name-check-{n}")
+    os.mkdir(probe)
+    made, clashes = [], []
+    try:
+        for variant in variants:
+            name = variant_file_name(design, variant) + ".json"
+            path = os.path.join(probe, name.encode("latin-1").decode(code_page))
+            if os.path.isfile(path):
+                with open(path, "rb") as f:
+                    raw = f.readline()          # gets: nil at the end of the file
+                earlier = raw.decode("latin-1") if raw else None
+                if earlier is not None and earlier.endswith("\n"):
+                    earlier = earlier[:-1]
+                if earlier is None:
+                    earlier = "?"
+                clashes.append(f'"{earlier}" and "{variant}" both go to '
+                               f"{variant_file_name(design, earlier)}.json")
+            else:
+                with open(path, "wb") as f:
+                    f.write(variant.encode("latin-1") + b"\n")
+                made.append(path)
+    finally:
+        for path in made:
+            os.remove(path)
+        os.rmdir(probe)
+    return clashes
 
 
 # mirrors skill/s3d_variants.il: s3dSymbolsToExport  -- its tail: the listed refdes the board does not have

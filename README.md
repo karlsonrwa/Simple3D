@@ -390,6 +390,19 @@ component(s) that are not on this board: VT1, VT2, VT3, VT4` — in the console
 and again in the window's log: the list then describes a different revision
 of the board than the one open.
 
+**Each variant a file of its own.** Windows does not tell letter case apart in
+a file name, for Cyrillic letters as for Latin, so two variants whose names
+differ only in case, `Full` and `FULL`, would go to one file, the later over
+the earlier; until round 120 they did, and the console said `3 variant(s)
+written` after it. The export now asks the file system itself before it writes
+anything, and refuses such a file, naming the variants and the file they would
+share: rename one of them in Capture. One name given to two variants is
+refused the same way, with the lines it stands on. A character no file name
+takes (`\ / : * ? " < > |` or a control character) is written as `_`, so
+`Rev:A` goes to `<design>_rev_a.json`, with a warning in the console and in the
+window's log; a colon used to hide the variant in an NTFS stream of an empty
+file, which the window never sees.
+
 A variant may also override properties on individual components, as a block
 after its base list. Those components **are** installed in that variant — they
 are simply built from a different part — so they are exported with it, and only
@@ -1039,7 +1052,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 430 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 440 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1437,6 +1450,19 @@ Allegro, — и больше нигде; если файла там нет, ко
 варианту — `variant BOM lists 4 component(s) that are not on this board:
 VT1, VT2, VT3, VT4` — в консоли и ещё раз в логе окна: список тогда описывает
 другую ревизию платы, не ту, что открыта.
+
+**Свой файл каждому варианту.** Windows не различает регистр в имени файла, у
+кириллицы так же, как у латиницы. Поэтому два варианта, чьи имена различаются
+только регистром, `Full` и `FULL`, попали бы в один файл, второй поверх
+первого. До раунда 120 так и было, а консоль после этого писала `3 variant(s)
+written`. Теперь экспорт до записи спрашивает саму файловую систему и такой
+файл не принимает: сообщение называет варианты и общий для них файл, и один из
+вариантов нужно переименовать в Capture. Одно имя у двух вариантов экспорт
+тоже не принимает и называет строки, где оно стоит. Символ, которого не бывает
+в имени файла (`\ / : * ? " < > |` или управляющий), пишется как `_`: `Rev:A`
+уходит в `<плата>_rev_a.json`, с предупреждением в консоли и в логе окна.
+Раньше двоеточие прятало вариант в поток NTFS у пустого файла, и окно его не
+видело.
 
 Вариант может ещё и переопределять свойства отдельных компонентов блоком после
 базового списка. Такие компоненты в этом варианте **установлены**, просто
@@ -2094,7 +2120,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 430 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 440 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

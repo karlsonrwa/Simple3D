@@ -3,8 +3,10 @@
 ;
 ;  The pure procedures the Python transliterations in
 ;  tests/skill_transliterations.py copy - five, since round 116
-;  s3dCmdExpands, and since round 118 the variant parser gdsysGetVariantInfo
-;  on the files of tests/fixtures/variants - RUN in a real Allegro, by the
+;  s3dCmdExpands, since round 118 the variant parser gdsysGetVariantInfo
+;  on the files of tests/fixtures/variants, and since round 120 the names
+;  the variants' files get and which of them share one (the last asks the
+;  real file system, in build/probe-names, removed after) - RUN in a real Allegro, by the
 ;  real interpreter, over a fixed list of cases, so that the copies can be
 ;  compared against the original's own answers instead of against a reading
 ;  of its source.
@@ -59,29 +61,78 @@ procedure( s3dProbeTranslitParse( t_text )
 ; variants in name order, each with its symbol list exactly as the parser
 ; leaves it - the stray tokens a caller filters out included.
 procedure( s3dProbeTranslitVariants()
-    let( ( dir saved res ok table names answer )
+    let( ( dir res table answer )
         dir = strcat( s3dExporterFolderOf( S3D_ExporterLoadedFrom ) "/tests/fixtures/variants" )
-        saved = getd( 's3dVariantFilePath )
         foreach( name sort( getDirFiles( dir ) 'alphalessp )
             when( rexMatchp( "\\.lst$" name )
-                S3D_ProbeVariantFile = strcat( dir "/" name )
-                putd( 's3dVariantFilePath lambda( ( ) S3D_ProbeVariantFile ) )
-                res = nil
-                ok = errset( res = gdsysGetVariantInfo() )
-                if( ok then
-                    table = car( res )
-                    names = nil
-                    foreach( key table  names = cons( key names ) )
-                    answer = foreach( mapcar key sort( names 'alphalessp )
-                                 list( key table[key] ) )
-                else
+                res = s3dProbeTranslitParseFile( strcat( dir "/" name ) )
+                if( res == 'error then
                     answer = "error"
+                else
+                    table = car( res )
+                    answer = foreach( mapcar key s3dProbeTranslitNames( table )
+                                 list( key table[key] ) )
                 )
                 s3dProbeTranslitCase( "gdsysGetVariantInfo" name answer )
             )
         )
+    )
+)
+
+; The parser's answer on one file, or 'error: s3dVariantFilePath, the one
+; file it reads, pointed there and put back after.
+procedure( s3dProbeTranslitParseFile( t_path )
+    let( ( saved res ok )
+        saved = getd( 's3dVariantFilePath )
+        S3D_ProbeVariantFile = t_path
+        putd( 's3dVariantFilePath lambda( ( ) S3D_ProbeVariantFile ) )
+        res = nil
+        ok = errset( res = gdsysGetVariantInfo() )
         putd( 's3dVariantFilePath saved )
         S3D_ProbeVariantFile = nil
+        if( ok then res else 'error )
+    )
+)
+
+; A variant table's names, in name order.
+procedure( s3dProbeTranslitNames( o_table )
+    let( ( names )
+        names = nil
+        foreach( key o_table  names = cons( key names ) )
+        sort( names 'alphalessp )
+    )
+)
+
+; Which variants would share a file (round 120), asked of the real file
+; system in build/probe-names of the tree the exporter was loaded from, made
+; here and removed after. The procedure makes a folder of its own inside it
+; and removes that; what is left inside after every case is the last answer.
+procedure( s3dProbeTranslitClashes()
+    let( ( root dir res left )
+        root = s3dExporterFolderOf( S3D_ExporterLoadedFrom )
+        dir = strcat( root "/build/probe-names" )
+        s3dMakeDirs( dir )
+        foreach( c list( list( "Full FULL ALT" list( "Full" "FULL" "ALT" ) )
+                         list( "full Full FULL" list( "full" "Full" "FULL" ) )
+                         list( "A a b B" list( "A" "a" "b" "B" ) )
+                         list( "Rev:A Rev_A" list( "Rev:A" "Rev_A" ) )
+                         list( "Rev:A Rev:B" list( "Rev:A" "Rev:B" ) )
+                         list( "a, a and a space" list( "a" "a " ) )
+                         list( "x, x and a dot" list( "x" "x." ) ) )
+            s3dProbeTranslitCase( "s3dVariantFileClashes" car( c )
+                                  s3dVariantFileClashes( dir "brd" cadr( c ) ) )
+        )
+        ; the Cyrillic case twins of v21, as the parser hands them over: lowerCase
+        ; leaves them as they are, and Windows does not
+        res = s3dProbeTranslitParseFile( strcat( root "/tests/fixtures/variants/v21-cyrillic-case-twins.lst" ) )
+        s3dProbeTranslitCase( "s3dVariantFileClashes" "the names of v21-cyrillic-case-twins.lst"
+                              if( res == 'error then
+                                  "error"
+                              else
+                                  s3dVariantFileClashes( dir "brd" s3dProbeTranslitNames( car( res ) ) ) ) )
+        left = setof( f getDirFiles( dir ) !member( f list( "." ".." ) ) )
+        s3dProbeTranslitCase( "s3dVariantFileClashes" "left behind" left )
+        deleteDir( dir )
     )
 )
 
@@ -268,6 +319,28 @@ procedure( s3dProbeTranslit()
 
         s3dProbeTranslitSay( "\n===== gdsysGetVariantInfo =====" )
         s3dProbeTranslitVariants()
+
+        s3dProbeTranslitSay( "\n===== s3dFileNameSafe =====" )
+        ; What a file name cannot carry becomes "_" (round 120). A control
+        ; character gets into a string here only through an escape: \t, \b.
+        foreach( c list( list( "plain" "Full" ) list( "a colon" "Rev:A" ) list( "a slash" "A/B" )
+                         list( "a backslash" "A\\B" ) list( "the rest" "x*?\"<>|y" )
+                         list( "a tab" "a\tb" ) list( "control 0x08" "a\bb" )
+                         list( "kept" "BOM 100% #1 (v2) [x] {y} a.b ~!@$^&=+,;'`" )
+                         list( "empty" "" ) )
+            s3dProbeTranslitCase( "s3dFileNameSafe" car( c ) s3dFileNameSafe( cadr( c ) ) )
+        )
+
+        s3dProbeTranslitSay( "\n===== s3dVariantFileName =====" )
+        foreach( c list( list( "Variants_Test-B0" "Full" ) list( "brd" "FULL" )
+                         list( "brd" "Rev:A" ) list( "brd" "A b" ) )
+            s3dProbeTranslitCase( "s3dVariantFileName"
+                                  sprintf( nil "design=%s variant=%s" car( c ) cadr( c ) )
+                                  s3dVariantFileName( car( c ) cadr( c ) ) )
+        )
+
+        s3dProbeTranslitSay( "\n===== s3dVariantFileClashes =====" )
+        s3dProbeTranslitClashes()
 
         s3dProbeTranslitSay( "\n===== END =====" )
         t

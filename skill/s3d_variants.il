@@ -165,6 +165,89 @@ procedure( s3dVariantFit( g_variantSymbolList t_path )
     )
 )
 
+; A variant's name as a file name can carry it (round 120, R2-10 of the
+; 23.10.2026 review). A variant may be called anything Capture lets it be
+; called, and its name is the second half of its file's. Windows takes none
+; of \ / : * ? " < > | nor a control character in a file name. Measured in
+; Allegro 25.1 (31.10.2026): outfile refused every one of them but the colon -
+; after the variants before it were written, with a message about the folder -
+; and took the colon as NTFS does: "brd_rev:a.json" is a stream named
+; "a.json" of an empty file "brd_rev", which no listing shows, so the variant
+; went where the window never looks. Each such character becomes "_", the
+; remedy Cadence's own translator applies to a Capture design's variant names,
+; and the export says so.
+procedure( s3dFileNameSafe( t_text )
+    pcreReplace( pcreCompile( "[\\\\/:*?\"<>|\\x01-\\x1f]" ) t_text "_" 0 )
+)
+
+; A variant's file name, without the folder or ".json": the design and the
+; variant, lower-cased as the exporter has always named them. The one place
+; the name is made - the writer and s3dVariantFileClashes both ask it.
+procedure( s3dVariantFileName( t_design t_variant )
+    lowerCase( strcat( t_design "_" s3dFileNameSafe( t_variant ) ) )
+)
+
+; Which variants would share a file (round 120, R2-10). Windows does not tell
+; letter case apart, so "Full" and "FULL" were written to one file, the later
+; over the earlier, with "3 variant(s) written" printed after. lowerCase folds
+; Latin letters only, and Windows folds Cyrillic too: measured in Allegro
+; 25.1, "brd_Полный" and "brd_ПОЛНЫЙ" opened one file. Which names Windows
+; holds apart is the file system's own rule, so the file system is asked: in
+; a folder made fresh beside the export, one small file per variant, in the
+; order the export writes them, carrying the variant's name; a name that finds
+; its file there already shares it with the variant written in it. Only what
+; was made here is deleted, the folder after it.
+; l_variants in the order the export writes them. The answer, one line per
+; later variant that finds an earlier one's file, in that order, naming the
+; file as the earlier one spells it - the spelling it keeps on disk; nil when
+; every variant has a file of its own.
+procedure( s3dVariantFileClashes( t_dir t_design l_variants )
+    let( ( probe ( n 1 ) made clashes name path port inPort earlier )
+        probe = strcat( t_dir "/simple3d-name-check" )
+        while( isDir( probe ) || isFile( probe )
+            n = n + 1
+            probe = sprintf( nil "%s/simple3d-name-check-%d" t_dir n )
+        )
+        unless( createDir( probe )
+            error( "%s" sprintf( nil "Simple 3D: could not make %s to check the variants' file names in - can %s be written to?\n"
+                                 probe t_dir ) )
+        )
+        made = nil
+        clashes = nil
+        foreach( variant l_variants
+            name = strcat( s3dVariantFileName( t_design variant ) ".json" )
+            path = strcat( probe "/" name )
+            if( isFile( path ) then
+                earlier = nil
+                inPort = infile( path )
+                when( inPort
+                    gets( earlier inPort )
+                    close( inPort )
+                )
+                when( earlier && (substring( earlier strlen( earlier ) 1 ) == "\n")
+                    earlier = substring( earlier 1 strlen( earlier ) - 1 )
+                )
+                unless( earlier  earlier = "?" )
+                clashes = cons( sprintf( nil "\"%s\" and \"%s\" both go to %s.json" earlier variant
+                                         s3dVariantFileName( t_design earlier ) )
+                                clashes )
+            else
+                port = outfile( path )
+                when( port
+                    fprintf( port "%s\n" variant )
+                    close( port )
+                    made = cons( path made )
+                )
+            )
+        )
+        foreach( path made  deleteFile( path ) )
+        unless( deleteDir( probe )
+            s3dWarn( sprintf( nil "Simple 3D: could not remove %s, the folder the variants' file names were checked in; it can be deleted." probe ) )
+        )
+        reverse( clashes )
+    )
+)
+
 ; The symbol dbids to export for one variant (or for the whole design when
 ; there is no variant table). Returns dbids, not names: iterating the design
 ; already has the symbol in hand, so nothing has to be looked up again by
@@ -365,7 +448,8 @@ procedure( gdsysGetVariantInfo()
             ; a name assigned here without a declaration became a session
             ; global - tools/skill_checks.py check #5 reports such a name now.
             newLine newLineEnd newLineWithinProperty propertyStart propertySeparator blankSpace
-            line parts subStrings properties temp valueKey )
+            line parts subStrings properties temp valueKey
+            ( lineNo 0 ) namedOn repeated )
 
         pattern = pcreCompile("[\"\t+\\()]")
         newLine = pcreCompile("\t\t")
@@ -383,8 +467,12 @@ procedure( gdsysGetVariantInfo()
             alternateParts = makeTable( "alternateParts" nil )
             parts = makeTable( "parts" nil )
             partProperties = makeTable( "partProperties" nil )
+            ; the line each variant's name stood on, and every name given twice
+            namedOn = makeTable( "namedOn" nil )
+            repeated = nil
 
             while( gets( line inPort )
+                lineNo = lineNo + 1
 
                 ; A variant with no (base block. Capture writes none when the
                 ; variant installs nothing - every part set to "not installed"
@@ -438,6 +526,18 @@ procedure( gdsysGetVariantInfo()
 
                         when( length( subStrings ) == 3
                             currentVariant = nth( 1 subStrings )
+                            ; One name given to two variants (round 120): the
+                            ; table keeps one entry per name, so the later
+                            ; replaced the earlier and the export lost it
+                            ; without a word (Allegro 25.1, 31.10.2026: "1
+                            ; variant(s) parsed"). Said once the file is shut.
+                            if( namedOn[currentVariant] then
+                                repeated = cons( sprintf( nil "\"%s\" (lines %d and %d)" currentVariant
+                                                          namedOn[currentVariant] lineNo )
+                                                 repeated )
+                            else
+                                namedOn[currentVariant] = lineNo
+                            )
                             state = "awaitStartCondition"
                         )
                     )
@@ -592,6 +692,14 @@ procedure( gdsysGetVariantInfo()
             ; be deleted or replaced while the session lived ("permission
             ; denied", seen headless with deleteFile after one export).
             close( inPort )
+            when( repeated
+                error( "%s" strcat(
+                    sprintf( nil "Simple 3D: %s gives one name to two variants: %s.\n"
+                             variantFile buildString( reverse( repeated ) ", " ) )
+                    "The variant table keeps one entry per name, so the later variant would\n"
+                    "replace the earlier and the export would lose it without a word. Give\n"
+                    "each variant a name of its own in Capture and export the Variants.lst again.\n" ) )
+            )
             list( variantTable alternateParts )
         else
             error( "Can not read from file ... " )

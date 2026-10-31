@@ -5,7 +5,20 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-119 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-120 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 120 (2026-10-31), on `main`, not pushed.** At «Да, R2-10»: every
+variant a file of its own. Windows folds letter case, Cyrillic included, and
+SKILL's lowerCase folds Latin only (measured), so "Full"/"FULL" and
+"Полный"/"ПОЛНЫЙ" went to one file, silently; a colon hid a variant in an NTFS
+stream; "/" stopped the export with a folder message; one name twice lost the
+earlier in the parser's table. Now `s3dVariantFileClashes` asks the file
+system (a folder made and removed beside the export) before anything is
+written and the export refuses, naming the pair and the file; the parser
+refuses a name twice with its lines; `s3dFileNameSafe` makes `\ / : * ? " < >
+|` and control characters "_", said in the console and the file's warnings.
+Five scenes before and after in Allegro; fixture 132; rows 440, 75 of 75;
+run_all 32/34. Read round 120.
 
 **Round 119 (2026-10-31), on `main`, not pushed.** At «Да, чини» after round
 118: the Variants.lst parser (`gdsysGetVariantInfo`) loses no variant and no
@@ -18,7 +31,7 @@ next begins - ends there. On a copy of variants_test-b0 with four variants: 2
 parsed before (LAST and ALONE no JSON, silently), 4 after, the old three JSON
 byte-identical; the user's two Variants.lst answer the same before and after.
 Fixture 108 (19 files); rows 430, 64 of 64; run_all 32/34. R2-10 (case twins)
-still open. Read round 119.
+was left for round 120. Read round 119.
 
 **Round 118 (2026-10-31), on `main`, not pushed.** At «Да, R2-9»: every check
 the finding named now holds the product, each with a row that turns it red
@@ -3491,6 +3504,67 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 120) — every variant a file of its own (R2-10 of the first review round)
+
+At the owner's «Да, R2-10». The record is
+`docs/records/variant-file-names-2026-10-31.md`; the evidence is in
+`build/fix-2026-10-31/r120/`.
+
+### Measured first
+
+- A scratch probe (`probe_names.il`): `lowerCase`/`upperCase` fold Latin only
+  (cp1251 and UTF-8 Cyrillic unchanged); NTFS folds Cyrillic too ("brd_Полный"
+  and "brd_ПОЛНЫЙ" opened one file, "brd_ёлка" and "brd_ЁЛКА" too); `outfile`
+  is nil for `? * < > | / \ "`, and for "brd_a:b" it gives a port and NTFS
+  makes an empty `brd_a` with the text in its stream `b.json`.
+- Five scenes, `tools/skill_export.py` on copies of variants_test-b0 (case
+  twins, Cyrillic twins in cp1251, colons, a slash, one name twice): the twins
+  share one file, the later winning; the colons leave only an empty
+  `variants_test-b0_rev`; the slash stops the export after `_ok` with "check
+  the folder exists" and no whole-board file; the repeat gives "1 variant(s)
+  parsed". Allegro's own variant BOMs (`var-<name>.rpt`) collide and fail
+  (SPMHSK-7/9) on the same files.
+
+### What changed
+
+- `skill/s3d_variants.il`: `s3dFileNameSafe` (the class
+  `[\\/:*?"<>|\x01-\x1f]` made "_"), `s3dVariantFileName` (the one place the
+  name is made), `s3dVariantFileClashes` (one small file per variant in a fresh
+  folder beside the export, in the writing order, carrying its name; a name
+  that finds its file there shares it; what was made is deleted, then the
+  folder); the parser notes each name's line and, after `close( inPort )`,
+  refuses a name given twice.
+- `skill/s3d_export.il`: the check before the loop, an error on any answer;
+  the loop's name from `s3dVariantFileName`, the folder no longer lower-cased;
+  a made-safe name warned in the console and put in the file's `warnings`.
+- `tools/probes/probe_translit.il`: the three procedures asked, the clash
+  check in build/probe-names (removed after), v21's names through the real
+  parser; `tools/skill_answers.py` reads the run as latin-1 and `%L`'s octal
+  escapes. Fixtures v20 (a name twice) and v21 (Cyrillic twins, cp1251).
+- Copies in `tests/skill_transliterations.py` (`file_name_safe`,
+  `skill_lower` - ASCII only, as lowerCase -, `variant_file_name`,
+  `variant_file_clashes` on the real file system, `parse_variants` raising
+  `VariantFileError`); `test_skill_pins` [5d] and the new [5f] (pins, the
+  order of check and loop, the class run on 255 characters), `body()` takes the
+  end of the source for the last procedure; `test_variant_path` [12]'s close
+  check allows the refusal between close and return, [15] and [16] new.
+- README (both halves), CHANGELOG, ARCHITECTURE.
+
+### Verified
+
+- Red first, HEAD's product with the new tests: test_skill_pins 18 FAIL,
+  test_variant_path 3 FAIL.
+- probe_translit on the fixed code: the 108 answers of round 119 unchanged, 24
+  new; fixture 132; the copies agree on all.
+- The five scenes again: twins and the repeat refused with nothing written and
+  the pair, the file or the lines named; `_rev_a`, `_rev_b` and `_a_b` written
+  with their warnings (the window's `Intermediate.read` returns them); no
+  check folder left.
+- Rows 430 -> 440 (and skill-variants-error-as-format given a line of
+  context); on the 4090 the 75 rows on the two SKILL files and of the two
+  suites 75 of 75, the three of test_variant_path on its own 3 of 3; run_all
+  32/34 in 87 s.
 
 ## Update 2026-10-31 (round 119) — the Variants.lst parser loses no variant and no part
 

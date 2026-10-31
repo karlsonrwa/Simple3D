@@ -18,11 +18,12 @@ and would turn //server/share into a relative folder. That is the case worth a
 test, along with the ones that look alike but are not - a bare drive root, mixed
 separators, a name with no folder at all.
 """
-import re, sys
+import re, shutil, sys
 
-from skill_transliterations import (Tconc, alternate_line, exported, is_refdes_token, not_placed,
-                                    parse_variants, s3d_design_folder, s3d_variant_file_path,
-                                    tconc, variant_fit)
+from skill_transliterations import (Tconc, VariantFileError, alternate_line, exported,
+                                    is_refdes_token, not_placed, parse_variants,
+                                    s3d_design_folder, s3d_variant_file_path, tconc,
+                                    variant_file_clashes, variant_file_name, variant_fit)
 
 
 print("\n[1] the folder, cut off the drawing path")
@@ -552,8 +553,10 @@ check("without the blank line after a block the variant is still found, and the 
 check("the SKILL parser has the same branch, ahead of its case",
       re.search(r'when\(\s*\(state == "awaitStartCondition"\)\s*&&[\s\S]{0,200}?'
                 r'pcreMatchp\(\s*propertyStart line\s*\)\s*\)\s*\n\s*symbols = list\(\)', src))
-check("and closes the file it opened - it stayed locked until Allegro exited",
-      re.search(r"close\(\s*inPort\s*\)\s*\n\s*list\(\s*variantTable alternateParts\s*\)", src))
+check("and closes the file it opened before it refuses a name given twice, or returns"
+      " - it stayed locked until Allegro exited",
+      re.search(r"close\(\s*inPort\s*\)\s*\n\s*when\(\s*repeated\s*\n\s*error\([\s\S]{0,700}?\)\s*\)\s*\n"
+                r"\s*\)\s*\n\s*list\(\s*variantTable alternateParts\s*\)", src))
 
 print("\n[13] a variant naming components that are not on the board")
 # The list comes from the schematic and the board from Allegro; a refdes in
@@ -622,6 +625,65 @@ LOST_BEFORE = {
 for name, want in LOST_BEFORE.items():
     got = parse_variants((ROOT / "tests/fixtures/variants" / name).read_bytes().decode("ascii"))
     check(f"{name}: {want}", got == want, got)
+
+print("\n[15] every variant a file of its own (round 120)")
+# Review 23.10.2026, R2-10: "Full" and "FULL" were written to one file, the
+# later over the earlier, and the console said "3 variant(s) written". The
+# cases of test_skill_pins [7], written out with what each gives - the copy
+# answers there as Allegro did, and here the file system answers both: it is
+# asked for real, as the SKILL asks it. Measured in Allegro 25.1 (31.10.2026):
+# lowerCase folds Latin letters only, and Windows folds Cyrillic too.
+clash_dir = OUT / "variant-clashes"
+shutil.rmtree(clash_dir, ignore_errors=True)
+clash_dir.mkdir(parents=True)
+CYRILLIC = [w.encode("cp1251").decode("latin-1") for w in ("Полный", "ПОЛНЫЙ")]
+CLASHES = [
+    (["Full", "FULL", "ALT"], ['"Full" and "FULL" both go to brd_full.json']),
+    (["full", "Full", "FULL"], ['"full" and "Full" both go to brd_full.json',
+                                '"full" and "FULL" both go to brd_full.json']),
+    # a character no file name takes is "_", so "Rev:A" meets "Rev_A"
+    (["Rev:A", "Rev_A"], ['"Rev:A" and "Rev_A" both go to brd_rev_a.json']),
+    (["Rev:A", "Rev:B"], []),
+    # the file system's rule, not a string compare: the ".json" after the name
+    # keeps a trailing space or dot apart
+    (["a", "a "], []),
+    (["x", "x."], []),
+    (CYRILLIC, [f'"{CYRILLIC[0]}" and "{CYRILLIC[1]}" both go to brd_{CYRILLIC[0]}.json']),
+]
+for variants, want in CLASHES:
+    got = variant_file_clashes(str(clash_dir), "brd", variants)
+    shown = [v.encode("latin-1").decode("cp1251") for v in variants]
+    check(f"{shown}: {len(want)} clash(es)", got == want, got)
+check("and the check leaves nothing behind in the folder it was asked in",
+      list(clash_dir.iterdir()) == [], list(clash_dir.iterdir()))
+check("a name the file system holds apart is told apart, though lowerCase folds it",
+      variant_file_name("brd", "FULL") == variant_file_name("brd", "Full")
+      and variant_file_name("brd", CYRILLIC[0]) != variant_file_name("brd", CYRILLIC[1]))
+
+# The export asks before it writes, and refuses: the source, where it does.
+EXPORT = re.sub(r";.*", "", (ROOT / "skill/s3d_export.il").read_text(encoding="utf-8"))
+asked_at = EXPORT.find("clashes = s3dVariantFileClashes( dir dsnName reverse( variantNames ) )")
+written_at = EXPORT.find('printf( "Exporting .json for variant: %s\\n" variant )')
+check("makeVariant3dIntermediates asks which variants would share a file before writing one",
+      0 <= asked_at < written_at, (asked_at, written_at))
+check("and an answer stops the export", re.search(r"when\( clashes\s+error\(", EXPORT) is not None)
+
+print("\n[16] one name given to two variants (round 120)")
+# The variant table keeps one entry per name: the later replaced the earlier,
+# "1 variant(s) parsed", without a word (Allegro 25.1 on v20, 31.10.2026).
+twice = (ROOT / "tests/fixtures/variants/v20-one-name-twice.lst").read_bytes().decode("latin-1")
+try:
+    parse_variants(twice)
+    check("v20, \"Full\" twice: the parser refuses it", False, "it parsed")
+except VariantFileError as e:
+    check("v20, \"Full\" twice: the parser refuses it, naming the name and both lines",
+          '"Full" (lines 2 and 9)' in str(e), str(e))
+thrice = twice.replace(")\r\n)\r\n", ")\r\n\t(\"Full\"\r\n\t\t(base\r\n\t\t\t(R9 )\r\n\t\t)\r\n\t)\r\n)\r\n")
+try:
+    parse_variants(thrice)
+    check("three times: refused", False, "it parsed")
+except VariantFileError as e:
+    check("three times: each repeat named", str(e).count('"Full" (lines 2 and') == 2, str(e))
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)
