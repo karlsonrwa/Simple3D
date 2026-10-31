@@ -52,7 +52,7 @@ from .models import (  # noqa: F401 - re-exported
 # The silkscreen legend (round 73, plan A5); re-exported, the window imports
 # DEFAULT_FLAT_HEIGHT from here and the tests call core.build_silkscreen.
 from .legend import (  # noqa: F401 - re-exported
-    AREA_TOLERANCE, DEFAULT_FLAT_HEIGHT, DEFAULT_SILK_THICKNESS, RULE_AXIS,
+    DEFAULT_FLAT_HEIGHT, DEFAULT_SILK_THICKNESS, RULE_AXIS,
     RULE_TRAVEL, _Convention, _arc_bulges_left, _arc_edge, _arc_geometry,
     _describe_convention, _face_area, _merge_coplanar, _pick_convention,
     _silk_face, _silk_point, _wire_from_vertices, build_silkscreen,

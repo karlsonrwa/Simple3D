@@ -11,6 +11,38 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **The legend's area check allows what the rounding of the
+  coordinates explains, not a fixed 0.5 %.** Allegro's area for a legend
+  polygon is that of the exact figure, while its vertex list comes back rounded
+  to the board's grid, so a thin stroke can lose a grid step of its width: four
+  polygons of Cadence's demo board (0.001 mm) came out 0.51-0.55 % off and were
+  reported as distorted, while a wrong reading of the arcs stayed within 0.32 %
+  on every polygon of variants_test-b0's top and would have passed. The margin
+  is now √2 × the polygon's perimeter × the grid step its vertices sit on, plus
+  the area's last digit; on the 2 722 polygons of ten boards the right reading
+  uses at most 0.32 of it, and the wrong one on variants_test-b0 misses four
+  polygons by 1.6 margins. Where the eight smallest polygons cannot tell two
+  readings apart, every polygon of the side now decides between them, not list
+  order. The log names the grid; no re-export is needed. `tools/silk_areas.py`
+  prints how the check sees a board. Mutation table: three rows rewritten, nine
+  added (393). /
+  **Сверка площадей легенды допускает то, что объясняет округление координат, а
+  не постоянные 0,5 %.** Allegro считает площадь многоугольника легенды по
+  точной фигуре, а список вершин отдаёт округлённым до сетки платы, поэтому
+  тонкий штрих может потерять шаг сетки по ширине. Четыре многоугольника
+  демо-платы Cadence (сетка 0,001 мм) получались на 0,51-0,55 % меньше и
+  объявлялись искажёнными, а неверное прочтение дуг на верху variants_test-b0
+  укладывалось в 0,32 % на каждом многоугольнике и прошло бы. Теперь допуск
+  равен √2 × периметр многоугольника × шаг сетки, на которой лежат его
+  вершины, плюс последний знак площади. На 2 722 многоугольниках десяти плат
+  верное прочтение занимает не больше 0,32 допуска, а неверное на
+  variants_test-b0 промахивается на четырёх многоугольниках на 1,6 допуска.
+  Если восемь самых маленьких многоугольников не различают двух прочтений,
+  выбор между ними делают все многоугольники стороны, а не порядок в списке.
+  Лог называет шаг сетки; повторный экспорт не нужен. `tools/silk_areas.py`
+  показывает, как сверка видит плату. Таблица мутаций: три строки переписаны,
+  девять добавлены (393).
+
 - **2026-10-31** — **The legend comes from the drawn layers or from AUTOSILK,
   never both.** Allegro's Auto Silkscreen copies the silkscreen layers onto
   MANUFACTURING/AUTOSILK and trims the copy at the pads, and the default config

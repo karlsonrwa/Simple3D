@@ -455,8 +455,31 @@ just clear of it.
 centreline plus a width, and turning that into a filled outline is
 `axlPolyFromDB`'s job, with text vectorised through `axlText2Lines` first.
 Nothing is stroked or offset by hand, so what lands in the STEP is the geometry
-that goes to the Gerber. Every polygon is then checked against the area Allegro
-reported for it, so a curve rebuilt the wrong way round cannot pass silently.
+that goes to the Gerber.
+
+**Every polygon is checked against the area Allegro reported for it, within
+what the rounding of its coordinates explains.** Allegro's area is that of the
+exact figure, while the vertex list it hands over is rounded to the board's
+grid. On Cadence's demo board, at 0.001 mm, one 0.8 mm stroke 0.203 wide comes
+back with its straight sides 0.202 apart, 0.51 % short of its area, while a
+copy of it elsewhere on the board keeps 0.203 and lands within 0.001 %. A
+vertex moves by at most half a grid step in x and in y, so to first order no
+outline of straight edges and arcs of up to 90° changes its area by more than
+√2 × its perimeter × the step: that is the margin, plus the last of the six
+decimals the area is written with. The grid is read from the vertices
+themselves, so an intermediate needs no re-export. On the 2 722 polygons of ten
+boards the right reading of the arcs uses at most 0.32 of its margin; until
+round 113 a fixed 0.5 % called four of the demo's polygons distorted. Which way
+each arc bulges is settled before the check, by comparing all eight readings of
+the radius on the board's own polygons, and where the eight smallest cannot
+tell two readings apart, every polygon of the side decides. On fourteen of the
+sixteen sides of those boards every wrong reading would also fail the
+per-polygon check. On the other two only that comparison tells them apart:
+flex-b2's top, where two readings build the same two shapes, and
+my_test_board-a0's, where the reading that leaves the first radius unused
+stays within 0.61 of the margin on all ten polygons. Recorded in
+`docs/records/silk-area-rounding-2026-10-31.md`; `tools/silk_areas.py` shows
+any board the same way.
 
 **A shape is drawn the way it is filled.** A solid shape is its area. A
 cross-hatched one is its hatch lines and its border: `axlPolyFromDB` gives those
@@ -963,7 +986,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 369 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch), the runner that drives one against a board headless (run_probe.py) and the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 393 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1425,9 +1448,31 @@ Allegro, где его набирают руками, а файл на диск�
 осевая плюс ширина, и превращение этого в залитый контур — работа
 `axlPolyFromDB`, с предварительной векторизацией текста через `axlText2Lines`.
 Ничего не обводится и не смещается вручную, поэтому в STEP попадает та же
-геометрия, что уходит в Gerber. Каждый полигон затем сверяется с площадью,
-которую сообщил Allegro, — кривая, восстановленная не в ту сторону, молча не
-пройдёт.
+геометрия, что уходит в Gerber.
+
+**Каждый многоугольник сверяется с площадью, которую сообщил Allegro, с
+допуском на округление его координат.** Allegro считает площадь точной фигуры,
+а список вершин отдаёт округлённым до сетки платы. На демо-плате Cadence сетка
+0,001 мм, и штрих длиной 0,8 мм и шириной 0,203 приходит с прямыми краями на
+расстоянии 0,202: площадь меньше на 0,51 %. Его копия в другом месте платы
+сохраняет ширину 0,203 и совпадает до 0,001 %. Вершина при округлении
+сдвигается не больше чем на полшага сетки по x и по y, поэтому в первом
+порядке контур из отрезков и дуг до 90° меняет площадь не больше чем на
+√2 × периметр × шаг. Это и есть допуск, к нему добавлен последний из шести
+знаков, которыми записана площадь. Шаг сетки определяется по самим вершинам,
+так что повторный экспорт не нужен. На 2 722 многоугольниках десяти плат
+верное прочтение дуг занимает не больше 0,32 допуска, а до раунда 113
+постоянные 0,5 % называли искажёнными четыре многоугольника демо-платы. В
+какую сторону выгнута каждая дуга, решается ещё до сверки: все восемь
+прочтений радиуса сравниваются на многоугольниках самой платы, и если восемь
+самых маленьких не различают двух прочтений, решают все многоугольники
+стороны. На четырнадцати сторонах этих плат из шестнадцати любое неверное
+прочтение не прошло бы и сверку по отдельным многоугольникам. На остальных
+двух прочтения различает только это сравнение: на верху flex-b2 два прочтения
+строят одни и те же две фигуры, а на верху my_test_board-a0 прочтение, где
+первый радиус не используется, на всех десяти многоугольниках остаётся в
+пределах 0,61 допуска. Запись: `docs/records/silk-area-rounding-2026-10-31.md`;
+`tools/silk_areas.py` показывает так же любую плату.
 
 **Форма рисуется так, как она залита.** Залитая форма даёт свою площадь.
 Заштрихованная даёт линии штриховки и рамку: `axlPolyFromDB` отдаёт их только
@@ -1940,7 +1985,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 369 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы; один из них сохраняет её для пакетной команды artwork), запускалка зонда против платы без окна (run_probe.py) и сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 393 поломки, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы; один из них сохраняет её для пакетной команды artwork), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

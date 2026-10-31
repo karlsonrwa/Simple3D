@@ -295,7 +295,7 @@
  {
   "id": "silk-area-comparison-off",
   "file": "stepbuilder/legend.py",
-  "old": "                if ratio > AREA_TOLERANCE:",
+  "old": "                if share > 1.0:",
   "new": "                if False:",
   "suites": [
    "tests/test_silk.py"
@@ -431,8 +431,8 @@
  {
   "id": "pick-convention-first-wins",
   "file": "stepbuilder/legend.py",
-  "old": "    best_error, best = min(scores, key=lambda s: s[0])",
-  "new": "    best_error, best = scores[0]",
+  "old": "    (best_share, best_miss), best = min(scores, key=lambda s: s[0][0])",
+  "new": "    (best_share, best_miss), best = scores[0]",
   "suites": [
    "tests/test_silk.py",
    "tests/test_pads.py"
@@ -1221,12 +1221,12 @@
  {
   "id": "silk-area-tolerance-loose",
   "file": "stepbuilder/legend.py",
-  "old": "AREA_TOLERANCE = 0.005",
-  "new": "AREA_TOLERANCE = 0.5",
+  "old": "MARGIN_PER_STEP = math.sqrt(2.0)        # x perimeter x grid step, see above",
+  "new": "MARGIN_PER_STEP = 1000.0                # x perimeter x grid step, see above",
   "suites": [
    "tests/test_silk.py"
   ],
-  "why": "the area cross-check accepts a 50% disagreement, so a wrong arc reading passes it. MEASURED: caught by tests/test_silk.py, FAIL  all 7 other readings are off by at least 63.6% (the tolerance is 50.0%)  <- {'positi"
+  "why": "the margin is a thousand times what rounding explains, so a wrong arc reading passes it again: under the reading that leaves the first radius unused, four of variants_test-b0's eighteen top polygons miss by 1.6 margins (review 23.10.2026, R2-8; round 113)"
  },
  {
   "id": "silk-clip-side-ignored",
@@ -4019,5 +4019,95 @@
    "tests/test_gui.py"
   ],
   "why": "All / None change the ticks of rows the choice leaves out - a selection whose effect is not visible, and it is saved (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "silk-margin-without-sqrt2",
+  "file": "stepbuilder/legend.py",
+  "old": "MARGIN_PER_STEP = math.sqrt(2.0)        # x perimeter x grid step, see above",
+  "new": "MARGIN_PER_STEP = 1.0                   # x perimeter x grid step, see above",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the margin drops its sqrt(2), the room a quarter arc needs (1.27 x perimeter x step on rounding alone): test_silk [16]'s square 0.95 of a margin off is reported (review 23.10.2026, R2-8; round 113)"
+ },
+ {
+  "id": "silk-margin-print-dropped",
+  "file": "stepbuilder/legend.py",
+  "old": "    return MARGIN_PER_STEP * perimeter * step + AREA_PRINT_ROUNDING\n",
+  "new": "    return MARGIN_PER_STEP * perimeter * step\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the six decimals the area is written with are not allowed for, so a polygon of a few square microns is called distorted by its own last digit (review 23.10.2026, R2-8; round 113)"
+ },
+ {
+  "id": "silk-grid-always-finest",
+  "file": "stepbuilder/legend.py",
+  "old": "    for step in GRID_STEPS:\n",
+  "new": "    for step in GRID_STEPS[-1:]:\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the grid is taken as the exporter's last digit whatever the board's: the four 0.001 mm polygons of Cadence's demo are called distorted again (review 23.10.2026, R2-8; round 113)"
+ },
+ {
+  "id": "silk-grid-ten-times",
+  "file": "stepbuilder/legend.py",
+  "old": "            return step\n",
+  "new": "            return step * 10.0\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the margin is ten times what the board's grid explains, and the wrong reading of variants_test-b0's top passes again (review 23.10.2026, R2-8; round 113)"
+ },
+ {
+  "id": "silk-pick-sample-only",
+  "file": "stepbuilder/legend.py",
+  "old": "    if len(close) > 1 and curved:\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "where the eight smallest polygons cannot tell two readings apart, list order chooses between them again: on variants_test-b0's top with both sources, the reading that leaves the first radius unused wins once it is listed first (review 23.10.2026, R2-8; round 113)"
+ },
+ {
+  "id": "silk-pick-second-look-on-sample",
+  "file": "stepbuilder/legend.py",
+  "old": "        scores = [(_worst_share(curved, z, c, step), c) for c in close]\n",
+  "new": "        scores = [(_worst_share(sample, z, c, step), c) for c in close]\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the second look scores the readings on the same eight polygons, so the tie stays and list order decides (review 23.10.2026, R2-8; round 113)"
+ },
+ {
+  "id": "silk-check-by-percent",
+  "file": "stepbuilder/legend.py",
+  "old": "                share = abs(got - abs(declared)) / margin\n",
+  "new": "                share = abs(got - abs(declared)) / abs(declared) / 0.005\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the per-polygon check goes back to a fixed 0.5%: the four rounded demo polygons are named, the wrong reading of variants_test-b0 is not (review 23.10.2026, R2-8; round 113)"
+ },
+ {
+  "id": "silk-pick-by-percent",
+  "file": "stepbuilder/legend.py",
+  "old": "        share = abs(area - declared) / margin\n",
+  "new": "        share = abs(area - declared) / declared / 0.005\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the reading is scored by a fixed 0.5% again, and the four rounded demo polygons alone make it warn that no reading reproduces Allegro's areas (review 23.10.2026, R2-8; round 113)"
+ },
+ {
+  "id": "silk-grid-tolerance-relative",
+  "file": "stepbuilder/legend.py",
+  "old": "        if all(abs(x - round(x / step) * step) < 1.0e-9 for x in values):\n",
+  "new": "        if all(abs(x / step - round(x / step)) < 1.0e-3 for x in values):\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the grid test is judged in shares of the step itself, so 20.000001 reads as a whole millimetre and its polygon gets a margin a thousand times too wide (review 23.10.2026, R2-8; round 113)"
  }
 ]

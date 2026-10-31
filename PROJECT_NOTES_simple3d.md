@@ -5,7 +5,21 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-112 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-113 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 113 (2026-10-31), on `main`, not pushed.** At «Да, R2-8»: the
+legend's area check allows what the rounding of the coordinates explains,
+not a fixed 0.5 %. Allegro's `poly->area` is the exact figure's while the
+vertex list comes back rounded to the board's grid (a 0.203 stroke on the
+demo's 0.001 mm grid returns 0.202 wide, 0.51 % short); the margin is
+sqrt(2) x perimeter x the grid read off the vertices, plus the area's last
+digit. On 2 722 polygons of ten boards the right reading uses at most 0.32
+of it; the demo's four false alarms are gone, and the wrong reading of
+variants_test-b0's top is now named on four polygons. Where the pick's
+eight-polygon sample leaves two readings within the margin, the whole side
+decides. `tools/silk_areas.py`, `docs/records/silk-area-rounding-2026-10-31.md`.
+Red first, rows 393, 32 of 32 caught, run_all 32/34 in session 0. Read round
+113.
 
 **Round 112 (2026-10-31), on `main`, not pushed.** At «Да, R2-7» and his
 choice «Выбор, как в Allegro»: the legend comes from the drawn silkscreen
@@ -3393,6 +3407,108 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 113) — the legend's area check allows what the rounding of the coordinates explains (R2-8 of the first review round)
+
+At the owner's «Да, R2-8». The finding (23.10, open in both rounds):
+`AREA_TOLERANCE = 0.005` had no source. Four correct polygons of
+Cadence_Demo came out 0.506-0.555 % off Allegro's area and were called
+distorted, and a wrong reading (AXIS, positive left, first radius unused)
+stayed within 0.32 % on all 18 polygons of variants_test-b0's top. The
+reviewer asked for a tolerance grounded in the measured rounding of the
+coordinates, shown on those data. The record is
+`docs/records/silk-area-rounding-2026-10-31.md`.
+
+### Measured first (`build/fix-2026-10-31/r113/`)
+
+- `areas.py` (pure Python: shoelace plus signed segments, all eight
+  readings) over the nine boards' current intermediates and 8231-a2's: the
+  four are the only polygons past 0.5 % under the right reading on any side.
+  The cause: Allegro's `poly->area` is the exact figure's, the vertex list is
+  rounded to the board's grid (0.001 mm on the demo). The 0.8 x 0.203 stroke
+  at y = -0.003 has its arcs at the true radius 0.1015 and its sides at
+  -0.104 / 0.098, 0.202 apart; its area 0.194765 is 0.8 x 0.203 +
+  pi x 0.1015^2 exactly. Its upright twin at x = 70.104 keeps 0.203 and lands
+  within 0.0008 %.
+- The grids, read off the vertices: 0.0001 mm on 5988-a1, the flex boards,
+  my_test_board2, variants_test-b0 and 8231-a2; 0.001 on the demo and
+  my_test_board-a0's top; 0.01 on circle-a0's top and my_test_board-a0's
+  bottom (2 and 3 polygons that happen to sit on it).
+- The margin: sqrt(2) x perimeter x step + 0.5e-6 mm2, derived in the record
+  (a quarter arc needs 1.27, a straight edge 0.71, to first order).
+  `margin.py` simulated the pick: on variants_test-b0's top with both sources,
+  as the review had it, the eight-polygon sample scores "closes" and
+  "unused" the same to the last digit, and list order decided.
+- The analytic numbers and OCP's (`tools/silk_areas.py`, the build's own
+  faces) agree for the right reading on all 16 sides, to the third decimal of
+  the largest share, but not for some wrong readings: there `why.py` finds
+  the face OCP builds invalid (`BRepCheck_Analyzer`) and its area no measure
+  of the figure, -2.763 for 2.763 on 5988-a1's top, 11.4 for 1.5 on
+  circle-a0's. The check names such a face, rightly; by the analytic areas
+  the weakest wrong reading would stay within the margin on circle-a0's top
+  and my_test_board-a0's bottom too, where the right one fits exactly. The record and
+  README use OCP's, which is what the build computes. My first message to the
+  owner gave the analytic "12 of 16 sides" and a polygon count of "2 553"
+  that I had not added up; both are corrected (14 of 16, 2 722).
+
+### What changed
+
+- `legend.py`: `AREA_TOLERANCE` gave way to `AREA_PRINT_ROUNDING`,
+  `MARGIN_PER_STEP` and `GRID_STEPS`, with `_coordinate_step`, `_step_text`,
+  `_area_margin`, `_face_perimeter` and `_worst_share`. `_pick_convention`
+  scores in shares of the margin, takes an optional `step`, and hands the
+  readings its sample leaves within the margin to every arc-bearing polygon
+  of the side. `build_silkscreen` reads the grid once per call and checks
+  every polygon against its own margin. The log names the grid: "... match
+  Allegro's areas to within rounding to a 0.001 mm grid", "... still differ
+  from the area Allegro reported by more than rounding to a 0.001 mm grid
+  explains (worst: ..., 0.1%, 1.1 times the margin)".
+- `core.py`: the re-export of `AREA_TOLERANCE` dropped.
+- `tools/silk_areas.py` (new) and the record (new); README (both halves: the
+  check's paragraph, and the map's tools line, whose table count still said
+  369), CHANGELOG, ARCHITECTURE.
+
+### Tests, red first
+
+- `test_silk` [16] (new) and [10]'s "other readings" check, now in shares of
+  the margin; fixture `tests/fixtures/silk_rounding.json` (the four, the twin,
+  variants_test-b0's 18 top polygons).
+- Red on round 112's code (`head113` on the 4090): `test_silk` stops at [10]
+  on the missing `_coordinate_step`. `redgreen.py`, through the calls both
+  versions have, on the old code: the four give "no reading ... (best is off
+  by 0.6% ...)" and "4 of 4 top polygons still differ", a 4 mm square 1.05
+  margins off is accepted, variants_test-b0's top under the wrong reading
+  gives "18 polygon(s) match", and with that reading listed first the pick
+  takes it. The new code gives the opposite in all four.
+- The new test caught a slip of mine: `_coordinate_step` first judged "on the
+  grid" in shares of the step, so 20.000001 read as a whole millimetre. It is
+  an absolute 1e-9 mm now.
+- Rows 384 -> 393. Three rewritten: silk-area-comparison-off and
+  silk-area-tolerance-loose, and pick-convention-first-wins, whose line
+  changed (test_mutations caught it). Nine new, among them the sqrt(2), the
+  area's last digit, the grid, the second look and the absolute grid test.
+
+### Verified (the 4090, session 0)
+
+- `tools/silk_areas.py` on the ten boards: the record's table, 40 s in all.
+- `builds.py`, the nine boards, both sources, old and new code: only the demo
+  changes verdict (old "2 of 689 ... still differ" with the drawn layers,
+  "2 of 676" with AUTOSILK; new "689 / 676 polygon(s) match ... 0.001 mm
+  grid"); the others keep theirs, the line naming the grid.
+- Time, the demo board: `build_silkscreen` 1.65-1.71 s old and new, three
+  builds each, alternating (`timing.py`); per stage (`timing2.py`) the top
+  0.62-0.65 s, the bottom 1.01-1.05 s in both. The whole build ran 9.0-12.2 s
+  in either tree, the spread all in writing the STEP (6.4-8.7 s). The first
+  three alternating pairs had the new tree slower in all by 0.55-2.28 s,
+  which looked like the round's cost; timed by stage, the next two pairs put
+  the spread in the STEP writer and one of them had the old tree slower
+  (11.30 against 9.34 s). The whole build's time could not tell the round's
+  cost apart; the stage's could.
+- `mutate.py` on every row of `legend.py` or `test_silk` (32): 32 caught in
+  11 s on 8 copies, the eleven new or rewritten among them. No row names a
+  window suite, so nothing here needs the owner's session.
+- `python_names` and `test_mutations` clean; `run_all` 32/34 in 89 s, only
+  the two window suites, as always in session 0.
 
 ## Update 2026-10-31 (round 112) — the legend from the drawn layers or from AUTOSILK, never both (R2-7 of the first review round)
 

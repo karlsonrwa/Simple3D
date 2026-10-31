@@ -257,14 +257,18 @@ check("which reproduces those areas exactly while the measured reading no longer
       (worst_error(MIRROR, FLIPPED), worst_error(RIGHT, FLIPPED)))
 
 # And the oracle has to be able to say no: every other reading is wrong by far
-# more than AREA_TOLERANCE on this sample, which makes the win above a
+# more than the rounding margin on this sample (round 113: sqrt(2) x
+# perimeter x grid step, no longer a fixed 0.5%), which makes the win above a
 # measurement rather than list order.
 others = {c: worst_error(c) for c in legend._CONVENTIONS if tuple(c) != RIGHT}
 closest = min(others.values())
-check(f"all {len(others)} other readings are off by at least "
-      f"{closest * 100:.1f}% (the tolerance is {legend.AREA_TOLERANCE * 100:.1f}%)",
-      closest > 10 * legend.AREA_TOLERANCE,
-      {legend._describe_convention(c): round(e, 4) for c, e in others.items()})
+step10 = legend._coordinate_step(SAMPLE)
+shares = {c: legend._worst_share(SAMPLE, 0.0, c, step10)[0] for c in others}
+check(f"all {len(others)} other readings are off by at least {closest * 100:.1f}%, "
+      f"{min(shares.values()):.0f} times what rounding to a "
+      f"{legend._step_text(step10)} mm grid explains",
+      closest > 0.5 and min(shares.values()) > 10,
+      {legend._describe_convention(c): (round(e, 4), round(shares[c], 1)) for c, e in others.items()})
 
 # The arcs themselves: the same polygons with every radius zeroed is what the
 # code would be building if the arc branch were never taken.
@@ -491,6 +495,133 @@ try:
     check("a source that is not one of the two is refused", False, "built")
 except StepBuilderError as exc:
     check("a source that is not one of the two is refused", "silk_source" in str(exc), str(exc))
+
+print("\n[16] the area check allows what the rounding of the coordinates explains (round 113)")
+# Review 23.10.2026, R2-8: the fixed 0.5% had no source. Allegro's area is
+# the exact figure's while its vertex list is rounded to the board's grid, so
+# a thin stroke can lose a grid step of its width: four polygons of Cadence's
+# demo board came out 0.51-0.55% off and were called distorted, and a wrong
+# reading of variants_test-b0's top stayed within 0.32% on every polygon. The
+# margin is now sqrt(2) x perimeter x grid step plus the area's last digit,
+# the grid read from the vertices. The perimeters here are measured apart
+# from legend._face_perimeter (BRepGProp as [13] imports it), and the margin
+# is worked out here, not taken from legend._area_margin.
+import math
+
+rnd = json.loads((ROOT / "tests/fixtures/silk_rounding.json").read_text(encoding="utf-8"))
+FOUR, TWIN, VAR = rnd["demo_top"], rnd["demo_twin"], rnd["variants_top"]
+WRONG = (legend.RULE_AXIS, True, False)       # first radius unused
+
+
+def perimeter(face):
+    props = GProp_GProps()
+    BRepGProp.LinearProperties_s(face, props)
+    return props.Mass()
+
+
+def rebuilt(p, convention=RIGHT):
+    """(relative miss, miss in mm2, perimeter) of one polygon as built."""
+    face = legend._silk_face(p, 0.0, convention)
+    declared = abs(float(p["area"]))
+    got = legend._face_area(face)
+    return abs(got - declared) / declared, abs(got - declared), perimeter(face)
+
+
+def margin(per, step):
+    return math.sqrt(2.0) * per * step + 0.5e-6
+
+
+check("the grid is read from the vertices: 0.001 mm on the demo board, 0.0001 on variants_test-b0",
+      math.isclose(legend._coordinate_step(FOUR), 1e-3)
+      and math.isclose(legend._coordinate_step(VAR), 1e-4),
+      (legend._coordinate_step(FOUR), legend._coordinate_step(VAR)))
+check("whole millimetres read as 1 mm, a sixth decimal as the exporter's last digit",
+      math.isclose(legend._coordinate_step([square(20, 20, 4, "L")]), 1.0)
+      and math.isclose(legend._coordinate_step([square(20.000001, 20, 4, "L")]), 1e-6),
+      (legend._coordinate_step([square(20, 20, 4, "L")]),
+       legend._coordinate_step([square(20.000001, 20, 4, "L")])))
+
+# The mechanism, from the data alone: the second of the four is a 0.8 mm
+# stroke 0.203 wide with round ends. Its arcs keep the radius 0.1015, its
+# straight sides come back 0.202 apart, and Allegro's area is the exact
+# figure's; its twin elsewhere on the board keeps 0.203 and lands on it.
+stroke = FOUR[1]
+ys = sorted({round(v[1], 6) for v in stroke["vertices"]})
+radii = sorted({abs(v[2]) for v in stroke["vertices"]})
+exact = 0.8 * 0.203 + math.pi * 0.1015 ** 2
+check(f"a 0.203 stroke comes back {ys[-1] - ys[0]:.3f} wide at radius {radii[-1]}, "
+      f"its area {stroke['area']} the exact {exact:.6f}",
+      math.isclose(ys[-1] - ys[0], 0.202, abs_tol=1e-9) and radii == [0.0, 0.1015]
+      and abs(stroke["area"] - exact) < 1e-6, (ys, radii, stroke["area"], exact))
+check("its twin, the same area from Allegro, is rebuilt within 0.001% - the 0.51% is rounding",
+      TWIN["area"] == stroke["area"] and rebuilt(TWIN)[0] < 1e-5 and rebuilt(stroke)[0] > 5e-3,
+      (TWIN["area"], rebuilt(TWIN)[0], rebuilt(stroke)[0]))
+
+four = [rebuilt(p) for p in FOUR]
+check("the four are 0.50-0.56% off under the right reading - the old tolerance's false alarm",
+      all(5e-3 < rel < 5.6e-3 for rel, _m, _p in four), [round(rel * 100, 4) for rel, _m, _p in four])
+share4 = [m / margin(per, 1e-3) for _rel, m, per in four]
+check(f"and each within its margin, at most {max(share4):.2f} of it",
+      max(share4) < 1.0, [round(s, 3) for s in share4])
+logs16 = []
+built16 = legend.build_silkscreen(FOUR, 0.0, 0.025, log=logs16.append, side="top")[1]
+check("built, they are reported as matching on a 0.001 mm grid, with no warning",
+      built16 == 4 and any("4 polygon(s) match Allegro's areas" in m and "0.001 mm grid" in m
+                           for m in logs16)
+      and not [m for m in logs16 if m.startswith("warning")], logs16)
+
+# The margin itself, on a square whose perimeter is exact: 16 mm at 0.001 mm.
+sq16 = square(10.001, 20.001, 4.0, "L")
+m16 = margin(16.0, 1e-3)
+for factor, said16 in ((1.05, True), (0.95, False)):
+    logs_m = []
+    legend.build_silkscreen([{**sq16, "area": 16.0 + factor * m16}], 0.0, 0.025,
+                            log=logs_m.append, side="top")
+    named = [m for m in logs_m if "1 of 1 top polygons still differ" in m]
+    check(f"an area {factor} of the margin ({factor * m16:.5f} mm2) off is "
+          f"{'reported' if said16 else 'accepted'}", bool(named) == said16, logs_m)
+# and its last term: an area is written to six decimals, so a 0.004 mm square
+# on a 0.000001 mm grid may be off by 0.9 x 0.5e-6 mm2 - twenty times what
+# its outline's rounding alone would allow.
+tiny = square(0.000001, 0.000001, 0.004, "L")
+logs_t = []
+legend.build_silkscreen([{**tiny, "area": 1.6e-5 + 0.9 * margin(0.016, 1e-6)}], 0.0, 0.025,
+                        log=logs_t.append, side="top")
+check("the area's own last digit is allowed for", not [m for m in logs_t if "still differ" in m], logs_t)
+
+# variants_test-b0's top under the wrong reading: within 0.32% everywhere, so
+# the old check let it through; four polygons now miss by 1.6 margins.
+wrong_rel = max(rebuilt(p, WRONG)[0] for p in VAR)
+check(f"the wrong reading stays within {wrong_rel * 100:.2f}% on all {len(VAR)} polygons",
+      wrong_rel < 5e-3, wrong_rel)
+picked_was = legend._pick_convention
+legend._pick_convention = lambda *a, **k: WRONG
+try:
+    logs_w = []
+    legend.build_silkscreen(VAR, 0.0, 0.025, log=logs_w.append, side="top")
+finally:
+    legend._pick_convention = picked_was
+check("built under it, 4 of the 18 are named as missing their area by more than rounding",
+      any("4 of 18 top polygons still differ" in m and "0.0001 mm grid" in m for m in logs_w),
+      logs_w)
+
+# And the pick no longer leaves that pair to list order: the eight smallest
+# score both readings the same, and the whole side tells them apart.
+sample8 = sorted([p for p in VAR if any(abs(v[2]) > 1e-9 for v in p["vertices"])],
+                 key=lambda p: len(p["vertices"]))[:8]
+check("on the eight smallest the right and the wrong reading miss by the same amount",
+      math.isclose(max(rebuilt(p)[1] for p in sample8), max(rebuilt(p, WRONG)[1] for p in sample8)),
+      (max(rebuilt(p)[1] for p in sample8), max(rebuilt(p, WRONG)[1] for p in sample8)))
+order_was = legend._CONVENTIONS
+legend._CONVENTIONS = [WRONG] + [c for c in order_was if tuple(c) != WRONG]
+try:
+    first_wrong = legend._pick_convention(VAR, 0.0, lambda m: None, "top")
+finally:
+    legend._CONVENTIONS = order_was
+check("with the wrong reading listed first, the search still lands on the right one",
+      tuple(first_wrong) == RIGHT, first_wrong)
+check("and in its own order too",
+      tuple(legend._pick_convention(VAR, 0.0, lambda m: None, "top")) == RIGHT)
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

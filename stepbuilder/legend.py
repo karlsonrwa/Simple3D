@@ -110,10 +110,60 @@ def _describe_convention(convention: _Convention) -> str:
         what = f"positive radius means the arc sits {side} of its centre"
     return f"{what}, first radius {'closes' if closes else 'unused'}"
 
-# A rebuilt polygon has to land this close to Allegro's own area to be accepted.
-# Loose enough for float noise and OCCT's own tolerance, tight enough that a
-# wrong arc side (several percent even on gentle curves) never slips through.
-AREA_TOLERANCE = 0.005
+# How far a rebuilt polygon may land from the area Allegro reported for it:
+# what rounding its coordinates explains, not a fixed percentage (review of
+# 23.10.2026, R2-8; round 113). Allegro's poly->area is the area of the exact
+# figure, while the vertex list it hands over is rounded to the board's grid.
+# On Cadence's demo board, at 0.001 mm, a 0.203 mm stroke comes back with its
+# straight sides 0.202 apart and its round ends at the true radius 0.1015,
+# and its area 0.51% short of the 0.194765 mm2 Allegro reports, which is
+# 0.8 x 0.203 + pi x 0.1015^2 exactly; the fixed 0.5% that stood here called
+# four such polygons distorted. A vertex moves by at most half a step in x
+# and in y, and to first order no outline of straight edges and arcs of up to
+# 90 degrees (polygon arcs never cross a quadrant) then changes its area by
+# more than sqrt(2) x perimeter x step: a quarter arc, the worst case, comes
+# to 1.27 of perimeter x step, a straight edge to 0.71. The area itself is
+# written to six decimals. Measured on the 2722 polygons of ten boards, the
+# right reading uses at most 0.32 of this margin, and every wrong one passes
+# it on some polygon of fourteen of their sixteen sides
+# (docs/records/silk-area-rounding-2026-10-31.md, tools/silk_areas.py).
+AREA_PRINT_ROUNDING = 0.5e-6            # mm2: the exporter writes the area with %f
+MARGIN_PER_STEP = math.sqrt(2.0)        # x perimeter x grid step, see above
+# The grids a coordinate can be written on, coarsest first: 1 mm down to the
+# last of the six decimals the exporter writes.
+GRID_STEPS = tuple(10.0 ** -k for k in range(7))
+
+
+def _coordinate_step(polygons: list) -> float:
+    """The grid the polygons' vertices are written on, in mm: the coarsest of
+    1, 0.1 ... 0.000001 that every vertex coordinate sits on.
+
+    Read from the data rather than asked of Allegro: a vertex list comes back
+    rounded to the board's accuracy, and a coarser grid only means that every
+    vertex happens to sit on it as well - the margin is then looser than it
+    could be, never tighter than the rounding. A polygon in the old primitive
+    form says nothing here; with no vertex at all, the finest grid is taken.
+    """
+    values = []
+    for polygon in polygons:
+        vertices = polygon.get("vertices")
+        if not vertices:
+            continue
+        for ring in [vertices] + list(polygon.get("holes") or []):
+            values.extend(float(c) for v in ring for c in v[:2])
+    if not values:
+        return GRID_STEPS[-1]
+    # On the grid to well inside the last digit: a tolerance in shares of the
+    # step itself would take 20.000001 as a whole millimetre.
+    for step in GRID_STEPS:
+        if all(abs(x - round(x / step) * step) < 1.0e-9 for x in values):
+            return step
+    return GRID_STEPS[-1]
+
+
+def _step_text(step: float) -> str:
+    """0.001 for 1e-3: the grid as the log names it."""
+    return f"{step:.6f}".rstrip("0").rstrip(".")
 
 
 def _arc_geometry(p0, p1, radius: float):
@@ -248,52 +298,85 @@ def _silk_face(polygon: dict, z: float, convention: _Convention):
     return _face_from_wires(outer, inner)
 
 
+def _area_margin(face, step: float) -> float | None:
+    """How far this face's area may lie from Allegro's on rounding alone, in
+    mm2: sqrt(2) x its perimeter x the grid step, plus the area's own last
+    digit. See AREA_PRINT_ROUNDING."""
+    perimeter = _face_perimeter(face)
+    if perimeter is None:
+        return None
+    return MARGIN_PER_STEP * perimeter * step + AREA_PRINT_ROUNDING
+
+
+def _worst_share(polygons: list[dict], z: float, convention: _Convention,
+                 step: float) -> tuple[float, float]:
+    """(share, miss) of the polygon whose area *convention* misses by the
+    largest share of its margin; share 1 is the margin itself, miss is that
+    polygon's relative disagreement. Infinite when a polygon will not build."""
+    worst = (0.0, 0.0)
+    for polygon in polygons:
+        declared = abs(float(polygon["area"]))
+        try:
+            rebuilt = _silk_face(polygon, z, convention)
+            area, margin = _face_area(rebuilt), _area_margin(rebuilt, step)
+        except (StepBuilderError, RuntimeError, TypeError):
+            area = margin = None
+        if area is None or margin is None:
+            return (math.inf, math.inf)
+        share = abs(area - declared) / margin
+        if share > worst[0]:
+            worst = (share, abs(area - declared) / declared)
+    return worst
+
+
 def _pick_convention(
-    polygons: list[dict], z: float, log: LogFn, side: str
+    polygons: list[dict], z: float, log: LogFn, side: str, step: float | None = None
 ) -> _Convention:
     """Choose the vertex reading that reproduces Allegro's reported areas.
 
-    Scored over the polygons that declare an area, worst-case first: the right
-    convention matches every one of them, a wrong one is off on any polygon with
-    a curve in it. Ties (a legend of nothing but straight lines, where the
-    readings cannot differ) fall through to the first convention, which is then
-    as good as any.
+    Scored over the polygons that declare an area, worst-case first, each
+    polygon's disagreement measured in shares of its rounding margin
+    (_area_margin; *step* is the grid, read from *polygons* when not given):
+    the right convention matches every one of them, a wrong one is off on any
+    polygon whose curve it reads differently. Ties (a legend of nothing but
+    straight lines, where the readings cannot differ) fall through to the
+    first convention, which is then as good as any.
     """
+    if step is None:
+        step = _coordinate_step(polygons)
     candidates = [p for p in polygons if p.get("vertices") and p.get("area")
                   and abs(float(p["area"])) > 1.0e-6]
     # Only polygons that actually contain an arc can tell the readings apart, and
-    # the cheapest ones say it just as clearly, so sample small arc-bearing
-    # polygons. A legend of nothing but straight lines leaves every reading
-    # equivalent, and then the first is as good as any.
+    # the cheapest ones usually say it just as clearly, so sample small
+    # arc-bearing polygons first. A legend of nothing but straight lines leaves
+    # every reading equivalent, and then the first is as good as any.
     curved = [p for p in candidates
               if any(abs(float(v[2])) > 1.0e-9 for v in p["vertices"] if len(v) > 2)]
     sample = sorted(curved or candidates, key=lambda p: len(p["vertices"]))[:8]
     if not sample:
         return _CONVENTIONS[0]
 
-    scores: list[tuple[float, _Convention]] = []
-    for convention in _CONVENTIONS:
-        worst = 0.0
-        for polygon in sample:
-            declared = abs(float(polygon["area"]))
-            try:
-                area = _face_area(_silk_face(polygon, z, convention))
-            except (StepBuilderError, RuntimeError, TypeError):
-                area = None
-            if area is None:
-                worst = math.inf
-                break
-            worst = max(worst, abs(area - declared) / declared)
-        scores.append((worst, convention))
-
     # Every candidate is scored - no early exit. Two readings can both land
-    # inside the tolerance on a gently curved sample while only one is right,
+    # inside the margin on a gently curved sample while only one is right,
     # and taking the first to pass would then pick by list order.
-    best_error, best = min(scores, key=lambda s: s[0])
+    scores = [(_worst_share(sample, z, c, step), c) for c in _CONVENTIONS]
+    # The readings the sample leaves within the margin are then told apart by
+    # every curved polygon of the side. Measured on variants_test-b0's top
+    # with both legend sources (review of 23.10.2026, R2-8; round 113): its
+    # eight smallest carry no arc on their first vertex, so "first radius
+    # closes" and "unused" scored the same to the last digit and list order
+    # chose between them, while four of its eighteen polygons miss by 1.6
+    # times the margin under the wrong one.
+    close = [c for (share, _miss), c in scores if share <= 1.0]
+    if len(close) > 1 and curved:
+        scores = [(_worst_share(curved, z, c, step), c) for c in close]
+    (best_share, best_miss), best = min(scores, key=lambda s: s[0][0])
 
-    if best_error > AREA_TOLERANCE:
+    if best_share > 1.0:
         log(f"warning: no reading of the {side} vertex data reproduces the areas "
-            f"Allegro reported (best is off by {best_error * 100:.1f}%: "
+            f"Allegro reported within the rounding of a {_step_text(step)} mm grid "
+            f"(best misses a polygon by {best_miss * 100:.1f}%, "
+            f"{best_share:.1f} times what rounding explains: "
             f"{_describe_convention(best)}). The legend geometry may be distorted.")
     return best
 
@@ -345,7 +428,8 @@ def build_silkscreen(
     builder.MakeCompound(compound)
 
     polygons = list(polygons)
-    convention = _pick_convention(polygons, z, log, side)
+    step = _coordinate_step(polygons)
+    convention = _pick_convention(polygons, z, log, side, step)
 
     shapes: list = []
     built = 0
@@ -353,7 +437,7 @@ def build_silkscreen(
     first_error: str | None = None
     area_checked = 0
     area_bad = 0
-    worst: tuple[float, float, float] | None = None   # (ratio, declared, got)
+    worst: tuple[float, float, float] | None = None   # (share of margin, declared, got)
 
     for polygon in polygons:
         if not polygon.get("vertices") and not polygon.get("outline"):
@@ -376,18 +460,20 @@ def build_silkscreen(
             continue
 
         # Every polygon is verified, not just the ones that chose the reading:
-        # the convention is global, so a single polygon that still disagrees is
-        # a polygon whose geometry did not survive, and it should be reported.
+        # the convention is global, so a single polygon that still disagrees by
+        # more than its coordinates' rounding is a polygon whose geometry did
+        # not survive, and it should be reported.
         declared = polygon.get("area")
         if declared and abs(declared) > 1.0e-6:
             got = _face_area(face)
-            if got is not None:
+            margin = _area_margin(face, step)
+            if got is not None and margin is not None:
                 area_checked += 1
-                ratio = abs(got - abs(declared)) / abs(declared)
-                if ratio > AREA_TOLERANCE:
+                share = abs(got - abs(declared)) / margin
+                if share > 1.0:
                     area_bad += 1
-                    if worst is None or ratio > worst[0]:
-                        worst = (ratio, abs(declared), got)
+                    if worst is None or share > worst[0]:
+                        worst = (share, abs(declared), got)
 
     # Flat faces are unioned before they go into the compound; see
     # _merge_coplanar for why, and why the solid path deliberately does not.
@@ -404,10 +490,13 @@ def build_silkscreen(
             f"(first: {first_error})")
     if area_bad and worst is not None:
         log(f"warning: {area_bad} of {area_checked} {side} polygons still differ "
-            f"from the area Allegro reported (worst: {worst[1]:.6g} vs "
-            f"{worst[2]:.6g} mm2, {worst[0] * 100:.1f}%).")
+            f"from the area Allegro reported by more than rounding to a "
+            f"{_step_text(step)} mm grid explains (worst: {worst[1]:.6g} vs "
+            f"{worst[2]:.6g} mm2, {abs(worst[2] - worst[1]) / worst[1] * 100:.1f}%, "
+            f"{worst[0]:.1f} times the margin).")
     elif area_checked:
-        log(f"{side}: {area_checked} polygon(s) match Allegro's areas "
+        log(f"{side}: {area_checked} polygon(s) match Allegro's areas to within "
+            f"rounding to a {_step_text(step)} mm grid "
             f"(arc reading: {_describe_convention(convention)})")
     if not built:
         return None, 0, skipped
@@ -470,6 +559,20 @@ def _face_area(face) -> float | None:
 
         props = GProp_GProps()
         BRepGProp.SurfaceProperties_s(face, props)
+        return props.Mass()
+    except Exception:
+        return None
+
+
+def _face_perimeter(face) -> float | None:
+    """Length of a face's edges, its holes' included, or None if it cannot be
+    measured."""
+    try:
+        from OCP.BRepGProp import BRepGProp
+        from OCP.GProp import GProp_GProps
+
+        props = GProp_GProps()
+        BRepGProp.LinearProperties_s(face, props)
         return props.Mass()
     except Exception:
         return None
