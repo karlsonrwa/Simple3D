@@ -3521,6 +3521,57 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-01 (round 123) — documentation true to the code (28 review findings)
+
+The first round of the owner's «Пройдись дальше сам по всем оставшимся
+находкам» (31.10.2026). The open list (123 after round 122) and its triage are
+in `build/fix-2026-10-31/r123/` (findings.py, open_list.py, open.tsv,
+triage.md). Numbering as the owner's report: first-round numbers, the second
+round's new ones marked n (R4n-12 is not R4-12).
+
+Closed here, each read against the code or measured:
+
+- R8-2: `requirements.txt` added (the one line README names). R8-22: the
+  range is the tested one, `>=7.9,<9` (here and on the 4090 7.9.3.1.1; 8.0
+  tested in a venv, 22.09). R8-23: measured `install_size.py`: cadquery-ocp
+  7.9.3.1.1 with VTK 9.6.2, 14 packages, 603 MB (py3.12), 614 MB (py3.14).
+- R8-3 = R6-5: exit codes measured here (unknown flag, missing positional,
+  bad choice, bad type -> 2; bad --fold-anchor, missing JSON, bad --color ->
+  1); README both halves and ARCHITECTURE 3.1.
+- R8-5: the `exportFullBoard` row moved into the `settings` group.
+- R8-6 = R6n-7, R6-17: round 107 had rewritten the paragraph; the last
+  corner (a local file that cannot be read is named instead of the shipped
+  one) said, read in gui.py:258-276.
+- R8-7: the checkbox relabelled "Compact STEP (no surface curves)" (my own
+  wording of round 30, not the owner's) and QUICKSTART says what it does.
+- R8-8: the millimetre requirement in README (path checked in Cadence's docs:
+  Design tab of the Design Parameter Editor). The exporter does not check yet:
+  R1-3.
+- R8-9: seven swatch kinds. R8-10/R8-11: table 2.1 recounted by its rule
+  (`recount.py`: s3d_bends 237, worker_bridge 10 defs, simple3d_config.json
+  105), section 5 (intermediate 393, worker 207, __main__ 421, colors 180,
+  SKILL 5367 lines and 118 procedures in 10 parts, tests ~13 100), the date.
+- R8-12: simple3d.il calls ten exporter procedures and reads
+  S3D_ExporterLoaded (`calls.py`); the text and the graph's edge.
+- R8-13 parse_args; R8-14 the step_mapping keys; R8-15 S3D_ExporterDir in 4.1.
+- R8-21 = R4-12: «переходных отверстий». R8-25: four exporter sections.
+- R8-26 = R4n-14: tenting measured on the package's nine v12 exports
+  (`tenting.py`): six boards tent every via, circle-A0 2 of 23 open
+  (VIA_T_B_06X11_NO_SM), 5988-a1 16 of 16 (MILLTAB_HOLE_0P6), Cadence_Demo none.
+- R8n-27: surface.py in both README maps and on graph 2.2.
+- R1n-14: s3d_props.il says the 'open trigger, not load. R5n-11: the bend
+  package's docstring names the four constructions in their order (revolve,
+  wrap, faces, facets). R3-13: README says the part carries the file's name
+  and the instance OpenCASCADE's label (seen in round 121's STEP). R4-9: the
+  two probes' headers say they select per box, not the exporter's sweep.
+  R6-16: prefill_jobs' docstring says what the code does.
+- Found already fixed, verified: R6n-8 (importing settings loads neither OCP
+  nor Tk), R6-18 (`_comment` only when creating, round 107).
+
+Checked: audit_docs no findings, skill_checks, python_names, test_mutations
+all pass. Not run: the window suites (the label), which need the owner's
+session; cosmetic, no rows.
+
 ## Update 2026-10-31 (round 122) — the components a missing model leaves out are named (R3-3 of the first review round)
 
 At the owner's «Да, R3-3». The record is

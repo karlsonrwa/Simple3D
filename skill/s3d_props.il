@@ -99,9 +99,11 @@ S3D_NoExportProp = "NO_STEP_EXPORT"
 
 ; The opt-out from the variant rule. Unlike NO_STEP_EXPORT, which is one of
 ; Allegro's own symbol properties, this one does not exist until something
-; creates it: simple3d.il defines it in the design's property dictionary at
-; load and before every export (see s3dEnsureAlwaysProp there, and the config
-; switch allegro.defineAlwaysExportProp). Once defined it behaves like any
+; creates it: simple3d.il defines it in the design's property dictionary when
+; a board is opened (its 'open trigger, s3dOpenTrigger) and before every
+; export - not at load, which coincided with Allegro crashing on startup (see
+; s3dEnsureAlwaysProp there, and the config switch
+; allegro.defineAlwaysExportProp). Once defined it behaves like any
 ; other property - it appears in Allegro's Properties dialog and is attached
 ; the ordinary way.
 ;

@@ -80,19 +80,27 @@ into the output folder and deleted as soon as it has been read.
 
 ## Installation
 
+**The board must be in millimetres** (Allegro's *Setup → Design Parameters →
+Design → User Units*). The exporter writes the board's numbers as Allegro
+holds them, and the Python half reads every one of them as millimetres; it
+converts nothing.
+
 **1. Python 3.10+** from python.org, with *Add Python to PATH* ticked. `tkinter`
 comes with the standard Windows installer.
 
 **2. One dependency:**
 
 ```
-pip install "cadquery-ocp>=7.7,<9"
+pip install "cadquery-ocp>=7.9,<9"
 ```
 
-That is the OpenCASCADE kernel with Python bindings, and it is the entire
-`requirements.txt` — but it is not small: with VTK, which it declares as a hard
-dependency, the three come to about **470 MB on disk** with 7.9 (a venv with
-8.0 measured 617 MB). Both cadquery-ocp 7.9 and 8.0 — OpenCASCADE 7.9 and 8.0
+(or `pip install -r requirements.txt`, which holds that one line). That is the
+OpenCASCADE kernel with Python bindings, but it is not small: it declares VTK
+as a hard dependency, and with VTK come matplotlib, numpy, pillow and eight
+more packages.
+Measured on 31.10.2026, cadquery-ocp 7.9.3.1.1 with VTK 9.6.2: **603 MB on disk
+in 14 packages** under Python 3.12, 614 MB under 3.14 (the files each package
+lists as installed). Both cadquery-ocp 7.9 and 8.0 — OpenCASCADE 7.9 and 8.0
 — work and are tested: the whole suite and the seven golden cases give the
 same numbers under both, and a STEP written by 8.0 differs from 7.9's only in
 how the colours are encoded, not in a single line of geometry (2026-09-22).
@@ -222,7 +230,7 @@ through — *Not stitched*, which fuses nothing, or a coarser fold slice angle.
 
 Everything lives in **`simple3d_config.json`**, beside the two `.il` files.
 Both halves read it: SKILL takes `allegro`, the window takes `gui`, the exporter
-takes `silkscreen` and `settings`.
+takes `silkscreen`, `soldermask` and `settings`.
 
 **Two files, and only one of them is yours.** The tracked
 `simple3d_config.json` holds the shipped defaults; beside it,
@@ -254,9 +262,11 @@ until you change that setting in the window.
 **If the shipped file is missing, or either file has been edited into invalid
 JSON, nothing is written back for the rest of the session**, even if you repair
 it while the window is open. The fields on screen are defaults at that point,
-not your settings, and saving them would overwrite the file you just fixed. The
-log names the settings file it read on every start, and the local one too when
-there is one.
+not your settings, and saving them would overwrite the file you just fixed. On
+every start the log names the settings file it read and, when there is one, the
+local file on top of it; when one of the two cannot be read, the log names that
+one and why, instead. A local file that does not exist yet is not a problem:
+the window writes it the first time it closes.
 
 The keys worth setting by hand — the rest mirror controls in the window:
 
@@ -273,8 +283,8 @@ The keys worth setting by hand — the rest mirror controls in the window:
 | | `foldSliceAngle` | Arc per slice for a bend that has to be faceted (default `7.5`). Bends built as true cylinders ignore it. |
 | | `exposedCopper` | The *Exposed copper* checkbox: the pads' copper on the outer faces, as surfaces. Off by default. See *Exposed copper*. |
 | | `maskOpenings` | The *Mask openings* checkbox: the solder-mask openings as surfaces in the dielectric's colour — what the copper leaves of them when both are on. Off by default. See *Exposed copper*. |
-| | `exportFullBoard` | With a `Variants.lst` present, also write `<design>.json` — the whole board with variants ignored (`NO_STEP_EXPORT` still applies). See *What gets exported*. |
 | `settings` | `exportPads` | Whether the export **collects** the pads into the intermediate at all (on by default). Whether they are *drawn* is the checkbox, per build. Off saves the collection on a board where they are never wanted. |
+| | `exportFullBoard` | With a `Variants.lst` present, also write `<design>.json` — the whole board with variants ignored (`NO_STEP_EXPORT` still applies). See *What gets exported*. |
 | | `negativeLayers` | Stackup layers whose drawn shapes are **openings** rather than material, matched as a case-insensitive substring. Coverlay, soldermask and pastemask are drawn that way by convention; stiffener, adhesive and epoxy are the opposite. Add a layer here if its bodies come out inverted — and **take one out** if a board draws it as material: Allegro's 3D Canvas guide says a coverlay is read as negative and that *"coverlays specified as positive shapes are not rendered in 3D canvas"*, so such a board exists and Allegro's own 3D just omits the layer. The log names the layer when its openings leave nothing of it in a zone. Decided at export time, so changing this needs a re-export. |
 | `silkscreen` | `top` / `bottom` | Which Allegro layers are **collected** — see *Silkscreen*. |
 | `soldermask` | `top` / `bottom` | Which layers hold **drawn mask openings** — a line or a shape there exposes the copper under it, computed at export. `BOARD GEOMETRY` and `PACKAGE GEOMETRY / SOLDERMASK_*` by default; add `MANUFACTURING/SOLDERMASK_*` or a site layer if your footprints draw their openings there. See *Exposed copper*. |
@@ -476,7 +486,10 @@ as they are to Windows itself. An exact match is always preferred.
 * One **part** per distinct STEP model, named after the model file. Ten
   identical resistors cost one solid, not ten.
 * The model parts sit **directly** under the two groups, with no per-refdes
-  wrapper: each entry is an instance carrying its file's own name.
+  wrapper: each entry is an instance of its model's part. The part (the STEP
+  PRODUCT) carries the file's name; the instance itself carries only the
+  label OpenCASCADE writes for it (`=>[0:1:1:3]` and the like), so a CAD tree
+  that names instances by their own label shows those.
 * **Every top-level node carries the board name**, never a bare `PCB` or
   `symbols_top`, so importing several boards into one CAD session cannot let one
   board's part or group silently substitute another's.
@@ -675,8 +688,11 @@ pins are mask-defined and 101 are covered.
 **Vias, the same way.** Every via is a row like a pin's, with its padstack in
 the library, so an untented via — one whose padstack has a mask opening —
 shows its ring, and a tented one draws nothing and costs a row in the JSON.
-Cadence's demo board tents none: 1242 vias, 2484 rings; the user's boards tent
-all of theirs.
+Cadence's demo board tents none: 1242 vias, 2484 rings. Of the user's eight
+boards six tent every via; circle-A0 leaves 2 of its 23 open (padstack
+`VIA_T_B_06X11_NO_SM`), and 5988-a1's 16 are mill-tab holes
+(`MILLTAB_HOLE_0P6`) with an opening on both sides (their exports of
+28.10.2026).
 
 **Clipped at the board's edge.** A pad that reaches past the outline or over a
 cutout — a mouse-bite hole standing on the edge, a slot the outline runs
@@ -1032,7 +1048,10 @@ they would collide), `--no-silkscreen`, `--no-silk-top`, `--no-silk-bottom`,
 `--ignore-soldermask`, `--flat` (do not fold), `--fold-anchor X,Y|auto`,
 `--fold-neutral K`, `--fold-slice-angle DEG`, `--exposed-copper`, `--mask-openings`,
 `--board-mode {solid,layers,inspect}`, `--no-minimize`, `--legacy-color`,
-`--quiet`. Exit code 0 on success, 1 on error.
+`--quiet`. Exit code 0 on success; 2 when the command line itself is rejected
+(an unknown flag, a missing argument, a value of the wrong kind or not among
+the choices - Python's argparse says why and stops); 1 on any other error,
+a build that fails included.
 
 ## What is where
 
@@ -1050,6 +1069,7 @@ stepbuilder/
   settings.py    the settings pair: shipped defaults + the local file, merged key by key
   stackup.py     the stackup arithmetic: z from thickness, masks out, stackups on one datum, zone faces
   board.py       the board body: outline, zones, layers, cutouts, the rim faces
+  surface.py     the board's two outer faces at a point: where a part stands and a pad, its mask window and a drawn opening lie
   legend.py      the silkscreen legend, and the arc convention settled by the board's own areas
   pads.py        the copper pads: which face a pin reaches, its figure as one shared face, placed per pin
   models.py      component models: the folder index, one read per model, the placement transform
@@ -1151,19 +1171,26 @@ Python этого релиза (старый `stepbuilder` увидел бы о�
 
 ## Установка
 
+**Плата должна быть в миллиметрах** (в Allegro *Setup → Design Parameters →
+Design → User Units*). Экспортёр пишет числа платы так, как их держит Allegro,
+а Python-половина читает каждое из них как миллиметры и ничего не переводит.
+
 **1. Python 3.10+** с python.org, с галочкой *Add Python to PATH*. `tkinter`
 входит в стандартный установщик под Windows.
 
 **2. Одна зависимость:**
 
 ```
-pip install "cadquery-ocp>=7.7,<9"
+pip install "cadquery-ocp>=7.9,<9"
 ```
 
-Это ядро OpenCASCADE с привязками к Python, и это весь `requirements.txt` — но
-он немаленький: вместе с VTK, который объявлен жёсткой зависимостью, все трое
-занимают на диске **около 470 МБ** с версией 7.9 (venv с 8.0 намерен в
-617 МБ). Работают и проверены обе — cadquery-ocp 7.9 и 8.0, то есть
+(или `pip install -r requirements.txt`, где записана ровно эта строка). Это
+ядро OpenCASCADE с привязками к Python, но оно немаленькое: VTK объявлен его
+жёсткой зависимостью, а вместе с VTK приходят matplotlib, numpy, pillow и ещё
+восемь пакетов.
+Замер 31.10.2026, cadquery-ocp 7.9.3.1.1 с VTK 9.6.2: **603 МБ на диске в 14
+пакетах** под Python 3.12 и 614 МБ под 3.14 (по файлам, которые каждый пакет
+записал как установленные). Работают и проверены обе — cadquery-ocp 7.9 и 8.0, то есть
 OpenCASCADE 7.9 и 8.0: весь набор тестов и семь золотых случаев дают под ними
 одни и те же числа, а STEP, записанный 8.0, отличается от записанного 7.9
 только кодированием цветов, ни одной строкой геометрии (2026-09-22). С
@@ -1277,7 +1304,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **Silkscreen layers** | Галочка на каждый слой, *найденный в этом JSON*, с числом полигонов. Снимите и нажмите Generate снова — повторный экспорт не нужен. |
 | **Legend from: drawn layers / AUTOSILK** | Рядом с *All* и *None*. Нарисованные слои шелкографии (по умолчанию) или их копия AUTOSILK, сделанная Allegro: одно из двух, не оба. Сторона без AUTOSILK остаётся с нарисованными слоями. Строки, которые выбор не берёт, становятся серыми. См. *Шелкография*. |
 | **Fold flex bends** | Сгибать по областям сгиба. Выключено — плата экспортируется плоской. На плате без сгибов ничего не меняет. |
-| **Exposed copper (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на два микрона над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего, незакрытое переходное отверстие — своё кольцо, закрытое — ничего. Вскрытия, нарисованные на слоях `SOLDERMASK`, добавляют медь под собой — одна плоская деталь на сторону. Площадка на кромке платы или над вырезом обрезается по плате. Нужен JSON с `format_version` 12 (11 не несёт отверстий и меди под нарисованными вскрытиями, 10 рисует медь целиком, более старый — ничего; лог говорит, что именно). Цвет — квадратика *Copper*, живого при любой сшивке, пока отмечена эта галка. См. *Открытая медь*. |
+| **Exposed copper (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на два микрона над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего, незакрытое переходное отверстие — своё кольцо, закрытое — ничего. Вскрытия, нарисованные на слоях `SOLDERMASK`, добавляют медь под собой — одна плоская деталь на сторону. Площадка на кромке платы или над вырезом обрезается по плате. Нужен JSON с `format_version` 12 (11 не несёт переходных отверстий и меди под нарисованными вскрытиями, 10 рисует медь целиком, более старый — ничего; лог говорит, что именно). Цвет — квадратика *Copper*, живого при любой сшивке, пока отмечена эта галка. См. *Открытая медь*. |
 | **Mask openings (as surfaces)** | Вскрытия паяльной маски поверхностями цвета диэлектрика (`base` из *layerColors*): вскрытие каждого вывода и переходного отверстия из его падстека, вхождениями как площадки, и каждое вскрытие, нарисованное на слоях `SOLDERMASK` — линия, фигура или прямоугольник, текст. Вместе с *Exposed copper* — то, что от вскрытия оставляет медь: кольцо вокруг copper-defined площадки, текстолит, который показывает прорезанная в маске надпись; сами по себе — вскрытия целиком. Окна на кромке платы или над вырезом обрезаются по плате, как площадки. Нужен JSON с `format_version` 11 для вскрытий падстеков, 12 для нарисованных. Цвет — квадратика *Base*, живого при любой сшивке, пока отмечена эта галка. См. *Открытая медь*. |
 | **Compact STEP** | Убирает параметрические кривые на поверхностях — примерно вдвое меньший файл при той же геометрии. |
 | **Build the full-board file too** | Когда в очереди папка — собирать ли вместе с вариантами `<плата>.json`, всю плату без учёта вариантов (пишет его `settings.exportFullBoard`). Файл, выбранный напрямую, собирается всегда: выбор и есть выбор. |
@@ -1295,8 +1322,8 @@ stitched*, которая ничего не сшивает, или более г
 ## Настройки
 
 Всё лежит в **`simple3d_config.json`** рядом с двумя `.il`. Читают обе
-половины: SKILL берёт секцию `allegro`, окно — `gui`, экспортёр — `silkscreen`
-и `settings`.
+половины: SKILL берёт секцию `allegro`, окно — `gui`, экспортёр — `silkscreen`,
+`soldermask` и `settings`.
 
 **Файлов два, и ваш из них только один.** Отслеживаемый `simple3d_config.json`
 содержит поставляемые умолчания; рядом с ним **`simple3d_config.local.json`**
@@ -1330,7 +1357,9 @@ JSON, ничего не записывается до конца сессии**,
 открытом окне. Поля на экране в этот момент содержат значения по умолчанию, а не
 ваши настройки, и их запись затёрла бы только что исправленный файл. Лог при
 каждом старте называет прочитанный файл настроек, а если есть локальный, то и
-его.
+его. Если один из двух не читается, лог вместо этого называет его и причину.
+Отсутствие локального файла ошибкой не считается: окно создаёт его при первом
+закрытии.
 
 Ключи, которые имеет смысл править руками, — остальные повторяют элементы окна:
 
@@ -1347,8 +1376,8 @@ JSON, ничего не записывается до конца сессии**,
 | | `foldSliceAngle` | Угол дольки для сгиба, который пришлось гранить (по умолчанию `7.5`). Сгибы, построенные истинными цилиндрами, его игнорируют. |
 | | `exposedCopper` | Галочка *Exposed copper*: медь площадок на наружных гранях, поверхностями. По умолчанию выключено. См. *Открытая медь*. |
 | | `maskOpenings` | Галочка *Mask openings*: вскрытия маски поверхностями цвета диэлектрика — вместе с медью то, что она от них оставляет. По умолчанию выключено. См. *Открытая медь*. |
-| | `exportFullBoard` | Когда есть `Variants.lst`, писать ещё и `<плата>.json` — всю плату без учёта вариантов (`NO_STEP_EXPORT` продолжает действовать). См. *Что попадает в экспорт*. |
 | `settings` | `exportPads` | **Собирать** ли площадки в интермедиат вообще (по умолчанию да). *Рисовать* ли их — галочка, решается на каждой сборке. Выключение экономит сбор на плате, где они не нужны никогда. |
+| | `exportFullBoard` | Когда есть `Variants.lst`, писать ещё и `<плата>.json` — всю плату без учёта вариантов (`NO_STEP_EXPORT` продолжает действовать). См. *Что попадает в экспорт*. |
 | | `negativeLayers` | Слои стека, чьи нарисованные фигуры — **окна**, а не материал; сравнение по подстроке без учёта регистра. Покрытие, маска и паста рисуются так по соглашению; стиффенер, клей и эпоксид — наоборот. Добавьте слой сюда, если его тела получаются инвертированными, — и **уберите**, если на плате он нарисован материалом: руководство по 3D Canvas говорит, что коверлей читается как негатив и что *«coverlays specified as positive shapes are not rendered in 3D canvas»*, то есть такие платы бывают и сам Allegro тогда слой просто не рисует. Лог называет слой, когда его окна не оставляют от него ничего в зоне. Решается при экспорте, поэтому смена требует переэкспорта. |
 | `silkscreen` | `top` / `bottom` | Какие слои Allegro **собираются** — см. *Шелкография*. |
 | `soldermask` | `top` / `bottom` | На каких слоях лежат **нарисованные вскрытия маски** — линия или фигура там открывает медь под собой, считается при экспорте. По умолчанию `BOARD GEOMETRY` и `PACKAGE GEOMETRY / SOLDERMASK_*`; добавьте `MANUFACTURING/SOLDERMASK_*` или свой слой, если посадочные места рисуют вскрытия там. См. *Открытая медь*. |
@@ -1551,7 +1580,10 @@ Allegro, где его набирают руками, а файл на диск�
 * Одна **деталь** на каждую уникальную STEP-модель, названа по имени файла.
   Десять одинаковых резисторов стоят одного тела, а не десяти.
 * Детали моделей лежат **напрямую** в двух группах, без обёртки на каждый
-  рефдес: каждый элемент — вхождение с именем своего файла.
+  рефдес: каждый элемент — вхождение детали своей модели. Имя файла несёт
+  деталь (PRODUCT в STEP), а у самого вхождения только метка, которую пишет
+  OpenCASCADE (`=>[0:1:1:3]` и подобные), поэтому дерево CAD, которое
+  называет вхождения их собственной меткой, покажет именно её.
 * **Имя платы несёт каждый узел верхнего уровня**, а не просто `PCB` или
   `symbols_top`, поэтому импорт нескольких плат в одну сессию CAD не даёт детали
   или группе одной платы подменить другую.
@@ -1756,7 +1788,10 @@ Allegro 25.1 не даёт ни одного многоугольника для
 у вывода, с его падстеком в библиотеке, так что незакрытое отверстие — у
 падстека которого есть вскрытие маски — показывает своё кольцо, а закрытое не
 рисуется и стоит одной строки в JSON. Демо-плата Cadence не закрывает ни
-одного: 1242 отверстия, 2484 кольца; на платах пользователя закрыты все.
+одного: 1242 отверстия, 2484 кольца. Из восьми плат пользователя шесть
+закрывают все переходные; у circle-A0 открыты 2 из 23 (падстек
+`VIA_T_B_06X11_NO_SM`), а 16 переходных 5988-a1 это отверстия mill-tab
+(`MILLTAB_HOLE_0P6`) со вскрытием с обеих сторон (выгрузки 28.10.2026).
 
 **Обрезка по кромке платы.** Площадка, выходящая за контур или лежащая над
 вырезом — отверстие mouse-bite на самой кромке, паз, через который проходит
@@ -2114,7 +2149,10 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # все вариа
 `--ignore-soldermask`, `--flat` (не сгибать), `--fold-anchor X,Y|auto`,
 `--fold-neutral K`, `--fold-slice-angle DEG`, `--exposed-copper`, `--mask-openings`,
 `--board-mode {solid,layers,inspect}`, `--no-minimize`, `--legacy-color`,
-`--quiet`. Код возврата 0 при успехе, 1 при ошибке.
+`--quiet`. Код возврата 0 при успехе; 2, когда отвергнута сама командная
+строка (неизвестный флаг, нет аргумента, значение не того вида или не из
+списка: argparse из Python называет причину и останавливается); 1 при любой
+другой ошибке, в том числе при неудачной сборке.
 
 ## Что где лежит
 
@@ -2132,6 +2170,7 @@ stepbuilder/
   settings.py    пара настроек: штатные значения + локальный файл, слитые по ключам
   stackup.py     арифметика стека: z из толщин, маски долой, стеки на одном уровне, грани зон
   board.py       тело платы: контур, зоны, слои, вырезы, грани торца
+  surface.py     две наружные грани платы в точке: где стоит деталь и лежат площадка, её окно маски и нарисованное вскрытие
   legend.py      шелкография, и соглашение о дугах, установленное по площадям самой платы
   pads.py        медь площадок: какой грани достигает вывод, его фигура одной общей гранью, вхождение на каждый вывод
   models.py      модели компонентов: индекс папок, одно чтение на модель, преобразование установки

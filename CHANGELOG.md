@@ -11,6 +11,30 @@ to use the tool.
 
 ---
 
+- **2026-11-01** — **Documentation made true to the code** (twenty-eight
+  review findings, round 123). `requirements.txt` now exists, as README said;
+  the dependency range is the tested one, `cadquery-ocp>=7.9,<9`; its size is
+  measured (603 MB in 14 packages, not "three, about 470 MB"). The command
+  line's exit code 2 for a rejected command line is documented (measured).
+  The board must be in millimetres, now said in README too. The *Compact
+  STEP* checkbox is labelled for what it does, "no surface curves": every
+  model is one shared part whether it is ticked or not. `exportFullBoard`
+  stands in the `settings` row of the key table, the exporter's sections are
+  all named, the via-tenting sentence follows the boards (circle-A0 leaves 2
+  of 23 open, 5988-a1's 16 mill-tab holes are open), and ARCHITECTURE's
+  counts are recounted. /
+  **Документация приведена в согласие с кодом** (двадцать восемь находок
+  ревью, раунд 123). Появился `requirements.txt`, о котором писал README;
+  диапазон зависимости сужен до проверенного, `cadquery-ocp>=7.9,<9`; её
+  размер замерен (603 МБ в 14 пакетах, а не «три пакета, около 470 МБ»). Код
+  выхода 2 для отвергнутой командной строки описан (замерено). Требование
+  миллиметров теперь есть и в README. Галочка *Compact STEP* подписана по
+  тому, что делает, «no surface curves»: общая деталь на модель получается
+  всегда. `exportFullBoard` стоит в строке секции `settings`, все секции
+  экспортёра названы, фраза о закрытых переходных следует платам (у circle-A0
+  открыты 2 из 23, у 5988-a1 открыты 16 отверстий mill-tab), числа
+  ARCHITECTURE пересчитаны.
+
 - **2026-10-31** — **The log names the components a missing model leaves
   out.** It named the model file once ("could not find NOT_THERE.step") and
   the summaries counted files, so when a model was missing for several

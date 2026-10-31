@@ -1,0 +1,4 @@
+# The one dependency of the Python half (stepbuilder): the OpenCASCADE
+# kernel with Python bindings. 7.9 and 8.0 are the versions tested; 9 is
+# kept out until it is (8.0 renamed bindings 7.9 had). See README, Install.
+cadquery-ocp>=7.9,<9

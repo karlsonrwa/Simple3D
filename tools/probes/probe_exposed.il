@@ -1,12 +1,17 @@
 ;=====================================================================
 ;  probe_exposed.il - DIAGNOSTIC ONLY. Reads the design, changes nothing.
 ;
-;  s3dCollectExposed's own sweep, opening by opening and object by object,
-;  with the exporter's find filter and visibility - what was selected in
-;  each opening's box, what s3dCopperPolys made of each object, and the
-;  area the AND and the ANDNOT leave. probe_openings answers "did the
-;  sweep see anything"; this answers "which object's copper went missing",
-;  which is the question a pour that vanished asks.
+;  Opening by opening and object by object, with the exporter's find filter
+;  and visibility - what was selected in each opening's box, what
+;  s3dCopperPolys made of each object, and the area the AND and the ANDNOT
+;  leave. probe_openings answers "did a selection see anything"; this
+;  answers "which object's copper went missing", which is the question a
+;  pour that vanished asks.
+;
+;  NOT s3dCollectExposed's own sweep (review 23.10.2026, R4-9: this header
+;  said it was): the copper is selected per opening box by s3dSelectInBox,
+;  where the exporter has swept the side once with axlAddSelectAll and
+;  matched by s3dBoxesMeet since 2026-09-14. The filter is the exporter's.
 ;
 ;  Needs the exporter loaded:
 ;    python tools/run_probe.py --with-exporter tools/probes/probe_exposed.il s3dProbeExposed BOARD.brd

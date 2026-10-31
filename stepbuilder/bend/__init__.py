@@ -20,14 +20,25 @@ What a bend is, from the rigid-flex documentation and the probe data:
   IDX_BEND_TYPE_INFO, plus `axlGetBendInnerRadius` for the radius alone.
 
 **How the fold is built.** A bend divides the board into a part that stays put
-and a part that moves. The moving part is carried by one rigid transform; the
-strip between them is cut into slices, each of which is also rigid but hinged a
-little further round the arc, so the curve is faceted rather than exact. This is
-the standard sheet-metal approximation and it is what makes the whole thing
-possible in OpenCASCADE at all: OCC can transform a solid, and it can cut one,
-but it has no operation that deforms a solid along a curve.
+and a part that moves. The moving part is carried by one rigid transform. The
+strip between them is built in the first of four ways that works (apply.py):
 
-Two details make the faceting hold together:
+1. **Revolved** (`_revolve_strip`): when the strip is the same shape all
+   along the bend (a straight tail crossing it, the ordinary case), its
+   cross-section turned about the bend axis - true cylinders, exact.
+2. **Wrapped** (`_map_strip`): the general construction, for what the revolve
+   refuses (relief notches at the ends of the bend line, a zone that stops
+   inside the bend area, a hole) - the outline wrapped onto the cylinder,
+   still true cylindrical faces.
+3. **Faces with no volume** (`_map_faces`, round 104): a flat legend or the
+   drawn mask openings, put on the cylinder of their own height.
+4. **Faceted**, the fallback: the strip cut into slices, each rigid but hinged
+   a little further round the arc. OCC can transform a solid and cut one, but
+   it has no operation that deforms a solid along a curve, so this is what is
+   left when neither construction above gives a valid solid. The log names
+   the bends built this way and why.
+
+Two details make the faceting, when it is used, hold together:
 
 - **Slice j is hinged at its own leading edge and rotated by the angle the arc
   has reached there.** That places every slice's leading edge exactly on the
@@ -38,9 +49,9 @@ Two details make the faceting hold together:
   bend and an overlap on the inside; without the deliberate overlap, consecutive
   slices would touch along a line and the fuse would not produce a solid.
 
-The alternative - deriving the whole bend as a revolution - only works when the
-plan-view outline of the bend area is a rectangle, which a flex tail's is not
-once it has been trimmed to the design outline.
+A revolution alone covers only a strip that is the same shape all along its
+bend; a real flex tail often is not one (its relief notches), which is why
+the wrap (2) comes before the facets.
 """
 
 from __future__ import annotations

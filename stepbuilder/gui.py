@@ -453,7 +453,7 @@ class StepBuilderApp(tk.Tk):
         # Not "Minimise file size": the silk row already has a "minimum file
         # size" and the two do different things - that one drops the ink's
         # thickness, this one shares geometry and skips surface curves.
-        ttk.Checkbutton(checks, text="Compact STEP (reuse component geometry)",
+        ttk.Checkbutton(checks, text="Compact STEP (no surface curves)",
                         variable=self.minimize).pack(side="left")
         # Only meaningful with a folder queued: it decides whether the batch
         # includes the whole-board file. Pointed straight at that file, the
@@ -892,10 +892,14 @@ class StepBuilderApp(tk.Tk):
                      dated_name=False, output_dir=None) -> None:
         """Prefill from the Allegro launcher.
 
-        Explicit launch arguments ALWAYS win over paths remembered from a
-        previous session: when Simple 3D is run for a new board, its JSON and
-        output folder must replace whatever the config file held, otherwise the
-        window would show the previous board's paths (and build it by mistake).
+        Explicit launch arguments win over paths remembered from a previous
+        session, for what they name: when Simple 3D is run for a new board -
+        the launcher in Allegro always passes --json-dir and --output-dir - its
+        JSON and output folder replace whatever the config file held, otherwise
+        the window would show the previous board's paths (and build it by
+        mistake). A launch that names a JSON but no output folder keeps the
+        remembered output folder, and takes the JSON's own folder only when
+        none is remembered (review 23.10.2026, R6-16: this said ALWAYS).
 
         This method only fills the visible fields and logs what is queued. The
         actual job list is resolved from the JSON field when Generate is

@@ -2,10 +2,16 @@
 ;  probe_openings.il - DIAGNOSTIC ONLY. Reads the design, changes nothing.
 ;
 ;  The drawn mask openings of the TOP side one by one - what each is (its
-;  objType, width, box), what the exporter's own pieces make of it
-;  (s3dPolysFromDbid, s3dSelectInBox with the exporter's visibility set-up,
-;  s3dCopperPolys) and what the AND leaves - so an opening that exposes no
-;  copper can be told apart from one the sweep missed.
+;  objType, width, box), what s3dPolysFromDbid and s3dCopperPolys make of it
+;  and what the AND leaves - so an opening that exposes no copper can be told
+;  apart from one a selection missed.
+;
+;  NOT the exporter's own selection (review 23.10.2026, R4-9: this header said
+;  it was). The copper is selected per opening, in its box, by s3dSelectInBox
+;  with the find filter below, which has no "lines"; s3dCollectExposed has
+;  swept the side once with axlAddSelectAll and matched by s3dBoxesMeet since
+;  2026-09-14, with "lines" in its filter. Its answers are about this
+;  selection; a difference from the export is a question for both.
 ;
 ;  Every line is drained to the console at once, and the runner writes the
 ;  console straight to its file: a session that hangs still says where.

@@ -53,7 +53,7 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
 
   The last two need the stackup layers: an intermediate from an older version
   says so in the log and falls back to one solid. Both use the swatch row below
-  — copper, base, coverlay, adhesive, stiffener, soldermask. `Solid` greys the
+  — copper, base, coverlay, adhesive, stiffener, soldermask, other. `Solid` greys the
   row, all but the two colours its surfaces are drawn in: the copper swatch is
   live while *Exposed copper* is ticked, the base swatch while *Mask openings*
   is. **Reset colors** puts Allegro's material colors back on the live swatches.
@@ -88,8 +88,9 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   Allegro's Auto Silkscreen copy of them — one or the other, never both; the
   rows a choice leaves out are greyed.
 
-**Compact STEP (reuse component geometry)** — one shared part per model, and no
-parametric surface curves.
+**Compact STEP (no surface curves)** — the parametric curves on the surfaces
+are left out: about half the file, the same geometry. Every model is one
+shared part whether it is ticked or not.
 
 ## The result
 
@@ -134,7 +135,7 @@ builds it.
   your own `pcbenv\env`, or from the folder `simple3d.il` was loaded from; the
   console says which.
 - Python 3.10 or newer and `cadquery-ocp` (OpenCASCADE; 7.9 and 8.0 both work —
-  `pip install "cadquery-ocp>=7.7,<9"`) are required; the script
+  `pip install "cadquery-ocp>=7.9,<9"`) are required; the script
   checks the interpreter before opening the window, and the console names the
   interpreter that answered. If installing something else (node.js does this)
   puts a second Python ahead of yours on PATH, pin the one you meant by full
@@ -204,7 +205,7 @@ builds it.
 
   Двум последним нужны слои стека: интермедиат от старой версии их не несёт —
   лог об этом скажет и соберёт одно тело. Обе пользуются рядом квадратиков ниже
-  — медь, база, покров, адгезив, упрочнитель, паяльная маска. В `Solid` ряд
+  — медь, база, покров, адгезив, упрочнитель, паяльная маска, прочее. В `Solid` ряд
   гаснет, кроме двух цветов, которыми рисуются поверхности: квадратик меди живой,
   пока отмечена *Exposed copper*, квадратик базы — пока *Mask openings*.
   **Reset colors** возвращает цвета материалов Allegro живым квадратикам.
@@ -242,8 +243,9 @@ builds it.
   Silkscreen в Allegro. Берётся одно из двух; строки, которые выбор не берёт,
   становятся серыми.
 
-**Compact STEP (reuse component geometry)** — одна общая деталь на модель и
-отказ от поверхностных кривых.
+**Compact STEP (no surface curves)** — параметрические кривые на поверхностях
+не пишутся: файл примерно вдвое меньше, геометрия та же. Общая деталь на
+модель получается в любом случае, с галочкой и без.
 
 ## Результат
 
@@ -288,7 +290,7 @@ builds it.
   `set SIMPLE3D_DIR = …` в вашем `pcbenv\env` либо из папки, откуда загружен
   `simple3d.il`; консоль говорит, что сработало.
 - Нужен Python 3.10 или новее и пакет `cadquery-ocp` (OpenCASCADE; работают и
-  7.9, и 8.0 — `pip install "cadquery-ocp>=7.7,<9"`); перед
+  7.9, и 8.0 — `pip install "cadquery-ocp>=7.9,<9"`); перед
   запуском GUI скрипт проверяет интерпретатор и печатает в консоль тот, который
   ответил. Если установка чего-то ещё (так делает node.js) поставила второй
   Python впереди вашего в PATH — закрепите нужный по полному пути в секции
