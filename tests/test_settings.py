@@ -76,6 +76,7 @@ check("no folders, no layers off, normal window",
       s.step_dirs == [] and s.layers_off == set() and s.window_geometry is None
       and s.window_state == "normal")
 check("flat height default", s.silk_flat_height == DEFAULT_FLAT_HEIGHT)
+check("the legend from the drawn layers (round 112)", s.silk_source == "drawn", s.silk_source)
 check("rim is Same as board", s.rim_choice == RIM_SAME)
 s2, _, _ = load_gui_settings(pair("nope", {"gui": "not an object"}))
 check("a section that is not an object reads as empty", s2 == s)
@@ -123,6 +124,12 @@ check("zoomed is remembered", s.window_state == "zoomed")
 check("slice angle at the bound is accepted", s.fold_slice_angle == 0.5)
 s, _, _ = load_gui_settings(pair("g3", {"gui": {"foldAnchor": [1], "foldNeutral": 1.5}}))
 check("a one-element anchor is no anchor", s.fold_anchor is None)
+s, _, _ = load_gui_settings(pair("g3s", {"gui": {"silkscreenSource": " AutoSilk "}}))
+check("the legend source in any case and padding, spelled as the table spells it",
+      s.silk_source == "autosilk", s.silk_source)
+s, _, _ = load_gui_settings(pair("g3t", {"gui": {"silkscreenSource": "both"}}))
+check("a legend source that is neither falls back to the drawn layers", s.silk_source == "drawn",
+      s.silk_source)
 check("neutral above 1 -> default", s.fold_neutral == DEFAULT_NEUTRAL_FACTOR)
 
 print("\n[5] what a save writes, and when it writes nothing")

@@ -24,6 +24,8 @@
         "silkscreenFlatHeight": 0.001,
         "_comment_silkscreenLayersOff": "Silkscreen layers left out of the build, by name, as ticked in the GUI's Silkscreen layers panel. Exclusions rather than inclusions on purpose: a layer that turns up on a board for the first time is drawn, instead of going missing with nothing on screen to say why. Empty means every collected layer is built.",
         "silkscreenLayersOff": [],
+        "_comment_silkscreenSource": "Where the legend comes from: 'drawn' - the silkscreen layers as drawn (PACKAGE GEOMETRY, REF DES, BOARD GEOMETRY ...), MANUFACTURING/AUTOSILK_* left out; or 'autosilk' - each side's AUTOSILK alone, or its drawn layers where it has none. AUTOSILK is Allegro's Auto Silkscreen copy of the drawn layers, trimmed at the pads, so the two together are the legend twice; one or the other, as Allegro's 3D Canvas offers it. Both are collected, so switching needs no re-export. The layer ticks of silkscreenLayersOff apply on top. GUI: Legend from (drawn layers / AUTOSILK), beside All / None.",
+        "silkscreenSource": "drawn",
         "minimizeFileSize": true,
         "_comment_buildFullBoard": "Whether a queued FOLDER also builds the whole-board file (settings.exportFullBoard writes it). Off leaves the variants alone and skips it; a file you point at directly is always built, since choosing it is choice enough. GUI: Build the full-board file too.",
         "buildFullBoard": true,

@@ -11,6 +11,33 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **The legend comes from the drawn layers or from AUTOSILK,
+  never both.** Allegro's Auto Silkscreen copies the silkscreen layers onto
+  MANUFACTURING/AUTOSILK and trims the copy at the pads, and the default config
+  collects both, so the legend was built twice: on variants_test-b0 every
+  outline as two coincident bodies (AUTOSILK an exact copy of PACKAGE GEOMETRY,
+  9 of 9 polygons on top, 40 of 40 below), on Cadence's demo R45, R47 and C69
+  in two places at once. *Legend from*, beside All / None in the window
+  (`silkscreenSource`, `--silk-source`), picks one, as Allegro's own 3D Canvas
+  does: the drawn layers by default, or each side's AUTOSILK, a side without
+  one keeping its drawn layers. The rows a choice leaves out are greyed, their
+  ticks kept; both sets stay collected, so switching needs no re-export.
+  Fifteen rows added to the mutation table (384). /
+  **Легенда берётся из нарисованных слоёв или из AUTOSILK, но не из обоих.**
+  Команда Allegro Auto Silkscreen копирует слои шелкографии в
+  MANUFACTURING/AUTOSILK и подрезает копию у площадок, а конфиг по умолчанию
+  собирает оба набора, поэтому легенда строилась дважды. У variants_test-b0
+  каждый контур лежал двумя совпадающими телами (AUTOSILK точно повторял
+  PACKAGE GEOMETRY: сверху 9 многоугольников из 9, снизу 40 из 40), а на
+  демо-плате Cadence обозначения R45, R47 и C69 стояли в двух местах сразу.
+  Переключатель *Legend from* рядом с All и None (`silkscreenSource`,
+  `--silk-source`) выбирает одно, как окно 3D Canvas самого Allegro: по
+  умолчанию нарисованные слои, или AUTOSILK каждой стороны, а сторона без него
+  остаётся с нарисованными слоями. Строки, которые выбор не берёт, становятся
+  серыми, их галочки сохраняются; оба набора по-прежнему собираются, поэтому
+  переключение не требует повторного экспорта. В таблицу мутаций добавлено
+  пятнадцать строк (384).
+
 - **2026-10-30** — **A cross-hatched shape on the silkscreen is drawn as its
   hatching.** Allegro hands a hatched shape over as solid unless asked, and the
   export never asked: a hatched 4 mm square came out as 16 mm² of ink where

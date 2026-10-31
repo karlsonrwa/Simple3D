@@ -14,15 +14,22 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable
 
+from ..build import SILK_SOURCES, legend_layers
+
 
 class LayersPanel(ttk.LabelFrame):
     """The panel. `vars` is the tick per layer, `rows` the (layer, var, box)
-    triples per side, `buttons` the All/None pair (the window greys them with
-    the rest of the silk group). *side_wanted* says whether a side is on."""
+    triples per side, `buttons` the All/None pair and the two legend-source
+    choices (the window greys them with the rest of the silk group).
+    *side_wanted* says whether a side is on; *source* holds where the legend
+    comes from (build.SILK_SOURCES), *on_source* is called when it changes."""
 
-    def __init__(self, master, *, side_wanted: Callable[[str], bool], **kw) -> None:
+    def __init__(self, master, *, side_wanted: Callable[[str], bool],
+                 source: tk.StringVar | None = None,
+                 on_source: Callable[[], None] | None = None, **kw) -> None:
         super().__init__(master, text="Layers", padding=4, **kw)
         self._side_wanted = side_wanted
+        self.source = source if source is not None else tk.StringVar(value=SILK_SOURCES[0])
         self.vars: dict[str, tk.BooleanVar] = {}
         # Which side each checkbox belongs to, so switching a side off can grey
         # its layers out WITHOUT changing them - the ticks are still what gets
@@ -66,7 +73,20 @@ class LayersPanel(ttk.LabelFrame):
         none_btn = ttk.Button(layer_buttons, text="None", width=6,
                               command=lambda: self.set_all(False))
         none_btn.pack(side="left", padx=(4, 0))
-        self.buttons = [all_btn, none_btn]
+        # Where the legend comes from: the layers as drawn, or Allegro's
+        # AUTOSILK copy of them (Auto Silkscreen, trimmed at the pads) - one or
+        # the other, as Allegro's own 3D Canvas offers it; together they are
+        # the legend twice (review 23.10.2026, R2-7). On the All/None row, not
+        # a row of its own: the window has no height to spare.
+        ttk.Label(layer_buttons, text="Legend from").pack(side="left", padx=(12, 4))
+        drawn_btn = ttk.Radiobutton(layer_buttons, text="drawn layers", value=SILK_SOURCES[0],
+                                    variable=self.source, command=on_source)
+        drawn_btn.pack(side="left")
+        auto_btn = ttk.Radiobutton(layer_buttons, text="AUTOSILK", value=SILK_SOURCES[1],
+                                   variable=self.source, command=on_source)
+        auto_btn.pack(side="left", padx=(4, 0))
+        self.source_buttons = [drawn_btn, auto_btn]
+        self.buttons = [all_btn, none_btn, *self.source_buttons]
 
 
     def refresh(self, found: dict[str, dict[str, int]], layers_off: set[str]) -> None:
@@ -130,25 +150,31 @@ class LayersPanel(ttk.LabelFrame):
         return {name for name, var in self.vars.items() if not var.get()}
 
     def update_sides(self) -> None:
-        """Grey the rows of a side that is off. State only - the variables are
-        untouched, so the ticks come back exactly as they were."""
+        """Grey the rows of a side that is off, and the rows the legend source
+        leaves out on a side that is on - AUTOSILK under "drawn layers", the
+        drawn layers under "AUTOSILK" where the side has one. State only - the
+        variables are untouched, so the ticks come back exactly as they were."""
         for side, rows in self.rows.items():
-            state = "normal" if self._side_wanted(side) else "disabled"
-            for _layer, _var, box in rows:
-                box.configure(state=state)
+            used = legend_layers((layer for layer, _var, _box in rows), self.source.get())
+            on = self._side_wanted(side)
+            for layer, _var, box in rows:
+                box.configure(state="normal" if on and layer in used else "disabled")
 
     def set_all(self, state: bool) -> None:
         """All / None, but only for sides that are switched on.
 
-        A greyed-out side keeps its ticks. Changing them from here would edit a
-        selection whose effect is not visible, and it is that same selection
-        which gets saved to the config.
+        A greyed-out side keeps its ticks, and so does a row the legend source
+        leaves out. Changing them from here would edit a selection whose effect
+        is not visible, and it is that same selection which gets saved to the
+        config.
         """
         for side, rows in self.rows.items():
             if not self._side_wanted(side):
                 continue
-            for _layer, var, _box in rows:
-                var.set(state)
+            used = legend_layers((layer for layer, _var, _box in rows), self.source.get())
+            for layer, var, _box in rows:
+                if layer in used:
+                    var.set(state)
 
 
     def grab_wheel(self, _event=None) -> None:

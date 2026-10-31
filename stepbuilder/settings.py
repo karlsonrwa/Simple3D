@@ -53,6 +53,8 @@ RIM_CUSTOM = "Custom..."
 # How the board body is built; the window pairs these with its labels. The
 # list itself is build.BOARD_MODES, which generate validates against.
 from .build import BOARD_MODES as BOARD_MODE_KEYS  # noqa: E402
+# Where the legend comes from; build.SILK_SOURCES is what generate validates.
+from .build import SILK_SOURCES  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -147,6 +149,7 @@ class GuiSettings:
     silk_flat: bool
     silk_flat_height: float
     layers_off: set[str]
+    silk_source: str
     minimize: bool
     build_full: bool
     board_mode: str
@@ -367,6 +370,9 @@ GUI_KEYS: tuple[Key, ...] = (
     # Exclusions rather than inclusions: a layer this build has never seen must
     # default to ON, or a layer that appears on a new board would go missing.
     Key("silkscreenLayersOff", "layers_off", None, _load_layers_off, sorted),
+    # Where the legend comes from: the drawn silkscreen layers, or Allegro's
+    # AUTOSILK copy of them - one or the other (review 23.10.2026, R2-7).
+    Key("silkscreenSource", "silk_source", SILK_SOURCES[0], choices=SILK_SOURCES),
     Key("minimizeFileSize", "minimize", True),
     Key("buildFullBoard", "build_full", True),
     Key("boardMode", "board_mode", None, _load_board_mode),

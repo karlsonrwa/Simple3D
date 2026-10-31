@@ -40,6 +40,7 @@ from .board import (  # noqa: F401 - re-exported
 from .errors import StepBuilderError  # noqa: F401 - re-exported
 # What one build is asked for (round 73, plan A8).
 from .build import BOARD_MODES, BuildOptions  # noqa: F401 - re-exported
+from .build import SILK_SOURCES, is_autosilk, legend_layers
 # The XCAF document and its writer (round 73, plan A7).
 from .stepdoc import StepDocument, _set_color  # noqa: F401 - re-exported
 # Component models (round 73, plan A6); re-exported, test_index imports
@@ -643,6 +644,25 @@ def _build_board(data: dict, stack: _Stack, fold, options: BuildOptions,
         shape_tool.AddComponent(main_assembly, pcb_label, TopLoc_Location(gp_Trsf()))
 
 
+def _pick_legend_source(polygons: list, source: str, side: str, log: LogFn) -> list:
+    """One side's polygons from the layers its legend source takes
+    (build.legend_layers), with a word for what is left out. Nothing is said
+    on a side with no AUTOSILK under "drawn": there is nothing to choose."""
+    used = legend_layers((p.get("layer") for p in polygons), source)
+    kept = [p for p in polygons if p.get("layer") in used]
+    left = len(polygons) - len(kept)
+    if source == "autosilk":
+        if any(is_autosilk(p.get("layer")) for p in polygons):
+            log(f"{side}: the legend from AUTOSILK ({len(kept)} polygons); "
+                f"{left} polygon(s) of the drawn layers left out")
+        else:
+            log(f"{side}: no AUTOSILK on this side - the legend from the drawn layers")
+    elif left:
+        log(f"{side}: {left} polygon(s) of AUTOSILK left out - the legend from the drawn "
+            "layers; 'Legend from: AUTOSILK' takes it instead")
+    return kept
+
+
 def _build_legend(data: dict, stack: _Stack, fold, options: BuildOptions,
                   document: StepDocument, json_stem: str, log: LogFn) -> tuple[int, int]:
     """The silkscreen legend into the document, one part per side.
@@ -693,6 +713,9 @@ def _build_legend(data: dict, stack: _Stack, fold, options: BuildOptions,
         ):
             if not wanted or not polygons:
                 continue
+            # One legend, not two: AUTOSILK is Allegro's copy of the drawn
+            # layers (review 23.10.2026, R2-7; round 112).
+            polygons = _pick_legend_source(polygons, options.silk_source, side, log)
             # A zone whose stackup has no silkscreen layer is not printed on.
             polygons = clip_silk_to_zones(polygons, stackups, zones, face, log)
             if not polygons:
@@ -1088,6 +1111,9 @@ def generate(
         # An unknown mode used to fall through to the plain solid, silently.
         raise StepBuilderError(f"board_mode must be one of {', '.join(BOARD_MODES)}, "
                                f"got {board_mode!r}")
+    if options.silk_source not in SILK_SOURCES:
+        raise StepBuilderError(f"silk_source must be one of {', '.join(SILK_SOURCES)}, "
+                               f"got {options.silk_source!r}")
 
     if inter is None and not json_file.is_file():
         raise StepBuilderError(f"Input file does not exist: {json_file}")

@@ -36,6 +36,15 @@ silk_layers_off:
     own, so which of them reach the model is decided here, per build, with
     no re-export. Polygons with no layer (format_version 2) are never
     filtered - there is nothing to match them against.
+silk_source:
+    Which of a side's layers make its legend, before silk_layers_off: "drawn"
+    - the silkscreen layers as drawn (PACKAGE GEOMETRY, REF DES, BOARD
+    GEOMETRY ...), MANUFACTURING/AUTOSILK_* left out - or "autosilk" - that
+    side's AUTOSILK alone, or its drawn layers where it has none. AUTOSILK
+    is Allegro's Auto Silkscreen copy of the drawn layers, trimmed at the
+    pads, so the two together are the legend twice (review 23.10.2026, R2-7;
+    round 112). One or the other, as Allegro's 3D Canvas offers it. See
+    legend_layers.
 minimize_size:
     Set write.surfacecurve.mode = 0 (about half the file size, geometry
     unchanged) and share one part per distinct model.
@@ -113,6 +122,36 @@ from .defaults import DEFAULT_FLAT_HEIGHT
 # offers them as choices, and generate refuses anything else (round 73, A10).
 BOARD_MODES = ("solid", "layers", "inspect")
 
+# Where a side's legend comes from - the two values `silk_source` can take,
+# the default first. The settings file, the window and the CLI all offer
+# these, and generate refuses anything else.
+SILK_SOURCES = ("drawn", "autosilk")
+# Allegro's Auto Silkscreen writes its copy here (MANUFACTURING/AUTOSILK_TOP,
+# _BOTTOM), the class and subclass in capitals as axl names every layer.
+AUTOSILK_PREFIX = "MANUFACTURING/AUTOSILK_"
+
+
+def is_autosilk(layer) -> bool:
+    return isinstance(layer, str) and layer.startswith(AUTOSILK_PREFIX)
+
+
+def legend_layers(layers, source: str) -> set:
+    """Which of one side's *layers* make its legend under *source*.
+
+    Measured on the owner's boards (round 112): AUTOSILK is an exact copy of
+    PACKAGE GEOMETRY on variants_test-b0 and a trimmed one, its designators
+    moved, on Cadence's demo - drawn together, R47 stood there twice. So one
+    or the other: "drawn" every layer but AUTOSILK; "autosilk" the side's
+    AUTOSILK alone when it has one, else its drawn layers, so a side Auto
+    Silkscreen never ran on keeps its legend. A polygon with no layer (None,
+    format_version 2) is a drawn one.
+    """
+    layers = set(layers)
+    auto = {name for name in layers if is_autosilk(name)}
+    if source == "autosilk" and auto:
+        return auto
+    return layers - auto
+
 if TYPE_CHECKING:
     from .worker import BuildSettings
 
@@ -132,6 +171,7 @@ class BuildOptions:
     silk_flat: bool = False
     silk_flat_height: float = DEFAULT_FLAT_HEIGHT
     silk_layers_off: set[str] | frozenset[str] | None = None
+    silk_source: str = SILK_SOURCES[0]
     # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn: bool = False
     minimize_size: bool = True
     srgb_color: bool = True
@@ -161,6 +201,7 @@ class BuildOptions:
             silk_flat=settings.silk_flat,
             silk_flat_height=settings.silk_flat_height,
             silk_layers_off=settings.silk_layers_off,
+            silk_source=settings.silk_source,
             minimize_size=settings.minimize,
             board_mode=settings.board_mode,
             layer_colors=settings.layer_colors,
@@ -190,6 +231,7 @@ class BuildOptions:
             silk_flat=args.flat_silkscreen,
             silk_flat_height=args.silk_flat_height,
             silk_layers_off=set(args.silk_layer_off),
+            silk_source=args.silk_source,
             # MFRPN DISABLED (kept for future): name_instances_with_mfr_pn=args.mfr_pn_in_name,
             minimize_size=not args.no_minimize,
             srgb_color=not args.legacy_color,

@@ -5,7 +5,19 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-30 (rounds 95-111 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-112 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 112 (2026-10-31), on `main`, not pushed.** At «Да, R2-7» and his
+choice «Выбор, как в Allegro»: the legend comes from the drawn silkscreen
+layers (default) or from Allegro's AUTOSILK copy of them, never both, as
+Allegro's 3D Canvas offers it - *Legend from* beside All/None,
+`gui.silkscreenSource`, `--silk-source`; a side without AUTOSILK keeps its
+drawn layers; `build.legend_layers` decides for the build and the panel.
+Measured: AUTOSILK an exact copy on variants_test-b0, a trimmed one with
+moved designators on Cadence's demo; built, variants_test-b0 103 legend
+solids with 49 coincident -> 54 with none, the demo 2257 with 241 -> 1581
+with none. Red first, rows 384, 103 of 110 + 34 of 36 caught (the rest need
+the owner's session), run_all 32/34 in session 0. Read round 112.
 
 **Round 111 (2026-10-30, evening), on `main`, not pushed.** At «Да, R2-13»:
 a shape is drawn the way it is filled, as Allegro's artwork plots it -
@@ -3381,6 +3393,83 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 112) — the legend from the drawn layers or from AUTOSILK, never both (R2-7 of the first review round)
+
+At the owner's «Да, R2-7», then «Выбор, как в Allegro». The finding (23.10,
+open in both rounds): the shipped config collects `MANUFACTURING/AUTOSILK_*`
+beside the layers it is made from, so the legend was built twice.
+
+### Measured first (`build/fix-2026-10-31/r112/`)
+
+- `dups.py` over round 111's intermediates of the nine boards: AUTOSILK has
+  content on two only. variants_test-b0: an exact copy of PACKAGE GEOMETRY
+  (top 9 of 9 polygons, bottom 40 of 40, the ink equal to the pixel at 20 um).
+  Cadence_Demo top: 682 AUTOSILK polygons, 244 exact copies, 523 mm2 shared,
+  64 mm2 only in AUTOSILK (designators moved off pads), 199 mm2 only in the
+  drawn layers. `demo_autosilk.png` (sent to the owner): R45, R47 and C69
+  twice, R47 the second time turned.
+- The two boards' films print different sets: variants_test-b0's SSB the
+  AUTOSILK subclass, the demo's SS_TOP the drawn layers. Cadence
+  (algroman/Silkscreening): Auto Silkscreen copies the chosen silkscreen
+  graphics to AUTOSILK and edits the copy where it meets holes; its class
+  choices are design parameters `axlGetParam` does not expose. Allegro's 3D
+  Canvas shows the silkscreen from the drawn classes OR the Manufacturing
+  class. Four options were offered; the owner took the 3D Canvas's.
+
+### What changed
+
+- `build.py`: `SILK_SOURCES = ("drawn", "autosilk")`, `is_autosilk`,
+  `legend_layers(layers, source)` - "drawn": every layer but AUTOSILK;
+  "autosilk": the side's AUTOSILK alone, or its drawn layers where it has
+  none - and the option `BuildOptions.silk_source` ("drawn" by default),
+  mapped from the window's snapshot and from `--silk-source`.
+- `core._pick_legend_source`, before the zone clip and the layer ticks; a log
+  line says what each side was built from ("silkscreen_top: 9 polygon(s) of
+  AUTOSILK left out - the legend from the drawn layers; ...", "... the legend
+  from AUTOSILK (9 polygons); 9 polygon(s) of the drawn layers left out",
+  "silkscreen_bot: no AUTOSILK on this side - the legend from the drawn
+  layers"); `generate` refuses any other value.
+- The window: *Legend from: drawn layers / AUTOSILK* on the layer panel's
+  All/None row (`LayersPanel(source=, on_source=)`); `update_sides` greys the
+  rows a choice leaves out, `set_all` leaves their ticks alone; the setting
+  `gui.silkscreenSource` (`Key`, choices). The window asks for no more room:
+  948 x 783 px old and new in session 0, the All/None row 98 -> 356 px inside
+  a 407 px panel.
+- CLI `--silk-source {drawn,autosilk}`. README (both halves: §Silkscreen,
+  the window table, the settings list, the CLI flags), QUICKSTART, CHANGELOG,
+  ARCHITECTURE, the config's comment.
+
+### Tests, red first
+
+- `test_silk` [15] (the default, AUTOSILK, a side without one, ticks on top,
+  a bad value) and [12] (the arc sample from the demo holds one AUTOSILK
+  polygon: 5 solids from the drawn layers, 1 + 2 from AUTOSILK);
+  `test_settings` (default, any case, a bad value); `test_launcher` (the flag,
+  its default, its mapping); `test_gui` [7f2] (the pair, greying, ticks kept,
+  All/None, snapshot, save, read back) and [8]/[8b]. Red on round 111's code
+  (`head112` on the 4090): test_silk 2 FAIL and a TypeError, the other three
+  stop on the missing attribute.
+- Rows 369 -> 384 (`r112/rows112.py`).
+
+### Verified (the 4090, session 0)
+
+- `measure.py`, solid legend, flat, no models: variants_test-b0 103 legend
+  solids, 9 + 40 coincident (old) -> 54, none coincident (drawn) / 49 (AUTOSILK);
+  Cadence_Demo 2257, 241 coincident (old) -> 1581 / 1568, none coincident.
+- The rows on the changed files and suites (146): `mutate.py` caught 103 of
+  110 in 141 s on 8 copies (the nine new ones among them); the other 7 are
+  the `winplace` rows, UNPROVEN because test_geom and test_gui are red in
+  session 0 - winplace.py is untouched. `premutate_s3d.py` judged the 36
+  test_gui-only rows against its 7 known FAILs: 34 caught (the six new ones
+  among them), not the two round-93 swatch rows that need generated clicks,
+  i.e. the owner's session - as in round 107. The first `mutate.py` run died
+  with its ssh session: `ps_remote.py` stops after 120 s unless given a
+  timeout (3000 here).
+- `run_all` 32/34 in 85 s, only the two window suites; the mirror equal to
+  this tree in all 137 files. The window suites' new checks ran in session 0
+  (test_gui's 7 FAIL are the known [7i] ones); the owner's session was not
+  used.
 
 ## Update 2026-10-30 (round 111) — a shape is drawn the way it is filled, as Allegro's artwork plots it (R2-13 of the second review round)
 

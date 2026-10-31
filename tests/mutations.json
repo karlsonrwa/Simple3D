@@ -3869,5 +3869,155 @@
    "tests/test_allegro_home.py"
   ],
   "why": "the copies of the owner's board and a check's exports go to the system TEMP again, on C:, whose writes the owner saves (round 111)"
+ },
+ {
+  "id": "legend-source-takes-both",
+  "file": "stepbuilder/build.py",
+  "old": "    return layers - auto\n",
+  "new": "    return set(layers)\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the drawn layers and AUTOSILK both make the legend again: on Cadence's demo R47 stands twice, on variants_test-b0 every polygon is a pair of coincident bodies (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "legend-source-no-fallback",
+  "file": "stepbuilder/build.py",
+  "old": "    if source == \"autosilk\" and auto:\n",
+  "new": "    if source == \"autosilk\":\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "under AUTOSILK a side Auto Silkscreen never ran on loses its whole legend (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "autosilk-prefix-misspelt",
+  "file": "stepbuilder/build.py",
+  "old": "AUTOSILK_PREFIX = \"MANUFACTURING/AUTOSILK_\"\n",
+  "new": "AUTOSILK_PREFIX = \"MANUFACTURING/AUTOSILK_X\"\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "AUTOSILK is not recognised, so the default legend is doubled again (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "legend-source-not-passed",
+  "file": "stepbuilder/core.py",
+  "old": "            polygons = _pick_legend_source(polygons, options.silk_source, side, log)\n",
+  "new": "            polygons = _pick_legend_source(polygons, \"drawn\", side, log)\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the build ignores the choice: Legend from AUTOSILK builds the drawn layers (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "legend-source-unchecked",
+  "file": "stepbuilder/core.py",
+  "old": "    if options.silk_source not in SILK_SOURCES:\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "a source that is neither of the two is built as if it were the drawn layers (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "settings-source-default-autosilk",
+  "file": "stepbuilder/settings.py",
+  "old": "    Key(\"silkscreenSource\", \"silk_source\", SILK_SOURCES[0], choices=SILK_SOURCES),\n",
+  "new": "    Key(\"silkscreenSource\", \"silk_source\", SILK_SOURCES[1], choices=SILK_SOURCES),\n",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "a config with no silkscreenSource opens on AUTOSILK (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "settings-source-any-text",
+  "file": "stepbuilder/settings.py",
+  "old": "    Key(\"silkscreenSource\", \"silk_source\", SILK_SOURCES[0], choices=SILK_SOURCES),\n",
+  "new": "    Key(\"silkscreenSource\", \"silk_source\", SILK_SOURCES[0]),\n",
+  "suites": [
+   "tests/test_settings.py"
+  ],
+  "why": "a hand-typed source that is neither is taken as it is, and the build then refuses it (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "cli-source-default-autosilk",
+  "file": "stepbuilder/__main__.py",
+  "old": "        \"--silk-source\", choices=SILK_SOURCES, default=SILK_SOURCES[0],\n",
+  "new": "        \"--silk-source\", choices=SILK_SOURCES, default=SILK_SOURCES[1],\n",
+  "suites": [
+   "tests/test_launcher.py"
+  ],
+  "why": "the headless build defaults to AUTOSILK while the window defaults to the drawn layers (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "cli-source-not-mapped",
+  "file": "stepbuilder/build.py",
+  "old": "            silk_source=args.silk_source,\n",
+  "new": "            silk_source=SILK_SOURCES[0],\n",
+  "suites": [
+   "tests/test_launcher.py"
+  ],
+  "why": "--silk-source is parsed and never reaches the build (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "settings-source-not-mapped",
+  "file": "stepbuilder/build.py",
+  "old": "            silk_source=settings.silk_source,\n",
+  "new": "            silk_source=SILK_SOURCES[1],\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the window's choice never reaches the build (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "gui-source-not-in-snapshot",
+  "file": "stepbuilder/gui.py",
+  "old": "            silk_source=self.silk_source.get(),\n            minimize=self.minimize.get(),\n            build_full_board=",
+  "new": "            silk_source=SILK_SOURCES[0],\n            minimize=self.minimize.get(),\n            build_full_board=",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "Generate builds the drawn layers whatever the window shows (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "gui-source-not-saved",
+  "file": "stepbuilder/gui.py",
+  "old": "            silk_source=self.silk_source.get(),\n            minimize=self.minimize.get(),\n            build_full=",
+  "new": "            silk_source=SILK_SOURCES[0],\n            minimize=self.minimize.get(),\n            build_full=",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the choice is lost when the window closes (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "gui-source-not-loaded",
+  "file": "stepbuilder/gui.py",
+  "old": "        self.silk_source.set(s.silk_source)\n",
+  "new": "        self.silk_source.set(SILK_SOURCES[0])\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the window opens on the drawn layers whatever the config says (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "panel-source-no-greying",
+  "file": "stepbuilder/widgets/layers_panel.py",
+  "old": "            used = legend_layers((layer for layer, _var, _box in rows), self.source.get())\n            on = self._side_wanted(side)\n",
+  "new": "            used = {layer for layer, _var, _box in rows}\n            on = self._side_wanted(side)\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "the rows the choice leaves out stay live, so a tick that does nothing looks as if it mattered (review 23.10.2026, R2-7; round 112)"
+ },
+ {
+  "id": "panel-all-none-edits-greyed",
+  "file": "stepbuilder/widgets/layers_panel.py",
+  "old": "                if layer in used:\n                    var.set(state)\n",
+  "new": "                if True:\n                    var.set(state)\n",
+  "suites": [
+   "tests/test_gui.py"
+  ],
+  "why": "All / None change the ticks of rows the choice leaves out - a selection whose effect is not visible, and it is saved (review 23.10.2026, R2-7; round 112)"
  }
 ]

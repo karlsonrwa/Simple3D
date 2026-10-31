@@ -308,15 +308,29 @@ d["silkscreen"] = {"thickness": 0.025,
                    "top": [p for p in SAMPLE if p["side"] == "top"],
                    "bottom": [p for p in SAMPLE if p["side"] == "bottom"]}
 jf = OUT / "silk_real.json"; jf.write_text(json.dumps(d))
-logs7 = []
+# The sample is three PACKAGE GEOMETRY polygons and one of AUTOSILK on top,
+# two PACKAGE GEOMETRY ones below. Since round 112 a legend is one source or
+# the other, so every sample goes through the build that takes its layer:
+# the drawn layers take the five, AUTOSILK takes its one on top and leaves the
+# bottom on its drawn layers.
+check("the sample is what this section counts on",
+      sorted((p["side"], p["layer"].split("/")[0]) for p in SAMPLE)
+      == [("bottom", "PACKAGE GEOMETRY")] * 2 + [("top", "MANUFACTURING")]
+      + [("top", "PACKAGE GEOMETRY")] * 3, [(p["side"], p["layer"]) for p in SAMPLE])
+logs7, logs7a = [], []
 res7 = core.generate(step_dir=ROOT / "demo/step_files", json_file=jf, output_dir=OUT,
                      output_name="silk_real", log=lambda m: logs7.append(m))
-check("every sampled polygon becomes a solid",
-      res7.silkscreen_solids == len(SAMPLE), res7.silkscreen_solids)
-check("none skipped", res7.silkscreen_skipped == 0, res7.silkscreen_skipped)
+res7a = core.generate(step_dir=ROOT / "demo/step_files", json_file=jf, output_dir=OUT,
+                      output_name="silk_real_auto", silk_source="autosilk",
+                      log=lambda m: logs7a.append(m))
+check("every sampled polygon becomes a solid in the build that takes it: 5 drawn, then 1 + 2",
+      res7.silkscreen_solids == 5 and res7a.silkscreen_solids == 3,
+      (res7.silkscreen_solids, res7a.silkscreen_solids))
+check("none skipped", res7.silkscreen_skipped == 0 and res7a.silkscreen_skipped == 0,
+      (res7.silkscreen_skipped, res7a.silkscreen_skipped))
 check("no area disagreement on either side",
-      not [m for m in logs7 if "differ from the area" in m],
-      [m for m in logs7 if "differ from the area" in m])
+      not [m for m in logs7 + logs7a if "differ from the area" in m],
+      [m for m in logs7 + logs7a if "differ from the area" in m])
 
 print("\n[13] the ink stands off the face it is printed on, on the right side of it")
 
@@ -424,6 +438,59 @@ check("only the two glyphs on the printed zone are built",
 check("and the build itself says which zone carries no silkscreen",
       any("F2 carries no silkscreen" in m and "(2)" in m for m in logsz),
       [m for m in logsz if "silkscreen" in m])
+
+print("\n[15] Legend from: the drawn layers or AUTOSILK, never both (round 112)")
+# Review 23.10.2026, R2-7: AUTOSILK is Allegro's Auto Silkscreen copy of the
+# drawn layers - an exact one on variants_test-b0, one with its designators
+# moved on Cadence's demo - and the default config collects both, so the
+# legend was built twice. Here the top carries a drawn square, AUTOSILK's
+# copy of it and an AUTOSILK-only square (a moved text); the bottom a drawn
+# square and no AUTOSILK.
+from stepbuilder.errors import StepBuilderError
+
+
+def build_source(name, **kw):
+    d = json.loads(json.dumps(base))
+    d["format"] = "simple3d"; d["format_version"] = 3
+    d["silkscreen"] = {
+        "thickness": 0.025,
+        "top": [square(20, 20, 4, "PACKAGE GEOMETRY/SILKSCREEN_TOP"),
+                square(20, 20, 4, "MANUFACTURING/AUTOSILK_TOP"),
+                square(60, 20, 2, "MANUFACTURING/AUTOSILK_TOP")],
+        "bottom": [square(30, 40, 3, "REF DES/SILKSCREEN_BOTTOM")],
+    }
+    jf = OUT / f"{name}.json"; jf.write_text(json.dumps(d))
+    logs = []
+    res = core.generate(step_dir=ROOT/"demo/step_files", json_file=jf,
+                        output_dir=OUT, output_name=name,
+                        log=lambda m: logs.append(m), **kw)
+    return res, logs
+
+
+res15, logs15 = build_source("silk_src_default")
+check("by default the drawn layers alone: 1 top + 1 bottom, AUTOSILK's 2 left out",
+      res15.silkscreen_solids == 2, str(res15.silkscreen_solids))
+check("and the log says AUTOSILK was left out, on the side that had it",
+      any("silkscreen_top: 2 polygon(s) of AUTOSILK left out" in m for m in logs15)
+      and not any("silkscreen_bot" in m and "AUTOSILK" in m for m in logs15),
+      [m for m in logs15 if "AUTOSILK" in m])
+res15a, logs15a = build_source("silk_src_auto", silk_source="autosilk")
+check("AUTOSILK: its 2 on top, the bottom's drawn square kept - 3 in all",
+      res15a.silkscreen_solids == 3, str(res15a.silkscreen_solids))
+check("the log names both choices",
+      any("silkscreen_top: the legend from AUTOSILK (2 polygons); 1 polygon(s) of the drawn "
+          "layers left out" in m for m in logs15a)
+      and any("silkscreen_bot: no AUTOSILK on this side" in m for m in logs15a),
+      [m for m in logs15a if "AUTOSILK" in m])
+res15b, _ = build_source("silk_src_auto_off", silk_source="autosilk",
+                         silk_layers_off={"MANUFACTURING/AUTOSILK_TOP"})
+check("the layer ticks still apply on top of the choice: AUTOSILK unticked leaves the top empty",
+      res15b.silkscreen_solids == 1, str(res15b.silkscreen_solids))
+try:
+    build_source("silk_src_bad", silk_source="both")
+    check("a source that is not one of the two is refused", False, "built")
+except StepBuilderError as exc:
+    check("a source that is not one of the two is refused", "silk_source" in str(exc), str(exc))
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

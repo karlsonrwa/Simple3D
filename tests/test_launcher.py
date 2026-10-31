@@ -140,6 +140,17 @@ check("positionals and flags", a.step_dir == "D:/lib" and a.json_file == "D:/x.j
       and a.extra_step_dirs == ["D:/more"] and a.no_full_board and not a.gui)
 check("--silk-color has no default at the parser: the window keeps its own, "
       "the headless build falls back to DEFAULT_SILK", a.silk_color is None)
+# Round 112 (review 23.10.2026, R2-7): the legend from the drawn layers or from
+# AUTOSILK, and the headless build hears which.
+from stepbuilder.build import BuildOptions
+check("--silk-source defaults to the drawn layers", a.silk_source == "drawn", a.silk_source)
+a2 = build_parser().parse_args(["D:/lib", "D:/x.json", "D:/out", "--silk-source", "autosilk"])
+opts2 = BuildOptions.from_args(a2, output_name=None, board_color=None, rim_color=None,
+                               silk_color=None, fold_anchor=None)
+check("--silk-source autosilk reaches the build's options", opts2.silk_source == "autosilk",
+      opts2.silk_source)
+said = refused(["D:/lib", "D:/x.json", "D:/out", "--silk-source", "both"])
+check("and a source that is neither is refused at the parser", "invalid choice" in said, said)
 out = io.StringIO()
 try:
     with contextlib.redirect_stdout(out):

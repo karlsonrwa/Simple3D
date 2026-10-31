@@ -84,6 +84,9 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
   both sides off the whole group greys out.
 - Inside it, a **Layers** group — the layers found in this JSON, each with its
   polygon count (**All**/**None**). A side that is switched off greys its own.
+  Beside All/None, **Legend from**: **drawn layers** (default) or **AUTOSILK**,
+  Allegro's Auto Silkscreen copy of them — one or the other, never both; the
+  rows a choice leaves out are greyed.
 
 **Compact STEP (reuse component geometry)** — one shared part per model, and no
 parametric surface curves.
@@ -234,6 +237,10 @@ builds it.
   сняты обе стороны, вся группа гаснет.
 - Внутри отдельная группа **Layers** — слои, найденные в этом JSON, у каждого
   число полигонов (**All**/**None**). Выключенная сторона свои слои сереет.
+  Рядом с All и None переключатель **Legend from**: **drawn layers** (по
+  умолчанию) или **AUTOSILK**, копия этих слоёв, которую делает Auto
+  Silkscreen в Allegro. Берётся одно из двух; строки, которые выбор не берёт,
+  становятся серыми.
 
 **Compact STEP (reuse component geometry)** — одна общая деталь на модель и
 отказ от поверхностных кривых.

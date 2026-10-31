@@ -364,6 +364,86 @@ if app._layer_refresh_job is not None:
 app._refresh_layers()
 check("no JSON: one label, no rows", not app._layer_vars and not any(app._layer_rows.values()))
 
+print("\n[7f2] Legend from: the drawn layers or AUTOSILK, one or the other (round 112)")
+# Review 23.10.2026, R2-7: AUTOSILK is Allegro's copy of the drawn layers,
+# and both drawn together are the legend twice (Cadence's demo: R47 two
+# times). The choice sits on the All/None row; the rows it leaves out are
+# greyed, their ticks untouched, as a side switched off greys its rows.
+SRC = TMP / "source.json"
+SRC.write_text(json.dumps({
+    "format": "simple3d", "format_version": 7, "name": "source", "pcb": {},
+    "silkscreen": {"top": [{"layer": "PACKAGE GEOMETRY/SILKSCREEN_TOP"},
+                           {"layer": "MANUFACTURING/AUTOSILK_TOP"}],
+                   "bottom": [{"layer": "REF DES/SILKSCREEN_BOTTOM"}]}}), encoding="utf-8")
+app._layers_off = set()
+app.silk_top.set(True); app.silk_bottom.set(True)
+app.json_file.set(str(SRC))
+if app._layer_refresh_job is not None:
+    app.after_cancel(app._layer_refresh_job)
+app._refresh_layers()
+
+
+def row_state(name):
+    for items in app._layer_rows.values():
+        for layer, _var, box in items:
+            if layer == name:
+                return str(box.cget("state"))
+    return None
+
+
+check("the window starts on the drawn layers", app.silk_source.get() == "drawn", app.silk_source.get())
+check("the two choices sit with All/None and grey with the group",
+      len(app.layers.source_buttons) == 2
+      and all(b in app._silk_group_widgets for b in app.layers.source_buttons))
+check("on the drawn layers AUTOSILK's row is greyed, the drawn ones live",
+      row_state("MANUFACTURING/AUTOSILK_TOP") == "disabled"
+      and row_state("PACKAGE GEOMETRY/SILKSCREEN_TOP") == "normal"
+      and row_state("REF DES/SILKSCREEN_BOTTOM") == "normal",
+      str({n: row_state(n) for n in app._layer_vars}))
+app.layers.source_buttons[1].invoke()
+check("AUTOSILK: the drawn row of a side that has one is greyed, AUTOSILK live",
+      app.silk_source.get() == "autosilk"
+      and row_state("MANUFACTURING/AUTOSILK_TOP") == "normal"
+      and row_state("PACKAGE GEOMETRY/SILKSCREEN_TOP") == "disabled",
+      str({n: row_state(n) for n in app._layer_vars}))
+check("and a side with no AUTOSILK keeps its drawn layers",
+      row_state("REF DES/SILKSCREEN_BOTTOM") == "normal", str(row_state("REF DES/SILKSCREEN_BOTTOM")))
+check("no tick is touched by the choice", all(v.get() for v in app._layer_vars.values()))
+app.layers.set_all(False)
+check("None leaves a greyed row's tick alone",
+      app._layer_vars["PACKAGE GEOMETRY/SILKSCREEN_TOP"].get() is True
+      and app._layer_vars["MANUFACTURING/AUTOSILK_TOP"].get() is False)
+app.layers.set_all(True)
+check("the build is told the choice", app._snapshot().silk_source == "autosilk",
+      app._snapshot().silk_source)
+app._save_config()
+check("and it reaches the config",
+      json.loads(local_cfg.read_text(encoding="utf-8"))["gui"].get("silkscreenSource") == "autosilk",
+      str(json.loads(local_cfg.read_text(encoding="utf-8"))["gui"].get("silkscreenSource")))
+app.silk_source.set("drawn")
+app._load_config()
+check("and comes back from it when the window reads its settings",
+      app.silk_source.get() == "autosilk", app.silk_source.get())
+# The read put the config's paths back; this section's JSON again, at once.
+app.json_file.set(str(SRC))
+if app._layer_refresh_job is not None:
+    app.after_cancel(app._layer_refresh_job)
+app._refresh_layers()
+app.layers.source_buttons[0].invoke()
+check("back on the drawn layers the rows follow",
+      app.silk_source.get() == "drawn" and row_state("MANUFACTURING/AUTOSILK_TOP") == "disabled"
+      and row_state("PACKAGE GEOMETRY/SILKSCREEN_TOP") == "normal")
+app.silk_top.set(False); app.silk_bottom.set(False); app._update_silk_row()
+check("with both sides off the choice greys with the group",
+      all("disabled" in b.state() for b in app.layers.source_buttons),
+      str([b.state() for b in app.layers.source_buttons]))
+app.silk_top.set(True); app.silk_bottom.set(True); app._update_silk_row()
+app._save_config()
+app.json_file.set("")
+if app._layer_refresh_job is not None:
+    app.after_cancel(app._layer_refresh_job)
+app._refresh_layers()
+
 print("\n[7g] a right-click menu on every path field (round 78)")
 # The fields had the shortcuts but no menu, and a path is what gets pasted.
 # Headless: the menu is built and its entries invoked directly; the clipboard
@@ -890,7 +970,7 @@ snap = app._snapshot()
 # nothing about which one is missing.
 EXPECTED = {"step_dirs","json_file","output_dir","z_datum","board_color",
             "rim_color","silk_top","silk_bottom","silk_color","silk_flat",
-            "silk_flat_height","silk_layers_off","minimize","board_mode",
+            "silk_flat_height","silk_layers_off","silk_source","minimize","board_mode",
             "layer_colors","ignore_soldermask","fold_bends","fold_anchor",
             "fold_neutral","fold_slice_angle","exposed_copper","mask_openings","brd_name","dated_name",
             "build_full_board"}
@@ -919,7 +999,8 @@ check("every snapshot field the build uses is an option, under generate's name",
 check("from_settings carries the snapshot's values",
       opts.output_name == "stem" and opts.board_mode == snap.board_mode
       and opts.minimize_size == snap.minimize and opts.fold_bends == snap.fold_bends
-      and opts.silk_layers_off == snap.silk_layers_off)
+      and opts.silk_layers_off == snap.silk_layers_off
+      and opts.silk_source == snap.silk_source)
 check("and the CLI-only option keeps its default", opts.srgb_color is True)
 try:
     opts.z_datum = "bottom"; check("options are frozen", False, "mutation allowed")

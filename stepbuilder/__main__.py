@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from . import core
-from .build import BOARD_MODES, BuildOptions
+from .build import BOARD_MODES, SILK_SOURCES, BuildOptions
 from .intermediate import path_notes
 from .colors import DEFAULT_SILK, SILK_ORDER, resolve_board_color, resolve_silk_color
 
@@ -216,6 +216,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="leave this silkscreen layer out of the build; repeatable. The "
              "export collects every layer the config lists and tags each "
              "polygon, so this needs no re-export",
+    )
+    parser.add_argument(
+        "--silk-source", choices=SILK_SOURCES, default=SILK_SOURCES[0],
+        help="where the legend comes from: the silkscreen layers as drawn, or "
+             "Allegro's AUTOSILK copy of them (a side without one keeps its "
+             f"drawn layers); one or the other (default: {SILK_SOURCES[0]})",
     )
     parser.add_argument(
         "--silk-color", default=None,

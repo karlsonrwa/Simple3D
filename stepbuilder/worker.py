@@ -48,6 +48,7 @@ class BuildSettings:
     silk_flat: bool
     silk_flat_height: float
     silk_layers_off: frozenset[str]
+    silk_source: str
     minimize: bool
     board_mode: str
     layer_colors: dict

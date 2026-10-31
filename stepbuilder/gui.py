@@ -20,6 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 from . import settings
 from . import winplace
 from .widgets.layers_panel import LayersPanel
+from .build import SILK_SOURCES
 from .worker import BuildSettings
 from .worker_bridge import WorkerBridge
 from .defaults import DEFAULT_FLAT_HEIGHT, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE
@@ -173,6 +174,8 @@ class StepBuilderApp(tk.Tk):
         self.silk_bottom = tk.BooleanVar(value=True)
         self.silk_color = tk.StringVar(value=DEFAULT_SILK)
         self.silk_flat = tk.BooleanVar(value=False)
+        # Where the legend comes from: the drawn layers or AUTOSILK (round 112).
+        self.silk_source = tk.StringVar(value=SILK_SOURCES[0])
         # Config-only, no widget: a display fudge you set once when a viewer
         # flickers, not something to press on every build. Plain float, not a
         # Tk variable, so the worker may read it straight off the snapshot.
@@ -431,7 +434,8 @@ class StepBuilderApp(tk.Tk):
         # row carries its polygon count - that is what explains a large file.
         ttk.Separator(silk, orient="horizontal").grid(
             row=2, column=0, sticky="ew", pady=(8, 6))
-        self.layers = LayersPanel(silk, side_wanted=self._side_wanted)
+        self.layers = LayersPanel(silk, side_wanted=self._side_wanted,
+                                  source=self.silk_source, on_source=self._update_silk_row)
         self.layers.grid(row=3, column=0, sticky="ew")
         # Everything in the group that should grey out when both sides are off.
         # The two side checkboxes are deliberately NOT in here: they are how the
@@ -990,6 +994,7 @@ class StepBuilderApp(tk.Tk):
             silk_flat=self.silk_flat.get(),
             silk_flat_height=self.silk_flat_height,
             silk_layers_off=frozenset(self._current_layers_off()),
+            silk_source=self.silk_source.get(),
             minimize=self.minimize.get(),
             build_full_board=self.build_full.get(),
             board_mode=_mode_key(self.board_mode.get()),
@@ -1263,6 +1268,7 @@ class StepBuilderApp(tk.Tk):
         self.silk_color.set(s.silk_color)
         self.silk_flat.set(s.silk_flat)
         self._layers_off = s.layers_off
+        self.silk_source.set(s.silk_source)
         self.silk_flat_height = s.silk_flat_height
         self.minimize.set(s.minimize)
         self.build_full.set(s.build_full)
@@ -1304,6 +1310,7 @@ class StepBuilderApp(tk.Tk):
             # panel does not show stays (review 23.10.2026, R6-3).
             layers_off=settings.merge_layers_off(
                 self._layers_off, self._layer_vars, self._current_layers_off()),
+            silk_source=self.silk_source.get(),
             minimize=self.minimize.get(),
             build_full=self.build_full.get(),
             board_mode=_mode_key(self.board_mode.get()),

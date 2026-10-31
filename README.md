@@ -187,6 +187,7 @@ Most controls say what they do. These are the ones worth knowing about:
 | **Silkscreen: Top / Bottom** | Both off skips the legend entirely and makes a noticeably smaller file. |
 | **Make surface** | The legend as surfaces rather than thin solids: about a quarter of its file size. The ink then has no thickness and cannot be used in boolean work. |
 | **Silkscreen layers** | A tick per layer *found in this JSON*, with its polygon count. Untick and press Generate again — no re-export needed. |
+| **Legend from: drawn layers / AUTOSILK** | Beside *All* / *None*. The drawn silkscreen layers (the default), or Allegro's AUTOSILK copy of them — one or the other, never both; a side with no AUTOSILK keeps its drawn layers. The rows a choice leaves out are greyed. See *Silkscreen*. |
 | **Fold flex bends** | Fold along the bend areas. Off exports the board flat. Does nothing on a board without them. |
 | **Exposed copper (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces two microns above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Only what the mask opening exposes is drawn: a solder-mask-defined pad shows its opening's shape, a pad with no opening shows nothing, an untented via its ring, a tented one nothing. Openings drawn on the `SOLDERMASK` layers add the copper under them, one flat part per side. A pad on the board's edge or over a cutout is clipped to the board. Needs a JSON written with `format_version` 12 (11 has no vias and nothing under drawn openings, 10 draws the copper whole, an older one draws none; the log says which). The colour is the *Copper* swatch's, live in any stitching while this is ticked. See *Exposed copper*. |
 | **Mask openings (as surfaces)** | The solder-mask openings as surfaces in the dielectric's colour (`base` in *layerColors*): every pin's and via's opening from its padstack, instanced like the pads, and every opening drawn on the `SOLDERMASK` layers — a line, a shape or rectangle, a text. With *Exposed copper* on, what the copper leaves of each opening: the ring around a copper-defined pad, the laminate a label cut into the mask shows; on its own, the openings whole. Windows on the board's edge or over a cutout are clipped to the board as the pads are. Needs a JSON written with `format_version` 11 for the padstacks' openings, 12 for the drawn ones. The colour is the *Base* swatch's, live in any stitching while this is ticked. See *Exposed copper*. |
@@ -277,6 +278,9 @@ The rest of `gui` mirrors the window and is written back when it closes —
   file. The checkbox above.
 * `silkscreenLayersOff` — **exclusions, not inclusions**, so a layer that turns
   up on a board for the first time is drawn rather than silently missing.
+* `silkscreenSource` — `drawn` (default) or `autosilk`, the *Legend from*
+  choice: the silkscreen layers as drawn, or Allegro's AUTOSILK copy of them.
+  See *Silkscreen*.
 * `jsonFile`, `outputDir` — the last paths you picked **in the window**. An
   export launched from Allegro fills those fields but does not record them:
   they describe a board, not a preference.
@@ -490,6 +494,24 @@ produced geometry on this board, with the polygon count each one costs. A layer
 left out of the config lists is never collected and cannot be ticked back on
 without re-exporting: keeping an expensive layer out (reference designators
 vectorise every glyph) saves collection time, keeping it in buys the choice.
+
+**The legend comes from the drawn layers or from AUTOSILK, never both.**
+Allegro's *Manufacture – Silkscreen* (Auto Silkscreen) copies the silkscreen
+layers you choose onto `MANUFACTURING/AUTOSILK_TOP` / `_BOTTOM` and trims the
+copy at the pads, moving a designator off a pad where it must. The config
+collects both, and drawn together they were the legend twice: on
+variants_test-b0 every AUTOSILK polygon was an exact copy of a PACKAGE GEOMETRY
+one, so a solid legend had pairs of coincident bodies, and on Cadence's demo
+R45, R47 and C69 stood in two places at once. *Legend from* (beside All / None
+in the window, `gui.silkscreenSource`, `--silk-source`) picks one, as Allegro's
+own 3D Canvas does: **drawn layers** (the default) leaves AUTOSILK out;
+**AUTOSILK** takes each side's AUTOSILK alone, and a side Auto Silkscreen never
+ran on keeps its drawn layers. The rows a choice leaves out are greyed, their
+ticks kept; the layer ticks apply on top of it, and the log says what each side
+was built from. Both sets stay collected, so switching needs no re-export.
+Which one your fab gets is your artwork's choice: a silkscreen film lists
+either the AUTOSILK subclass or the drawn ones (review 23.10.2026, R2-7;
+round 112).
 
 A line with no width, text with a zero pen width, or an unfilled shape (Allegro
 25.1 gives every unfilled outline a width of zero) is skipped and reported by
@@ -903,7 +925,8 @@ the window's checkbox does), `--z-datum {top,bottom}`, `--color NAME|r,g,b|#rrgg
 several variants it is ignored and each JSON's own stem names its output, or
 they would collide), `--no-silkscreen`, `--no-silk-top`, `--no-silk-bottom`,
 `--flat-silkscreen`, `--silk-flat-height MM`,
-`--silk-layer-off LAYER` (repeatable), `--silk-color White|Black`,
+`--silk-layer-off LAYER` (repeatable), `--silk-source {drawn,autosilk}`,
+`--silk-color White|Black`,
 `--ignore-soldermask`, `--flat` (do not fold), `--fold-anchor X,Y|auto`,
 `--fold-neutral K`, `--fold-slice-angle DEG`, `--exposed-copper`, `--mask-openings`,
 `--board-mode {solid,layers,inspect}`, `--no-minimize`, `--legacy-color`,
@@ -1135,6 +1158,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **Silkscreen: Top / Bottom** | Обе выключены — шелкография не строится вовсе, и файл заметно меньше. |
 | **Make surface** | Легенда поверхностями, а не тонкими телами: примерно четверть её объёма в файле. Толщины у краски тогда нет, и в булевых операциях она не участвует. |
 | **Silkscreen layers** | Галочка на каждый слой, *найденный в этом JSON*, с числом полигонов. Снимите и нажмите Generate снова — повторный экспорт не нужен. |
+| **Legend from: drawn layers / AUTOSILK** | Рядом с *All* и *None*. Нарисованные слои шелкографии (по умолчанию) или их копия AUTOSILK, сделанная Allegro: одно из двух, не оба. Сторона без AUTOSILK остаётся с нарисованными слоями. Строки, которые выбор не берёт, становятся серыми. См. *Шелкография*. |
 | **Fold flex bends** | Сгибать по областям сгиба. Выключено — плата экспортируется плоской. На плате без сгибов ничего не меняет. |
 | **Exposed copper (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на два микрона над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего, незакрытое переходное отверстие — своё кольцо, закрытое — ничего. Вскрытия, нарисованные на слоях `SOLDERMASK`, добавляют медь под собой — одна плоская деталь на сторону. Площадка на кромке платы или над вырезом обрезается по плате. Нужен JSON с `format_version` 12 (11 не несёт отверстий и меди под нарисованными вскрытиями, 10 рисует медь целиком, более старый — ничего; лог говорит, что именно). Цвет — квадратика *Copper*, живого при любой сшивке, пока отмечена эта галка. См. *Открытая медь*. |
 | **Mask openings (as surfaces)** | Вскрытия паяльной маски поверхностями цвета диэлектрика (`base` из *layerColors*): вскрытие каждого вывода и переходного отверстия из его падстека, вхождениями как площадки, и каждое вскрытие, нарисованное на слоях `SOLDERMASK` — линия, фигура или прямоугольник, текст. Вместе с *Exposed copper* — то, что от вскрытия оставляет медь: кольцо вокруг copper-defined площадки, текстолит, который показывает прорезанная в маске надпись; сами по себе — вскрытия целиком. Окна на кромке платы или над вырезом обрезаются по плате, как площадки. Нужен JSON с `format_version` 11 для вскрытий падстеков, 12 для нарисованных. Цвет — квадратика *Base*, живого при любой сшивке, пока отмечена эта галка. См. *Открытая медь*. |
@@ -1224,6 +1248,9 @@ JSON, ничего не записывается до конца сессии**,
   очереди **папка**. Та самая галочка выше.
 * `silkscreenLayersOff` — **исключения, а не включения**, поэтому слой, впервые
   появившийся на плате, рисуется, а не пропадает молча.
+* `silkscreenSource` — `drawn` (по умолчанию) или `autosilk`, переключатель
+  *Legend from*: нарисованные слои шелкографии или их копия AUTOSILK, которую
+  делает Allegro. См. *Шелкография*.
 * `jsonFile`, `outputDir` — последние пути, выбранные **в окне**. Экспорт,
   запущенный из Allegro, эти поля заполняет, но сюда не пишет: они описывают
   плату, а не предпочтение.
@@ -1438,6 +1465,26 @@ Allegro, где его набирают руками, а файл на диск�
 списки конфига, не собирается и включить его галочкой без повторного экспорта
 нельзя: держать дорогой слой вне конфига (позиционные обозначения векторизуют
 каждый глиф) — экономия времени сбора, держать внутри — свобода выбора.
+
+**Легенда берётся либо из нарисованных слоёв, либо из AUTOSILK, но не из
+обоих.** Команда Allegro *Manufacture – Silkscreen* (Auto Silkscreen) копирует
+выбранные слои шелкографии в `MANUFACTURING/AUTOSILK_TOP` и `_BOTTOM` и
+подрезает копию у площадок, а позиционное обозначение, которое легло на
+площадку, отодвигает. Конфиг собирает оба набора, и вместе они давали легенду
+дважды. У variants_test-b0 каждый многоугольник AUTOSILK точно повторял
+многоугольник PACKAGE GEOMETRY, и в сплошной легенде лежали пары совпадающих
+тел; на демо-плате Cadence обозначения R45, R47 и C69 стояли в двух местах
+сразу. Переключатель *Legend from* (рядом с *All* и *None* в окне,
+`gui.silkscreenSource`, `--silk-source`) выбирает одно, как это делает окно
+3D Canvas самого Allegro. **drawn layers** (по умолчанию) не берёт AUTOSILK;
+**AUTOSILK** берёт у каждой стороны только её AUTOSILK, а сторона, где Auto
+Silkscreen не запускали, остаётся с нарисованными слоями. Строки слоёв,
+которые выбор не берёт, становятся серыми, а их галочки сохраняются; галочки
+слоёв действуют поверх выбора, а лог пишет, из чего собрана каждая сторона.
+Оба набора по-прежнему собираются, поэтому переключение не требует повторного
+экспорта. Что получит производство, решает плёнка шелкографии: в ней стоит
+либо подкласс AUTOSILK, либо нарисованные слои (ревью 23.10.2026, R2-7;
+раунд 112).
 
 Линию без ширины, текст с нулевым пером и незалитую форму (её контур Allegro
 25.1 всегда делает нулевой толщины) экспорт пропускает и называет вместе со
@@ -1855,7 +1902,8 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # все вариа
 нескольких вариантах игнорируется — иначе они столкнулись бы в одно имя, — и
 каждый файл называется по имени своего JSON), `--no-silkscreen`,
 `--no-silk-top`, `--no-silk-bottom`, `--flat-silkscreen`, `--silk-flat-height MM`,
-`--silk-layer-off LAYER` (можно повторять), `--silk-color White|Black`,
+`--silk-layer-off LAYER` (можно повторять), `--silk-source {drawn,autosilk}`,
+`--silk-color White|Black`,
 `--ignore-soldermask`, `--flat` (не сгибать), `--fold-anchor X,Y|auto`,
 `--fold-neutral K`, `--fold-slice-angle DEG`, `--exposed-copper`, `--mask-openings`,
 `--board-mode {solid,layers,inspect}`, `--no-minimize`, `--legacy-color`,
