@@ -685,5 +685,90 @@ try:
 except VariantFileError as e:
     check("three times: each repeat named", str(e).count('"Full" (lines 2 and') == 2, str(e))
 
+print("\n[17] a file the reader does not know is refused, by name (round 121)")
+# Review 23.10.2026, R3-2: validate() asked for neither "format" nor
+# "format_version", and the CLI hands one file straight to generate(), past
+# resolve_jobs. Measured on the 4090 (round 121) with the demo board under
+# each: another program's JSON, versions 99, 13, 0, "abc", true and 12.0, and
+# files without the marker or the version - all twelve built, not a word said;
+# the CLI wrote demo.step with exit code 0; the window queued every file that
+# carried the marker. Every path builds through validate(), so it is asked.
+import contextlib, copy, io
+from stepbuilder import __main__ as stepbuilder_cli
+from stepbuilder.errors import StepBuilderError
+import stepbuilder.intermediate as reader
+
+written = re.search(r'"\\"format_version\\": (\d+)"', src)
+newest = getattr(reader, "FORMAT_VERSION", None)
+check(f"the reader knows exactly the newest version the exporter writes "
+      f"({written.group(1) if written else '?'})",
+      written is not None and newest == int(written.group(1)), (newest, written and written.group(0)))
+
+demo = json.loads((ROOT / "demo/ap-214/demo.json").read_text(encoding="utf-8"))
+check("the repository's own demo board says what it is (the first exporter's layout, v1)",
+      demo.get("format") == "simple3d" and demo.get("format_version") == 1,
+      (demo.get("format"), demo.get("format_version")))
+
+
+def refusal(keys, drop=()):
+    """What validate() says of the demo board with these keys set and those
+    dropped: the message, or None when it is let through."""
+    data = copy.deepcopy(demo)
+    data.update(keys)
+    for key in drop:
+        data.pop(key, None)
+    try:
+        Intermediate("x.json", data).validate()
+    except StepBuilderError as exc:
+        return str(exc)
+    return None
+
+
+REFUSED = [
+    # the review's four of round 1, its fifth of round 2, then the edges
+    ("format_version 99", {"format_version": 99}, (), ["99", "newer"]),
+    ("format_version \"abc\"", {"format_version": "abc"}, (), ["'abc'", "whole number"]),
+    ("another program's format", {"format": "kicad"}, (), ["'kicad'", "not a Simple 3D"]),
+    ("format_version 0", {"format_version": 0}, (), ["0", "no exporter"]),
+    ("neither key", {}, ("format", "format_version"), ["no \"format\" marker"]),
+    ("format_version 13, one past the newest", {"format_version": 13}, (), ["13", "newer"]),
+    ("format_version true", {"format_version": True}, (), ["True", "whole number"]),
+    ("format_version 12.0", {"format_version": 12.0}, (), ["12.0", "whole number"]),
+    ("no format_version", {}, ("format_version",), ["no 'format_version'"]),
+    ("no format, version 12", {"format_version": 12}, ("format",), ["no \"format\" marker"]),
+]
+for label, keys, drop, words in REFUSED:
+    said = refusal(keys, drop)
+    check(f"{label}: refused, the message naming it", said is not None
+          and all(w in said for w in words), said)
+taken = [v for v in range(1, (newest or 12) + 1) if refusal({"format_version": v}) is None]
+check("and every version from 1 to the newest is still taken",
+      taken == list(range(1, (newest or 12) + 1)), taken)
+
+# Through the two doors the review named: generate(), and the CLI given one
+# file - refused before anything is written.
+gate = OUT / "unknown-format"
+shutil.rmtree(gate, ignore_errors=True)
+gate.mkdir(parents=True)
+for tag, keys in (("fv99", {"format_version": 99}), ("kicad", {"format": "kicad"})):
+    data = copy.deepcopy(demo)
+    data.update(keys)
+    jf = gate / f"{tag}.json"
+    jf.write_text(json.dumps(data), encoding="utf-8")
+    try:
+        core.generate(step_dir=ROOT / "demo/step_files", json_file=jf, output_dir=gate,
+                      output_name=tag, log=lambda m: None)
+        said = None
+    except StepBuilderError as exc:
+        said = str(exc)
+    check(f"generate() refuses {tag}.json and writes no STEP",
+          said is not None and not (gate / f"{tag}.step").exists(), said)
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+        rc = stepbuilder_cli.main([str(ROOT / "demo/step_files"), str(jf), str(gate / f"cli_{tag}")])
+    check(f"and the CLI given {tag}.json alone exits 1, naming the file and why",
+          rc == 1 and f"error ({tag}.json):" in err.getvalue()
+          and not list((gate / f"cli_{tag}").glob("*.step")), (rc, err.getvalue()[-300:]))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

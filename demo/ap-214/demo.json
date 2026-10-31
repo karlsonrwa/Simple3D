@@ -1,4 +1,6 @@
 {
+	"format": "simple3d",
+	"format_version": 1,
 	"name": "demo",
 	"pcb": {
 		"thickness": {

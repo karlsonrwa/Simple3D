@@ -66,7 +66,12 @@ from an older release does not have to be re-exported to be used. The other
 way round is new with 9: it keeps the components under one `"components"`
 key instead of beside the metadata, so a file this release writes needs this
 release's Python (an older `stepbuilder` would see one component named
-`components`).
+`components`). Since round 121 the reader says so instead of guessing: a file
+of a version newer than it knows is refused, naming the version, and so is a
+version no exporter wrote (`0`, `"abc"`), another program's JSON and a file
+without the `"format": "simple3d"` marker or without a version. The error is
+the same in the window, in a batch and for one file on the command line, and
+nothing is built from such a file.
 
 Allegro's own progress form is on screen from the moment you press Export,
 because all of the above happens before any window of ours appears. The only
@@ -1052,7 +1057,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 440 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 446 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1124,7 +1129,12 @@ SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE �
 Обратное с версией 9 стало новостью: компоненты лежат под одним ключом
 `"components"`, а не рядом с метаданными, поэтому файлу этого релиза нужен
 Python этого релиза (старый `stepbuilder` увидел бы один компонент по имени
-`components`).
+`components`). С раунда 121 сборщик не гадает, а говорит об этом прямо. Файл
+версии новее той, что он знает, он не принимает и называет версию. Так же он
+поступает с версией, которой не писал ни один экспортёр (`0`, `"abc"`), с JSON
+другой программы и с файлом без маркера `"format": "simple3d"` или без версии.
+Ошибка одна и та же в окне, в пакетной сборке и для одного файла из командной
+строки, и из такого файла ничего не собирается.
 
 Штатный индикатор Allegro на экране с момента нажатия Export: всё перечисленное
 происходит до того, как появится наше окно. Единственный временный файл — лог
@@ -2120,7 +2130,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 440 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 446 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

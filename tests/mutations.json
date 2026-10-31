@@ -4600,5 +4600,65 @@
    "tests/test_variant_path.py"
   ],
   "why": "a name given to two variants is noticed and not said: one variant is lost without a word (round 120, R2-10 of the 23.10.2026 review)"
+ },
+ {
+  "id": "reader-format-not-asked",
+  "file": "stepbuilder/intermediate.py",
+  "old": "        if fmt != FORMAT_MARKER:\n",
+  "new": "        if fmt is None and fmt != FORMAT_MARKER:\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "another program's JSON (\"format\": \"kicad\") is built again; only a file with no marker at all is refused (round 121, R3-2 of the 23.10.2026 review)"
+ },
+ {
+  "id": "reader-newer-version-built",
+  "file": "stepbuilder/intermediate.py",
+  "old": "        if version > FORMAT_VERSION:\n",
+  "new": "        if version > FORMAT_VERSION + 87:\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "a version newer than the reader knows is built without a word, as a newer exporter's file was (round 121, R3-2 of the 23.10.2026 review)"
+ },
+ {
+  "id": "reader-version-zero-built",
+  "file": "stepbuilder/intermediate.py",
+  "old": "        if version < 1:\n",
+  "new": "        if version < 0:\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "format_version 0, which no exporter wrote, is built (round 121, R3-2 of the 23.10.2026 review)"
+ },
+ {
+  "id": "reader-version-true-built",
+  "file": "stepbuilder/intermediate.py",
+  "old": "        if isinstance(version, bool) or not isinstance(version, int):\n",
+  "new": "        if not isinstance(version, int):\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "format_version true is taken for 1, bool being an int to Python (round 121, R3-2 of the 23.10.2026 review)"
+ },
+ {
+  "id": "reader-version-float-built",
+  "file": "stepbuilder/intermediate.py",
+  "old": "        if isinstance(version, bool) or not isinstance(version, int):\n",
+  "new": "        if isinstance(version, bool) or not isinstance(version, (int, float)):\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "format_version 12.0, which the exporter never writes, is built (round 121, R3-2 of the 23.10.2026 review)"
+ },
+ {
+  "id": "reader-newest-drifts",
+  "file": "stepbuilder/intermediate.py",
+  "old": "FORMAT_VERSION = 12\n",
+  "new": "FORMAT_VERSION = 13\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "the reader claims a version the exporter does not write: a file of 13, from an exporter it has not seen, would be built (round 121, R3-2 of the 23.10.2026 review)"
  }
 ]

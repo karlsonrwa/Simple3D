@@ -34,6 +34,15 @@ from .errors import StepBuilderError
 # is some other file that happens to share the folder and must be ignored.
 FORMAT_MARKER = "simple3d"
 
+# The newest format_version this reader builds, the one this release's SKILL
+# writes (skill/s3d_export.il; test_variant_path [17] holds the two equal).
+# Every version from 1 builds: the first exporter (19.07.2026) wrote the
+# marker and "format_version": 1 together, and each version since only ever
+# ADDED something optional. A newer one is refused - from 9 on the components
+# moved under one key, and a reader cannot know what a version it has not
+# seen moved (round 121, R3-2 of the 23.10.2026 review).
+FORMAT_VERSION = 12
+
 # Every top-level key that is NOT a component; anything else is a refdes or a
 # mechanical symbol's synthetic name. "silkscreen" MUST be listed here or it
 # would be walked as if it were a component - and so must every key the
@@ -176,8 +185,39 @@ class Intermediate:
         return [str(m) for m in found] if isinstance(found, list) else []
 
     def validate(self) -> None:
-        """The fields a build cannot default; their absence is an error."""
+        """The fields a build cannot default; their absence is an error.
+
+        First, whether the file is ours and of a version this reader knows
+        (round 121, R3-2 of the 23.10.2026 review). Nothing asked, and another
+        program's JSON, a version newer than FORMAT_VERSION and versions no
+        exporter wrote were all built without a word - by the CLI given one
+        file, which goes past resolve_jobs, and by the window for any file
+        that carried the marker. Every build passes here, so here it is asked.
+        """
         data = self.data
+        fmt = data.get("format")
+        if fmt != FORMAT_MARKER:
+            raise StepBuilderError(
+                "JSON is not a Simple 3D intermediate: "
+                + ('it carries no "format" marker' if fmt is None
+                   else f'its "format" is {fmt!r}, not {FORMAT_MARKER!r}')
+                + ". Export the board with File -> Export -> Simple 3D in Allegro.")
+        version = data.get("format_version")
+        # bool is an int to Python, and true is no version
+        if isinstance(version, bool) or not isinstance(version, int):
+            raise StepBuilderError(
+                ("JSON carries no 'format_version'" if version is None
+                 else f"JSON's format_version is {version!r}")
+                + f"; the exporter writes a whole number from 1 to {FORMAT_VERSION}.")
+        if version > FORMAT_VERSION:
+            raise StepBuilderError(
+                f"JSON is format_version {version}, newer than this stepbuilder reads "
+                f"(1 to {FORMAT_VERSION}): a newer exporter wrote it. Build it with the "
+                f"Python half (stepbuilder) of the release whose SKILL wrote it.")
+        if version < 1:
+            raise StepBuilderError(
+                f"JSON's format_version is {version}, which no exporter wrote "
+                f"(1 to {FORMAT_VERSION}).")
         if "name" not in data:
             raise StepBuilderError("JSON is missing the 'name' field.")
         if "pcb" not in data:

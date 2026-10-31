@@ -43,7 +43,10 @@ def build(name, copies):
     Alternately mirrored, so they land on both sides - top and bottom are two
     different transforms of ONE imported part, not two imports.
     """
-    board = {"name": demo["name"], "pcb": demo["pcb"]}
+    # The marker and the version first, as the exporter writes them: since
+    # round 121 the reader refuses a file without them (review R3-2).
+    board = {"format": demo["format"], "format_version": demo["format_version"],
+             "name": demo["name"], "pcb": demo["pcb"]}
     for i in range(copies):
         comp = json.loads(json.dumps(demo["C1"]))    # working step_mapping + placement
         comp["is_mirrored"] = bool(i % 2)

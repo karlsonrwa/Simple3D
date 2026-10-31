@@ -11,6 +11,33 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **The STEP builder refuses a JSON it does not know, and
+  says why.** It asked for neither `"format"` nor `"format_version"`: another
+  program's JSON, a file of a newer exporter (`format_version` 99, 13), a
+  version none ever wrote (0, `"abc"`, `true`, 12.0) and a file without the
+  marker or the version all came out as a STEP without a word, the command
+  line given one file with exit code 0, and the window queued every file that
+  had the marker. Measured on the demo board under each. Now every build -
+  the window, a batch, one file on the command line - refuses such a file with
+  the reason (`JSON is format_version 99, newer than this stepbuilder reads (1
+  to 12)…`, `its "format" is 'kicad'…`) and builds nothing from it; versions 1
+  to 12 build as before. The repository's demo board, older than the marker,
+  now carries it and version 1; its STEP is the same. Six rows added to the
+  mutation table (446). /
+  **Сборщик STEP не принимает JSON, которого не знает, и говорит почему.** Он
+  не спрашивал ни `"format"`, ни `"format_version"`. JSON другой программы,
+  файл более нового экспортёра (`format_version` 99, 13), версия, которой не
+  писал ни один экспортёр (0, `"abc"`, `true`, 12.0), и файл без маркера или
+  без версии одинаково превращались в STEP без единого слова. Командная строка
+  с одним файлом выходила с кодом 0, а окно ставило в очередь любой файл с
+  маркером. Замерено на демо-плате с каждым из этих ключей. Теперь любая сборка
+  (окно, пакет, один файл из командной строки) такой файл не принимает,
+  называет причину (`JSON is format_version 99, newer than this stepbuilder
+  reads (1 to 12)…`, `its "format" is 'kicad'…`) и ничего из него не строит;
+  версии от 1 до 12 собираются как прежде. Демо-плата репозитория, которая
+  старше маркера, теперь несёт его и версию 1, её STEP не изменился. В таблицу
+  мутаций добавлено шесть строк (446).
+
 - **2026-10-31** — **Every variant gets a file of its own, or the export says
   why it cannot.** Windows does not tell letter case apart in a file name, for
   Cyrillic as for Latin, so `Full` and `FULL` went to one file, the later over

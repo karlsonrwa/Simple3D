@@ -115,7 +115,10 @@ shutil.copy(ROOT / "demo/step_files/cap_D8x10mm.stp", W / "models")
 (W / "models" / "broken.step").write_text("this is not a STEP file at all\n")
 
 demo = json.load(open(ROOT / "demo/ap-214/demo.json"))
-board = {"name": demo["name"], "pcb": demo["pcb"]}
+# The marker and the version first, as the exporter writes them: since round
+# 121 the reader refuses a file without them (review R3-2).
+board = {"format": demo["format"], "format_version": demo["format_version"],
+         "name": demo["name"], "pcb": demo["pcb"]}
 board["C1"] = json.loads(json.dumps(demo["C1"]))              # a good model
 bad = json.loads(json.dumps(demo["C1"]))                      # the broken one
 bad["step_mapping"]["step_name"] = "broken.step"

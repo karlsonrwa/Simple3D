@@ -5,7 +5,16 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-120 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-121 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 121 (2026-10-31), on `main`, not pushed.** At «Да, R3-2»: the STEP
+builder refuses a JSON it does not know. `Intermediate.validate()` now asks
+`"format" == "simple3d"` and a whole `format_version` from 1 to
+`FORMAT_VERSION` (12, held to the SKILL's header by test_variant_path [17]),
+each refusal naming the cause; before, versions 99/13/0/"abc"/true/12.0,
+"kicad" and files without the keys all built (CLI rc 0). The demo JSON got
+the marker and version 1 (its STEP byte-identical); test_mech and test_index
+build their boards with them. Rows 446; run_all 32/34. Read round 121.
 
 **Round 120 (2026-10-31), on `main`, not pushed.** At «Да, R2-10»: every
 variant a file of its own. Windows folds letter case, Cyrillic included, and
@@ -3504,6 +3513,57 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 121) — a JSON the reader does not know is refused, by name (R3-2 of the first review round)
+
+At the owner's «Да, R3-2». The record is
+`docs/records/json-format-check-2026-10-31.md`; the evidence is in
+`build/fix-2026-10-31/r121/`.
+
+### Measured first
+
+- `repro.py` on the 4090, the demo board with each key set: versions 99, 13,
+  0, "abc", true, 12.0, `"format": "kicad"`, no version, no marker, neither
+  key - all built, 2503 entities each, no error, no warning; the CLI given one
+  file wrote demo.step with exit code 0 (99, "kicad", neither). The window's
+  queue (`resolve_jobs`) took every file with the marker, versions 0 and
+  "abc" among them.
+- The reader never reads the number (it goes by keys); the first exporter
+  (1c5d46b, 19.07.2026) wrote `"format": "simple3d"` and `"format_version": 1`
+  together; only `demo/ap-214/demo.json` (upstream) had neither.
+
+### What changed
+
+- `stepbuilder/intermediate.py`: `FORMAT_VERSION = 12`; `validate()` refuses
+  first a file whose "format" is not "simple3d", a format_version that is no
+  int (bool excluded), one above FORMAT_VERSION and one below 1, each with a
+  message naming it. Every build passes there (generate(); the window, the
+  batch and the CLI's one file).
+- `demo/ap-214/demo.json`: `"format": "simple3d"`, `"format_version": 1`
+  (ARCHITECTURE finding 15 closed).
+- `tests/test_variant_path.py` [17]; `tests/test_mech.py` and
+  `tests/test_index.py` build their boards with the marker and version (they
+  took only the demo's name and pcb and were refused - run_all found them).
+- README (both halves), CHANGELOG, ARCHITECTURE.
+
+### Verified
+
+- Red first: test_variant_path [17] 16 FAIL on the old reader.
+- The twelve inputs again: the ten refused with their messages, no STEP; 12
+  and 1 built; the CLI's one file exits 1 for 99, "kicad" and neither key.
+- The demo, old code on the old file (git archive of bcc5403) against new
+  code on the new, each the first build of a fresh process: DATA identical
+  (2546 lines). The control, the old code once more in a third process,
+  differed in the style section only (from line 2180, the same 6 (item,
+  colour) pairs); a file built fifth in its process also had other
+  assembly-usage ids ('13' for '1').
+- Rows 440 -> 446, each new one caught by test_variant_path; the 34 rows on
+  intermediate.py and of test_variant_path 33 of 34 (the 34th names test_gui
+  alone, unproven in session 0 as always); after test_mech and test_index got
+  the marker, their 22 rows 22 of 22. run_all 30/34 before those two were
+  fixed, 32/34 after (the two window suites), 91 s.
+- On the way: a 3.4 KB job was cut by ps_remote's command line and ran
+  nothing; sent as a file and run with -File it ran whole.
 
 ## Update 2026-10-31 (round 120) — every variant a file of its own (R2-10 of the first review round)
 
