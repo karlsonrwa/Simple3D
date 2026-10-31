@@ -10,7 +10,9 @@ build); a format_version 5 file with zones but no layers is one prism per
 zone (`_zone_solid`). `_layer_region` is where a drawn layer shape becomes
 material or an opening; `board_cutouts` is where a repeated cutout is
 dropped before it can erase the whole board; `has_solid` is the test a
-boolean's IsDone() does not give. `_rim_faces` picks the side walls for the
+boolean's IsDone() does not give, and `_board_face` the one MakeFace's does
+not: an outline, cutout or zone that crosses itself or encloses nothing is
+an error that names it. `_rim_faces` picks the side walls for the
 rim colour, in the panel's own frame on a folded board.
 
 The reasons behind each are in the docstrings; the measurements behind
@@ -24,7 +26,10 @@ import json
 from OCP.BRep import BRep_Builder
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+from OCP.BRepCheck import BRepCheck_Analyzer
+from OCP.BRepGProp import BRepGProp
 from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
+from OCP.GProp import GProp_GProps
 from OCP.TopoDS import TopoDS, TopoDS_Compound, TopoDS_Shape
 from ._occt import TopTools_ListOfShape
 from OCP.gp import gp_Vec
@@ -32,6 +37,76 @@ from OCP.gp import gp_Vec
 from .contour import _face_from_wires, build_contour
 from .errors import StepBuilderError
 from .reporting import LogFn, _noop_log
+
+# A face of the board body with less area than this encloses nothing: 1 um2.
+# The smallest real one on the boards on hand is a 0.5 mm round cutout,
+# 0.196 mm2; a contour that runs out along a track and back has 0.
+_NO_AREA = 1.0e-6
+
+
+def _board_face(contour: list, z: float, what: str):
+    """The face of one contour of the board body - the outline, a zone, a
+    cutout - or a StepBuilderError that says which contour (*what*) and what
+    is wrong with it (round 125, R3-9 and R3-12 of the 23.10.2026 review).
+
+    MakeFace's IsDone() is not the test it looks like. A bow-tie outline, one
+    that crosses itself, makes a face all the same, the prism of it is one
+    solid of no volume (its two halves cancel: -2.8e-14 mm2), and the STEP
+    was written with that for a board and not a word in the log, while the
+    message here promised a check for self-intersection nobody made.
+    OpenCASCADE's own check does see it - BRepCheck_Analyzer rejects the
+    face, and its wire for SelfIntersectingWire - and rejects a contour whose
+    points all lie on one line as well. A contour that runs out along one
+    track and back passes the check with an area of exactly 0, so the area
+    is asked too, after the check, which the bow-tie would fail as "no area".
+    All 446 outlines, cutouts and zones of the boards on hand pass both; the
+    282 of the Cadence demo, the most, take 154 ms.
+    """
+    try:
+        wire = build_contour(contour, z)
+    except StepBuilderError as exc:
+        raise StepBuilderError(f"{what}: {exc}") from None
+    maker = BRepBuilderAPI_MakeFace(wire, True)
+    if not maker.IsDone():
+        raise StepBuilderError(f"{what} makes no flat face "
+                               f"(OpenCASCADE: {str(maker.Error()).split('.')[-1]})")
+    face = maker.Face()
+    if not BRepCheck_Analyzer(face).IsValid():
+        # Only on the way to an error, so the bend package loads no earlier
+        from .bend.crooked import rejected
+
+        if "wire" in rejected(face):
+            raise StepBuilderError(f"{what} crosses itself: OpenCASCADE's own "
+                                   f"check (BRepCheck) rejects its face")
+        raise StepBuilderError(f"{what} is not a valid face: OpenCASCADE's own "
+                               f"check (BRepCheck) rejects it")
+    props = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(face, props)
+    if abs(props.Mass()) < _NO_AREA:
+        raise StepBuilderError(f"{what} encloses no area")
+    return face
+
+
+def _near(contour: list) -> str:
+    """' near (x, y)': where a cutout begins, to find it by in Allegro."""
+    first = contour[0] if contour else {}
+    point = first.get("start") or first.get("center") or (first.get("x"), first.get("y"))
+    try:
+        return f" near ({float(point[0]):g}, {float(point[1]):g})"
+    except (TypeError, ValueError, IndexError):
+        return ""
+
+
+def _checked_cutouts(contours: list, log: LogFn) -> list:
+    """`board_cutouts`, each kept cutout checked as a face once, here, rather
+    than at every height `_cut_out` builds it again: the inspection build
+    cuts the cutouts from each of its layers."""
+    cutouts = board_cutouts(contours, log)
+    # numbered by its place in pcb.edges, as the doubled-track warnings are
+    place = {id(contour): i for i, contour in enumerate(contours)}
+    for contour in cutouts:
+        _board_face(contour, 0.0, f"Cutout {place[id(contour)]}{_near(contour)}")
+    return cutouts
 
 
 def _shape_face(shape: dict, z: float):
@@ -177,6 +252,8 @@ def layer_solids(stackups: dict, zones: list[dict], shift: float,
             log(f"warning: zone {zone['name']} names an unknown stackup "
                 f"{zone['stackup']!r}, skipped")
             continue
+        # Once per zone, not at each of its layers, which build the face again
+        _board_face(zone["contour"], 0.0, f"Zone {zone['name']} outline")
         for layer in stackup.get("layers") or []:
             height = float(layer["z_top"]) - float(layer["z_bottom"])
             if height <= 0:
@@ -244,7 +321,7 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
 
     Cutouts are applied to each layer separately, so holes stay visible.
     """
-    cutouts = board_cutouts(pcb.get("edges") or [], log)
+    cutouts = _checked_cutouts(pcb.get("edges") or [], log)
     parts = layer_solids(stackups, zones, shift, log, cutouts)
     if not parts:
         raise StepBuilderError("No stackup layer produced a solid")
@@ -357,8 +434,8 @@ def _cut_out(shape: TopoDS_Shape, contours: list, cut_z: float,
     for i, contour in enumerate(contours, start=1):
         wire = build_contour(contour, cut_z)
         face = BRepBuilderAPI_MakeFace(wire, True)
-        if not face.IsDone():
-            raise StepBuilderError(f"Cutout #{i} is not planar or self-intersects")
+        if not face.IsDone():         # each was checked once by _checked_cutouts
+            raise StepBuilderError(f"Cutout #{i}{_near(contour)} makes no flat face")
         tools.Append(BRepPrimAPI_MakePrism(face.Face(), direction).Shape())
 
     arguments = TopTools_ListOfShape()
@@ -545,13 +622,8 @@ def _zone_solid(zones: list[dict], levels: dict, log: LogFn) -> TopoDS_Shape:
         if height <= 0:
             log(f"warning: zone {name} has no thickness, skipped")
             continue
-        wire = build_contour(zone["contour"], top_z)
-        face = BRepBuilderAPI_MakeFace(wire, True)
-        if not face.IsDone():
-            raise StepBuilderError(
-                f"Zone {name} outline is not planar or self-intersects")
-        solids.append(
-            BRepPrimAPI_MakePrism(face.Face(), gp_Vec(0, 0, -height)).Shape())
+        face = _board_face(zone["contour"], top_z, f"Zone {name} outline")
+        solids.append(BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, -height)).Shape())
 
     if not solids:
         raise StepBuilderError("No stackup zone produced a solid")
@@ -607,16 +679,12 @@ def make_board_geometry(pcb: dict, thickness: float, z_offset: float = 0.0,
         # FIX: the C++ version special-cased len==1 and passed the whole array
         # instead of contours[0]. It only worked because the nesting happened to
         # collapse. edges[0] is always the outline.
-        wire = build_contour(contours[0], z_offset)
-        face = BRepBuilderAPI_MakeFace(wire, True)
-        if not face.IsDone():
-            raise StepBuilderError("Board outline is not planar or self-intersects")
-
-        board = BRepPrimAPI_MakePrism(face.Face(), gp_Vec(0, 0, -thickness)).Shape()
+        face = _board_face(contours[0], z_offset, "Board outline")
+        board = BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, -thickness)).Shape()
         cut_z = z_offset
         cut_direction = gp_Vec(0, 0, -thickness)
 
-    cutouts = board_cutouts(contours, log)
+    cutouts = _checked_cutouts(contours, log)
     if cutouts:
         # _cut_out, not a second copy of it: this inlined the same loop as
         # the layer path, so the compound-as-tool bug had to be found and

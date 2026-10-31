@@ -3521,6 +3521,80 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-01 (round 125) — the STEP builder refuses by name what it cannot build (R3-4, R3-8, R3-9, R3-10, R3-11, R3-12; R3-6 and R3-7 parked)
+
+The STEP-builder batch of the owner's «Пройдись дальше сам по всем оставшимся
+находкам» (31.10.2026). Scratch and measurements in `build/fix-2026-10-31/r125/`.
+
+- **R3-4, one part per model FILE.** `ModelCache` was keyed on the mapping's
+  spelling while `StepFileIndex` finds a file by its bare name and, last,
+  ignoring case: `cap_D8x10mm.stp`, `CAP_D8X10MM.STP` and `lib/cap_D8x10mm.stp`
+  read the one file three times, 16 solids for 6, and the third copy, its name
+  taken, kept the GUID its STEP carries. Now a second cache keyed on
+  `os.path.normcase` of the resolved path; the part is named after the file on
+  disk (`path.stem`), an unreadable file is tried and said once. test_mech
+  [spell], red first (4 FAIL on HEAD).
+- **R3-8, a stack with no layers is said.** A zone whose stackup exists but
+  lists no layers built nothing and said nothing, in every stitching mode:
+  `warning: zone X's stackup 'S' has no layers - the zone is left out of the
+  board`. test_layers [empty], red first.
+- **R3-9, a body contour that makes no face is refused.** MakeFace's IsDone()
+  was the only test, and its message promised a self-intersection check nobody
+  made. Measured (`degenerate.py`, `areas.py`): a bow-tie makes a face, BRepCheck
+  rejects it (face UnorientableShape, wire SelfIntersectingWire), its net area
+  is -2.8e-14 mm2; three collinear points: BadOrientationOfSubshape; out along a
+  track and back: BRepCheck passes it, area exactly 0; two loops touching at a
+  vertex: valid, as it should be. `board._board_face(contour, z, what)` asks
+  MakeFace, then BRepCheck (a wire status means "crosses itself"), then the
+  area against 1 um2 - the smallest real face is a 0.5 mm round cutout, 0.196
+  mm2. Used for the outline, `_zone_solid`, each zone once at the head of
+  `layer_solids` (its layers rebuild the face at their heights), and each
+  cutout once in `_checked_cutouts` - not in `_cut_out`, which the inspect
+  build runs per layer, nor in `board_cutouts`, which pads.py calls twice more.
+  `faces_check.py`: all 446 outlines, cutouts and zones of the boards on hand
+  pass, the Cadence demo's 282 in 154 ms. A plain board in inspect mode becomes
+  the implicit zone "board", so there the error reads "Zone board outline ...".
+- **R3-12, named.** Contour errors from `build_contour` are prefixed with the
+  contour (`Board outline: ...`, `Cutout 3 near (x, y): ...`, numbered by the
+  place in pcb.edges as the doubled-track warnings are, `Zone Z outline: ...`).
+  A segment shorter than Precision::Confusion (1e-7, where MakeEdge starts
+  refusing, measured) and an arc with alpha = beta raise a StepBuilderError
+  with their number and place instead of StdFail_NotDone /
+  Standard_ConstructionError. `_face_from_wires` no longer calls a zone's or a
+  drawn shape's failure "silkscreen outline ... self-intersects". `validate()`
+  checks every component placed from a model for `COMPONENT_KEYS` and
+  `MAPPING_KEYS` (numbers, bool refused; is_mirrored only asked to exist) - the
+  CLI on a component without x ended in a KeyError traceback. Measured first:
+  440 mapped components in 12 files, all keys present, all floats and bools.
+  Zero-length segments in the data: 0 of 2085.
+- **R3-10, R3-11, tests exact.** test_zones [3] compared the volume with 2 % and
+  the review's board without FLEX1 is 1.64 % light: the expected volume is now
+  the zones' union (STTIFFENER1 and FLEX1 share 0.14 x 16.34 mm, where the flex
+  lies inside the stiffener's span), 712.070756 against 712.0708 built, within
+  1e-6. test_layers [5] allowed "n <= 3" solids on a board with no components:
+  now exactly 1. Both proved on a HEAD copy with the fault applied: the old
+  test passed (700.3811; 2 solids), the new one fails.
+- **R3-6, R3-7, parked for the owner.** Cadence (SPB 25.1,
+  algroRigidFlex/Creating_Multi-Stackup_Zones_in_the_Design_Drawing): "Zones
+  cannot be overlapped or nested. If a zone is added and intersects/overlaps
+  with an existing zone, the newer zone will be trimmed to the existing zone
+  boundary." The probe `probe_zone_holes.il` on the copies in input/: every
+  zone group has one member, a polygon on RIGID FLEX/ZONE_OUTLINE, no holes
+  (->holes and axlPolyFromDB agree) - the nesting is in Allegro's database,
+  not an export loss: SOLDERMASK1 inside STIFFENER2 (flex-b2), LDI inside
+  STIFF_TOP_500 and LDI2 inside STIFF_TOP_500_2 (flex2-a0). Which zone a
+  point belongs to there is a modelling decision on his boards.
+
+Rows 463 -> 487 (22 + 2): `rows125.py`, `rows125b.py`; one old row
+(board-zone-solid-extruded-upwards) re-pointed at the rewritten prism line.
+The 4090, the second run on the final tree: the touched suites green; the 162
+rows on the files changed since round 123 caught 161 of 162 in 142 s on 8
+copies, the one not proved (intermediate-brd-name-dated-only) because test_gui
+is red in session 0, as every round; run_all 32/34, the two window suites. README both
+halves (what the reader refuses since round 125; one part per file),
+ARCHITECTURE (table 2.1 recounted with `recount.py`, which now skips the table
+of section 5; board, intermediate and models rows).
+
 ## Update 2026-11-01 (round 124) — the documentation audit catches what the review changed (R8-16..R8-20, R8-4, R7n-20)
 
 `tools/audit_docs.py`, sharpened where the second round's experiments passed

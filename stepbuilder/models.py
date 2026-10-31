@@ -16,6 +16,7 @@ before.
 from __future__ import annotations
 
 import math
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -261,6 +262,9 @@ class ModelCache:
         self._shape_tool = shape_tool
         self._log = log
         self._labels: dict[str, list[TDF_Label]] = {}
+        # the labels of each FILE read, keyed by its path: one part per file,
+        # however many spellings of its name the mapping uses (round 125)
+        self._by_file: dict[str, list[TDF_Label]] = {}
         self._named: set[str] = set()
 
     def labels_for(self, step_name: str) -> tuple[list[TDF_Label], str | None]:
@@ -278,6 +282,15 @@ class ModelCache:
             self._log(f"warning: could not find {step_name}")
             self._labels[step_name] = []
             return [], "missing"
+        # One part per FILE (round 125, review 23.10.2026 R3-4). The index
+        # finds a file by its bare name and ignoring case, and this cache was
+        # keyed on the mapping's spelling: cap_D8x10mm.stp, CAP_D8X10MM.STP
+        # and lib/cap_D8x10mm.stp read one file three times - 16 solids for
+        # 6 - and the third copy, its name taken, kept its file's GUID.
+        file_key = os.path.normcase(str(path))
+        if file_key in self._by_file:
+            self._labels[step_name] = self._by_file[file_key]
+            return self._labels[step_name], None
         else:
             # A model file that is PRESENT but unusable costs its own
             # component and nothing more - the same treatment a missing one
@@ -317,16 +330,19 @@ class ModelCache:
                 # advice _report_embedded_only gives would be wrong here.
                 self._log(f"warning: {step_name} {problem}: {path}")
                 self._labels[step_name] = []
+                self._by_file[file_key] = []
                 return [], "unreadable"
             else:
-                # Name the shared part after the model file (stem), once.
-                part_name = _sanitize(Path(step_name).stem)
+                # Name the shared part after the model FILE as it is on disk
+                # (its stem), once - not after the mapping's spelling of it.
+                part_name = _sanitize(path.stem)
                 if part_name and part_name not in self._named:
                     TDataStd_Name.Set_s(
                         new_labels[0], TCollection_ExtendedString(part_name)
                     )
                     self._named.add(part_name)
                 self._labels[step_name] = new_labels
+                self._by_file[file_key] = new_labels
                 return new_labels, None
 
 

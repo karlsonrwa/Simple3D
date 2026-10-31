@@ -220,5 +220,61 @@ check("and counts them per file and in its last line",
       "warning: demo.step: 29 component(s) left out (named above)" in win9
       and done9 == ["Done: 1 file(s), 1 component(s) placed, 29 left out"], (done9, win9[-4:]))
 
+print("\n[10] a component the build cannot place is refused by its refdes (round 125)")
+# R3-12 of the 23.10.2026 review: C1 without x, without is_mirrored, or with
+# a step_mapping without rotation_x was a bare KeyError naming no refdes, and
+# the command line ended in its traceback.
+W10 = OUT / "unplaceable"
+shutil.rmtree(W10, ignore_errors=True)
+W10.mkdir()
+
+
+def demo_with(change):
+    d = json.loads(json.dumps(base))
+    change(d)
+    return d
+
+
+def refusal10(d):
+    """What reading *d* says: the StepBuilderError's text, None when it
+    reads, or the name of any other exception."""
+    try:
+        Intermediate(W10 / "board.json", d).validate()
+    except core.StepBuilderError as exc:
+        return str(exc)
+    except Exception as exc:        # what a build met further on, unnamed
+        return f"{type(exc).__name__}: {exc}"
+    return None
+
+
+for change, want in (
+        (lambda d: d["C1"].pop("x"), "Component C1 is missing 'x'."),
+        (lambda d: d["C1"].pop("is_mirrored"), "Component C1 is missing 'is_mirrored'."),
+        (lambda d: d["C1"]["step_mapping"].pop("rotation_x"),
+         "Component C1 is missing 'step_mapping.rotation_x'."),
+        (lambda d: d["C1"].update(x=None), "Component C1's 'x' is None, not a number."),
+        (lambda d: d["C1"]["step_mapping"].update(offset_z="0.5"),
+         "Component C1's 'step_mapping.offset_z' is '0.5', not a number."),
+        (lambda d: d["C1"].update(angle=True), "Component C1's 'angle' is True, not a number.")):
+    d = demo_with(change)
+    check(f"refused: {want}", refusal10(d) == want, refusal10(d))
+d = demo_with(lambda d: d.update(U9={"step_mapping": {}}))
+check("one with no model to place it by is left to the build, which skips it", refusal10(d) is None,
+      refusal10(d))
+d = demo_with(lambda d: d["C1"].update(is_mirrored=0))
+check("and is_mirrored is asked only for its truth", refusal10(d) is None, refusal10(d))
+
+jf10 = W10 / "comp_no_x.json"
+jf10.write_text(json.dumps(demo_with(lambda d: d["C1"].pop("x"))), encoding="utf-8")
+out10, err10 = io.StringIO(), io.StringIO()
+with contextlib.redirect_stdout(out10), contextlib.redirect_stderr(err10):
+    try:
+        rc10 = stepbuilder_cli.main([str(ROOT / "demo/step_files"), str(jf10), str(W10 / "cli")])
+    except Exception as exc:        # out of main, it is the traceback
+        rc10 = f"raised {type(exc).__name__}: {exc}"
+check("the command line says it in one line and fails",
+      rc10 == 1 and "error (comp_no_x.json): Component C1 is missing 'x'."
+      in err10.getvalue().splitlines(), (rc10, err10.getvalue()[-300:]))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

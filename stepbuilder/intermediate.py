@@ -51,6 +51,12 @@ RESERVED = ("name", "pcb", "format", "format_version", "silkscreen",
             "embedded_models", "zones", "stackups", "bends", "full_board",
             "components", "warnings", "pads")
 
+# What placing a component reads, with no default, from it and from its
+# step_mapping (models.component_transform, core.generate); all numbers but
+# is_mirrored, whose truth is all that is asked of it.
+COMPONENT_KEYS = ("x", "y", "angle", "is_mirrored")
+MAPPING_KEYS = ("rotation_x", "rotation_y", "rotation_z", "offset_x", "offset_y", "offset_z")
+
 
 # What Allegro's SKILL writes when a name is not ASCII: the bytes it holds,
 # which on Windows is the ANSI code page (cp1251 on a Russian system). SKILL
@@ -233,6 +239,23 @@ class Intermediate:
                 raise StepBuilderError("JSON is missing 'pcb.thickness.board'.")
         elif not data.get("stackups"):
             raise StepBuilderError("JSON is missing 'pcb.thickness' and carries no stackups to measure it from.")
+        # A key missing there was a bare KeyError: 'x' with no refdes, and on
+        # the command line a traceback (round 125, R3-12 of the review).
+        for ref_des, component in self.components.items():
+            mapping = component.get("step_mapping")
+            if not mapping or not mapping.get("step_name"):
+                continue                     # the build skips it, and says so
+            for owner, keys, where in ((component, COMPONENT_KEYS, ""),
+                                       (mapping, MAPPING_KEYS, "step_mapping.")):
+                for key in keys:
+                    if key not in owner:
+                        raise StepBuilderError(
+                            f"Component {ref_des} is missing '{where}{key}'.")
+                    value = owner[key]
+                    if key != "is_mirrored" and (isinstance(value, bool)
+                                                 or not isinstance(value, (int, float))):
+                        raise StepBuilderError(
+                            f"Component {ref_des}'s '{where}{key}' is {value!r}, not a number.")
 
     def silkscreen_layers(self) -> dict[str, dict[str, int]]:
         """{"top": {layer: polygon count}, "bottom": {...}} for this intermediate.

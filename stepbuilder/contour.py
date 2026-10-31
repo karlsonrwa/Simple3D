@@ -27,6 +27,7 @@ from typing import Iterable
 
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeFace
 from OCP.GC import GC_MakeArcOfCircle
+from OCP.Precision import Precision
 from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
 from ._occt import TopTools_HSequenceOfShape
 from OCP.TopoDS import TopoDS, TopoDS_Wire
@@ -47,7 +48,7 @@ def build_contour(contour: Iterable[dict], z_offset: float = 0.0) -> TopoDS_Wire
     """Turn a list of JSON primitives (segment / arc / circle) into a wire."""
     edges = []
 
-    for segment in contour:
+    for n, segment in enumerate(contour, start=1):
         kind = segment.get("type", "segment")
 
         if kind == "arc":
@@ -70,6 +71,13 @@ def build_contour(contour: Iterable[dict], z_offset: float = 0.0) -> TopoDS_Wire
             beta = math.radians(segment["beta"])
             while beta < alpha:
                 beta += 2.0 * math.pi
+            # An arc with no sweep raised Standard_ConstructionError and a
+            # segment with no length StdFail_NotDone, naming neither the
+            # contour nor the place (round 125, R3-12 of the 23.10.2026 review).
+            if beta == alpha:
+                raise StepBuilderError(
+                    f"arc #{n} has no length (alpha {segment['alpha']:g}, "
+                    f"beta {segment['beta']:g} degrees)")
             arc = GC_MakeArcOfCircle(circle, alpha, beta, True).Value()
             edges.append(BRepBuilderAPI_MakeEdge(arc).Edge())
 
@@ -81,6 +89,11 @@ def build_contour(contour: Iterable[dict], z_offset: float = 0.0) -> TopoDS_Wire
         elif kind == "segment":
             start = gp_Pnt(segment["start"][0], segment["start"][1], z_offset)
             end = gp_Pnt(segment["end"][0], segment["end"][1], z_offset)
+            # MakeEdge refuses ends as close as OCC's confusion distance, 1e-7
+            if start.Distance(end) <= Precision.Confusion_s():
+                raise StepBuilderError(
+                    f"segment #{n} has no length, at ({segment['start'][0]:g}, "
+                    f"{segment['start'][1]:g})")
             edges.append(BRepBuilderAPI_MakeEdge(start, end).Edge())
 
         else:
@@ -494,7 +507,11 @@ def _face_from_wires(outer: TopoDS_Wire, inner: list[TopoDS_Wire]):
     """Planar face from an outer wire and its hole wires."""
     maker = BRepBuilderAPI_MakeFace(outer, True)
     if not maker.IsDone():
-        raise StepBuilderError("silkscreen outline is not planar or self-intersects")
+        # Not "silkscreen", not "self-intersects": the zones and the drawn
+        # layer shapes come here too, and MakeFace checks no crossing at all
+        # (round 125, R3-12; board._board_face asks BRepCheck for that).
+        raise StepBuilderError("outline makes no flat face (OpenCASCADE: "
+                               f"{str(maker.Error()).split('.')[-1]})")
     for wire in inner:
         # A hole wire has to run opposite to the outer one for MakeFace to read
         # it as a void; ShapeFix_Face below repairs whichever way it came.

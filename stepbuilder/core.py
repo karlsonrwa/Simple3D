@@ -348,6 +348,12 @@ def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
                     line += (f"; its stack is {whole[0] - whole[1]:.3f}, but "
                              f"{_layer_names(empty_layers[name])} hold no material in it")
                 log(line)
+            elif stackups and str(zone["stackup"]) in stackups:
+                # A stack with no layers built nothing and said nothing: half
+                # a board, every stitching mode (round 125, review 23.10.2026
+                # R3-8). An unknown stackup is named where the layers are built.
+                log(f"warning: zone {name}'s stackup {zone['stackup']!r} has no layers - "
+                    f"the zone is left out of the board")
     elif z_datum == "top":
         # Where the two board faces live, given the datum choice.
         board_top_z, board_bottom_z = 0.0, -thickness

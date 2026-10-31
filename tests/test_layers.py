@@ -190,7 +190,9 @@ check("нет предупреждения об обрезке", not [m for m in
 
 print("\n[5] сплавление: одно тело, файл меньше компаунда")
 n=count_solids(read_step(OUT/"nolay.step"))
-check(f"плата + компонентов = {n} тел (не 18 отдельных слоёв)", n<=3, str(n))
+# Ровно одно: компонентов в nolay.json нет, а условие n<=3 пропускало плату,
+# распавшуюся на два или три тела (R3-11 ревью 23.10.2026).
+check(f"плата одним телом: {n} (не 18 отдельных слоёв и не 2-3 куска)", n==1, str(n))
 
 print("\n[6] обычная плата не затронута")
 d2=json.loads(json.dumps(json.loads((OUT/"nolay.json").read_text())))
@@ -203,6 +205,26 @@ core.generate(step_dir=ROOT/"demo/step_files",json_file=f2,output_dir=OUT,
 check("нет послойного лога", not [m for m in lg if "layer solid" in m])
 v2=volume(read_step(OUT/"plain.step"))
 check("объём = контур x 1.096", abs(v2-41*26.5*1.096)/(41*26.5*1.096)<1e-6, f"{v2:.3f}")
+
+print("\n[empty] a zone whose stack has no layers is said, not dropped silently (round 125)")
+# Review 23.10.2026, R3-8: a stackup with layers [] left its zone out of the
+# board in every stitching mode - half the volume, half the extent - and not
+# a word in the log (stack_faces skipped it, the layer loop built nothing).
+for mode in ("solid", "inspect"):
+    d = {"format": "simple3d", "format_version": 6, "name": f"empty_{mode}",
+         "pcb": {"thickness": {"soldermask_top": 0.0, "board": 0.365, "soldermask_bottom": 0.0},
+                 "color": base["pcb"]["color"], "edges": [rect(0, 0, 41, 26.5)]},
+         "stackups": {"FLEX": {"thickness": 0.365, "layers": layers(FLEX)},
+                      "STIFFENER2": {"thickness": 2.44, "layers": []}},
+         "zones": [{"name": "S2", "stackup": "STIFFENER2", "contour": rect(0, 0, 16, 11.38)},
+                   {"name": "F2", "stackup": "FLEX", "contour": rect(0, 11.38, 41, 26.5)}]}
+    jf = OUT / f"empty_{mode}.json"
+    jf.write_text(json.dumps(d))
+    heard = []
+    core.generate(step_dir=ROOT / "demo/step_files", json_file=jf, output_dir=OUT,
+                  output_name=f"empty_{mode}", board_mode=mode, log=heard.append)
+    said = [m for m in heard if m.startswith("warning:") and "S2" in m and "no layers" in m]
+    check(f"{mode}: the zone and its empty stack are named in a warning", len(said) == 1, heard[:10])
 
 print("\nРЕЗУЛЬТАТ:", "ВСЁ ПРОЙДЕНО" if not fails else f"{len(fails)} ОШИБОК: {fails}")
 sys.exit(0 if not fails else 1)

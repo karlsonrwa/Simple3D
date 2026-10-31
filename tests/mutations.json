@@ -822,8 +822,8 @@
  {
   "id": "board-zone-solid-extruded-upwards",
   "file": "stepbuilder/board.py",
-  "old": "            BRepPrimAPI_MakePrism(face.Face(), gp_Vec(0, 0, -height)).Shape())",
-  "new": "            BRepPrimAPI_MakePrism(face.Face(), gp_Vec(0, 0, height)).Shape())",
+  "old": "        solids.append(BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, -height)).Shape())",
+  "new": "        solids.append(BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, height)).Shape())",
   "suites": [
    "tests/test_zones.py"
   ],
@@ -4814,7 +4814,7 @@
  {
   "id": "docs-mutation-count-stale",
   "file": "README.md",
-  "old": "(tests/mutations.json, 463 faults, applied",
+  "old": "(tests/mutations.json, 487 faults, applied",
   "new": "(tests/mutations.json, 999 faults, applied",
   "suites": [
    "tools/audit_docs.py"
@@ -4830,5 +4830,245 @@
    "tools/audit_docs.py"
   ],
   "why": "a row of this table is dropped and nothing else changes (R7n-20) (round 124, review 23.10.2026)"
+ },
+ {
+  "id": "models-one-part-per-spelling",
+  "file": "stepbuilder/models.py",
+  "old": "        if file_key in self._by_file:\n",
+  "new": "        if file_key in self._by_file and False:\n",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "a model file the mapping spells three ways is read three times, 16 solids for 6 (R3-4) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "models-part-named-after-a-spelling",
+  "file": "stepbuilder/models.py",
+  "old": "                part_name = _sanitize(path.stem)\n",
+  "new": "                part_name = _sanitize(Path(step_name).stem)\n",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "the shared part is named after the mapping's first spelling of its file, CAP_D8X10MM, not after the file (R3-4) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "models-unreadable-file-tried-again",
+  "file": "stepbuilder/models.py",
+  "old": "                self._by_file[file_key] = []\n",
+  "new": "",
+  "suites": [
+   "tests/test_mech.py"
+  ],
+  "why": "a file that cannot be read is tried, and said, once per spelling (R3-4) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "core-stackup-without-layers-unsaid",
+  "file": "stepbuilder/core.py",
+  "old": "            elif stackups and str(zone[\"stackup\"]) in stackups:\n",
+  "new": "            elif stackups and str(zone[\"stackup\"]) in stackups and False:\n",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "a zone whose stackup has no layers is left out of the board without a word (R3-8) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-face-unchecked",
+  "file": "stepbuilder/board.py",
+  "old": "    if not BRepCheck_Analyzer(face).IsValid():\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "a bow-tie outline makes a face, and a board of no volume is written without a word (R3-9) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-face-area-unasked",
+  "file": "stepbuilder/board.py",
+  "old": "    if abs(props.Mass()) < _NO_AREA:\n",
+  "new": "    if abs(props.Mass()) < 0:\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "an outline out along a track and back, which BRepCheck passes, builds a board of no area (R3-9) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-face-every-rejection-a-crossing",
+  "file": "stepbuilder/board.py",
+  "old": "        if \"wire\" in rejected(face):\n",
+  "new": "        if True:\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "every face BRepCheck rejects is said to cross itself, a straight line too (R3-9) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-contour-error-unnamed",
+  "file": "stepbuilder/board.py",
+  "old": "        raise StepBuilderError(f\"{what}: {exc}\") from None\n",
+  "new": "        raise\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "an open or broken body contour does not say which one it is (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-cutouts-unchecked",
+  "file": "stepbuilder/board.py",
+  "old": "        _board_face(contour, 0.0, f\"Cutout {place[id(contour)]}{_near(contour)}\")\n",
+  "new": "        pass\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "a bow-tie cutout is cut without a word (R3-9) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-cutout-numbered-in-the-kept-list",
+  "file": "stepbuilder/board.py",
+  "old": "f\"Cutout {place[id(contour)]}{_near(contour)}\")\n",
+  "new": "f\"Cutout {cutouts.index(contour) + 1}{_near(contour)}\")\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "a cutout is numbered among those kept, not by its place in pcb.edges the doubled-track warnings use (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-cutout-where-unsaid",
+  "file": "stepbuilder/board.py",
+  "old": "        _board_face(contour, 0.0, f\"Cutout {place[id(contour)]}{_near(contour)}\")\n",
+  "new": "        _board_face(contour, 0.0, f\"Cutout {place[id(contour)]}\")\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "a refused cutout does not say where it begins (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-zone-outline-unchecked",
+  "file": "stepbuilder/board.py",
+  "old": "        _board_face(zone[\"contour\"], 0.0, f\"Zone {zone['name']} outline\")\n",
+  "new": "",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "a bow-tie zone builds its layers of no volume without a word (R3-9) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-zone-solid-unchecked",
+  "file": "stepbuilder/board.py",
+  "old": "        face = _board_face(zone[\"contour\"], top_z, f\"Zone {name} outline\")\n",
+  "new": "        face = BRepBuilderAPI_MakeFace(build_contour(zone[\"contour\"], top_z), True).Face()\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "a bow-tie zone with no layers (format_version 5) builds a prism of no volume (R3-9) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-outline-unchecked",
+  "file": "stepbuilder/board.py",
+  "old": "        face = _board_face(contours[0], z_offset, \"Board outline\")\n",
+  "new": "        face = BRepBuilderAPI_MakeFace(build_contour(contours[0], z_offset), True).Face()\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "MakeFace's IsDone() taken for the check: a bow-tie board outline is written as a board of no volume (R3-9) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "contour-segment-of-no-length-unnamed",
+  "file": "stepbuilder/contour.py",
+  "old": "            if start.Distance(end) <= Precision.Confusion_s():\n",
+  "new": "            if False:\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "a segment of no length is a bare StdFail_NotDone (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "contour-arc-of-no-sweep-unnamed",
+  "file": "stepbuilder/contour.py",
+  "old": "            if beta == alpha:\n",
+  "new": "            if False:\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "an arc of no sweep is a bare Standard_ConstructionError (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "contour-face-error-says-silkscreen",
+  "file": "stepbuilder/contour.py",
+  "old": "        raise StepBuilderError(\"outline makes no flat face (OpenCASCADE: \"\n",
+  "new": "        raise StepBuilderError(\"silkscreen outline is not planar (OpenCASCADE: \"\n",
+  "suites": [
+   "tests/test_dupcuts.py"
+  ],
+  "why": "a drawn layer shape that makes no face is called a silkscreen outline (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "intermediate-component-key-unasked",
+  "file": "stepbuilder/intermediate.py",
+  "old": "                    if key not in owner:\n",
+  "new": "                    if False:\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "a component without x is a bare KeyError naming no refdes, and a traceback on the command line (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "intermediate-component-number-unasked",
+  "file": "stepbuilder/intermediate.py",
+  "old": "                    if key != \"is_mirrored\" and (isinstance(value, bool)\n",
+  "new": "                    if False and (isinstance(value, bool)\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "a component whose x is null is a bare TypeError naming no refdes (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "intermediate-true-taken-for-a-number",
+  "file": "stepbuilder/intermediate.py",
+  "old": "                    if key != \"is_mirrored\" and (isinstance(value, bool)\n",
+  "new": "                    if key != \"is_mirrored\" and (False\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "true passes for a number, as Python's bool is an int (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "intermediate-is-mirrored-asked-for-a-number",
+  "file": "stepbuilder/intermediate.py",
+  "old": "                    if key != \"is_mirrored\" and (isinstance(value, bool)\n",
+  "new": "                    if True and (isinstance(value, bool)\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "is_mirrored is asked to be a number, and every board is refused (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "intermediate-unmapped-component-asked",
+  "file": "stepbuilder/intermediate.py",
+  "old": "                continue                     # the build skips it, and says so\n",
+  "new": "                pass\n",
+  "suites": [
+   "tests/test_embedded.py"
+  ],
+  "why": "a component with no model to place it by is refused instead of skipped with its warning (R3-12) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-zone-solid-last-zone-dropped",
+  "file": "stepbuilder/board.py",
+  "old": "    solids = []\n    for zone in zones:\n",
+  "new": "    solids = []\n    for zone in zones[:-1]:\n",
+  "suites": [
+   "tests/test_zones.py"
+  ],
+  "why": "the last zone, FLEX1, is left out of the board: 1.6 % of its volume, which a 2 % margin let through (R3-10) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "board-fused-in-two",
+  "file": "stepbuilder/board.py",
+  "old": "    return fuse_and_unify(solids, log)\n",
+  "new": "    return _compound([fuse_and_unify(solids[:1], log), fuse_and_unify(solids[1:], log)])\n",
+  "suites": [
+   "tests/test_layers.py"
+  ],
+  "why": "the fused board comes out as two solids, which \"n <= 3\" let through on a board with no components (R3-11) (round 125, review 23.10.2026)"
  }
 ]

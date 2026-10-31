@@ -55,9 +55,15 @@ logs=[]
 res=core.generate(step_dir=ROOT/"demo/step_files", json_file=jf, output_dir=OUT,
                   output_name="flex", log=logs.append)
 got=volume(read_step(OUT/"flex.step"))
-want=(16*11.38*2.44)+(41*15.12*0.365)+(17.2*3.54*0.49)+(16.34*2.1*0.365)
-check(f"volume {got:.4f} vs zone sum {want:.4f}", abs(got-want)/want < 0.02,
-      f"diff {abs(got-want):.4f}")
+# The four prisms, less what two of them share: STTIFFENER1 and FLEX1 overlap
+# by 0.14 mm along FLEX1's 16.34, and there the flex lies inside the
+# stiffener's span, both on the one core, so it adds nothing. Exact: this
+# used to allow 2 %, which a board without FLEX1 - 1.64 % light - passed
+# (R3-10 of the 23.10.2026 review).
+shared=(41.17-24.83)*(30.04-29.9)*0.365
+want=(16*11.38*2.44)+(41*15.12*0.365)+(17.2*3.54*0.49)+(16.34*2.1*0.365)-shared
+check(f"volume {got:.4f} = the zones' union {want:.4f}", abs(got-want)/want < 1e-6,
+      f"diff {abs(got-want):.6f}")
 check("log reports the zones", any("Multi-stackup board: 4 zone" in m for m in logs),
       str([m for m in logs[:6]]))
 # WHICH WAY the zone prisms grow, not only how much material they hold.

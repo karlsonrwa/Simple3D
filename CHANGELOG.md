@@ -11,6 +11,33 @@ to use the tool.
 
 ---
 
+- **2026-11-01** — **What the build cannot make is refused by name** (review
+  findings R3-4, R3-8, R3-9 and R3-12, round 125). A board outline, a cutout or
+  a zone outline that crosses itself or encloses no area stops the build with
+  its name and what is wrong with it; a bow-tie outline used to be written as
+  a board of no volume without a word. A segment or an arc of no length is
+  named by its number in its contour and where it is, an open zone by its
+  zone, and a component placed from a model that lacks `x`, `is_mirrored` or
+  a number of its `step_mapping` by its refdes, where the build stopped on a
+  bare error and the command line on a traceback. A zone whose stackup has no
+  layers is named in the log: it was left out of the board without a word. A
+  model file the mappings spell differently (`CAP_D8X10MM.STP`,
+  `lib/cap_D8x10mm.stp`) is read once and is one part named after the file;
+  it was read once per spelling, 16 solids for 6. /
+  **Чего сборка не может построить, она называет** (находки ревью R3-4, R3-8,
+  R3-9 и R3-12, раунд 125). Контур платы, вырез или контур зоны, который
+  пересекает сам себя или не охватывает площади, останавливает сборку: в
+  ошибке его имя и что с ним не так. Раньше контур-«бабочка» молча
+  записывался как плата нулевого объёма. Отрезок или дуга нулевой длины
+  называются номером в своём контуре и местом, открытая зона своим именем, а
+  компонент, у модели которого нет `x`, `is_mirrored` или одного из чисел
+  `step_mapping`, называется по refdes. Прежде сборка падала с голой ошибкой,
+  а командная строка печатала трассировку. Зона, у стека которой нет слоёв,
+  названа в логе: её молча не было в плате. Файл модели, записанный в
+  маппингах по-разному (`CAP_D8X10MM.STP`, `lib/cap_D8x10mm.stp`), читается
+  один раз и даёт одну деталь с именем файла; раньше он читался на каждое
+  написание заново, 16 тел вместо 6.
+
 - **2026-11-01** — **Documentation made true to the code** (twenty-eight
   review findings, round 123). `requirements.txt` now exists, as README said;
   the dependency range is the tested one, `cadquery-ocp>=7.9,<9`; its size is

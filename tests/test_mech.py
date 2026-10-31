@@ -228,5 +228,56 @@ check("and on a board with no zones at all nothing moves",
       at(place(component_transform(MAP, comp(), TOP_Z, BOT_Z, zone_levels=None), (0, 0, 0)),
          (31.0, 52.0, TOP_Z + 4.0)))
 
+print("\n[spell] one model file is one part, however the mapping spells it (round 125)")
+# Review 23.10.2026, R3-3 of the first round's R3 (R3-4 here): the cache was
+# keyed on the mapping's spelling while the index finds a file by its bare
+# name and ignoring case, so cap_D8x10mm.stp, CAP_D8X10MM.STP and
+# lib/cap_D8x10mm.stp read the same file three times - 16 solids for 6 - and
+# the third copy, its name taken already, kept the GUID its STEP file carries.
+import re as _re
+spelled = {"format": demo["format"], "format_version": demo["format_version"],
+           "name": "spell", "pcb": demo["pcb"]}
+# The capitals first: a part named after the first spelling met would be
+# CAP_D8X10MM, one named after the file is cap_D8x10mm.
+for ref, spelling, x in (("C1", "CAP_D8X10MM.STP", 100.0), ("C2", "lib/cap_D8x10mm.stp", 120.0),
+                         ("C3", "cap_D8x10mm.stp", 140.0)):
+    part = json.loads(json.dumps(demo["C1"]))
+    part["step_mapping"]["step_name"] = spelling
+    part["x"] = x
+    spelled[ref] = part
+jf_spell = out / "spell.json"
+jf_spell.write_text(json.dumps(spelled, indent=1))
+logs_spell = []
+res_spell = core.generate(step_dir=ROOT / "demo/step_files", json_file=jf_spell, output_dir=out,
+                          output_name="spell", log=logs_spell.append)
+txt_spell = (out / "spell.step").read_text(encoding="utf-8", errors="replace")
+model_reads = [m for m in logs_spell if m.startswith("Reading ") and m.lower().endswith(".stp")]
+products = _re.findall(r"PRODUCT\('([^']*)'", txt_spell)
+check("all three placed", res_spell.components_placed == 3, res_spell.components_placed)
+check("the file read once for the three spellings", len(model_reads) == 1, model_reads)
+check("one part, named after the file on disk - no second spelling, no GUID",
+      products.count("cap_D8x10mm") == 1 and "CAP_D8X10MM" not in products
+      and not any(_re.fullmatch(r"[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}", p) for p in products),
+      products)
+check(f"and its geometry once: {txt_spell.count('MANIFOLD_SOLID_BREP')} solid bodies, as for one "
+      f"spelling ({breps2})", txt_spell.count("MANIFOLD_SOLID_BREP") == breps2,
+      (txt_spell.count("MANIFOLD_SOLID_BREP"), breps2))
+# A file that cannot be read is one file too: tried once, said once
+bad_dir = out / "spell_unreadable"
+bad_dir.mkdir(exist_ok=True)
+(bad_dir / "broken.stp").write_text("ISO-10303-21;\nHEADER;\nthis is not a STEP file\n")
+for ref, spelling in (("C1", "broken.stp"), ("C2", "BROKEN.STP"), ("C3", "lib/broken.stp")):
+    spelled[ref]["step_mapping"]["step_name"] = spelling
+jf_bad = out / "spell_unreadable.json"
+jf_bad.write_text(json.dumps(spelled, indent=1))
+logs_bad = []
+res_bad = core.generate(step_dir=bad_dir, json_file=jf_bad, output_dir=out,
+                        output_name="spell_unreadable", log=logs_bad.append)
+tried = [m for m in logs_bad if m.startswith("Reading ") and m.lower().endswith(".stp")]
+refused = [m for m in logs_bad if "could not be read" in m]
+check("a file that cannot be read is tried once for the three spellings, and said once",
+      len(tried) == 1 and len(refused) == 1 and res_bad.unreadable_step_files == ["broken.stp"],
+      (tried, refused, res_bad.unreadable_step_files))
+
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

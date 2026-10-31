@@ -73,6 +73,16 @@ without the `"format": "simple3d"` marker or without a version. The error is
 the same in the window, in a batch and for one file on the command line, and
 nothing is built from such a file.
 
+Since round 125 the reader looks inside the file the same way. A board
+outline, a cutout or a zone outline that crosses itself or encloses no area
+is refused by name (`Board outline`, `Cutout 3 near (12.5, 30)`, `Zone FLEX1
+outline`), with what is wrong with it; a bow-tie outline used to be written
+as a board of no volume without a word. A segment or an arc of no length is
+named by its number in its contour and where it is. A component placed from
+a STEP model that lacks `x`, `y`, `angle`, `is_mirrored` or one of the six
+numbers of its `step_mapping` is named by its refdes, where the build used to
+stop on a bare `KeyError` and the command line print its traceback.
+
 Allegro's own progress form is on screen from the moment you press Export,
 because all of the above happens before any window of ours appears. The only
 temporary file is the pre-flight check's log, `_simple3d_preflight.txt`, written
@@ -484,7 +494,10 @@ as they are to Windows itself. An exact match is always preferred.
 ```
 
 * One **part** per distinct STEP model, named after the model file. Ten
-  identical resistors cost one solid, not ten.
+  identical resistors cost one solid, not ten. One *file*, that is, as it is
+  on disk: a mapping that spells it `CAP_D8X10MM.STP` here and
+  `lib/cap_D8x10mm.stp` there still gets that one part, named `cap_D8x10mm`
+  (round 125; until then each spelling read the file again).
 * The model parts sit **directly** under the two groups, with no per-refdes
   wrapper: each entry is an instance of its model's part. The part (the STEP
   PRODUCT) carries the file's name; the instance itself carries only the
@@ -1085,7 +1098,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 463 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 487 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1163,6 +1176,16 @@ Python этого релиза (старый `stepbuilder` увидел бы о�
 другой программы и с файлом без маркера `"format": "simple3d"` или без версии.
 Ошибка одна и та же в окне, в пакетной сборке и для одного файла из командной
 строки, и из такого файла ничего не собирается.
+
+С раунда 125 сборщик так же проверяет и то, что внутри файла. Контур платы,
+вырез или контур зоны, который пересекает сам себя или не охватывает никакой
+площади, он не принимает и называет: `Board outline`, `Cutout 3 near (12.5,
+30)`, `Zone FLEX1 outline`, и говорит, что с ним не так. Раньше контур-«бабочка»
+молча записывался как плата нулевого объёма. Отрезок или дуга нулевой длины
+называются номером в своём контуре и местом. Компонент, который ставится по
+STEP-модели, но не имеет `x`, `y`, `angle`, `is_mirrored` или одного из шести
+чисел своего `step_mapping`, называется по refdes. Прежде сборка падала на
+голом `KeyError`, а командная строка печатала его трассировку.
 
 Штатный индикатор Allegro на экране с момента нажатия Export: всё перечисленное
 происходит до того, как появится наше окно. Единственный временный файл — лог
@@ -1578,7 +1601,10 @@ Allegro, где его набирают руками, а файл на диск�
 ```
 
 * Одна **деталь** на каждую уникальную STEP-модель, названа по имени файла.
-  Десять одинаковых резисторов стоят одного тела, а не десяти.
+  Десять одинаковых резисторов стоят одного тела, а не десяти. Имеется в виду
+  *файл* на диске: если в маппинге он записан то как `CAP_D8X10MM.STP`, то как
+  `lib/cap_D8x10mm.stp`, деталь всё равно одна и называется `cap_D8x10mm`
+  (раунд 125; до него каждое написание читало файл заново).
 * Детали моделей лежат **напрямую** в двух группах, без обёртки на каждый
   рефдес: каждый элемент — вхождение детали своей модели. Имя файла несёт
   деталь (PRODUCT в STEP), а у самого вхождения только метка, которую пишет
@@ -2186,7 +2212,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 463 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 487 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.
