@@ -3440,7 +3440,11 @@ behind and removed). No later Allegro run of this round brought one.
   cases on 5988-a1 (`r111/pictures/zero_width.png`), the owner answered on
   31.10.2026 «Оставить пропуск»: the export keeps skipping them; README (both
   languages, §Silkscreen and the limitation) and the `s3dZeroWidth` comment
-  record it as his decision. Also seen: several boards' silkscreen films print
+  record it as his decision. That also answers round 1's R2-6 (23.10.2026:
+  "a zero-width text is dropped as 'cannot be plotted' while the film prints
+  it at its Undefined line width; six texts on four boards"), open in both
+  rounds until now: the message is true now and the skip is his decision.
+  Also seen: several boards' silkscreen films print
   MANUFACTURING/AUTOSILK_* and not REF DES/SILKSCREEN_*, while the exporter
   collects both (the window's ticks choose).
 - The first survey version stalled Allegro twice with no CPU (Cadence_Demo,
