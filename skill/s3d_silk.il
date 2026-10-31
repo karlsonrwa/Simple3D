@@ -243,7 +243,9 @@ procedure( s3dWriteVertexList( p_port l_vertices x_indent )
 ; a text and an unfilled outline alike (round 111, Allegro 25.1: an unfilled
 ; rectangle and a line came out at 0.05 mm on a film set so and not at all on
 ; one left at 0; 5988-a1's MH2 at 0.1 on its SST and not at all on a copy of
-; it at 0). The export reads no films, so it skips the figure and says so.
+; it at 0). The export reads no films, so it skips the figure and says so -
+; and keeps doing so by the owner's decision of 31.10.2026 ("keep the
+; skip"), taken with both cases drawn from his own board.
 ; axlPolyFromDB would not object: it returns
 ; nil, or a degenerate polygon that fails later with a message about geometry
 ; rather than about width. Catching it here lets the report name the layer

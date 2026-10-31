@@ -498,9 +498,11 @@ because the console has usually scrolled past by the time you look at the
 model. **Allegro's artwork does draw such a figure**, at the *Undefined line
 width* of the film its layer goes to; at 0, the default, it leaves the figure
 out and says so in `photoplot.log` (Allegro 25.1, measured for a line, a text
-and an unfilled outline). The export reads no films. On the boards here that width is 0 on some silkscreen films
-and 0.1 or 0.254 mm on others, and where it is not 0 the Gerber carries ink
-the model lacks (measured in round 111).
+and an unfilled outline). On the boards here that width is 0 on some
+silkscreen films and 0.1 or 0.254 mm on others, and where it is not 0 the
+Gerber carries ink the model lacks (measured in round 111). The export reads
+no films and keeps skipping such figures: the owner's decision of 31.10.2026,
+taken with both cases drawn from his own board («Оставить пропуск»).
 
 **Solid or flat.** Flat is about a quarter of the size, and its faces are
 unioned — coplanar faces at one z flicker against each other where strokes
@@ -865,8 +867,8 @@ so this shows only if the artwork deliberately runs a line across one.
 
 **A figure with no width is left out even where Allegro plots it.** The artwork
 draws a zero-width line, text or unfilled outline at its film's undefined line
-width; the export reads no films, so it skips the figure and names it. See
-*Silkscreen*.
+width; the export reads no films, so it skips the figure and names it. Kept
+so by the owner's decision (31.10.2026). See *Silkscreen*.
 
 **Exposed copper is a picture, not copper.** It is surfaces floating a micron
 or two above the mask, in the mask's own plane rather than in a window cut through it;
@@ -1444,9 +1446,11 @@ Allegro, где его набирают руками, а файл на диск�
 печатает**: толщиной, которая задана в плёнке как Undefined line width. Если
 там 0 (так по умолчанию), фигуру он не рисует и пишет об этом в
 `photoplot.log` (Allegro 25.1, проверено на линии, тексте и контуре
-незалитой формы). Плёнки экспорт не читает. На платах здесь
-эта толщина у одних плёнок шелкографии 0, у других 0,1 или 0,254 мм, и там, где
-она не 0, в Gerber есть краска, которой нет в модели (измерено в раунде 111).
+незалитой формы). На платах здесь эта толщина у одних плёнок шелкографии 0,
+у других 0,1 или 0,254 мм, и там, где она не 0, в Gerber есть краска, которой
+нет в модели (измерено в раунде 111). Плёнки экспорт не читает и такие фигуры
+по-прежнему пропускает: так решил владелец 31.10.2026, посмотрев оба случая
+на своей плате («Оставить пропуск»).
 
 **Тела или поверхности.** Поверхности примерно вчетверо компактнее, и они
 объединяются: копланарные грани на одном z мерцают друг об друга там, где штрихи
@@ -1815,7 +1819,8 @@ Allegro построена при `k = 0`. На плате с запасом р�
 **Фигура без толщины пропускается, даже если Allegro её печатает.** Нулевую
 линию, такой же текст или контур незалитой формы фотошаблон рисует
 неопределённой толщиной линии своей плёнки. Экспорт плёнок не читает, поэтому
-фигуру пропускает и называет. См. *Шелкография*.
+фигуру пропускает и называет. Так решил владелец (31.10.2026). См.
+*Шелкография*.
 
 **Открытая медь — картинка, а не медь.** Это поверхности на микрон-другой над маской,
 в плоскости самой маски, а не в вырезанном в ней окне; толщины у них нет, и в

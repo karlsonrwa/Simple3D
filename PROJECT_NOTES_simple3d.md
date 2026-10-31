@@ -19,8 +19,10 @@ case. None of the nine boards has such a figure: their intermediates are
 identical but for the zero-width warning's words. Found: round 16's "a
 zero-width figure cannot be plotted" is false - the artwork draws it at its
 film's undefined line width (0.1 mm on 5988-a1's SST, where two refdes with
-no pen are printed and missing from the model); whether to draw them is the
-owner's call. In passing: the SKILL silk defaults gained the shipped
+no pen are printed and missing from the model; at 0 Allegro 25.1 leaves any
+zero-width figure out). Shown both on his own board as pictures on 31.10,
+the owner decided to keep the skip («Оставить пропуск»): README and the
+`s3dZeroWidth` comment say so. In passing: the SKILL silk defaults gained the shipped
 config's AUTOSILK layers, `skill_export.py`'s board copies moved from C:'s
 TEMP to `build/tmp`. Red first, rows 369, 56 of 56 caught, run_all 32/34 in
 session 0. The owner's PC blue-screened (0x9F) two minutes into the round's
@@ -3433,9 +3435,12 @@ behind and removed). No later Allegro run of this round brought one.
   variants_test-b0 SSB 0.1; 0 or no silkscreen film on the rest. So on
   5988-a1 two reference designators with no pen (REF DES/SILKSCREEN_TOP at
   (9.180, 3.222) and (45.180, 3.222)) are printed by Allegro at 0.1 mm and
-  missing from the model, and so is one zero-width path of the demo. Drawing
-  zero-width figures at their film's width is the owner's call (asked at the
-  end of the round). Also seen: several boards' silkscreen films print
+  missing from the model, and so is one zero-width path of the demo. Asked
+  whether to draw zero-width figures at their film's width, and shown both
+  cases on 5988-a1 (`r111/pictures/zero_width.png`), the owner answered on
+  31.10.2026 «Оставить пропуск»: the export keeps skipping them; README (both
+  languages, §Silkscreen and the limitation) and the `s3dZeroWidth` comment
+  record it as his decision. Also seen: several boards' silkscreen films print
   MANUFACTURING/AUTOSILK_* and not REF DES/SILKSCREEN_*, while the exporter
   collects both (the window's ticks choose).
 - The first survey version stalled Allegro twice with no CPU (Cadence_Demo,
