@@ -56,7 +56,10 @@ BUILTIN_ALLOW = {"makeTable", "makeVector", "makeString", "makeInstance",
                  "makeSymbol", "makeList",
                  # the axlFill defstruct's constructor (axlDBCreateShape's
                  # reference), which probe_silkfill.il's cross-hatches use
-                 "make_axlFill"}
+                 "make_axlFill",
+                 # and axlTextOrientation's (axlDBCreateText's reference), which
+                 # its true-type texts use (round 117)
+                 "make_axlTextOrientation"}
 
 def check_broken_strings(path, text):
     """Flag a " that opens on one line and does not close on the same line."""

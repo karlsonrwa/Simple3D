@@ -3823,8 +3823,8 @@
  {
   "id": "silk-unfilled-drawn-whole",
   "file": "skill/s3d_silk.il",
-  "old": "                    ( null( fill )\n                        segments = nil\n",
-  "new": "                    ( null( fill )\n                        errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )\n                        segments = nil\n",
+  "old": "                    ( null( fill )\n                        errset( strokes = o_dbid->segments )\n                        res = s3dStrokePolys( strokes s_endCap nil )\n                        polys = car( res )\n",
+  "new": "                    ( null( fill )\n                        errset( strokes = o_dbid->segments )\n                        res = s3dStrokePolys( strokes s_endCap nil )\n                        polys = append( car( res ) axlPolyFromDB( o_dbid ?endCapType s_endCap ) )\n",
   "suites": [
    "tests/test_skill_pins.py"
   ],
@@ -3839,6 +3839,86 @@
    "tests/test_skill_pins.py"
   ],
   "why": "the fill is not read, so every shape goes as solid, the state R2-13 found (review 28.10.2026, R2-13; round 111)"
+ },
+ {
+  "id": "silk-loss-nil-unsaid",
+  "file": "skill/s3d_silk.il",
+  "old": "                unless( zero || (kept > 0)\n",
+  "new": "                unless( zero || ok\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "an object Allegro converts to nothing leaves the legend unsaid again, only an error is named: a path that is one arc a database unit across vanishes (review 23.10.2026, R2-5; round 117)"
+ },
+ {
+  "id": "silk-loss-not-in-json",
+  "file": "skill/s3d_silk.il",
+  "old": "        g_state['silkWarnings] = cons( t_message g_state['silkWarnings] )\n",
+  "new": "        g_state['silkWarnings] = g_state['silkWarnings]\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "what the legend loses is said on the console only, and the window, which reads the JSON, never hears of it (review 23.10.2026, R2-5; round 117)"
+ },
+ {
+  "id": "silk-loss-dropped-without-polygons",
+  "file": "skill/s3d_silk.il",
+  "old": "            when( topPolys || botPolys || g_state['silkWarnings]\n",
+  "new": "            when( topPolys || botPolys\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a legend whose every object was lost writes no silkscreen object, and its messages go with it (review 23.10.2026, R2-5; round 117)"
+ },
+ {
+  "id": "silk-partial-not-recorded",
+  "file": "skill/s3d_silk.il",
+  "old": "                empty = cons( list( n stroke ) empty )\n",
+  "new": "                empty = empty\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a stroke that gives no polygon is not recorded, so a line drawn short of a segment is said nowhere (review 23.10.2026, R2-5; round 117)"
+ },
+ {
+  "id": "silk-partial-unsaid",
+  "file": "skill/s3d_silk.il",
+  "old": "        when( car( res ) && cadr( res )\n",
+  "new": "        when( nil && cadr( res )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a piece lost is never reported: the L whose corner arc gives nothing is drawn as two lines in silence (review 23.10.2026, R2-5; round 117)"
+ },
+ {
+  "id": "silk-partial-after-whole",
+  "file": "skill/s3d_silk.il",
+  "old": "        when( car( res ) && cadr( res )\n",
+  "new": "        when( cadr( res )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a path none of whose segments converted is called part missing too, even when it then converted whole, and one with nothing at all gets two messages (review 23.10.2026, R2-5; round 117)"
+ },
+ {
+  "id": "silk-partial-no-place",
+  "file": "skill/s3d_silk.il",
+  "old": "                 s3dDescribeObject( o_dbid layer ) length( l_empty ) x_strokes t_noun\n",
+  "new": "                 \"a line\" length( l_empty ) x_strokes t_noun\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the message for a piece lost names neither the layer nor the place, as the old \"a silkscreen line has 3 segment(s)\" did (review 23.10.2026, R2-5; round 117)"
+ },
+ {
+  "id": "silk-warnings-need-polygons",
+  "file": "stepbuilder/core.py",
+  "old": "    if silk_data:\n        # Reported even when the legend is switched off",
+  "new": "    if silk_data and (silk_data.get(\"top\") or silk_data.get(\"bottom\")):\n        # Reported even when the legend is switched off",
+  "suites": [
+   "tests/test_silk.py"
+  ],
+  "why": "the build says what the legend lost only when something of it is left to draw (review 23.10.2026, R2-5; round 117)"
  },
  {
   "id": "copper-xhatch-drawn-solid",

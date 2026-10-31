@@ -5,7 +5,21 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-116 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-117 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 117 (2026-10-31), on `main`, not pushed.** At «Да, R2-5»: a legend
+object lost in whole or in part is named, in the console and in the JSON.
+`axlPolyFromDB` answers nil for what it cannot convert, and only an error was
+named (the first one, console only); a line short of a segment got a console
+line with no layer or place. Now `s3dStrokePolys` converts stroke by stroke,
+`s3dCollectSilkByLayer` names every object with no polygon, `s3dPolysFromDbid`
+a piece missing with each lost segment's number and size, `s3dReportLoss`
+carries every line into `'silkWarnings`. Measured: none of the 2000 legend
+objects of the nine boards is lost (4199 strokes); the review's flex3-a0 line
+was a copper arc 0.0001 in radius. Made on a copy of my_test_board2 (one-arc
+paths, an L with that corner, TrueType text, which converts): before, four of
+six console lines, nothing in the JSON; after, seven named in both. Rows 413,
+100 of 100 caught; run_all 32/34. Read round 117.
 
 **Round 116 (2026-10-31), on `main`, not pushed.** At «Да, R2-4»: a path
 cmd would change is named, never handed to it. cmd replaces `%NAME%` of a
@@ -3449,6 +3463,83 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 117) — a legend object lost in whole or in part is named, in the console and in the JSON (R2-5 of the first review round)
+
+At the owner's «Да, R2-5». The finding (23.10, open in both rounds): the claim
+"0 kinds of objects lost silently" did not hold. `axlPolyFromDB` answers nil
+when "it cannot get the polys", every call sat in an errset, and the
+collector named an object only when the converter raised an error, the first
+one alone, console only. The reviewer's transliteration: 4 of 6 objects with
+no polygon and no message; flex3-a0's console "a silkscreen line has 4
+segment(s) but produced only 3 polygon(s)" with nothing in its JSON. Evidence
+asked: a message with layer and place for every object without a polygon, in
+the console and the JSON, on a board with such an object. The record is
+`docs/records/silk-lost-objects-2026-10-31.md`.
+
+### Measured first (`build/fix-2026-10-31/r117/`, all in Allegro 25.1 headless, started directly, the owner's desktop watched: no new window, nothing left running)
+
+- `s3dProbeSilkLost` over the nine boards: 2000 legend objects, 11 zero
+  width, 1989 converted, 0 with no polygon, 0 short by count, 0 errors.
+- `s3dProbeStrokes`, stroke by stroke: legend 1997 lines and texts, 4199
+  strokes, 0 empty; drawn mask openings 241 / 285 / 0; copper paths on ETCH
+  2614 / 7431 / 1. That one is the reviewer's flex3-a0 line, and it is copper:
+  ETCH/BOTTOM at (4.960, 3.830), segment 3 of 4, a quarter arc of radius
+  0.0001 (one database unit), 0.3 wide. The converter is shared, its message
+  said "silkscreen" for every caller.
+- `s3dProbeLostCases` on a copy of my_test_board2: a path that is one quarter
+  arc of radius 1, 2, 5 database units gives nothing whole and per segment; as
+  the corner of an L the arc drops out of the L (whole: 2 polygons). Text in a
+  style with the font Arial ("TT 18", `textStyle`, no `textBlock`) converts
+  whole to 4 outlines, so the reviewer's TrueType example loses nothing.
+  `axlDBCreateTextStyle` takes its height in USER units (its page says
+  database units: 15000 for 1.5 mm made the style and the text was refused,
+  "Text line is outside of the extents"); `axlDBGetTextStyle()` needs an
+  argument (nil lists them).
+- Allegro's console leaves out a warning identical to the one just before
+  it: before the change one export printed 4 of its 6 lossy-path lines
+  (exactly the two that followed an identical one), the probe's sweeps 6 of
+  12. After it, every line names a place and all were printed.
+
+### What changed (`skill/s3d_silk.il`)
+
+- `s3dStrokePolys` (a list of strokes one at a time -> the polygons and the
+  strokes that gave none), used for a line, an unfilled outline and a
+  vectorised text; a line or a text with nothing per stroke is still converted
+  whole.
+- `s3dPolysFromDbid` takes the export state as an optional third argument and
+  reports a piece missing (`s3dStrokesLost`: layer, place, each lost stroke's
+  number and `s3dStrokeSize`'s size); no "silkscreen" in its words. The mask
+  openings and the copper call it without the state: console only.
+- `s3dCollectSilkByLayer`: every object with no polygon kept is named, "no
+  polygon" or "conversion error"; nBad and "further ones are counted only"
+  gone. `s3dReportLoss`: console, and `'silkWarnings` given the state (the
+  zero-width message goes through it too).
+- `s3dMakeSilkscreen` returns the silkscreen whenever there is a message; the
+  summary says "leaves out N object(s) in whole or in part".
+- `tools/probes/probe_silkfill.il`: the three probes above;
+  `tools/skill_checks.py` allows `make_axlTextOrientation`.
+- README (both halves: a Silkscreen paragraph, a Known limitations entry for
+  the mask openings, which still lose an empty opening unsaid), CHANGELOG,
+  ARCHITECTURE.
+
+### Verified
+
+- Before and after on the made copy (`tt/` and `after/`): before, the console
+  lines without layer or place, the JSON's `silkscreen.warnings` only the
+  zero-width text; after, seven lines in both, each naming its object; the
+  polygons of the two JSONs identical (84 top, 11 bottom after clipping).
+- Red first: `test_skill_pins` [5b3] 14 FAIL on the old code, ALL PASS on the
+  new; `test_silk` [8b] (only messages, no polygons: nothing built, both
+  logged word for word) passes on the 4090.
+- Rows 405 -> 413: silk-loss-nil-unsaid, silk-loss-not-in-json,
+  silk-loss-dropped-without-polygons, silk-partial-not-recorded,
+  silk-partial-unsaid, silk-partial-after-whole, silk-partial-no-place,
+  silk-warnings-need-polygons; silk-unfilled-drawn-whole rewritten for the new
+  branch. The 100 rows on `s3d_silk.il` and of test_skill_pins, test_silk and
+  skill_checks: 100 of 100 caught (test_gui red on the clean copy, as always in
+  session 0; no row rested on it). run_all 32/34 in 172 s, the two window
+  suites.
 
 ## Update 2026-10-31 (round 116) — a path cmd would change is named, never handed to it (R2-4 of the first review round)
 

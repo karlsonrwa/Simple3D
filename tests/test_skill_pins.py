@@ -72,8 +72,9 @@ PINNED = {}       # procedure -> the statements this suite pins
 
 
 def pin(proc, *statements):
-    """Every statement must appear, exactly once, in that procedure."""
-    PINNED[proc] = statements
+    """Every statement must appear, exactly once, in that procedure. A
+    procedure pinned in two sections keeps the statements of both."""
+    PINNED[proc] = PINNED.get(proc, ()) + statements
     text = body(proc)
     if text is None:
         check(f"{proc} is in the SKILL source", False, "procedure not found")
@@ -299,9 +300,8 @@ print("\n[5b2] a shape as its fill draws it: s3dPolysFromDbid, s3dCopperPolys (r
 # stand in for them; the statements that decide are pinned.
 pin("s3dPolysFromDbid",
     "errset( fill = o_dbid->fill )",
-    "( null( fill ) segments = nil errset( segments = o_dbid->segments ) "
-    "foreach( segment segments errset( polys = append( polys "
-    "axlPolyFromDB( segment ?endCapType s_endCap ) ) ) )",
+    "( null( fill ) errset( strokes = o_dbid->segments ) "
+    "res = s3dStrokePolys( strokes s_endCap nil ) polys = car( res ) )",
     "( listp( fill ) errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ?xhatch t ) ) )")
 silk_poly_body = normalise(body("s3dPolysFromDbid") or "")
 unfilled = silk_poly_body.split("( null( fill )", 1)[-1].split("( listp( fill )", 1)[0]
@@ -319,6 +319,66 @@ pin("s3dCopperPolys",
     "hatched = hatched && listp( hatched )",
     "errset( polys = axlPolyFromDB( o_obj ?window l_window ?xhatch hatched ) )",
     "errset( polys = axlPolyFromDB( o_obj ?xhatch hatched ) )")
+
+print("\n[5b3] a legend object lost in whole or in part is named, in the console and the JSON (round 117)")
+
+# R2-5 of the 23.10.2026 review. axlPolyFromDB answers nil when "it cannot get
+# the polys", and every call to it sat in an errset, so an object that came
+# back empty left the legend with nothing said: only an error was named, the
+# first one alone and on the console only, and the console line for a line
+# short of a segment named neither its layer nor its place, nor reached the
+# JSON. Allegro 25.1 on a scratch copy of my_test_board2 (s3dProbeLostCases in
+# tools/probes/probe_silkfill.il): a path that is one quarter arc of radius 1,
+# 2 or 5 database units, 0.3 wide, converts to nothing, whole and per
+# segment, and as the corner of an L it drops out of the L. None of the 2000
+# legend objects of the nine boards does either; flex3-a0 has one such arc in
+# its copper. All of it reads a design, so the source is what is pinned.
+pin("s3dStrokePolys",
+    "if( g_line2poly then errset( one = axlPolyFromDB( stroke ?endCapType s_endCap ?line2poly t ) ) "
+    "else errset( one = axlPolyFromDB( stroke ?endCapType s_endCap ) ) )",
+    "if( one then polys = append( polys one ) else empty = cons( list( n stroke ) empty ) )",
+    "list( polys reverse( empty ) )")
+pin("s3dPolysFromDbid",
+    # a line and a vectorised text go stroke by stroke, whole only when no
+    # stroke gave anything
+    '( o_dbid->objType == "path" errset( strokes = o_dbid->segments ) '
+    "res = s3dStrokePolys( strokes s_endCap nil ) polys = car( res ) "
+    "unless( polys errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) ) ) )",
+    'noun = "stroke" res = s3dStrokePolys( strokes s_endCap t ) polys = car( res ) '
+    "unless( polys errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) ) )",
+    # some strokes and not others: a piece missing, said with its place
+    "when( car( res ) && cadr( res ) "
+    "s3dReportLoss( g_state s3dStrokesLost( o_dbid noun length( strokes ) cadr( res ) ) ) )")
+check("the converter the mask openings and the copper share names no kind of layer in what it says",
+      not [s for s in re.findall(r'"[^"]*"', silk_poly_body) if "silkscreen" in s.lower()],
+      re.findall(r'"[^"]*"', silk_poly_body))
+pin("s3dReportLoss",
+    's3dWarn( sprintf( nil "Simple 3D: %s." t_message ) )',
+    "when( g_state g_state['silkWarnings] = cons( t_message g_state['silkWarnings] ) )")
+# The words that let the reader find the object and judge the stroke: its layer
+# and place, the number of each lost stroke and, for a segment, its size.
+pin("s3dStrokesLost",
+    'sprintf( nil "part missing: %s - %d of its %d %s(s) gave no polygon and %s left out: %s" '
+    "s3dDescribeObject( o_dbid layer ) length( l_empty ) x_strokes t_noun "
+    'if( cdr( l_empty ) "are" "is" ) buildString( reverse( parts ) ", " ) )',
+    'sprintf( nil "%d (%s)" car( entry ) size )')
+pin("s3dStrokeSize",
+    'sprintf( nil "an arc of radius %g" sqrt( dx * dx + dy * dy ) )',
+    'sprintf( nil "a line %g long" sqrt( dx * dx + dy * dy ) )')
+pin("s3dCollectSilkByLayer",
+    'when( zero s3dReportLoss( g_state strcat( "zero width: " s3dDescribeObject( elem key )',
+    "ok = zero || errset( polys = s3dPolysFromDbid( elem s_endCap g_state ) )",
+    "kept = kept + 1",
+    "unless( zero || (kept > 0) where = s3dDescribeObject( elem key ) s3dReportLoss( g_state if( ok "
+    'strcat( "no polygon: " where " - left out, as Allegro converts it to no polygon" ) '
+    'strcat( "conversion error: " where " - left out, as Allegro\'s conversion of it fails" ) ) ) )')
+collect_body = normalise(body("s3dCollectSilkByLayer") or "")
+check("and no failure is merely counted: every message names its object",
+      "nBad" not in collect_body and "counted only" not in collect_body
+      and collect_body.count("s3dWarn(") == 0, collect_body[:200])
+pin("s3dMakeSilkscreen",
+    "when( topPolys || botPolys || g_state['silkWarnings] "
+    "list( thickness topPolys botPolys reverse( g_state['silkWarnings] ) ) )")
 
 # --------------------------------------------------------------------------- #
 # [5c] - the eleven the audit left "pinned by name only"
@@ -731,7 +791,10 @@ MUST_PIN = {"s3dLayerIsNegative", "s3dDrillXY", "rotateXY", "s3dBoxesMeet",
 # so no recorded Allegro answer can stand in for it (see [5b]).
 MUST_PIN_SOURCE_ONLY = {"s3dCollectExposed",
                         # and round 111's fill dispatch, for the same reason ([5b2])
-                        "s3dPolysFromDbid", "s3dCopperPolys"}
+                        "s3dPolysFromDbid", "s3dCopperPolys",
+                        # and round 117's account of what the legend loses ([5b3])
+                        "s3dStrokePolys", "s3dReportLoss", "s3dCollectSilkByLayer",
+                        "s3dMakeSilkscreen", "s3dStrokesLost", "s3dStrokeSize"}
 check("every procedure the audit found unpinned is pinned here",
       (MUST_PIN | MUST_PIN_SOURCE_ONLY) <= set(PINNED),
       sorted((MUST_PIN | MUST_PIN_SOURCE_ONLY) - set(PINNED)))

@@ -315,6 +315,99 @@ procedure( s3dDescribeObject( o_dbid t_layer )
     )
 )
 
+; One object the legend loses, in whole or in part, said where it will be
+; read: on the console now and, through the export state's 'silkWarnings, in
+; the intermediate, whose lines the window repeats in its log - the console
+; has scrolled past by the time anyone looks at the model. Without a state -
+; the drawn mask openings and the copper under them share the converter
+; below - on the console alone.
+procedure( s3dReportLoss( g_state t_message )
+    s3dWarn( sprintf( nil "Simple 3D: %s." t_message ) )
+    when( g_state
+        g_state['silkWarnings] = cons( t_message g_state['silkWarnings] )
+    )
+)
+
+; What a database segment is, in a few words - "an arc of radius 0.0001", "a
+; line 2 long" - so the reader can tell the stroke of a letter from a corner
+; arc one database unit across, like the one in flex3-a0's copper
+; (ETCH/BOTTOM at 4.960, 3.830; round 117). nil for a vectorised text's
+; stroke, an r_path, which carries neither.
+procedure( s3dStrokeSize( g_stroke )
+    let( ( kind se a b c dx dy )
+        kind = nil
+        se = nil
+        c = nil
+        errset( kind = g_stroke->objType )
+        errset( se = g_stroke->startEnd )
+        a = car( se )
+        b = cadr( se )
+        when( a && b
+            if( kind == "arc" then
+                errset( c = g_stroke->xy )
+                when( c
+                    dx = xCoord( a ) - xCoord( c )
+                    dy = yCoord( a ) - yCoord( c )
+                    sprintf( nil "an arc of radius %g" sqrt( dx * dx + dy * dy ) )
+                )
+            else
+                dx = xCoord( b ) - xCoord( a )
+                dy = yCoord( b ) - yCoord( a )
+                sprintf( nil "a line %g long" sqrt( dx * dx + dy * dy ) )
+            )
+        )
+    )
+)
+
+; Each stroke on its own - a line's or an outline's segments, a vectorised
+; text's r_paths, with ?line2poly - and which of them gave nothing.
+; -> list( l_polys l_empty ), l_empty holding list( x_number g_stroke ) for
+; each stroke that came back nil or raised an error. Stroke by stroke because
+; one stroke may give several polygons: until round 117 the polygons were
+; counted against the segments, and a count can hide a segment that gave none.
+procedure( s3dStrokePolys( l_strokes s_endCap g_line2poly )
+    let( ( polys one ( n 0 ) empty )
+        polys = nil
+        empty = nil
+        foreach( stroke l_strokes
+            n = n + 1
+            one = nil
+            if( g_line2poly then
+                errset( one = axlPolyFromDB( stroke ?endCapType s_endCap ?line2poly t ) )
+            else
+                errset( one = axlPolyFromDB( stroke ?endCapType s_endCap ) )
+            )
+            if( one then
+                polys = append( polys one )
+            else
+                empty = cons( list( n stroke ) empty )
+            )
+        )
+        list( polys reverse( empty ) )
+    )
+)
+
+; "part missing: path on ETCH/BOTTOM at (4.960, 3.830) - 1 of its 4
+; segment(s) gave no polygon and is left out: 3 (an arc of radius 0.0001)"
+procedure( s3dStrokesLost( o_dbid t_noun x_strokes l_empty )
+    let( ( layer parts size )
+        layer = nil
+        errset( layer = o_dbid->layer )
+        unless( stringp( layer )  layer = sprintf( nil "%L" layer ) )
+        parts = nil
+        foreach( entry l_empty
+            size = s3dStrokeSize( cadr( entry ) )
+            parts = cons( if( size
+                              sprintf( nil "%d (%s)" car( entry ) size )
+                              sprintf( nil "%d" car( entry ) ) )
+                          parts )
+        )
+        sprintf( nil "part missing: %s - %d of its %d %s(s) gave no polygon and %s left out: %s"
+                 s3dDescribeObject( o_dbid layer ) length( l_empty ) x_strokes t_noun
+                 if( cdr( l_empty ) "are" "is" ) buildString( reverse( parts ) ", " ) )
+    )
+)
+
 ; A multi-segment path is converted ONE SEGMENT AT A TIME, and that is the
 ; whole point rather than an optimisation.
 ;
@@ -335,27 +428,30 @@ procedure( s3dDescribeObject( o_dbid t_layer )
 ; They are deliberately NOT merged here. The Python side draws a compound of
 ; overlapping solids anyway, and when clipping is on axlPolyOperation unions
 ; them as a side effect of the AND.
-procedure( s3dPolysFromDbid( o_dbid s_endCap )
-    let( ( polys lines flat segments fill where )
+;
+; g_state, the export's, is where a piece lost is reported (s3dReportLoss):
+; the legend passes it, the mask openings and the copper do not.
+procedure( s3dPolysFromDbid( o_dbid s_endCap @optional ( g_state nil ) )
+    let( ( polys lines strokes res fill ( noun "segment" ) )
         polys = nil
+        strokes = nil
+        res = nil
         cond(
             ( o_dbid->objType == "text"
                 ; Allegro draws text as strokes, so a text dbid is vectorised
                 ; with axlText2Lines and each r_path widened with ?line2poly -
                 ; verbatim the idiom in the axlText2Lines docs. True-type text
                 ; has no text block and converts directly instead; that is how
-                ; exportJson tells the two apart as well.
+                ; exportJson tells the two apart as well. (Allegro 25.1 gave
+                ; "TT 18" in an Arial text style its four outlines so; round
+                ; 117, s3dProbeLostCases.)
                 if( o_dbid->textBlock then
+                    lines = nil
                     errset( lines = axlText2Lines( o_dbid ) )
-                    when( lines
-                        flat = foreach( mapcan x lines x )
-                        foreach( path flat
-                            errset(
-                                polys = append( polys
-                                    axlPolyFromDB( path ?endCapType s_endCap ?line2poly t ) )
-                            )
-                        )
-                    )
+                    strokes = foreach( mapcan x lines x )
+                    noun = "stroke"
+                    res = s3dStrokePolys( strokes s_endCap t )
+                    polys = car( res )
                     ; A font that does not vectorise still has an outline form.
                     unless( polys
                         errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ) )
@@ -365,23 +461,9 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
                 )
             )
             ( o_dbid->objType == "path"
-                segments = nil
-                errset( segments = o_dbid->segments )
-                foreach( segment segments
-                    errset(
-                        polys = append( polys
-                            axlPolyFromDB( segment ?endCapType s_endCap ) )
-                    )
-                )
-                ; A segment that will not convert on its own drops a piece of
-                ; the line silently, and the area check downstream cannot see a
-                ; missing stroke - each surviving polygon is still consistent
-                ; with its own area. So say it here. One segment may yield more
-                ; than one polygon, hence "fewer than".
-                when( segments && (length( polys ) < length( segments ))
-                    s3dWarn( sprintf( nil "Simple 3D: a silkscreen line has %d segment(s) but produced only %d polygon(s)."
-                                      length( segments ) length( polys ) ) )
-                )
+                errset( strokes = o_dbid->segments )
+                res = s3dStrokePolys( strokes s_endCap nil )
+                polys = car( res )
                 ; Single-segment paths, or a path whose segments will not
                 ; convert on their own, still have to come out somehow.
                 unless( polys
@@ -410,20 +492,9 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
                 errset( fill = o_dbid->fill )
                 cond(
                     ( null( fill )
-                        segments = nil
-                        errset( segments = o_dbid->segments )
-                        foreach( segment segments
-                            errset(
-                                polys = append( polys
-                                    axlPolyFromDB( segment ?endCapType s_endCap ) )
-                            )
-                        )
-                        unless( polys
-                            where = "an unfilled shape"
-                            errset( where = s3dDescribeObject( o_dbid o_dbid->layer ) )
-                            s3dWarn( sprintf( nil "Simple 3D: %s: its outline would not convert; skipped."
-                                              where ) )
-                        )
+                        errset( strokes = o_dbid->segments )
+                        res = s3dStrokePolys( strokes s_endCap nil )
+                        polys = car( res )
                     )
                     ( listp( fill )
                         errset( polys = axlPolyFromDB( o_dbid ?endCapType s_endCap ?xhatch t ) )
@@ -433,6 +504,16 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
                     )
                 )
             )
+        )
+        ; Some strokes converted and some did not: the object is drawn with a
+        ; piece missing, and the area check downstream cannot see it - each
+        ; surviving polygon is still consistent with its own area. So it is
+        ; said here, with the object's layer and place and what each lost
+        ; stroke is. None converted is the caller's to say, since it then has
+        ; nothing at all to draw; and a path or a text that converted whole
+        ; after that lost nothing (review 23.10.2026, R2-5).
+        when( car( res ) && cadr( res )
+            s3dReportLoss( g_state s3dStrokesLost( o_dbid noun length( strokes ) cadr( res ) ) )
         )
         polys
     )
@@ -453,7 +534,7 @@ procedure( s3dPolysFromDbid( o_dbid s_endCap )
 ; The sweep is s3dSelectVisibleOn, which puts the visibility and find-filter
 ; state back before the conversion below starts.
 procedure( s3dCollectSilkByLayer( l_layers s_endCap g_state )
-    let( ( elems polys out key groups order zero message ( nBad 0 ) )
+    let( ( elems polys out key groups order zero ok kept where )
         out = nil
         groups = makeTable( "s3dSilkGroups" nil )
         order = tconc( nil nil )
@@ -477,10 +558,9 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap g_state )
                 zero = nil
                 errset( zero = s3dZeroWidth( elem ) )
                 when( zero
-                    message = strcat( "zero width: " s3dDescribeObject( elem key )
-                                      " - skipped; Allegro's artwork draws it only at a film's undefined line width" )
-                    s3dWarn( sprintf( nil "Simple 3D: %s." message ) )
-                    g_state['silkWarnings] = cons( message g_state['silkWarnings] )
+                    s3dReportLoss( g_state
+                        strcat( "zero width: " s3dDescribeObject( elem key )
+                                " - skipped; Allegro's artwork draws it only at a film's undefined line width" ) )
                 )
 
                 ; Per element, so one object the converter cannot handle costs
@@ -490,13 +570,8 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap g_state )
                 ; site, and the export finished with no silkscreen at all and
                 ; nothing on screen to say why.
                 polys = nil
-                unless( zero || errset( polys = s3dPolysFromDbid( elem s_endCap ) )
-                    nBad = nBad + 1
-                    when( nBad == 1
-                        s3dWarn( sprintf( nil "Simple 3D: a %s object on %s could not be converted; skipping it (further ones are counted only)."
-                                          elem->objType key ) )
-                    )
-                )
+                ok = zero || errset( polys = s3dPolysFromDbid( elem s_endCap g_state ) )
+                kept = 0
                 foreach( poly polys
                     when( poly && !poly->isHole
                         unless( groups[key]
@@ -504,13 +579,25 @@ procedure( s3dCollectSilkByLayer( l_layers s_endCap g_state )
                             tconc( order key )
                         )
                         tconc( groups[key] poly )
+                        kept = kept + 1
                     )
                 )
-            )
-        )
 
-        when( nBad > 0
-            s3dWarn( sprintf( nil "Simple 3D: %d silkscreen object(s) could not be converted and were skipped." nBad ) )
+                ; And an object left with nothing to draw is named, with its
+                ; layer and place, however it came to that: an error, or nil -
+                ; axlPolyFromDB's own answer when "it cannot get the polys".
+                ; Until round 117 only an error was, the first one alone and on
+                ; the console only (review 23.10.2026, R2-5). A path that is a
+                ; single arc a few database units across converts to nothing,
+                ; whole and per segment (Allegro 25.1, s3dProbeLostCases).
+                unless( zero || (kept > 0)
+                    where = s3dDescribeObject( elem key )
+                    s3dReportLoss( g_state
+                        if( ok
+                            strcat( "no polygon: " where " - left out, as Allegro converts it to no polygon" )
+                            strcat( "conversion error: " where " - left out, as Allegro's conversion of it fails" ) ) )
+                )
+            )
         )
 
         ; -> ( (layer polys) (layer polys) ... ), layers in the order Allegro
@@ -677,7 +764,8 @@ procedure( s3dClipGroups( l_groups l_board )
 )
 
 ; Collect the whole silkscreen once for the design.
-; -> list( f_thickness l_topPolys l_bottomPolys )  or nil if disabled/empty.
+; -> list( f_thickness l_topGroups l_bottomGroups l_messages ), or nil when it
+; is disabled or there is neither a polygon nor a message.
 procedure( s3dMakeSilkscreen( l_config g_state )
     let( ( top bottom thickness clip endCap doExport topPolys botPolys board )
         top = nth( 0 l_config )
@@ -715,11 +803,14 @@ procedure( s3dMakeSilkscreen( l_config g_state )
             )
 
             when( g_state['silkWarnings]
-                s3dWarn( sprintf( nil "Simple 3D: %d silkscreen object(s) were skipped; see the warnings above and the GUI log."
+                s3dWarn( sprintf( nil "Simple 3D: the legend leaves out %d object(s) in whole or in part, each named above; the window's log repeats them."
                                   length( g_state['silkWarnings] ) ) )
             )
 
-            when( topPolys || botPolys
+            ; Whenever there is anything to say, polygons or not: a legend
+            ; whose every object was lost carries only its messages, and they
+            ; are what the window has to show (R2-5).
+            when( topPolys || botPolys || g_state['silkWarnings]
                 list( thickness topPolys botPolys reverse( g_state['silkWarnings] ) )
             )
         )

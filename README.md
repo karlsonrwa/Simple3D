@@ -558,6 +558,26 @@ Gerber carries ink the model lacks (measured in round 111). The export reads
 no films and keeps skipping such figures: the owner's decision of 31.10.2026,
 taken with both cases drawn from his own board («Оставить пропуск»).
 
+**An object that comes out with nothing, or with a piece missing, is named.**
+`axlPolyFromDB` answers nil for a figure it cannot convert, and a line is
+converted segment by segment, so either way the model could lack ink without a
+word. Every such object is reported by layer and position, in the Allegro
+console and in the window's log both: *no polygon* when it is left out
+altogether, *part missing* with the number of each lost segment and its size,
+*conversion error* when Allegro raises one. On a scratch copy of
+my_test_board2, Allegro 25.1 converts a path that is a single quarter arc of
+radius 1, 2 or 5 database units, 0.3 mm wide, to nothing, whole and segment by
+segment, and drops the same arc from the corner of an L. No legend object on
+the nine boards here comes out either way: 2 000 objects, and each of the 4 199
+strokes of their 1 997 lines and texts converted on its own. The one such arc
+found is in flex3-a0's copper. Text in a TrueType style converts like any other
+("TT 18" in Arial gave its four outlines). Until round 117 an object answered
+nil went unsaid, an error was named for the first object only, and the console
+line about a line short of a segment named neither layer nor place and never
+reached the window; Allegro's console also leaves out a warning identical to
+the one before it, so of six such lines one export printed four (review
+23.10.2026, R2-5). Recorded in `docs/records/silk-lost-objects-2026-10-31.md`.
+
 **Solid or flat.** Flat is about a quarter of the size, and its faces are
 unioned — coplanar faces at one z flicker against each other where strokes
 overlap. Solid mode deliberately does **not** union: a boolean over thousands of
@@ -924,6 +944,15 @@ draws a zero-width line, text or unfilled outline at its film's undefined line
 width; the export reads no films, so it skips the figure and names it. Kept
 so by the owner's decision (31.10.2026). See *Silkscreen*.
 
+**A drawn mask opening that converts to nothing is left out unsaid.** The
+legend names every object it loses (see *Silkscreen*). The openings go through
+the same converter, but of theirs an error is only counted on the console, and
+an opening Allegro converts to nothing is not mentioned at all; the copper
+under them that converts to nothing is counted there too, not named. A piece
+missing from either is named, on the console only. On the nine boards here
+every stroke of the openings' lines and texts converts (285 strokes of 241
+objects); whole shapes were not surveyed.
+
 **A path with `%NAME%` of a variable in it cannot open the window.** The check
 and the window are started through Windows' `cmd`, which replaces `%OS%`,
 `%os%`, `%OS:~0,3%`, `%CD%`, `%RANDOM%` and the like with their values even
@@ -1004,7 +1033,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 404 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 413 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1572,6 +1601,27 @@ Silkscreen не запускали, остаётся с нарисованным
 по-прежнему пропускает: так решил владелец 31.10.2026, посмотрев оба случая
 на своей плате («Оставить пропуск»).
 
+**Объект, от которого ничего не осталось или осталась часть, называется.** Если
+`axlPolyFromDB` не может превратить фигуру в многоугольник, она отвечает nil, а
+линия превращается по отрезкам. В обоих случаях модели может не хватить краски,
+и об этом никто бы не сказал. Теперь каждый такой объект называется со слоем и
+координатами, и в консоли Allegro, и в логе окна: *no polygon*, если он выпал
+целиком; *part missing* с номером и размером каждого потерянного отрезка;
+*conversion error*, если Allegro выдал ошибку. В рабочей копии my_test_board2
+Allegro 25.1 не даёт ни одного многоугольника для пути из одной четверти дуги
+радиусом 1, 2 или 5 единиц базы и шириной 0,3 мм, ни целиком, ни по отрезкам, а
+из угла буквы L такая дуга выпадает. На девяти платах здесь ни один объект
+шелкографии не теряется ни так, ни так: 2000 объектов, и каждый из 4199 штрихов
+их 1997 линий и текстов, преобразованный отдельно, дал многоугольник.
+Единственная такая дуга нашлась в меди flex3-a0. Текст в стиле TrueType
+преобразуется, как любой другой («TT 18» шрифтом Arial дал четыре контура). До
+раунда 117 объект, на который пришёл nil, не назывался вовсе, ошибка называлась
+только у первого объекта, а строка консоли о линии без одного отрезка не
+называла ни слоя, ни места и до окна не доходила. К тому же консоль Allegro не
+печатает предупреждение, совпадающее с предыдущим, поэтому из шести таких строк
+один экспорт напечатал четыре (ревью 23.10.2026, R2-5). Записано в
+`docs/records/silk-lost-objects-2026-10-31.md`.
+
 **Тела или поверхности.** Поверхности примерно вчетверо компактнее, и они
 объединяются: копланарные грани на одном z мерцают друг об друга там, где штрихи
 перекрываются. Режим тел объединение намеренно **не** делает: булева операция
@@ -1942,6 +1992,15 @@ Allegro построена при `k = 0`. На плате с запасом р�
 фигуру пропускает и называет. Так решил владелец (31.10.2026). См.
 *Шелкография*.
 
+**Нарисованное вскрытие маски, которое не дало многоугольника, пропадает молча.**
+Шелкография называет каждый потерянный объект (см. *Шелкография*). Вскрытия идут
+через тот же преобразователь, но у них ошибка только подсчитывается в консоли,
+а вскрытие, на которое Allegro ответил пустым результатом, не упоминается вовсе.
+Медь под вскрытиями, не давшая многоугольника, там же подсчитывается, но не
+называется. Потерянная часть называется у обоих, только в консоли. На девяти
+платах здесь каждый штрих линий и текстов вскрытий преобразуется (285 штрихов
+у 241 объекта); целые формы не проверялись.
+
 **Путь, в котором есть `%ИМЯ%` переменной, не может открыть окно.** Проверку и
 окно запускает `cmd` Windows, а он заменяет `%OS%`, `%os%`, `%OS:~0,3%`,
 `%CD%`, `%RANDOM%` и подобные их значениями даже внутри кавычек, и
@@ -2022,7 +2081,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 404 поломки, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 413 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

@@ -115,6 +115,31 @@ check("bad one counted as skipped", res6.silkscreen_skipped == 1, str(res6.silks
 check("skip reported as a warning",
       any(m.startswith("warning:") and "skipped" in m for m in logs6), str(logs6[-2:]))
 
+print("\n[8b] a legend with nothing left to draw still says what it lost (round 117)")
+# R2-5 of the 23.10.2026 review: the exporter wrote no "silkscreen" object at
+# all when no polygon survived, and the messages saying why went with it. It
+# writes one now, the messages and two empty sides, and the build takes it as
+# it is: nothing drawn, every message in the log. The two messages are the
+# exporter's own, from Allegro 25.1 on a scratch copy of my_test_board2
+# (tools/probes/probe_silkfill.il, s3dProbeLostCases).
+LOST = ["no polygon: path on BOARD GEOMETRY/SILKSCREEN_BOTTOM at (2.850, 16.850)"
+        " - left out, as Allegro converts it to no polygon",
+        "part missing: path on BOARD GEOMETRY/SILKSCREEN_BOTTOM at (11.850, 15.850)"
+        " - 1 of its 3 segment(s) gave no polygon and is left out: 2 (an arc of radius 0.0001)"]
+d = json.loads(json.dumps(base))
+d["format"] = "simple3d"; d["format_version"] = 3
+d["silkscreen"] = {"thickness": 0.025, "warnings": LOST, "top": [], "bottom": []}
+jf = OUT/"silk_lost.json"; jf.write_text(json.dumps(d))
+logs7 = []
+res7 = core.generate(step_dir=ROOT/"demo/step_files", json_file=jf, output_dir=OUT,
+                     output_name="silk_lost", log=lambda m: logs7.append(m))
+check("nothing drawn and nothing counted as skipped",
+      res7.silkscreen_solids == 0 and res7.silkscreen_skipped == 0,
+      (res7.silkscreen_solids, res7.silkscreen_skipped))
+check("and both messages reach the log, word for word, as warnings",
+      [m for m in logs7 if m in ("warning: " + LOST[0], "warning: " + LOST[1])]
+      == ["warning: " + LOST[0], "warning: " + LOST[1]], [m for m in logs7 if "warning" in m])
+
 print("\n[9] the legend stops at zones whose stackup carries no silkscreen")
 
 # A cross section assigns its mask and coating layers PER STACKUP, so a

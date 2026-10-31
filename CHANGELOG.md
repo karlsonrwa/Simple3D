@@ -11,6 +11,36 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **A legend object lost in whole or in part is named, in the
+  console and in the window's log.** `axlPolyFromDB` answers nil for a figure
+  it cannot convert, and such an object left the legend unsaid: only an error
+  was named, the first one alone and on the console only, and the console line
+  for a line short of a segment ("a silkscreen line has 3 segment(s) but
+  produced only 2 polygon(s)") named neither layer nor place and never reached
+  the JSON. Now every object is named with its layer and position: *no
+  polygon*, *conversion error*, or *part missing* with the number and size of
+  each lost segment, counted stroke by stroke rather than polygons against
+  segments. A legend left with only messages still writes them. Measured in
+  Allegro 25.1 on a scratch copy: a path that is one arc a database unit or
+  five across converts to nothing; none of the 2 000 legend objects of the
+  nine boards here does, and the line the review quoted was copper, which
+  shares the converter. Eight rows added to the mutation table (413). /
+  **Объект шелкографии, потерянный целиком или частично, называется в консоли
+  и в логе окна.** На фигуру, которую `axlPolyFromDB` не может превратить в
+  многоугольник, она отвечает nil, и такой объект выпадал из легенды молча:
+  называлась только ошибка, лишь первая и только в консоли, а строка консоли о
+  линии без одного отрезка («a silkscreen line has 3 segment(s) but produced
+  only 2 polygon(s)») не называла ни слоя, ни места и в JSON не попадала.
+  Теперь каждый объект называется со слоем и координатами: *no polygon*,
+  *conversion error* или *part missing* с номером и размером каждого
+  потерянного отрезка; потеря считается по штрихам, а не сравнением числа
+  многоугольников с числом отрезков. Если от легенды остались одни сообщения,
+  они всё равно записываются. Замерено в Allegro 25.1 на рабочей копии: путь из
+  одной дуги поперёк в одну или пять единиц базы не даёт ничего; из 2000
+  объектов шелкографии девяти плат здесь так не теряется ни один, а строка,
+  которую привело ревью, была медной: у меди тот же преобразователь. В таблицу
+  мутаций добавлено восемь строк (413).
+
 - **2026-10-31** — **A path `cmd` would change is named, not handed to it.**
   The check and the window are started through `cmd`, which replaces `%NAME%`
   of a variable even inside quotes and has no escape for it there. With the
