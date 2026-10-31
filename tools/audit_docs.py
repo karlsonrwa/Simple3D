@@ -101,6 +101,15 @@ else:
     for says in stated:
         if says != written:
             note("format_version", f"exporter writes {written}; README says {says}")
+    # And no version above it named anywhere, in any of the three documents
+    # (round 124, review 23.10.2026 R8-19: "Needs a JSON written with
+    # `format_version` 13" passed, the form above being the only one read).
+    for doc_name, doc_text in (("README.md", readme), ("QUICKSTART.md", quick),
+                               ("ARCHITECTURE.md", (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8"))):
+        for n in re.findall(r"format_version`?\s*:?\s*`?\s*(\d+)", doc_text):
+            if int(n) > int(written):
+                note("format_version", f"{doc_name} names format_version {n}; the exporter "
+                                       f"writes {written}, and no newer one exists")
 
 # ---- assembly labels ------------------------------------------------------
 for label in ("symbols_top", "symbols_bot", "silkscreen_top", "silkscreen_bot"):
@@ -108,22 +117,49 @@ for label in ("symbols_top", "symbols_bot", "silkscreen_top", "silkscreen_bot"):
         note("assembly label undocumented", label)
 
 # ---- defaults -------------------------------------------------------------
+# README's own config lines, value for value (round 124, review 23.10.2026
+# R8-16: the value was looked for anywhere in README, and a thickness example
+# elsewhere held "0.025" whatever the config line said).
 thick = cfg["settings"]["silkscreenThickness"]
-if str(thick) not in readme:
-    note("default", f"silkscreenThickness {thick} not in README")
+quoted = re.findall(r'"silkscreenThickness":\s*([\d.]+)', readme)
+if len(quoted) < 2:
+    note("default", f"README quotes silkscreenThickness {len(quoted)} time(s), 2 expected "
+                    f"(one per language) - the check ran on less than it should")
+for value in quoted:
+    if float(value) != float(thick):
+        note("default", f"silkscreenThickness: the config ships {thick}; README quotes {value}")
 flat = re.search(r"DEFAULT_FLAT_HEIGHT\s*=\s*([\d.]+)", defaults_py).group(1)
 if flat not in readme:
     note("default", f"DEFAULT_FLAT_HEIGHT {flat} not in README")
 
 # ---- shipped files listed -------------------------------------------------
-for f in ("makeVariant3dIntermediates.il", "simple3d.il", "skill/", "simple3d_config.json",
-          "core.py", "contour.py", "errors.py", "intermediate.py", "settings.py",
-          "stackup.py", "reporting.py", "board.py", "legend.py", "models.py",
-          "stepdoc.py", "build.py", "winplace.py", "worker_bridge.py", "defaults.py",
-          "gui.py", "colors.py", "bend/", "widgets/",
-          "__main__.py"):
+for f in ("makeVariant3dIntermediates.il", "simple3d.il", "skill/", "simple3d_config.json"):
     if f not in readme:
         note("file not in layout listing", f)
+# The map of stepbuilder/ in each half against the package itself, both ways
+# (round 124, review 23.10.2026 R8-18 and R8n-27: a fixed list, looked for
+# anywhere in README, missed surface.py, pads.py, worker.py and _occt.py).
+def package_map(text, heading):
+    """The module names the code block under *heading* lists for stepbuilder/."""
+    m = re.search(rf"^##\s+{heading}\s*$", text, re.M)
+    block = re.search(r"```\n(.*?)\n```", text[m.end():], re.S) if m else None
+    if not block:
+        return None
+    body = block.group(1).split("stepbuilder/", 1)[-1]
+    return set(re.findall(r"^\s+([A-Za-z_]\w*\.py|[A-Za-z_]\w*/)\s", body, re.M))
+
+package = ({p.name for p in (ROOT / "stepbuilder").glob("*.py") if p.name != "__init__.py"}
+           | {p.name + "/" for p in (ROOT / "stepbuilder").iterdir()
+              if p.is_dir() and (p / "__init__.py").exists()})
+for heading in ("What is where", "Что где лежит"):
+    listed_here = package_map(readme, heading)
+    if listed_here is None:
+        note("layout listing", f"no code block under '## {heading}' - the map check ran on nothing")
+        continue
+    for name in sorted(package - listed_here):
+        note("layout listing", f"'{heading}' does not list stepbuilder/{name}")
+    for name in sorted(listed_here - package):
+        note("layout listing", f"'{heading}' lists stepbuilder/{name}, which is not there")
 
 # ---- QUICKSTART claims ----------------------------------------------------
 # Every GUI label the quick-start names must exist in gui.py, VERBATIM.
@@ -166,14 +202,29 @@ PROSE = {"Custom…": "Custom...", "White/Black": "White"}
 # ... and the rim labels are settings VALUES, so they live in settings.py.
 widget_text = (gui_py + (ROOT / "stepbuilder/colors.py").read_text(encoding="utf-8")
                + (ROOT / "stepbuilder/settings.py").read_text(encoding="utf-8"))
-for label in re.findall(r"\*\*([A-Z][A-Za-z0-9 =/…]+?)\*\*", quick_window):
+# Compared with the code's string literals WHOLE (round 124, review 23.10.2026
+# R8-17): the label pattern took no "(" or "." - so "Compact STEP (...)" and
+# every label with brackets was never read - and a label was looked for as a
+# substring of the code, so "Do not include soldermask" passed beside the
+# widget's "Do not include soldermask layers".
+literals = set()
+for literal in re.findall(r'"((?:[^"\\\n]|\\.)*)"', widget_text):
+    # a label of two lines is named by its first: each line counts whole
+    literals.add(literal)
+    literals.update(part for part in literal.split("\\n") if part)
+read_labels = 0
+for label in re.findall(r"\*\*([A-Z][^*\n]*?)\*\*", quick_window):
     lab = label.strip()
+    read_labels += 1
     if lab in ("Input", "Board options", "Silk options", "Layers", "Log"):
         if f'text="{lab}"' not in gui_py:
             note("QUICKSTART names a missing frame", lab)
         continue
-    if PROSE.get(lab, lab) not in widget_text:
+    if PROSE.get(lab, lab) not in literals:
         note("QUICKSTART names a control absent from the GUI", lab)
+if read_labels < 10:
+    note("QUICKSTART", f"only {read_labels} bold label(s) read in the window section - "
+                       f"the control check ran on less than it should")
 
 for term in ("Board edge color", "Body stitching", "Reset colors",
              "Make surface (minimum file size)", "Fold flex bends", "Generate"):
@@ -204,11 +255,35 @@ for doc, text, floor in (("README.md", readme, 2), ("ARCHITECTURE.md", arch, 1))
         if int(stated) != n_suites:
             note("stale suite count",
                  f"{doc} says {stated} {what}; run_all.py runs {n_suites}")
-for stated, in re.findall(r"the (\d+) checks \+", arch):
+check_counts = re.findall(r"the (\d+) checks \+", arch)
+# a floor, as for the suites (round 124, R8-20: "the four checks +" left the
+# loop below nothing to compare, silently)
+if not check_counts:
+    note("check count", "ARCHITECTURE.md states the mechanical check count 0 time(s), "
+                        "1 expected - the check ran on nothing")
+for stated in check_counts:
     if int(stated) != n_checks:
         note("stale check count",
              f"ARCHITECTURE.md says {stated} mechanical checks; "
              f"run_all.py runs {n_checks}")
+
+# ---- the mutation table's size, wherever the docs state it ----------------
+# One number, len(tests/mutations.json), in every place that states it (round
+# 124, review 23.10.2026 R8-4 and R7n-20: 329 -> 999 in both README halves
+# passed, and ARCHITECTURE carried two other numbers). A row dropped from the
+# table, or added, now turns this red until the docs say so too.
+n_rows = len(json.loads((ROOT / "tests/mutations.json").read_text(encoding="utf-8")))
+for doc, text, pattern, floor in (
+        ("README.md", readme, r"tests/mutations\.json, (\d+) (?:faults|поломок)", 2),
+        ("ARCHITECTURE.md", arch, r"the (\d+) deliberate faults", 1),
+        ("ARCHITECTURE.md", arch, r"`tests/mutations\.json` \((\d+) rows", 1)):
+    found = re.findall(pattern, text)
+    if len(found) < floor:
+        note("mutation count", f"{doc} states the table's size in the form /{pattern}/ "
+                               f"{len(found)} time(s), {floor} expected")
+    for stated in found:
+        if int(stated) != n_rows:
+            note("stale mutation count", f"{doc} says {stated}; tests/mutations.json has {n_rows} rows")
 # Every suite run_all names has to be there, and every suite there has to be
 # run: a test file nobody runs is the same kind of nothing as a stale count.
 listed = set(re.findall(r'TESTS\s*/\s*"(test_\w+\.py)"', run_all))

@@ -4740,5 +4740,95 @@
    "tests/test_embedded.py"
   ],
   "why": "the window's last line says \"Done ... placed\" and nothing of what is left out (round 122, R3-3 of the 23.10.2026 review)"
+ },
+ {
+  "id": "docs-silk-thickness-misquoted",
+  "file": "README.md",
+  "old": "    \"silkscreenThickness\": 0.025,  // ink thickness, mm",
+  "new": "    \"silkscreenThickness\": 0.030,  // ink thickness, mm",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "README quotes a default the config does not ship (E2, R8-16) (round 124, review 23.10.2026)"
+ },
+ {
+  "id": "docs-label-with-brackets-unread",
+  "file": "QUICKSTART.md",
+  "old": "**Compact STEP (no surface curves)** — the parametric curves on the surfaces",
+  "new": "**Compact STEP (merge all models)** — the parametric curves on the surfaces",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "a label with brackets names no control the window has (E3, R8-17) (round 124, review 23.10.2026)"
+ },
+ {
+  "id": "docs-label-renamed",
+  "file": "QUICKSTART.md",
+  "old": "- **Exposed copper (as surfaces)** — the copper of every pin's pad on the outer",
+  "new": "- **Exposed pads (as surfaces)** — the copper of every pin's pad on the outer",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "QUICKSTART names a control by a name it does not have (E4, R8-17) (round 124, review 23.10.2026)"
+ },
+ {
+  "id": "docs-label-shortened",
+  "file": "QUICKSTART.md",
+  "old": "- **Do not include soldermask layers** — the stack closes up toward the core by",
+  "new": "- **Do not include soldermask** — the stack closes up toward the core by",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "a label cut short still passed as a substring of the code (E10, R8-17) (round 124, review 23.10.2026)"
+ },
+ {
+  "id": "docs-map-loses-a-module",
+  "file": "README.md",
+  "old": "  pads.py        the copper pads: which face a pin reaches, its figure as one shared face, placed per pin\n",
+  "new": "",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "the map of stepbuilder/ loses a module (E5, R8-18) (round 124, review 23.10.2026)"
+ },
+ {
+  "id": "docs-check-count-in-words",
+  "file": "ARCHITECTURE.md",
+  "old": "| the 4 checks + 30 suites as subprocesses |",
+  "new": "| the four checks + 30 suites as subprocesses |",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "the check count drifts out of its phrase and is compared with nothing (E7b, R8-20) (round 124, review 23.10.2026)"
+ },
+ {
+  "id": "docs-future-version-named",
+  "file": "QUICKSTART.md",
+  "old": "  needs a JSON exported with this version (`format_version` 12). Only what",
+  "new": "  needs a JSON exported with this version (`format_version` 13). Only what",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "the docs name a format version no exporter writes (E9, R8-19) (round 124, review 23.10.2026)"
+ },
+ {
+  "id": "docs-mutation-count-stale",
+  "file": "README.md",
+  "old": "(tests/mutations.json, 463 faults, applied",
+  "new": "(tests/mutations.json, 999 faults, applied",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "README states a table size the table does not have (E11, R8-4) (round 124, review 23.10.2026)"
+ },
+ {
+  "id": "docs-table-row-dropped",
+  "file": "tests/mutations.json",
+  "old": ",\n {\n  \"id\": \"worker-done-says-placed-only\",\n  \"file\": \"stepbuilder/worker.py\",\n  \"old\": \"    if total_left_out:\\n\",\n  \"new\": \"    if total_left_out and False:\\n\",\n  \"suites\": [\n   \"tests/test_embedded.py\"\n  ],\n  \"why\": \"the window's last line says \\\"Done ... placed\\\" and nothing of what is left out (round 122, R3-3 of the 23.10.2026 review)\"\n }",
+  "new": "",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "a row of this table is dropped and nothing else changes (R7n-20) (round 124, review 23.10.2026)"
  }
 ]

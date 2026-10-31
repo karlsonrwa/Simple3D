@@ -3521,6 +3521,31 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-01 (round 124) — the documentation audit catches what the review changed (R8-16..R8-20, R8-4, R7n-20)
+
+`tools/audit_docs.py`, sharpened where the second round's experiments passed
+it:
+
+- R8-16: README's `"silkscreenThickness": N` lines, one per language, value
+  for value against the config (was: "0.025" anywhere in README).
+- R8-17: QUICKSTART's window labels read with any character but "*" and
+  compared whole with the code's string literals, each line of a two-line
+  label counting (was: no "(" or "." in the pattern, and a substring search).
+- R8-18 (and R8n-27): the stepbuilder/ map under "What is where" and "Что где
+  лежит" against the package, both ways (was: a fixed list, anywhere).
+- R8-19: no `format_version` above the exporter's named in README, QUICKSTART
+  or ARCHITECTURE; ARCHITECTURE 1.x describes the check's real scope.
+- R8-20: a floor of one for "the N checks +".
+- R8-4, R7n-20: the table's size in README (both) and ARCHITECTURE (two
+  places), each equal to len(tests/mutations.json); ARCHITECTURE's stale
+  "269 entries, all caught" now "463 rows".
+
+Proof (`build/fix-2026-10-31/r124/audit_red_first.py`): nine rows, the
+review's E2, E3, E4, E5, E7b, E9, E10, E11 and a row dropped from the table
+itself (docs-table-row-dropped), each applied to a copy of the tree - HEAD's
+audit passed all nine, the new one failed all nine, each with its finding.
+Rows 454 -> 463.
+
 ## Update 2026-11-01 (round 123) — documentation true to the code (28 review findings)
 
 The first round of the owner's «Пройдись дальше сам по всем оставшимся
