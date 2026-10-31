@@ -483,7 +483,14 @@ pin("gdsysGetVariantInfo",
     'symbols = nconc( symbols parseString( line ) )',
     'if( strcmp( line "\\t)\\n" ) == 0 then',
     'when( length( subStrings ) > 1',
-    'variantTable[currentVariant] = symbols')
+    'variantTable[currentVariant] = symbols',
+    # The fix of 2026-07-22, in both branches that close an alternate-part
+    # block: the refdes reaches the variant's list, not the first property
+    # ("VALUE=12pF"). Nothing held it until round 118 (review 23.10.2026,
+    # R2-9: reverted in both, every suite stayed green).
+    'partProperties = makeTable( "partProperties" nil ) '
+    'symbols = nconc( symbols list( refDes ) ) else state = "awaitMoreProperties"',
+    'symbols = nconc( symbols list( refDes ) ) properties = "" state = "awaitEndCondition"')
 
 # Derived, and the strongest pin in this section: the three literal lines the
 # machine compares against are READ OUT OF THE SKILL, a Variants.lst is built
@@ -516,9 +523,10 @@ if set(lits) == THREE:
     table = T.parse_variants(built)
     check("the copy reads a file built from the SKILL's own three lines",
           sorted(table) == ["VAR_A", "VAR_B"], sorted(table))
-    # .strip(): the parser's strip class is ["\t+\\()] and carries no "\n", so
-    # the last token of a line keeps the line end - which is exactly why
-    # s3dIsRefdesToken exists and why the counts once ran one too high.
+    # s3dIsRefdesToken is the SKILL's guard against a token that is no
+    # refdes. Allegro 25.1 left none in the nine files of
+    # tests/fixtures/variants (round 118): its parseString breaks at a line
+    # end as at a space, so a line's last token does not keep the "\n".
     check("and the symbols of each land where they belong",
           [r.strip() for r in table.get("VAR_A", []) if T.is_refdes_token(r)] == ["R1", "C2", "X3"]
           and [r.strip() for r in table.get("VAR_B", []) if T.is_refdes_token(r)] == ["R9"],
@@ -529,12 +537,43 @@ if set(lits) == THREE:
     check("a variant that closes before any base block is still registered",
           list(T.parse_variants(bare)) == ["BARE"], T.parse_variants(bare))
 
+def skill_string(spelled):
+    """A SKILL string literal's body as the characters it holds."""
+    return re.sub(r"\\(.)", lambda m: {"t": "\t", "n": "\n"}.get(m.group(1), m.group(1)), spelled)
+
+
 strip = re.search(r'pattern = pcreCompile\("\[((?:[^"\\]|\\.)*)\]"\)', parser_body)
 check("the strip class is in the SKILL source", bool(strip), parser_body[:120])
 if strip:
-    spelled = strip.group(1).replace('\\"', '"').replace("\\t", "\t").replace("\\\\", "\\")
-    check(f"the copy strips the same characters {spelled!r}",
-          set(T.STRIP) == set(spelled), (sorted(T.STRIP), sorted(spelled)))
+    # The literal's characters, read as the regex they are: in a class "\("
+    # is the paren, so the class holds no backslash, and Allegro 25.1 keeps
+    # the one in "X\2" (round 118). This check used to read the literal as a
+    # bare set of characters, and agreed with a copy that stripped it.
+    klass = re.compile("[" + skill_string(strip.group(1)) + "]")
+    probe = '"\t+\\()aZ9 '
+    spelled = {c for c in probe if klass.match(c)}
+    check(f"the copy strips the same characters {''.join(sorted(spelled))!r}",
+          set(T.STRIP) == spelled and {c for c in probe if T._STRIP.match(c)} == spelled,
+          (sorted(T.STRIP), sorted(spelled)))
+
+# The wrapped-property branch the copy follows since round 118 (R2-9: it did
+# not, and lost a part the SKILL installs): where a block ends, on its line
+# and after it, and what is put together on the way.
+pin("gdsysGetVariantInfo",
+    'if( strcmp( car(last(subStrings)) ")\\n" ) == 0 then',
+    'properties = strcat( properties pcreReplace( newLineEnd line " )" 0 ) )',
+    'properties = pcreReplace( newLine properties "" 0 )',
+    'when( strcmp( car(last(subStrings)) ")\\n" ) == 0')
+# ...and every regex it leans on, read out of the SKILL's pcreCompile calls
+# and compared with the copy's, text for text.
+compiled = {name: skill_string(text) for name, text in
+            re.findall(r'(\w+) = pcreCompile\(\s*"((?:[^"\\]|\\.)*)"\s*\)', parser_body)}
+copies = {"pattern": T._STRIP, "newLine": T._NEW_LINE, "newLineEnd": T._NEW_LINE_END,
+          "newLineWithinProperty": T._NEW_LINE_WITHIN, "propertyStart": T._PROPERTY_START,
+          "propertySeparator": T._PROPERTY_SEPARATOR}
+differ = {k: (compiled.get(k), c.pattern) for k, c in copies.items() if compiled.get(k) != c.pattern}
+check(f"the copy's {len(copies)} regexes are the SKILL's own, read out of its pcreCompile calls",
+      not differ and set(copies) <= set(compiled), differ or sorted(compiled))
 
 print("\n[5e] where Variants.lst is, and what the stackup body is")
 
@@ -857,15 +896,26 @@ def ask_copy(procedure, inputs):
         # s3dJsonGet cannot tell a JSON false from a missing key: both are nil.
         # The copy is asked the same question, so it must answer the same way.
         return None if value is False or value is None else value
+    if procedure == "parseString":
+        # SKILL's own, which the parser's copy stands on; nil for no pieces
+        copy = getattr(T, "parse_string", None)
+        return copy(inputs["text"]) or None if copy else "no copy of parseString"
+    if procedure == "gdsysGetVariantInfo":
+        # the variant table, variants in name order, an empty list nil
+        table = T.parse_variants((ROOT / inputs["file"]).read_bytes().decode("ascii"))
+        return [[name, table[name] or None] for name in sorted(table)] or None
     raise AssertionError(f"no copy wired up for {procedure}")
 
 
-def same(got, want):
+def same(got, want, tol=1e-9):
+    """Numbers within a tolerance, everything else exactly; lists element by
+    element and nested, numbers in them to 1e-6 (s3dDrillXY's points)."""
     if isinstance(want, list) and isinstance(got, list):
-        return len(got) == len(want) and all(
-            abs(float(g) - float(w)) < 1e-6 for g, w in zip(got, want))
-    if isinstance(want, float) and isinstance(got, (int, float)):
-        return abs(got - want) < 1e-9
+        return len(got) == len(want) and all(same(g, w, 1e-6) for g, w in zip(got, want))
+    numbers = (int, float)
+    if (isinstance(want, numbers) and isinstance(got, numbers)
+            and not isinstance(want, bool) and not isinstance(got, bool)):
+        return abs(float(got) - float(want)) < tol
     return got == want
 
 

@@ -11,6 +11,43 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **The tests that could not fail now hold the product, and
+  the Variants.lst parser's limits are measured.** A review asked, for every
+  check it named, for a change to the product that turns it red; reverting the
+  2026-07-22 fix of the variant parser in both its branches, or dropping the
+  quotes round the cad folder in the window's command line, left every suite
+  green. Now the suites read those places out of the SKILL: the parser's fix in
+  both branches, the window's argument tail as `simple3d.il` builds it (run
+  through the real `start` with spaced paths), the cutout list copied per
+  export, the folder cut by scanning. The Python copy of the parser was
+  rewritten line by line and is held to Allegro 25.1's own parser on 14
+  Variants.lst files: the old copy lost a part the SKILL installs (a property
+  block wrapped onto a second line) and kept a variant the SKILL loses. What
+  the SKILL itself does, measured: an alternate-part block is closed by the
+  blank line Capture writes after it, and without one that variant and every
+  one after it are lost; a block whose refdes stands alone on its line
+  installs nothing. Both of the user's files have the blank lines; README's
+  Known limitations names the rest. Twelve rows added to the mutation table
+  (425). /
+  **Тесты, которые не могли упасть, теперь держат продукт, а пределы разбора
+  Variants.lst замерены.** Ревью просило для каждой названной проверки правку
+  продукта, от которой она краснеет. Откат правки разборщика вариантов от
+  2026-07-22 в обеих его ветках или снятые кавычки вокруг папки cad в строке
+  запуска окна оставляли все наборы зелёными. Теперь наборы читают эти места
+  из SKILL: правку разборщика в обеих ветках, хвост аргументов окна в том виде,
+  в каком его собирает `simple3d.il` (прогоняется через настоящий `start` с
+  путями с пробелами), копирование списка вырезов для каждого экспорта,
+  разрезание пути посимвольно. Python-копия разборщика переписана построчно и
+  сверена с самим разборщиком Allegro 25.1 на 14 файлах Variants.lst: старая
+  копия теряла компонент, который SKILL ставит (блок свойств, перенесённый на
+  вторую строку), и оставляла вариант, который SKILL теряет. Что делает сам
+  SKILL, замерено: блок свойств альтернативного компонента закрывается пустой
+  строкой, которую Capture пишет после него, и без неё этот вариант теряется
+  вместе со всеми следующими; блок, у которого обозначение стоит одно в
+  строке, ничего не устанавливает. В обоих файлах пользователя пустые строки
+  есть; остальное названо в известных ограничениях README. В таблицу мутаций
+  добавлено двенадцать строк (425).
+
 - **2026-10-31** — **A legend object lost in whole or in part is named, in the
   console and in the window's log.** `axlPolyFromDB` answers nil for a figure
   it cannot convert, and such an object left the legend unsaid: only an error

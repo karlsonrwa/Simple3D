@@ -1,0 +1,9 @@
+(
+	("LSM"
+		(base
+			(R1 R2 )
+		)
+		(C43 VALUE="12pF" JEDEC_TYPE="CAPC100X50X55L25N"
+		 TOL="1" )
+	)
+)

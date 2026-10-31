@@ -2,9 +2,12 @@
 
 The fixture is an oracle of the same kind as `pads_demo.json`: not a number
 this repository computed, but what Allegro's own interpreter answered. Here
-the subject is the five pure procedures that `tests/skill_transliterations.py`
-copies, and the fixture is what lets `test_skill_pins.py` compare each copy
-with the original's answers rather than with a reading of its source.
+the subject is the procedures `tests/skill_transliterations.py` copies that
+can be run on their own - the five pure ones, `s3dCmdExpands` since round
+116, SKILL's own `parseString` and the variant parser `gdsysGetVariantInfo`
+(on the files of tests/fixtures/variants) since round 118 - and the fixture
+is what lets `test_skill_pins.py` compare each copy with the original's
+answers rather than with a reading of its source.
 
     python tools/run_probe.py --with-exporter tools/probes/probe_translit.il \
            s3dProbeTranslit demo/demo.brd -o D:/.../build/probe-out
@@ -107,28 +110,71 @@ CMD_TEXTS = ("x %OS% y", "x %os% y", "x %Os% y", "x %NOPE_S3D% y", "x %NOPE_S3D%
 CASES["s3dCmdExpands"] = {f"text={t}": {"text": t} for t in CMD_TEXTS}
 CASES["s3dCmdExpands"]["text=nil"] = {"text": None}
 
+# parseString (round 118): SKILL's own, with no break characters given - the
+# tokenizer the variant parser's copy has to match.
+CASES["parseString"] = {"space": {"text": "a b"}, "tab": {"text": "a\tb"},
+                        "newline": {"text": "a\nb"}, "return": {"text": "a\rb"},
+                        "runs": {"text": "  a   b  "}, "empty": {"text": ""}}
+
+# gdsysGetVariantInfo (round 118): the variant parser, on the files in
+# tests/fixtures/variants. The case is the file, so the table and the probe
+# cannot drift apart on what was asked; the answer is the variant table,
+# variants in name order.
+VARIANT_FILES = sorted((ROOT / "tests" / "fixtures" / "variants").glob("*.lst"))
+CASES["gdsysGetVariantInfo"] = {f.name: {"file": f"tests/fixtures/variants/{f.name}"}
+                                for f in VARIANT_FILES}
+
 # Cases the probe prints for its own sake, not for the copies to answer.
 IGNORE = {("s3dJsonQuote", "control 0x08 (escape \\b) byte"),
           ("s3dJsonQuote", "control 0x0c (escape \\f) byte")}
 
 LINE = re.compile(r"^CASE (\S+) \| (.+?) \| (.*)$")
+# One piece of a `%L` rendering: a bracket, a string, or anything else up to
+# white space or a bracket.
+TOKEN = re.compile(r'\s*(?:(\()|(\))|("(?:\\.|[^"\\])*")|([^\s()"]+))')
 
 
-def skill_value(text: str):
-    """One `%L` rendering, as a Python value."""
-    text = text.strip()
+def _atom(text: str):
     if text == "t":
         return True
     if text == "nil":
         return None
-    if text.startswith('"'):
-        return json.loads(text)          # %L escapes strings the way JSON does
-    if text.startswith("("):
-        return [skill_value(p) for p in text[1:-1].split()]
     try:
         return float(text) if ("." in text or "e" in text.lower()) else int(text)
     except ValueError:
         return text
+
+
+def skill_value(text: str):
+    """One `%L` rendering, as a Python value: t, nil, numbers, strings (%L
+    escapes them the way JSON does) and lists of them, nested - the variant
+    table is a list of ( name symbols ) pairs since round 118. A flat list
+    reads as it did before; a string holding a space no longer splits."""
+    stack: list[list] = [[]]
+    text = text.strip()
+    pos = 0
+    while pos < len(text):
+        m = TOKEN.match(text, pos)
+        if m is None:
+            raise ValueError(f"cannot read %L text at {pos}: {text[pos:pos + 30]!r}")
+        pos = m.end()
+        opened, closed, string, atom = m.groups()
+        if opened:
+            stack.append([])
+        elif closed:
+            if len(stack) == 1:
+                raise ValueError(f"unbalanced ) in {text!r}")
+            inner = stack.pop()
+            stack[-1].append(inner)
+        elif string is not None:
+            stack[-1].append(json.loads(string))
+        else:
+            stack[-1].append(_atom(atom))
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+    if len(stack) != 1 or len(stack[0]) != 1:
+        raise ValueError(f"not one value: {text!r}")
+    return stack[0][0]
 
 
 def main(argv: list[str]) -> int:

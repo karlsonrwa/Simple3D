@@ -1,0 +1,11 @@
+(
+	("W3"
+		(base
+			(R1 )
+		)
+		(C43 VALUE="12pF"
+		 JEDEC_TYPE="CAPC100X50X55L25N"
+		 TOL="1" )
+		(C44 VALUE="1uF" )
+	)
+)

@@ -2,10 +2,12 @@
 ;  probe_translit.il - DIAGNOSTIC ONLY. Reads nothing from the design.
 ;
 ;  The pure procedures the Python transliterations in
-;  tests/skill_transliterations.py copy - five, and since round 116
-;  s3dCmdExpands - RUN in a real Allegro, by the real interpreter, over a
-;  fixed list of cases, so that the copies can be compared against the
-;  original's own answers instead of against a reading of its source.
+;  tests/skill_transliterations.py copy - five, since round 116
+;  s3dCmdExpands, and since round 118 the variant parser gdsysGetVariantInfo
+;  on the files of tests/fixtures/variants - RUN in a real Allegro, by the
+;  real interpreter, over a fixed list of cases, so that the copies can be
+;  compared against the original's own answers instead of against a reading
+;  of its source.
 ;
 ;  Why it exists: half the product is SKILL and no test runs it, so four of
 ;  five semantic mutations made in skill/ passed the whole suite unnoticed
@@ -25,6 +27,10 @@
 ;  REQUIRES: makeVariant3dIntermediates.il
 ;=====================================================================
 
+; The file s3dVariantFilePath is pointed at while gdsysGetVariantInfo is
+; asked about one (s3dProbeTranslitVariants).
+S3D_ProbeVariantFile = nil
+
 procedure( s3dProbeTranslitSay( t_line )
     printf( "%s\n" t_line )
     drain( poport )
@@ -43,6 +49,39 @@ procedure( s3dProbeTranslitParse( t_text )
         res = nil
         errset( res = s3dJsonVal( t_text 1 ) )
         when( res  car( res ) )
+    )
+)
+
+; The variant parser (round 118, R2-9 of the 23.10.2026 review), on every
+; file in tests/fixtures/variants of the tree the exporter was loaded from.
+; It reads the one file s3dVariantFilePath names, so that is pointed at each
+; case in turn and put back after. The answer is the variant table: the
+; variants in name order, each with its symbol list exactly as the parser
+; leaves it - the stray tokens a caller filters out included.
+procedure( s3dProbeTranslitVariants()
+    let( ( dir saved res ok table names answer )
+        dir = strcat( s3dExporterFolderOf( S3D_ExporterLoadedFrom ) "/tests/fixtures/variants" )
+        saved = getd( 's3dVariantFilePath )
+        foreach( name sort( getDirFiles( dir ) 'alphalessp )
+            when( rexMatchp( "\\.lst$" name )
+                S3D_ProbeVariantFile = strcat( dir "/" name )
+                putd( 's3dVariantFilePath lambda( ( ) S3D_ProbeVariantFile ) )
+                res = nil
+                ok = errset( res = gdsysGetVariantInfo() )
+                if( ok then
+                    table = car( res )
+                    names = nil
+                    foreach( key table  names = cons( key names ) )
+                    answer = foreach( mapcar key sort( names 'alphalessp )
+                                 list( key table[key] ) )
+                else
+                    answer = "error"
+                )
+                s3dProbeTranslitCase( "gdsysGetVariantInfo" name answer )
+            )
+        )
+        putd( 's3dVariantFilePath saved )
+        S3D_ProbeVariantFile = nil
     )
 )
 
@@ -218,6 +257,17 @@ procedure( s3dProbeTranslit()
         foreach( nm list( "OS" "os" "Os" "windir" "WINDIR" "PATH" "Path" "path" )
             s3dProbeTranslitSay( sprintf( nil "ENV %s | %L" nm stringp( getShellEnvVar( nm ) ) ) )
         )
+
+        s3dProbeTranslitSay( "\n===== parseString =====" )
+        ; SKILL's own, with no break characters given: the variant parser's
+        ; copy has to break a line where it does (round 118).
+        foreach( c list( list( "space" "a b" ) list( "tab" "a\tb" ) list( "newline" "a\nb" )
+                         list( "return" "a\rb" ) list( "runs" "  a   b  " ) list( "empty" "" ) )
+            s3dProbeTranslitCase( "parseString" car( c ) parseString( cadr( c ) ) )
+        )
+
+        s3dProbeTranslitSay( "\n===== gdsysGetVariantInfo =====" )
+        s3dProbeTranslitVariants()
 
         s3dProbeTranslitSay( "\n===== END =====" )
         t

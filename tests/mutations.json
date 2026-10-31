@@ -4324,5 +4324,127 @@
    "tools/skill_checks.py"
   ],
   "why": "the refusal of a path cmd would change says so only in the console, which can be closed or not looked at (review 23.10.2026, R2-4; round 116)"
+ },
+ {
+  "id": "skill-design-folder-via-parsestring",
+  "file": "skill/s3d_util.il",
+  "old": "        errset( full = axlGetDrawingName() )\n",
+  "new": "        errset( full = buildString( parseString( axlGetDrawingName() \"/\\\\\" ) \"/\" ) )\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "the folder is rebuilt from parseString's pieces, which turns \\\\server\\share\\boards into a relative server/share/boards - test_variant_path [3] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-cutouts-aliased-again",
+  "file": "skill/s3d_export.il",
+  "old": "            foreach( baseCut car( cadr( edgeCuts ) )\n                if( boundp( 'cuts ) then\n                    tconc( cuts baseCut )\n                else\n                    cuts = tconc( nil baseCut )\n                )\n            )\n",
+  "new": "            cuts = cadr( edgeCuts )\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "the cutout list is shared between the exports again, so every file after the first carries the pin holes once more - test_variant_path [9] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-pin-holes-need-a-cutout",
+  "file": "skill/s3d_export.il",
+  "old": "        when( cut\n            if( boundp( 'cuts ) then\n                tconc( cuts cut )\n            else\n                cuts = tconc( nil cut )\n            )\n        )\n",
+  "new": "        when( cut && boundp( 'cuts )\n            tconc( cuts cut )\n        )\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "a board with no cutout loses its pin holes: they no longer start the list themselves - test_variant_path [9] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-unbound-cuts-written",
+  "file": "skill/s3d_export.il",
+  "old": "                       if( boundp( 'cuts ) then cuts else nil )\n",
+  "new": "                       cuts\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "a board with neither cutouts nor pin holes hands an unbound list to makePcb and the export stops - test_variant_path [9] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-variant-refdes-fix-reverted-one-line",
+  "file": "skill/s3d_variants.il",
+  "old": "                                        symbols = nconc( symbols list( refDes ) )\n",
+  "new": "                                        symbols = nconc( symbols list( nth( 0 subStrings ) ) )\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_variant_path.py"
+  ],
+  "why": "the 2026-07-22 fix undone in the one-line branch: the first property (VALUE=12pF) reaches the variant's list, the part does not - test_variant_path [7], test_skill_pins [5d] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-variant-refdes-fix-reverted-wrapped",
+  "file": "skill/s3d_variants.il",
+  "old": "                            symbols = nconc( symbols list( refDes ) )\n\n                            properties = \"\"\n",
+  "new": "                            symbols = nconc( symbols list( nth( 0 subStrings ) ) )\n\n                            properties = \"\"\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_variant_path.py"
+  ],
+  "why": "the same fix undone where a block's properties wrap onto the next line (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-variant-wrapped-never-closes",
+  "file": "skill/s3d_variants.il",
+  "old": "                        when( strcmp( car(last(subStrings)) \")\\n\" ) == 0\n",
+  "new": "                        when( nil && strcmp( car(last(subStrings)) \")\\n\" ) == 0\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a block wrapped onto a second line never closes, and its variant and every one after it are lost - test_skill_pins [5d] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-variant-wrapped-tabs-kept",
+  "file": "skill/s3d_variants.il",
+  "old": "                        properties = pcreReplace( newLine properties \"\" 0 )\n",
+  "new": "",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the continuation tabs stay in a wrapped block, where the copy, held to Allegro's answers, takes them out - test_skill_pins [5d] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-tail-config-unquoted",
+  "file": "simple3d.il",
+  "old": "            \"--config \\\"\" S3D_ConfigFile \"\\\" \"\n",
+  "new": "            \"--config \" S3D_ConfigFile \" \"\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "the config path reaches the window cut at its first space - test_launch_cmd [1] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-tail-json-dir-unquoted",
+  "file": "simple3d.il",
+  "old": "            \"--json-dir \\\"\" cadDir \"\\\" \"\n",
+  "new": "            \"--json-dir \" cadDir \" \"\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "the review's M2: the cad folder reaches the window cut at its first space - test_launch_cmd [1] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-tail-output-dir-unquoted",
+  "file": "simple3d.il",
+  "old": "            \"--output-dir \\\"\" cadDir \"\\\" \"\n",
+  "new": "            \"--output-dir \" cadDir \" \"\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "the output folder reaches the window cut at its first space - test_launch_cmd [1] (review 23.10.2026, R2-9; round 118)"
+ },
+ {
+  "id": "skill-tail-brd-name-unquoted",
+  "file": "simple3d.il",
+  "old": "            \"--brd-name \\\"\" designName \"\\\" \"\n",
+  "new": "            \"--brd-name \" designName \" \"\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "a board name with a space reaches the window in pieces - test_launch_cmd [1] (review 23.10.2026, R2-9; round 118)"
  }
 ]

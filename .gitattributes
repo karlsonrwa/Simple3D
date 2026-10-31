@@ -1,0 +1,3 @@
+# Variants.lst cases for the parser oracle (round 118): their bytes are the case,
+# CRLF or LF as written - never converted.
+tests/fixtures/variants/*.lst -text

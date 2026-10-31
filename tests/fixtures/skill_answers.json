@@ -1202,6 +1202,279 @@
     "text": null
    },
    "answer": null
+  },
+  {
+   "procedure": "parseString",
+   "case": "space",
+   "inputs": {
+    "text": "a b"
+   },
+   "answer": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "procedure": "parseString",
+   "case": "tab",
+   "inputs": {
+    "text": "a\tb"
+   },
+   "answer": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "procedure": "parseString",
+   "case": "newline",
+   "inputs": {
+    "text": "a\nb"
+   },
+   "answer": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "procedure": "parseString",
+   "case": "return",
+   "inputs": {
+    "text": "a\rb"
+   },
+   "answer": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "procedure": "parseString",
+   "case": "runs",
+   "inputs": {
+    "text": "  a   b  "
+   },
+   "answer": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "procedure": "parseString",
+   "case": "empty",
+   "inputs": {
+    "text": ""
+   },
+   "answer": null
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v1-one-line-alternate.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v1-one-line-alternate.lst"
+   },
+   "answer": [
+    [
+     "LSM",
+     [
+      "R1",
+      "R2",
+      "C1",
+      "C43"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v10-block-then-close.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v10-block-then-close.lst"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v11-block-then-close-then-another.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v11-block-then-close-then-another.lst"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v12-alternate-only.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v12-alternate-only.lst"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v13-alternate-only-blank-after.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v13-alternate-only-blank-after.lst"
+   },
+   "answer": [
+    [
+     "V2",
+     [
+      "C43"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v14-backslash-in-a-name.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v14-backslash-in-a-name.lst"
+   },
+   "answer": [
+    [
+     "BS",
+     [
+      "R1",
+      "X\\2"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v2-wrapped-properties.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v2-wrapped-properties.lst"
+   },
+   "answer": [
+    [
+     "LSM",
+     [
+      "R1",
+      "R2",
+      "C43"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v3-refdes-alone.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v3-refdes-alone.lst"
+   },
+   "answer": [
+    [
+     "LSM",
+     [
+      "R1"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v4-case-twins.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v4-case-twins.lst"
+   },
+   "answer": [
+    [
+     "FULL",
+     [
+      "R1"
+     ]
+    ],
+    [
+     "Full",
+     [
+      "R1",
+      "R2"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v5-no-base-block.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v5-no-base-block.lst"
+   },
+   "answer": [
+    [
+     "BOM",
+     null
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v6-users-alternate-line.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v6-users-alternate-line.lst"
+   },
+   "answer": [
+    [
+     "A",
+     [
+      "C1",
+      "C2",
+      "R1",
+      "C43"
+     ]
+    ],
+    [
+     "B",
+     [
+      "C1",
+      "R1"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v7-base-over-two-lines.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v7-base-over-two-lines.lst"
+   },
+   "answer": [
+    [
+     "LONG",
+     [
+      "C1",
+      "C2",
+      "C3",
+      "R1",
+      "R2"
+     ]
+    ]
+   ]
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v8-wrapped-three-lines.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v8-wrapped-three-lines.lst"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "gdsysGetVariantInfo",
+   "case": "v9-one-line-alternate-lf.lst",
+   "inputs": {
+    "file": "tests/fixtures/variants/v9-one-line-alternate-lf.lst"
+   },
+   "answer": [
+    [
+     "LSM",
+     [
+      "R1",
+      "R2",
+      "C1",
+      "C43"
+     ]
+    ]
+   ]
   }
  ]
 }

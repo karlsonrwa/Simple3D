@@ -55,15 +55,21 @@ for full, want in wants:
     check(f"{full!r}", got == want, f"got {got!r}, wanted {want!r}")
 
 print("\n[3] the UNC case parseString would have broken")
-# What the collapsing rebuild does, kept as the reason the scan exists.
+# Rebuilt from parseString's pieces, \\server\share\boards comes back as
+# server/share/boards - a relative folder - which is why the SKILL scans for
+# the last separator instead. A check here used to work that rebuild out of a
+# literal and find it broken, which no change to the product could alter
+# (review 23.10.2026, R2-9); what holds the product is its source.
+src = exporter_source()
 unc = r"\\server\share\boards\flex2-a0.brd"
-collapsed = "/".join([p for p in re.split(r"[/\\]", unc) if p][:-1])
-check("parseString-style rebuild loses the leading slashes",
-      collapsed == "server/share/boards", collapsed)
+folder = re.search(r"^procedure\( s3dDesignFolder\(.*?(?=^procedure\()", src, re.S | re.M)
+folder_code = "\n".join(line.split(";")[0] for line in (folder.group(0) if folder else "").splitlines())
+check("s3dDesignFolder cuts the path by scanning it, with no parseString in it",
+      folder is not None and "parseString(" not in folder_code and "substring( full i 1 )" in folder_code,
+      folder_code[:240])
 check("the scan keeps them", s3d_design_folder(unc) == r"\\server\share\boards")
 
 print("\n[4] the SKILL source still says the same thing")
-src = exporter_source()
 # The bare name may appear ONLY inside the helper (its own fallback). A
 # `( variantFile "Variants.lst" )` anywhere is the bug coming back: that is a
 # let-init resolving against the working directory again.
@@ -254,12 +260,29 @@ print("\n[7] a variant that overrides properties on some components")
 # the first PROPERTY token instead ("VALUE=12pF"), which is the bug fixed on
 # 2026-07-22 and pinned here on the real line from the user's own file.
 ALT = '\t\t(C43 VALUE="12pF" JEDEC_TYPE="CAPC100X50X55L25N" TOL="1" )\n'
-refdes, ends = alternate_line(ALT)
+refdes, _, ends = alternate_line(ALT)
 check("the refdes is what reaches the symbol list", refdes == "C43", refdes)
 check("not the first property", refdes != 'VALUE="12pF"')
-check("and the block is seen to end on its own line", ends)
+# A block closes where its last piece is ")\n", and parseString breaks the
+# "\n" off a line's last piece: so the parser closes even a one-line block on
+# the line AFTER it, the blank one Capture writes. This suite said "it ends on
+# its own line" until round 118, a reading of the copy that Allegro 25.1 does
+# not share (tests/fixtures/variants, test_skill_pins [7]).
+check("a one-line block is not closed on its own line", not ends)
+USERS = (ROOT / "tests/fixtures/variants/v6-users-alternate-line.lst").read_bytes().decode("ascii")
+check("but by the blank line after it: in a file of the user's shape the part is installed",
+      parse_variants(USERS).get("A", [])[-1:] == ["C43"], parse_variants(USERS))
 check("a continued block is not mistaken for a finished one",
-      not alternate_line('\t\t(C43 VALUE="12pF" JEDEC_TYPE="CAPC\n')[1])
+      not alternate_line('\t\t(C43 VALUE="12pF" JEDEC_TYPE="CAPC\n')[2])
+# The copy above is held to Allegro's own answers; this holds the SKILL to
+# the fix itself, in both branches that close a block (R2-9: reverted in
+# both, every suite had stayed green). Whole-line comments off - the FIX note
+# quotes the old line.
+code = "\n".join(line for line in src.splitlines() if not line.lstrip().startswith(";"))
+check("and the SKILL appends the refdes, not the first property, in both branches",
+      code.count("symbols = nconc( symbols list( refDes ) )") == 2
+      and "list( nth( 0 subStrings ) )" not in code,
+      code.count("symbols = nconc( symbols list( refDes ) )"))
 
 check("a stray newline token is not a refdes", not is_refdes_token("\n"))
 check("nor an empty one", not is_refdes_token(""))
@@ -403,32 +426,33 @@ def session(share, exports=3):
     return [one_export(edge_cuts, "PINHOLES", share) for _ in range(exports)]
 
 
-shared = session(share=True)
-check("the alias reproduces the bug: the first file is right",
-      shared[0].count("PINHOLES") == 1, shared[0])
-check("the second file already has the holes twice",
-      shared[1].count("PINHOLES") == 2, shared[1])
-check("and the whole-board file, written last, three times",
-      shared[2].count("PINHOLES") == 3, shared[2])
-
-copied = session(share=False)
-check("the copy gives every file the same contours",
-      all(f == copied[0] for f in copied), copied)
-check("each with its holes exactly once",
-      all(f.count("PINHOLES") == 1 for f in copied), copied)
-check("and the board's own cutouts still there, in order",
-      copied[0] == ["cutoutA", "cutoutB", "PINHOLES"], copied[0])
-check("a board with no cutouts at all still exports its holes",
-      one_export([None, None], "PINHOLES", False) == ["PINHOLES"])
-check("and one with neither exports nothing rather than failing",
-      one_export([None, None], None, False) == [])
-
-check("the source copies the list instead of aliasing it",
-      re.search(r"foreach\(\s*baseCut\s+car\(\s*cadr\(\s*edgeCuts\s*\)\s*\)", src))
-# Whole-line comments only - the FIX note above the fix quotes the old line, and
-# a naive search finds it there.
+# The model runs the way the SOURCE hands the list on - copied, or aliased as
+# before 2026-08-11 - read off create3dIntermediateFormat, so its checks go
+# red the day the alias is back. Until round 118 it ran on a switch the test
+# set itself, and eight checks could not fail whatever the .il did (review
+# 23.10.2026, R2-9). Whole-line comments off: the FIX note quotes the old line.
 code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith(";"))
-check("the alias is gone", not re.search(r"cuts\s*=\s*cadr\(\s*edgeCuts\s*\)", code))
+copies = bool(re.search(r"foreach\(\s*baseCut\s+car\(\s*cadr\(\s*edgeCuts\s*\)\s*\)", code))
+aliases = bool(re.search(r"cuts\s*=\s*cadr\(\s*edgeCuts\s*\)", code))
+check("the source copies the list instead of aliasing it", copies and not aliases,
+      (copies, aliases))
+runs = session(share=aliases)
+shared = session(share=True)
+check("so every file gets the same contours, each with its holes once - where the alias "
+      "gave the second file two and the whole-board file three",
+      all(f == runs[0] for f in runs) and all(f.count("PINHOLES") == 1 for f in runs)
+      and [f.count("PINHOLES") for f in shared] == [1, 2, 3], (runs, shared))
+check("and the whole-board file, written last, has the board's own cutouts in order",
+      runs[-1] == ["cutoutA", "cutoutB", "PINHOLES"], runs[-1])
+# The two ends of the list the model has from the source too: the holes start
+# the list when there is no cutout, and an unbound list is written as none.
+starts = bool(re.search(r"when\(\s*cut\s+if\(\s*boundp\(\s*'cuts\s*\)\s+then\s+tconc\(\s*cuts\s+cut\s*\)"
+                        r"\s+else\s+cuts\s*=\s*tconc\(\s*nil\s+cut\s*\)", code))
+check("a board with no cutouts at all still exports its holes: they start the list",
+      starts and one_export([None, None], "PINHOLES", aliases) == ["PINHOLES"], starts)
+unbound = bool(re.search(r"if\(\s*boundp\(\s*'cuts\s*\)\s+then\s+cuts\s+else\s+nil\s*\)", code))
+check("and one with neither writes no list rather than failing on an unbound one",
+      unbound and one_export([None, None], None, aliases) == [], unbound)
 
 print("\n[10] a name Allegro wrote in the Windows code page is read, not crashed on")
 # SKILL writes text as the bytes it holds - on a Russian Windows, cp1251 - and
@@ -474,10 +498,14 @@ print("\n[12] a variant with no (base block: every part set to not installed")
 # file as another project's. Now the variant closing - or an alternate-part
 # block opening - with no base seen is an empty base list.
 EMPTY = '(\r\n\t("BOM"\r\n\r\n\t)\r\n\r\n\r\n)\r\n'        # verbatim, as the user made it
+# An alternate-part block is closed by the line after it (see [7]), and
+# Capture writes a blank one there; NORMAL and ALT_ONLY carry it. Until round
+# 118 they did not, and passed only because the copy closed a block on its own
+# line, which the parser does not.
 NORMAL = ('(\n\t("V1"\n\t\t(base\n\t\t\tC1 C2 \n\t\t\tR1 \n\t\t)\n'
-          '\t\t(C43 VALUE="12pF" TOL="1" )\n\t)\n)\n')
+          '\t\t(C43 VALUE="12pF" TOL="1" )\n\n\t)\n)\n')
 STUB = '(\n\t("dummy"\n\t\t(base\n\t\t)\n\t)\n)\n'
-ALT_ONLY = '(\n\t("V2"\n\t\t(C43 VALUE="12pF" TOL="1" )\n\t)\n)\n'
+ALT_ONLY = '(\n\t("V2"\n\t\t(C43 VALUE="12pF" TOL="1" )\n\n\t)\n)\n'
 BOTH = '(\n\t("V1"\n\t\t(base\n\t\t\tC1 C2 \n\t\t)\n\t)\n\t("BOM"\n\n\t)\n)\n'
 # Capture's real shape, byte for byte from the user's probe file: the base
 # list on one line inside its own parentheses, blank lines around the blocks.
@@ -506,8 +534,22 @@ check("a full variant and an empty one in one file are both found",
 got = parse_variants(CAPTURE)
 check("Capture's own shape: the six refdes, in order",
       refdes_of(got, "BOM") == ["VT1", "VT2", "VT3", "VT4", "X1", "X2"], got)
-check("...and the stray newline token the memo describes, which is why the filter exists",
-      "\n" in got["BOM"], got)
+# Round 52's memo reasoned that a line ending in " )" leaves a bare "\n"
+# token, and this check held the copy to it; Allegro 25.1's parseString breaks
+# at a line end as at a space, and its parser left no such token in any of the
+# files of tests/fixtures/variants (round 118).
+check("...and no stray token beside them: parseString breaks the line end off",
+      got["BOM"] == ["VT1", "VT2", "VT3", "VT4", "X1", "X2"], got)
+# What the parser does when the blank line is missing, as Allegro 25.1 answers
+# on tests/fixtures/variants v10 and v11: the block's end is looked for to the
+# end of the file, so that variant and every one after it are lost. Capture
+# writes the blank line in both of the user's files; README, Known
+# limitations, says so.
+lost = NORMAL.replace(' )\n\n\t)', ' )\n\t)')
+check("without the blank line after a block the variant is lost, and the next with it",
+      parse_variants(lost) == {}
+      and parse_variants(lost.replace(")\n)\n", ")\n\t(\"V9\"\n\t\t(base\n\t\t\tR9 \n\t\t)\n\n\t)\n)\n")) == {},
+      parse_variants(lost))
 check("the SKILL parser has the same branch, ahead of its case",
       re.search(r'when\(\s*\(state == "awaitStartCondition"\)\s*&&[\s\S]{0,200}?'
                 r'pcreMatchp\(\s*propertyStart line\s*\)\s*\)\s*\n\s*symbols = list\(\)', src))

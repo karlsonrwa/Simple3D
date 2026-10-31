@@ -64,9 +64,51 @@ PYW = (str(Path(PY).with_name("pythonw.exe"))
 OUTF = WORK / "argv.json"
 LOGF = DESIGN_DIR / "_simple3d_preflight.txt"
 
-# The argument tail s3dExportCommand builds, shortened but the same shape.
-TAIL = (f'-m probepkg "{OUTF}" --json-dir "{DESIGN_DIR}" '
-        f'--brd-name "my board" --dated-name')
+CONFIG = WORK / "my config dir" / "simple3d_config.json"   # never read: a spaced path to carry
+SKILL_ESCAPES = {'\\"': '"', "\\\\": "\\", "\\n": "\n", "\\t": "\t"}
+
+
+def skill_tail(il, values):
+    """The window's argument tail as s3dExportCommand builds it - its
+    `argTail = strcat( ... )` read out of simple3d.il, the literal pieces as
+    the source spells them, each variable given values[name]. -> (tail, None)
+    or (None, why). Until round 118 this suite wrote a tail of its own, "the
+    same shape", so the quotes the SKILL puts round each path were never
+    asked about: dropped from --json-dir, every suite stayed green (review
+    23.10.2026, R2-9)."""
+    m = re.search(r"argTail = strcat\(", il)
+    if not m:
+        return None, "no `argTail = strcat(` in simple3d.il"
+    token = re.compile(r'\s*(?:("(?:\\.|[^"\\])*")|(\()|(\))|([A-Za-z_][A-Za-z0-9_]*))')
+    pos, pieces = m.end(), []
+    while True:
+        t = token.match(il, pos)
+        if t is None:
+            return None, f"cannot read the strcat at {il[pos:pos + 40]!r}"
+        pos = t.end()
+        string, opened, closed, name = t.groups()
+        if string is not None:
+            pieces.append(re.sub(r"\\.", lambda e: SKILL_ESCAPES.get(e.group(0), e.group(0)),
+                                 string[1:-1]))
+        elif opened:
+            return None, "a call inside the strcat - not a shape this reads"
+        elif closed:
+            return "".join(pieces), None
+        elif name in values:
+            pieces.append(values[name])
+        else:
+            return None, f"the tail names {name}, which this suite gives no value"
+
+
+SKILL_TAIL, TAIL_WHY = skill_tail(
+    (ROOT / "simple3d.il").read_text(encoding="utf-8"),
+    {"S3D_ConfigFile": str(CONFIG), "cadDir": str(DESIGN_DIR), "designName": "my board"})
+# What the window must receive, each spaced value in one piece.
+WANT_ARGV = ["--gui", "--config", str(CONFIG), "--json-dir", str(DESIGN_DIR),
+             "--output-dir", str(DESIGN_DIR), "--brd-name", "my board", "--dated-name"]
+# The stand-in in place of the package, the file it writes to first.
+TAIL = (f'-m probepkg "{OUTF}"' + SKILL_TAIL[len("-m stepbuilder"):]
+        if SKILL_TAIL and SKILL_TAIL.startswith("-m stepbuilder ") else None)
 
 
 def window_python(python, pythonw):
@@ -129,17 +171,17 @@ def run_preflight(cmd):
 
 
 print("\n[1] launch: argv and working directory survive, at both nesting depths")
-for label, cmd in [("one cmd layer", launch_cmd()),
-                   ("two cmd layers", "cmd /c " + launch_cmd())]:
+check("the argument tail is the one simple3d.il builds, read out of its strcat",
+      TAIL is not None, TAIL_WHY or f"it does not start '-m stepbuilder ': {SKILL_TAIL!r}")
+for label, cmd in ([("one cmd layer", launch_cmd()),
+                    ("two cmd layers", "cmd /c " + launch_cmd())] if TAIL else []):
     got = run_launch(cmd)
     if got is None:
         check(f"{label}: the GUI stand-in ran", False, "no output file")
         continue
     check(f"{label}: the GUI stand-in ran", True)
-    check(f"{label}: spaced --json-dir arrives whole",
-          got["argv"][:2] == ["--json-dir", str(DESIGN_DIR)], f"got {got['argv'][:2]}")
-    check(f"{label}: spaced --brd-name arrives whole",
-          "my board" in got["argv"], f"got {got['argv']}")
+    check(f"{label}: every argument arrives whole - the spaced config, cad folder and board name",
+          got["argv"] == WANT_ARGV, f"got {got['argv']}")
     check(f"{label}: /D set the working directory",
           Path(got["cwd"]) == SCRIPT_DIR, f"got {got['cwd']}")
 
@@ -183,9 +225,10 @@ if OUTF.exists():
 # codepage, so it is sent to NUL - it would otherwise print as mojibake in the
 # middle of a passing run. The redirect adds no quotes and so cannot rescue the
 # form under test.
-os.system(f'"{PY}" {TAIL} > nul 2>&1')
+if TAIL:
+    os.system(f'"{PY}" {TAIL} > nul 2>&1')
 got = json.loads(OUTF.read_text(encoding="utf-8")) if OUTF.exists() else None
-intact = got is not None and got["argv"][:2] == ["--json-dir", str(DESIGN_DIR)]
+intact = got is not None and got["argv"] == WANT_ARGV
 check("quoted-first form does NOT deliver the spaced path",
       not intact, "it survived - cmd's stripping rule may have changed")
 

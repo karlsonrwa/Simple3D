@@ -258,19 +258,51 @@ def exported(*, refdes, installed, has_table=True, no_step_export=False,
     return True
 
 
+# mirrors SKILL's own parseString  -- no procedure of ours; skill/s3d_variants.il's parser stands on it
+def parse_string(text, breaks=None):
+    """parseString: the pieces between break characters, empty ones dropped.
+    With no break characters given SKILL breaks at white space - space, tab,
+    line feed and carriage return all, measured in Allegro 25.1 (round 118,
+    test_skill_pins [7]) - so a line's last piece does not keep its "\\n"."""
+    if breaks is None:
+        return text.split()
+    out, piece = [], ""
+    for ch in text:
+        if ch in breaks:
+            if piece:
+                out.append(piece)
+            piece = ""
+        else:
+            piece += ch
+    if piece:
+        out.append(piece)
+    return out
+
+
 # mirrors skill/s3d_variants.il: gdsysGetVariantInfo  -- the awaitEndCondition branch (alternate_line)
-STRIP = '"\t+\\()'                                   # the parser's own char class
+# The parser's `pattern`, the SKILL's own text: in a character class "\(" is
+# the paren, so the class holds no backslash - Allegro 25.1 keeps the one in
+# "X\2" (round 118), where this copy used to strip it.
+STRIP = '"\t+()'                                     # the characters the class takes
+_STRIP = re.compile('["\t+\\()]')                    # pattern
+_PROPERTY_SEPARATOR = re.compile('(" )')             # propertySeparator
 
 
 def alternate_line(line):
-    """The parser's awaitEndCondition branch: (refdes, ends_on_this_line)."""
-    tokens = line.split(" ")                         # parseString, space-separated
+    """The parser's awaitEndCondition branch on an alternate-part line:
+    (refdes, properties, ends_on_this_line), or (None, "", False) for a line
+    with a refdes alone. A block ends where its last piece, split at `" `, is
+    ")\\n" - and on a line of its own a one-line block's last piece is ")",
+    parseString having broken the "\\n" off: so the SKILL closes even a
+    one-line block on the line AFTER it, the blank one Capture writes
+    (Allegro 25.1, round 118)."""
+    tokens = parse_string(line)
     if len(tokens) <= 1:
-        return None, False
-    refdes = "".join(c for c in tokens[0] if c not in STRIP)
-    properties = " ".join(tokens[1:])
-    chunks = properties.replace('" ', "\\").split("\\")
-    return refdes, chunks[-1] == ")\n"
+        return None, "", False
+    refdes = _STRIP.sub("", tokens[0])
+    properties = " ".join(tokens[1:])                # buildString
+    chunks = parse_string(_PROPERTY_SEPARATOR.sub(r"\\", properties), "\\")
+    return refdes, properties, bool(chunks) and chunks[-1] == ")\n"
 
 
 # mirrors skill/s3d_variants.il: s3dIsRefdesToken
@@ -280,9 +312,15 @@ def is_refdes_token(tok):                            # s3dIsRefdesToken
     return isinstance(tok, str) and bool(re.search(r"[A-Za-z0-9]", tok))
 
 
-# mirrors skill/s3d_variants.il: gdsysGetVariantInfo  -- its states: which lines open, fill and close a variant
+# mirrors skill/s3d_variants.il: gdsysGetVariantInfo  -- its states, line by line, the wrapped-property branch included
+_NEW_LINE = re.compile("\t\t")                       # newLine
+_NEW_LINE_END = re.compile("\t\t \\)")               # newLineEnd
+_NEW_LINE_WITHIN = re.compile('="\t\t ')             # newLineWithinProperty
+_PROPERTY_START = re.compile("^\t\t\\(.*")           # propertyStart
+
+
 def parse_variants(text):
-    """{variant: [token, ...]}, walking the lines the way the parser's state
+    """{variant: [refdes, ...]}, walking the lines the way the parser's state
     machine does: a line with one quoted name opens a variant, "\t\t(base"
     starts its list, "\t\t)" ends the list, "\t)" closes the variant, and a
     "\t\t(REFDES ..." block between the two is an alternate part (installed).
@@ -290,19 +328,27 @@ def parse_variants(text):
     alternate part - before any "(base" has an empty base list: Capture
     writes no base block when the variant installs nothing.
 
-    The tokens are the parser's own (a stray "\n" included - the SKILL
-    filters with s3dIsRefdesToken at use, and so should a caller). Not
-    mirrored: the property values, and the multi-line property branch
-    (awaitMoreProperties) - a property block is fed on one line here. Line
-    ends are normalised the way gets() does in text mode.
+    Statement by statement since round 118, held to the real parser's
+    answers on the files of tests/fixtures/variants (test_skill_pins [7],
+    review 23.10.2026 R2-9): the pieces come from parseString as SKILL breaks
+    them, and a block that does not end on its line goes on in
+    awaitMoreProperties, as a property wrapped onto the next line does -
+    where the copy used to drop the part. Two things the SKILL does that
+    this follows rather than mends: a refdes alone on its line opens no block
+    (the part is not installed), and a one-line block with no line after it
+    before "\t)" leaves the machine in awaitMoreProperties to the end of the
+    file, so that variant is never registered. Not mirrored: the property
+    values (alternateParts). Line ends are normalised the way gets() does in
+    text mode (a CRLF and an LF file answered alike).
     """
     table, state, current, symbols = {}, "findVariant", None, []
+    refdes, properties = None, ""
     for line in text.replace("\r\n", "\n").splitlines(keepends=True):
         if (state == "awaitStartCondition" and line != "\t\t(base\n"
-                and (line == "\t)\n" or line.startswith("\t\t("))):
+                and (line == "\t)\n" or _PROPERTY_START.search(line))):
             symbols, state = [], "awaitEndCondition"
         if state == "findVariant":
-            parts = line.split('"')                     # parseString( line "\"" )
+            parts = parse_string(line, '"')
             if len(parts) == 3:
                 current, state = parts[1], "awaitStartCondition"
         elif state == "awaitStartCondition":
@@ -312,16 +358,30 @@ def parse_variants(text):
             if line == "\t\t)\n":
                 state = "awaitEndCondition"
             else:
-                symbols += [t for t in line.split(" ") if t]   # parseString: spaces only
+                symbols = symbols + parse_string(line)
         elif state == "awaitEndCondition":
             if line == "\t)\n":
-                table[current] = ["".join(c for c in t if c not in STRIP)
-                                  for t in symbols if t != ")"]
+                table[current] = [_STRIP.sub("", t) for t in symbols if t != ")"]
                 state = "findVariant"
-            elif line.startswith("\t\t("):                 # propertyStart
-                refdes, ends = alternate_line(line)
-                if refdes is not None and ends:
-                    symbols.append(refdes)
+            elif _PROPERTY_START.search(line):
+                found, more, ends = alternate_line(line)
+                if found is not None:
+                    refdes, properties = found, more
+                    if ends:
+                        symbols = symbols + [refdes]
+                    else:
+                        state = "awaitMoreProperties"
+        elif state == "awaitMoreProperties":
+            properties = properties + _NEW_LINE_END.sub(" )", line)
+            properties = _NEW_LINE_WITHIN.sub('="', properties)
+            properties = _NEW_LINE.sub("", properties)
+            temp = _PROPERTY_SEPARATOR.sub(r"\\", properties)
+            temp = _NEW_LINE_END.sub(r"\\", temp)
+            chunks = parse_string(temp, "\\")
+            if chunks and chunks[-1] == ")\n":
+                symbols = symbols + [refdes]
+                properties = ""
+                state = "awaitEndCondition"
     return table
 
 

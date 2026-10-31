@@ -5,7 +5,22 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-117 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-118 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 118 (2026-10-31), on `main`, not pushed.** At «Да, R2-9»: every check
+the finding named now holds the product, each with a row that turns it red
+(rows 425, the 75 on the three suites 75 of 75; run_all 32/34). The review's M1
+(the parser's refdes fix reverted) and M2 (`--json-dir` unquoted) survived
+round 117's tree; M3 had been caught since round 114. `test_launch_cmd` reads
+the window's argument tail out of `simple3d.il`; `test_variant_path` [3], [7],
+[9] read their places in the SKILL. The variant parser's copy was rewritten
+line by line and is held to Allegro 25.1's own `gdsysGetVariantInfo` on 14
+files in `tests/fixtures/variants` (probe_translit, fixture 83 -> 103 cases):
+the old copy lost a wrapped block's part and kept variants the SKILL loses.
+Measured in the SKILL itself, NOT changed (the owner's call): a block is
+closed by the blank line after it, and without one the variant and all after
+it are lost; a refdes alone on its line installs nothing. README's Known
+limitations. Read round 118.
 
 **Round 117 (2026-10-31), on `main`, not pushed.** At «Да, R2-5»: a legend
 object lost in whole or in part is named, in the console and in the JSON.
@@ -3463,6 +3478,67 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 118) — the checks R2-9 named hold the product, and the Variants.lst parser is measured (R2-9 of the first review round)
+
+At the owner's «Да, R2-9». The finding (23.10, open in both rounds): "no check
+that cannot fail" did not hold - test_variant_path [3] and [9] checked
+models the test defined, [7] the copy and not the SKILL fix, test_launch_cmd
+an argument tail of its own, and `parse_variants` skipped the wrapped-property
+branch. Evidence asked: for each named check, a product change that turns it
+red. The record is `docs/records/tests-that-hold-the-product-2026-10-31.md`.
+
+### Measured first (`build/fix-2026-10-31/r118/`)
+
+- The review's M1-M3 on round 117's tree (`k6_today.py`, the 4090): M1 and
+  M2 green in every suite they name, M3 red (round 114).
+- Allegro 25.1's own parser on 14 Variants.lst files (`tests/fixtures/
+  variants`, kept byte for byte by the new `.gitattributes`), through
+  `probe_translit.il`'s new `s3dProbeTranslitVariants` (`s3dVariantFilePath`
+  stubbed by `putd`): see the record's table. The old copy differed on every
+  file - stray "\n" tokens SKILL never makes (its `parseString` breaks at
+  white space: measured on 6 strings), C43 lost on a wrapped block (v2), W3
+  kept where SKILL loses it (v8), a backslash stripped that SKILL keeps (v14).
+- The SKILL's own limits (left as they are): a block is closed by the line
+  after it; with "\t)" straight after a block the variant and all after it
+  are lost (v8, v10-v12); a refdes alone on its line installs nothing (v3).
+  The user's two Variants.lst have the blank lines and no alternate block.
+  Round 52's memo of a stray "\n" token was reasoning, refuted by the
+  measurement.
+
+### What changed (tests, the copy, the probe; no product file)
+
+- `tests/skill_transliterations.py`: `parse_string`, `alternate_line`
+  (now (refdes, properties, ends)), `parse_variants` statement by statement
+  with `awaitMoreProperties`; `STRIP` / `_STRIP` the SKILL's class text.
+- `tests/test_skill_pins.py`: `pin()` keeps the statements of every section;
+  [5d] pins the refdes fix in both branches and the wrapped branch, compares
+  the six regexes with the `pcreCompile` calls and reads the strip class as
+  the regex it is; [7] asks the copy about `parseString` and
+  `gdsysGetVariantInfo`, `same()` nests.
+- `tests/test_variant_path.py`: [3] the source scan, [7] the source fix and
+  the line-after rule, [9] the model's mode and both list ends from the
+  source, [12] the blank line in NORMAL/ALT_ONLY, no stray token, the lost
+  variant as a check.
+- `tests/test_launch_cmd.py`: `skill_tail()` reads `argTail` out of
+  `simple3d.il`; [1] wants the whole argv, [4]'s control the same.
+- `tools/probes/probe_translit.il` (the parser and `parseString`),
+  `tools/skill_answers.py` (the cases from the folder, a nested `%L` reader:
+  round 116's 85 answers read the same), `tests/fixtures/skill_answers.json`
+  (103, the 83 unchanged), `tests/fixtures/variants/` (14), `.gitattributes`.
+- README (both halves: a Known limitations entry for the parser, the map's
+  425), CHANGELOG, ARCHITECTURE.
+
+### Verified
+
+- Red first: test_skill_pins [7] 2 FAIL on the old copy (9 files, no
+  `parse_string`), and v14 alone once the copy was rewritten.
+- Rows 413 -> 425 (the record lists them); the 75 rows on the three suites:
+  75 of 75 caught on the 4090, each new one by the check written for it;
+  M1 alone also turns test_variant_path [7] red. run_all 32/34 in 92 s.
+- A `sed -i` on README.md turned it to LF again
+  ([[sed-i-in-git-bash-turns-crlf-into-lf]]); put back to CRLF, the diff only
+  the round's lines.
 
 ## Update 2026-10-31 (round 117) — a legend object lost in whole or in part is named, in the console and in the JSON (R2-5 of the first review round)
 
