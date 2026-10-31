@@ -1010,6 +1010,198 @@
     "ask": "value"
    },
    "answer": 2.0
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %OS% y",
+   "inputs": {
+    "text": "x %OS% y"
+   },
+   "answer": "%OS%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %os% y",
+   "inputs": {
+    "text": "x %os% y"
+   },
+   "answer": "%os%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %Os% y",
+   "inputs": {
+    "text": "x %Os% y"
+   },
+   "answer": "%Os%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %NOPE_S3D% y",
+   "inputs": {
+    "text": "x %NOPE_S3D% y"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %NOPE_S3D%OS% y",
+   "inputs": {
+    "text": "x %NOPE_S3D%OS% y"
+   },
+   "answer": "%OS%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %OS:~0,3% y",
+   "inputs": {
+    "text": "x %OS:~0,3% y"
+   },
+   "answer": "%OS:~0,3%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %OS:Win=W% y",
+   "inputs": {
+    "text": "x %OS:Win=W% y"
+   },
+   "answer": "%OS:Win=W%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %:OS% y",
+   "inputs": {
+    "text": "x %:OS% y"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %NOPE_S3D:~1% y",
+   "inputs": {
+    "text": "x %NOPE_S3D:~1% y"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %CD% y",
+   "inputs": {
+    "text": "x %CD% y"
+   },
+   "answer": "%CD%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %random% y",
+   "inputs": {
+    "text": "x %random% y"
+   },
+   "answer": "%random%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %ERRORLEVEL% y",
+   "inputs": {
+    "text": "x %ERRORLEVEL% y"
+   },
+   "answer": "%ERRORLEVEL%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %=C:% y",
+   "inputs": {
+    "text": "x %=C:% y"
+   },
+   "answer": "%=C:%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=50% / 60%",
+   "inputs": {
+    "text": "50% / 60%"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x % y",
+   "inputs": {
+    "text": "x % y"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %% y",
+   "inputs": {
+    "text": "x %% y"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %%OS%% y",
+   "inputs": {
+    "text": "x %%OS%% y"
+   },
+   "answer": "%OS%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x !OS! y",
+   "inputs": {
+    "text": "x !OS! y"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %windir% y",
+   "inputs": {
+    "text": "x %windir% y"
+   },
+   "answer": "%windir%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=x %PATH% y",
+   "inputs": {
+    "text": "x %PATH% y"
+   },
+   "answer": "%PATH%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=%OS%",
+   "inputs": {
+    "text": "%OS%"
+   },
+   "answer": "%OS%"
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=D:/Projects/AI/Claude/Simple3D",
+   "inputs": {
+    "text": "D:/Projects/AI/Claude/Simple3D"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=",
+   "inputs": {
+    "text": ""
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dCmdExpands",
+   "case": "text=nil",
+   "inputs": {
+    "text": null
+   },
+   "answer": null
   }
  ]
 }

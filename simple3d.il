@@ -528,7 +528,7 @@ procedure( s3dMeterOff()
 ; let it raises "return can only be used within a prog". prog also means the
 ; body's last value is NOT the result: every exit has to be an explicit return().
 procedure( s3dExportCommand()
-    prog( ( designName designDir cadDir check noMfrPn noModel argTail pyOk )
+    prog( ( designName designDir cadDir check noMfrPn noModel argTail pyOk unsafe )
 
         ; The folder may have been set since this file loaded - and if it still
         ; is not known, everything below would fail somewhere less obvious: the
@@ -634,6 +634,25 @@ procedure( s3dExportCommand()
             return( nil )
         )
 
+        ; --- can cmd carry what it is given? ---------------------------
+        ; The check and the window are started through cmd, which replaces
+        ; %NAME% inside quotes as well (s3dCmdExpands, skill/s3d_util.il).
+        ; Every string those command lines carry is asked first, and one cmd
+        ; would change is named here. Until round 116 it went to cmd, the
+        ; check's log went nowhere, and the console said Windows could not run
+        ; the interpreter at all (review 23.10.2026, R2-4).
+        unsafe = s3dCmdUnsafe( list(
+            list( "The install folder (S3D_ScriptDir)" S3D_ScriptDir )
+            list( "The window's Python" s3dWindowPython() )
+            list( "The config file" S3D_ConfigFile )
+            list( "The output folder" cadDir )
+            list( "The board's name" designName ) ) )
+        when( unsafe
+            s3dMeterOff()
+            s3dSayCmdUnsafe( unsafe cadDir )
+            return( nil )
+        )
+
         ; --- can Python actually start? -------------------------------
         ; Done AFTER the JSON exists, so a broken Python install still leaves the
         ; user with a usable export, and the message can say so. Costs a few
@@ -691,6 +710,31 @@ procedure( s3dExportCommand()
         s3dMeterOff()
         return( t )
     )
+)
+
+; Say that a string the window's command line would carry is one cmd changes
+; (l_unsafe is s3dCmdUnsafe's answer: label, text, the %NAME% in it). The
+; JSON is written by now, and the console and a dialog say so first, as the
+; failed check does.
+procedure( s3dSayCmdUnsafe( l_unsafe t_cadDir )
+    printf( "\n" )
+    printf( "===== Simple 3D: the JSON was written, but the 3D window cannot start from here =====\n" )
+    printf( "The intermediate JSON(s) ARE in:\n    %s\n" t_cadDir )
+    printf( "Nothing is wrong with the board or the export.\n\n" )
+    printf( "%s is\n    %s\n" car( l_unsafe ) cadr( l_unsafe ) )
+    printf( "and has %s in it. Windows' cmd, which starts the check and the\n" caddr( l_unsafe ) )
+    printf( "window, replaces that with the value of a variable even inside quotes,\n" )
+    printf( "so the path would arrive changed and nothing would start. Rename it so\n" )
+    printf( "that it holds no %%NAME%% of a variable (a single %% is fine), and\n" )
+    printf( "export again.\n" )
+    printf( "=====================================================================\n\n" )
+    axlUIWPrint( nil
+        "Simple 3D: JSON written OK - but the 3D window cannot start from this path. See the console." )
+    errset( axlUIConfirm( strcat(
+        "Simple 3D: the JSON was exported, but the 3D window could not be started.\n\n"
+        car( l_unsafe ) " holds " caddr( l_unsafe ) ", which Windows replaces with the value of a variable.\n"
+        "The console says where and what to do." ) 'error ) )
+    t
 )
 
 ; The interpreter the 3D window runs under: S3D_PythonW (pythonw.exe, no

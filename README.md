@@ -924,6 +924,15 @@ draws a zero-width line, text or unfilled outline at its film's undefined line
 width; the export reads no films, so it skips the figure and names it. Kept
 so by the owner's decision (31.10.2026). See *Silkscreen*.
 
+**A path with `%NAME%` of a variable in it cannot open the window.** The check
+and the window are started through Windows' `cmd`, which replaces `%OS%`,
+`%os%`, `%OS:~0,3%`, `%CD%`, `%RANDOM%` and the like with their values even
+inside quotes, and has no escape for them there (measured 31.10.2026; a single
+`%`, or `%NAME%` of a variable that is not defined, passes). If the install
+folder, the window's Python, the config file, the output folder or the board's
+name holds one, the export still writes the JSON, then says which of them and
+which `%NAME%`, and starts nothing. Rename it.
+
 **Exposed copper is a picture, not copper.** It is surfaces floating a micron
 or two above the mask, in the mask's own plane rather than in a window cut through it;
 they have no thickness and take part in no boolean. What is drawn is the pins'
@@ -995,7 +1004,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 399 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 404 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1933,6 +1942,15 @@ Allegro построена при `k = 0`. На плате с запасом р�
 фигуру пропускает и называет. Так решил владелец (31.10.2026). См.
 *Шелкография*.
 
+**Путь, в котором есть `%ИМЯ%` переменной, не может открыть окно.** Проверку и
+окно запускает `cmd` Windows, а он заменяет `%OS%`, `%os%`, `%OS:~0,3%`,
+`%CD%`, `%RANDOM%` и подобные их значениями даже внутри кавычек, и
+экранировать их там нечем (замерено 31.10.2026; одиночный `%` или `%ИМЯ%`
+неопределённой переменной проходит). Если такое есть в папке установки, в пути
+к Python окна, в файле конфига, в папке вывода или в имени платы, экспорт всё
+равно записывает JSON, потом говорит, где именно и какое `%ИМЯ%`, и больше
+ничего не запускает. Переименуйте.
+
 **Открытая медь — картинка, а не медь.** Это поверхности на микрон-другой над маской,
 в плоскости самой маски, а не в вырезанном в ней окне; толщины у них нет, и в
 булевых операциях они не участвуют. Рисуются площадки выводов и переходных
@@ -2004,7 +2022,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 399 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 404 поломки, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

@@ -1,11 +1,11 @@
 ;=====================================================================
 ;  probe_translit.il - DIAGNOSTIC ONLY. Reads nothing from the design.
 ;
-;  The five pure procedures the Python transliterations in
-;  tests/skill_transliterations.py copy, RUN - in a real Allegro, by the
-;  real interpreter - over a fixed list of cases, so that the copies can be
-;  compared against the original's own answers instead of against a reading
-;  of its source.
+;  The pure procedures the Python transliterations in
+;  tests/skill_transliterations.py copy - five, and since round 116
+;  s3dCmdExpands - RUN in a real Allegro, by the real interpreter, over a
+;  fixed list of cases, so that the copies can be compared against the
+;  original's own answers instead of against a reading of its source.
 ;
 ;  Why it exists: half the product is SKILL and no test runs it, so four of
 ;  five semantic mutations made in skill/ passed the whole suite unnoticed
@@ -197,6 +197,26 @@ procedure( s3dProbeTranslit()
                 s3dJsonGet( merged "a" ) )
             s3dProbeTranslitCase( "s3dJsonMerge" "a key only the override has"
                 s3dJsonGet( merged "b" ) )
+        )
+
+        s3dProbeTranslitSay( "\n===== s3dCmdExpands =====" )
+        ; What Windows' cmd would replace in a string (round 116). The
+        ; environment is Allegro's own, so every name asked is one that holds,
+        ; or does not, on any Windows: OS, windir and Path are there,
+        ; NOPE_S3D is not.
+        foreach( text list( "x %OS% y" "x %os% y" "x %Os% y" "x %NOPE_S3D% y"
+                            "x %NOPE_S3D%OS% y" "x %OS:~0,3% y" "x %OS:Win=W% y"
+                            "x %:OS% y" "x %NOPE_S3D:~1% y" "x %CD% y" "x %random% y"
+                            "x %ERRORLEVEL% y" "x %=C:% y" "50% / 60%" "x % y" "x %% y"
+                            "x %%OS%% y" "x !OS! y" "x %windir% y" "x %PATH% y" "%OS%"
+                            "D:/Projects/AI/Claude/Simple3D" "" )
+            s3dProbeTranslitCase( "s3dCmdExpands" strcat( "text=" text ) s3dCmdExpands( text ) )
+        )
+        s3dProbeTranslitCase( "s3dCmdExpands" "text=nil" s3dCmdExpands( nil ) )
+        ; And how getShellEnvVar takes the case of a name, which s3dCmdDefined
+        ; leans on: in any case, like cmd (measured 31.10.2026).
+        foreach( nm list( "OS" "os" "Os" "windir" "WINDIR" "PATH" "Path" "path" )
+            s3dProbeTranslitSay( sprintf( nil "ENV %s | %L" nm stringp( getShellEnvVar( nm ) ) ) )
         )
 
         s3dProbeTranslitSay( "\n===== END =====" )

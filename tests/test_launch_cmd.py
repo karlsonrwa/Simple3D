@@ -215,8 +215,13 @@ check("the check reports which interpreter answered",
       "sys.executable" in il and "S3D_PY " in il)
 # The CALL, not the word: the comment three lines above the call explains what
 # axlUIConfirm is for, so a grep over the whole file passes with the call gone.
+# And in s3dPreflight's own body: since round 116 the refusal of a path cmd
+# would change has a dialog of its own, which a whole-file grep found as well
+# when the check's was gone (the row skill-preflight-no-dialog survived).
+preflight_src = il[il.index("procedure( s3dPreflight("):]
+preflight_src = preflight_src[:preflight_src.index("\nprocedure( ", 1)]
 check("a failed preflight also says so in a blocking dialog",
-      re.search(r"^\s*errset\(\s*axlUIConfirm\(", uncommented(il), re.M),
+      re.search(r"^\s*errset\(\s*axlUIConfirm\(", uncommented(preflight_src), re.M),
       "the console can be closed or not looked at")
 
 print("\n[6] where the export writes: the pcb -> cad folder rule")
@@ -321,6 +326,64 @@ check("s3dExportCommand takes its folder from s3dDesignDir, and from nowhere els
       command.count("designDir = s3dDesignDir()") == 1 and "getWorkingDir" not in command
       and "cadDir = s3dResolveCadDir( designDir )" in command,
       [m for m in re.findall(r"designDir = \S+|getWorkingDir", command)])
+
+print("\n[9] a path cmd would change is named, never handed to it "
+      "(round 116, review 23.10.2026 R2-4)")
+# cmd replaces %NAME% inside quotes as well, and has no escape for it there;
+# a folder "x %OS% y" made the check's log vanish and the console blame the
+# interpreter. s3dCmdExpands (skill/s3d_util.il) says which strings cmd would
+# change; test_skill_pins [7] holds its copy to Allegro's own answers, and
+# here the copy is held to cmd itself: every case is echoed through cmd, and
+# the copy must name a %NAME% exactly where the echo comes back changed.
+# "%=C:%" is left to [7]: whether cmd has that hidden name depends on the
+# process (the rule always counts it).
+import subprocess
+from skill_transliterations import s3d_cmd_expands
+
+CMD_CASES = ["x %OS% y", "x %os% y", "x %Os% y", "x %NOPE_S3D% y", "x %NOPE_S3D%OS% y",
+             "x %OS:~0,3% y", "x %OS:Win=W% y", "x %:OS% y", "x %NOPE_S3D:~1% y", "x %CD% y",
+             "x %random% y", "x %ERRORLEVEL% y", "50% / 60%", "x % y", "x %% y",
+             "x %%OS%% y", "x !OS! y", "x %windir% y", "x %PATH% y", "%OS%",
+             "D:/Projects/AI/Claude/Simple3D"]
+echoed = WORK / "echo.txt"
+disagree = []
+for text in CMD_CASES:
+    if echoed.exists():
+        echoed.unlink()
+    subprocess.run(f'cmd /c echo ["{text}"] > "{echoed}"', shell=False)
+    got = echoed.read_text(encoding="utf-8", errors="replace").strip() if echoed.exists() else ""
+    changed = got != f'["{text}"]'
+    if changed != (s3d_cmd_expands(text) is not None):
+        disagree.append((text, got, s3d_cmd_expands(text)))
+check(f"on all {len(CMD_CASES)} cases the rule names a %NAME% exactly where cmd changes the text",
+      not disagree, disagree)
+
+# The reviewer's case C: the install folder "x %OS% y". cmd hands start the
+# folder "x Windows_NT y", which does not exist, and nothing runs - the log
+# that should say S3D_OK holds cmd's own complaint, or nothing.
+pct_dir = WORK / "x %OS% y"
+pct_dir.mkdir(exist_ok=True)
+log9 = run_preflight(f'cmd /c start /B /WAIT "" /D "{pct_dir}" "{PYW}" -u '
+                     f'-c "print(\'S3D\' \'_OK\')" > "{LOGF}" 2>&1')
+check("a folder with %OS% in it: the check's command finds nothing to run, and the rule names it",
+      "S3D_OK" not in log9 and s3d_cmd_expands(str(pct_dir)) == "%OS%",
+      (log9[:80], s3d_cmd_expands(str(pct_dir))))
+
+# simple3d.il asks the rule before the check and the launch, about every
+# string their command lines carry, and stops when it names one.
+unsafe_at = command.find("unsafe = s3dCmdUnsafe(")
+check("s3dExportCommand asks s3dCmdUnsafe before the check",
+      0 <= unsafe_at < command.find("s3dPreflight( cadDir )"),
+      (unsafe_at, command.find("s3dPreflight( cadDir )")))
+for what in ("S3D_ScriptDir", "s3dWindowPython()", "S3D_ConfigFile", "cadDir", "designName"):
+    check(f"  and asks it about {what}",
+          re.search(r'list\( "[^"]+" ' + re.escape(what) + r' \)', command[unsafe_at:]) is not None,
+          what)
+check("and stops there, saying so, when it names one",
+      "when( unsafe s3dMeterOff() s3dSayCmdUnsafe( unsafe cadDir ) return( nil ) )" in command,
+      command[unsafe_at:unsafe_at + 400])
+check("and the refusal says so in a blocking dialog too, as the failed check does",
+      "errset( axlUIConfirm( strcat(" in body("s3dSayCmdUnsafe"), body("s3dSayCmdUnsafe")[:200])
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

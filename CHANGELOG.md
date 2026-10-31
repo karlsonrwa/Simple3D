@@ -11,6 +11,31 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **A path `cmd` would change is named, not handed to it.**
+  The check and the window are started through `cmd`, which replaces `%NAME%`
+  of a variable even inside quotes and has no escape for it there. With the
+  install folder `x %OS% y`, the check's log went nowhere and the console said
+  Windows could not run the interpreter at all; no window. Now the export asks
+  every string those command lines carry - the install folder, the window's
+  Python, the config file, the output folder, the board's name - before
+  starting anything, and names the one that holds such a `%NAME%`; the JSON is
+  written either way. The rule (`s3dCmdExpands`) follows what `cmd` was
+  measured to do, so a single `%`, or `%NAME%` of an undefined variable,
+  still passes; its Python copy is held to Allegro's own answers and to `cmd`
+  itself. Five rows added to the mutation table (404). /
+  **Путь, который `cmd` изменил бы, называется, а не отдаётся ему.** Проверку и
+  окно запускает `cmd`, а он заменяет `%ИМЯ%` переменной даже внутри кавычек, и
+  экранировать там нечем. С папкой установки `x %OS% y` журнал проверки уходил
+  в никуда, консоль писала, что Windows вообще не смогла запустить
+  интерпретатор, окна не было. Теперь экспорт до запуска чего бы то ни было
+  проверяет каждую строку этих команд: папку установки, Python окна, файл
+  конфига, папку вывода, имя платы, и называет ту, где есть такое `%ИМЯ%`;
+  JSON записывается в любом случае. Правило (`s3dCmdExpands`) повторяет
+  замеренное поведение `cmd`, поэтому одиночный `%` или `%ИМЯ%`
+  неопределённой переменной по-прежнему проходит; его Python-копия сверена с
+  ответами самого Allegro и с самим `cmd`. В таблицу мутаций добавлено пять
+  строк (404).
+
 - **2026-10-31** — **The export writes beside its own board, not into Allegro's
   working directory.** The command took its folder from `getWorkingDir()`,
   while the exporter reads `Variants.lst` beside the board. *File → Open* with

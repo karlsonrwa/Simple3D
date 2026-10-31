@@ -124,6 +124,98 @@ procedure( s3dVariantFilePath()
     )
 )
 
+;=====================================================================
+;  WHAT WINDOWS' cmd WOULD CHANGE IN A STRING
+;
+;  The 3D window and the check before it are started through cmd, and cmd
+;  replaces %NAME% with the value of the variable NAME even inside double
+;  quotes. There is no way to stop it there: %% stays %%, a caret is a plain
+;  character inside quotes. So a folder called "x %OS% y" reaches Python as
+;  "x Windows_NT y", the check's log goes nowhere and the window does not
+;  start (review 23.10.2026, R2-4). What cmd does, measured 31.10.2026 through
+;  one and two cmd layers alike (build/fix-2026-10-31/r116/pct.py):
+;
+;    %OS%, %os%           replaced - the name is not case-sensitive
+;    %OS:~0,3% %OS:W=w%   replaced - a substring or substitution of OS
+;    %CD% %RANDOM%        replaced although no variable holds them, as are
+;    %ERRORLEVEL% %=C:%   the rest of cmd's own names and those beginning "="
+;    %NOPE%               left alone when NOPE is not defined - and the
+;                         search starts again at its second %, so
+;                         %NOPE%OS% becomes %NOPEWindows_NT
+;    a lone %, !OS!, ^%   left alone; %%OS%% becomes %Windows_NT%
+;
+;  s3dCmdExpands follows exactly that, so it names a string cmd would change
+;  and passes every one it would not (a "50% / 60%" folder still works).
+;=====================================================================
+
+; The names cmd answers for itself, with no variable behind them.
+S3D_CmdOwnNames = list( "CD" "DATE" "TIME" "RANDOM" "ERRORLEVEL" "CMDEXTVERSION"
+                        "CMDCMDLINE" "HIGHESTNUMANODENUMBER" )
+
+; t if cmd would replace %t_name% with something. getShellEnvVar takes a
+; name in any case, as cmd does: asked in Allegro 25.1, OS, os and Os, PATH,
+; Path and path all answered (tools/probes/probe_translit.il, 31.10.2026).
+procedure( s3dCmdDefined( t_name )
+    let( ( value )
+        value = nil
+        errset( value = getShellEnvVar( t_name ) )
+        if( stringp( value ) || (substring( t_name 1 1 ) == "=")
+            || member( upperCase( t_name ) S3D_CmdOwnNames )
+            then t else nil )
+    )
+)
+
+; s3dCmdExpands( t_text ) -> the first "%NAME%" in t_text that cmd would
+; replace, as written there, or nil when cmd would leave the text as it is.
+procedure( s3dCmdExpands( t_text )
+    prog( ( n i j k name base )
+        unless( stringp( t_text )  return( nil ) )
+        n = strlen( t_text )
+        i = 1
+        while( i <= n
+            if( substring( t_text i 1 ) == "%" then
+                j = i + 1
+                while( (j <= n) && (substring( t_text j 1 ) != "%")  j = j + 1 )
+                ; no closing % at all: nothing after this one can be replaced
+                when( j > n  return( nil ) )
+                name = if( j > i + 1 then substring( t_text i + 1 j - i - 1 ) else "" )
+                ; %NAME:~1,2% and %NAME:a=b% stand for NAME
+                base = name
+                k = 1
+                while( k <= strlen( name )
+                    if( substring( name k 1 ) == ":" then
+                        base = if( k > 1 then substring( name 1 k - 1 ) else "" )
+                        k = strlen( name ) + 1
+                    else
+                        k = k + 1
+                    )
+                )
+                when( (base != "") && s3dCmdDefined( base )
+                    return( substring( t_text i j - i + 1 ) )
+                )
+                ; not a variable: cmd keeps the first % and starts again at
+                ; the second, which may open the next name
+                i = j
+            else
+                i = i + 1
+            )
+        )
+        return( nil )
+    )
+)
+
+; s3dCmdUnsafe( l_named ) -> ( label text hit ) for the first entry of
+; l_named - a list of ( label text ) - whose text cmd would change, or nil.
+procedure( s3dCmdUnsafe( l_named )
+    prog( ( hit )
+        foreach( entry l_named
+            hit = s3dCmdExpands( cadr( entry ) )
+            when( hit  return( list( car( entry ) cadr( entry ) hit ) ) )
+        )
+        return( nil )
+    )
+)
+
 ; s3dAddIndent( t_string [ x_levels ] ) -> prefix every line with x_levels tabs.
 ; Reconstructed from the call sites; output matches the reference demo.json
 ; byte-for-byte. (The original repo used this but never shipped its source.)

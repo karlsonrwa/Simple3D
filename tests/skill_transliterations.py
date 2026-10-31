@@ -192,6 +192,48 @@ def s3d_variant_file_path(full):
     return folder + "/Variants.lst"
 
 
+# mirrors skill/s3d_util.il: s3dCmdExpands, s3dCmdDefined  -- what Windows' cmd would replace
+CMD_OWN_NAMES = ("CD", "DATE", "TIME", "RANDOM", "ERRORLEVEL", "CMDEXTVERSION",
+                 "CMDCMDLINE", "HIGHESTNUMANODENUMBER")
+
+
+def s3d_cmd_defined(name, environ=None):
+    """t if cmd would replace %name%: a variable by any case, one of cmd's
+    own names, or a name beginning with "=". *environ* stands in for
+    getShellEnvVar; the process environment by default."""
+    import os
+    env = os.environ if environ is None else environ
+    folded = {k.upper() for k in env}
+    return (name.upper() in folded or name[:1] == "="
+            or name.upper() in CMD_OWN_NAMES)
+
+
+def s3d_cmd_expands(text, environ=None):
+    """The first "%NAME%" in *text* cmd would replace, or None - the SKILL
+    scan, 1-based as it is: at a %, the next % closes a name; the part before
+    a colon is the variable; an unknown one keeps the scan going from the
+    closing %."""
+    if not isinstance(text, str):
+        return None
+    n = len(text)
+    i = 1
+    while i <= n:
+        if text[i - 1] == "%":
+            j = i + 1
+            while j <= n and text[j - 1] != "%":
+                j += 1
+            if j > n:
+                return None
+            name = text[i:j - 1] if j > i + 1 else ""
+            base = name.split(":", 1)[0] if ":" in name else name
+            if base != "" and s3d_cmd_defined(base, environ):
+                return text[i - 1:j]
+            i = j
+        else:
+            i += 1
+    return None
+
+
 # mirrors skill/s3d_variants.il: s3dVariantFit  -- the three answers
 def variant_fit(known, board):
     """The SKILL decision, in the same three branches."""

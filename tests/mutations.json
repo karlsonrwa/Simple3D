@@ -4175,5 +4175,74 @@
    "tools/skill_checks.py"
   ],
   "why": "the export command reads the working directory itself and passes s3dDesignDir by (review 23.10.2026, R2-3; round 115)"
+ },
+ {
+  "id": "skill-cmd-scan-skips-a-percent",
+  "file": "skill/s3d_util.il",
+  "old": "                i = j\n",
+  "new": "                i = j + 1\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "after a name that is not a variable the scan jumps past its closing %, so %NOPE%OS% passes while cmd makes it %NOPEWindows_NT (review 23.10.2026, R2-4; round 116)"
+ },
+ {
+  "id": "skill-cmd-colon-kept",
+  "file": "skill/s3d_util.il",
+  "old": "                        base = if( k > 1 then substring( name 1 k - 1 ) else \"\" )\n",
+  "new": "                        base = name\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "%OS:~0,3% is asked about a variable called OS:~0,3, which is never there, while cmd hands on Win (review 23.10.2026, R2-4; round 116)"
+ },
+ {
+  "id": "skill-cmd-own-names-dropped",
+  "file": "skill/s3d_util.il",
+  "old": "            || member( upperCase( t_name ) S3D_CmdOwnNames )\n",
+  "new": "            || nil\n",
+  "suites": [
+   "tests/test_skill_pins.py",
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "cmd's own names are forgotten: a folder with %CD% or %RANDOM% in it passes and reaches cmd changed (review 23.10.2026, R2-4; round 116)"
+ },
+ {
+  "id": "skill-cmd-check-skipped",
+  "file": "simple3d.il",
+  "old": "        when( unsafe\n            s3dMeterOff()\n",
+  "new": "        when( nil\n            s3dMeterOff()\n",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the export goes on to cmd with a path it changes: no log, no window, and the console blames the interpreter again (review 23.10.2026, R2-4; round 116)"
+ },
+ {
+  "id": "skill-cmd-output-folder-unasked",
+  "file": "simple3d.il",
+  "old": "            list( \"The output folder\" cadDir )\n",
+  "new": "            list( \"The output folder\" \"\" )\n",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the board's output folder is not asked, so a board in a folder with %OS% in it still reaches cmd (review 23.10.2026, R2-4; round 116)"
+ },
+ {
+  "id": "skill-cmd-refusal-no-dialog",
+  "file": "simple3d.il",
+  "old": "    errset( axlUIConfirm( strcat(\n        \"Simple 3D: the JSON was exported, but the 3D window could not be started.\\n\\n\"\n        car( l_unsafe )",
+  "new": "    errset( list( strcat(\n        \"Simple 3D: the JSON was exported, but the 3D window could not be started.\\n\\n\"\n        car( l_unsafe )",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the refusal of a path cmd would change says so only in the console, which can be closed or not looked at (review 23.10.2026, R2-4; round 116)"
  }
 ]

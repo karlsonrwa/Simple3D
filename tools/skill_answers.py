@@ -96,6 +96,17 @@ CASES["s3dJsonMerge"]["a key only the base has"] = {
 CASES["s3dJsonMerge"]["a key only the override has"] = {
     "base": {"a": 1}, "over": {"b": 2}, "path": ["b"], "ask": "value"}
 
+# s3dCmdExpands (round 116): what Windows' cmd would replace. The case name
+# is the text, so the table and the probe cannot drift apart on what was
+# asked; the names are ones that hold, or do not, on any Windows.
+CMD_TEXTS = ("x %OS% y", "x %os% y", "x %Os% y", "x %NOPE_S3D% y", "x %NOPE_S3D%OS% y",
+             "x %OS:~0,3% y", "x %OS:Win=W% y", "x %:OS% y", "x %NOPE_S3D:~1% y", "x %CD% y",
+             "x %random% y", "x %ERRORLEVEL% y", "x %=C:% y", "50% / 60%", "x % y", "x %% y",
+             "x %%OS%% y", "x !OS! y", "x %windir% y", "x %PATH% y", "%OS%",
+             "D:/Projects/AI/Claude/Simple3D", "")
+CASES["s3dCmdExpands"] = {f"text={t}": {"text": t} for t in CMD_TEXTS}
+CASES["s3dCmdExpands"]["text=nil"] = {"text": None}
+
 # Cases the probe prints for its own sake, not for the copies to answer.
 IGNORE = {("s3dJsonQuote", "control 0x08 (escape \\b) byte"),
           ("s3dJsonQuote", "control 0x0c (escape \\f) byte")}

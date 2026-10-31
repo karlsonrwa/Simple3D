@@ -5,7 +5,20 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-115 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-116 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 116 (2026-10-31), on `main`, not pushed.** At «Да, R2-4»: a path
+cmd would change is named, never handed to it. cmd replaces `%NAME%` of a
+defined variable inside quotes too and has no escape there (measured case by
+case); with the install folder `x %OS% y` the check's log vanished and the
+console blamed the interpreter. Now `s3dCmdExpands` (skill/s3d_util.il), the
+measured rule, is asked about the five strings the check's and the window's
+command lines carry, after the JSON and before anything starts, and
+`s3dSayCmdUnsafe` names the one; README's Known limitations says so. Its
+Python copy is held to Allegro's answers (probe_translit, 24 cases), its
+source and cmd itself. Case C in Allegro: the refusal, nothing started, no
+window on the owner's screen. Rows 405, 55 of 55 caught (one red baseline of
+test_launch_cmd OPEN, not reproduced); run_all 32/34. Read round 116.
 
 **Round 115 (2026-10-31), on `main`, not pushed.** At «Да, R2-3»: the export
 writes beside its own board. `s3dDesignDir` was `getWorkingDir()`; in
@@ -3436,6 +3449,76 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 116) — a path cmd would change is named, never handed to it (R2-4 of the first review round)
+
+At the owner's «Да, R2-4». The finding (23.10, open in both rounds): with the
+install folder `x %OS% y` and the board folder `cad %OS% z` the check's log
+was never written, the console said Windows could not run the interpreter at
+all, no window. Evidence asked: case C passing, or README naming the
+limitation. The record is `docs/records/cmd-percent-2026-10-31.md`.
+
+### Measured first (`build/fix-2026-10-31/r116/`)
+
+- `pct.py` on the 4090 (session 0, no desktop to bother): `cmd /c echo
+  ["<text>"]` through one cmd layer and two, the same both ways. `%OS%` and
+  `%os%` replaced; `%NOPE%` kept, the scan restarting at its second `%`
+  (`%NOPE%OS%` -> `%NOPEWindows_NT`); `%OS:~0,3%`, `%OS:Win=W%` replaced; cmd's
+  own `%CD%`, `%RANDOM%`, `%ERRORLEVEL%` and a hidden `%=C:%` replaced; a lone
+  `%`, `%%`, `!OS!`, `^%`, "50% / 60%" kept; `%%OS%%` -> `%Windows_NT%`. No
+  escape exists inside quotes. A `.bat` (where `%%` escapes) or paths passed
+  through the environment were weighed and left: a file per export, or a new
+  launch protocol, for a folder named after a variable.
+
+### What changed
+
+- `skill/s3d_util.il`: `S3D_CmdOwnNames`, `s3dCmdDefined`, `s3dCmdExpands`
+  (the first `%NAME%` cmd would replace, by that measured rule),
+  `s3dCmdUnsafe`. `getShellEnvVar` takes a name in any case (asked in
+  Allegro: OS/os/Os, PATH/Path/path all t), so one lookup.
+- `simple3d.il`: `s3dExportCommand` asks `s3dCmdUnsafe` about the install
+  folder, the window's Python, the config file, the output folder and the
+  board's name after the JSON and before the check; `s3dSayCmdUnsafe` names
+  the string and the `%NAME%` (console and dialog) and the command stops.
+- The Python copy `s3d_cmd_expands` (tests/skill_transliterations.py);
+  `test_skill_pins` [5g] pins the source, [7] the copy to Allegro's answers;
+  `tools/probes/probe_translit.il` and `tools/skill_answers.py` carry the 24
+  cases (fixture 59 -> 83 cases, the 59 unchanged; rerun after the last SKILL
+  edit, byte-identical); `test_launch_cmd` [9] holds the copy to cmd itself
+  (21 cases echoed), shows case C's command start nothing, and holds the
+  export command's order and its five strings.
+- README (both halves: a Known limitations entry; the map's table count),
+  CHANGELOG, ARCHITECTURE.
+
+### Verified
+
+- Allegro 25.1, case C (`scene_pct.py` + round 115's `probe_outdir.il`, the
+  pre-flight stubbed): round 115's code wrote the JSON and went on to the
+  check; round 116's wrote it, never reached the check, and printed the
+  refusal naming the install folder and `%OS%`. Four Allegro runs this round
+  (two of probe_translit, two scenes), started directly with no cmd, the
+  owner's desktop watched: no new window, nothing left running.
+- Red on round 115's code (`head116` on the 4090, its SKILL with the new
+  suites and fixture): test_skill_pins 5 FAIL (the two procedures missing),
+  test_launch_cmd 7 FAIL ([9]'s source checks; its cmd oracle passes there,
+  it judges only the copy).
+- Rows 399 -> 405: skill-cmd-scan-skips-a-percent, skill-cmd-colon-kept,
+  skill-cmd-own-names-dropped, skill-cmd-check-skipped,
+  skill-cmd-output-folder-unasked, skill-cmd-refusal-no-dialog. The first
+  run of the 54 rows on `s3d_util.il`, `simple3d.il`, test_launch_cmd and
+  test_skill_pins left two SURVIVED, both holes of mine: the pin `i = j` is a
+  substring of the mutant `i = j + 1` (now `i = j else i = i + 1`), and the
+  old row skill-preflight-no-dialog survived because test_launch_cmd [5]
+  grepped the whole file for `axlUIConfirm` and the round had added a second
+  dialog (now `s3dPreflight`'s own text, the refusal's dialog checked apart,
+  with its own row). The second run: 42 of 55 caught, 13 UNPROVEN because
+  test_launch_cmd was red on the clean copy - exit 1 in 0.6 s, against 2.4 s
+  when it passes. Not reproduced: test_launch_cmd green in a single
+  mutate-style copy, in three hand-made parallel baselines of all 15 suites
+  on 8 copies (`basetest.py`), and in a rerun of the 13 rows, which caught
+  13 of 13 at a load of 82 % from another job. So 55 of 55 caught; the one
+  red baseline is OPEN, cause unknown (mutate.py keeps no baseline output).
+- skill_checks passes; run_all 32/34 in 183 s, only the two window suites.
 
 ## Update 2026-10-31 (round 115) — the export writes beside its own board, not into the working directory (R2-3 of the first review round)
 

@@ -661,6 +661,28 @@ check("and the copy's warnings survive a quote and a backslash",
       json.loads("{" + T.silk_warnings(['a "q"', "b\\c"]) + "}")["warnings"]
       == ['a "q"', "b\\c"])
 
+print("\n[5g] s3dCmdExpands, s3dCmdDefined - what Windows' cmd would replace (round 116)")
+# The rule s3dExportCommand asks before it hands a path to cmd (review
+# 23.10.2026, R2-4). [7] below holds the copy to Allegro's own answers,
+# test_launch_cmd [9] holds the copy to cmd itself; these are the statements
+# that decide.
+pin("s3dCmdExpands",
+    'when( j > n  return( nil ) )',
+    'name = if( j > i + 1 then substring( t_text i + 1 j - i - 1 ) else "" )',
+    'base = if( k > 1 then substring( name 1 k - 1 ) else "" )',
+    'when( (base != "") && s3dCmdDefined( base ) return( substring( t_text i j - i + 1 ) ) )',
+    # with its else: "i = j" alone is a substring of "i = j + 1", which skips
+    # the % that may open the next name (the row survived a bare "i = j")
+    'i = j else i = i + 1')
+pin("s3dCmdDefined",
+    'errset( value = getShellEnvVar( t_name ) )',
+    'if( stringp( value ) || (substring( t_name 1 1 ) == "=") '
+    '|| member( upperCase( t_name ) S3D_CmdOwnNames ) then t else nil )')
+own = re.search(r"S3D_CmdOwnNames = list\(([^)]*)\)", IL)
+check("cmd's own names in the SKILL are the copy's",
+      own is not None and tuple(re.findall(r'"([^"]+)"', own.group(1))) == T.CMD_OWN_NAMES,
+      own.group(1) if own else None)
+
 print("\n[6] every copy is pinned, and pins something that exists")
 
 # The loop the audit's finding is really about: a transliteration added later
@@ -702,7 +724,9 @@ check("every procedure a copy names exists in the SKILL source", not missing, mi
 
 # The five the audit measured, plus rotateXY which s3dDrillXY is built on.
 MUST_PIN = {"s3dLayerIsNegative", "s3dDrillXY", "rotateXY", "s3dBoxesMeet",
-            "s3dJsonMerge", "s3dJsonQuote"}
+            "s3dJsonMerge", "s3dJsonQuote",
+            # round 116: what cmd would replace, answered by Allegro too
+            "s3dCmdExpands"}
 # And the sweep of round 87, pinned by its source alone: it reads a design,
 # so no recorded Allegro answer can stand in for it (see [5b]).
 MUST_PIN_SOURCE_ONLY = {"s3dCollectExposed",
@@ -756,6 +780,8 @@ def ask_copy(procedure, inputs):
         return True if T.s3dBoxesMeet(a, b) else None
     if procedure == "s3dJsonQuote":
         return T.s3dJsonQuote(inputs["value"])
+    if procedure == "s3dCmdExpands":
+        return T.s3d_cmd_expands(inputs["text"])
     if procedure == "s3dJsonMerge":
         merged = T.skill_merge(inputs["base"], inputs["over"])
         node, path = merged, inputs["path"]
