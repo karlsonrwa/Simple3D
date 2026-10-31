@@ -675,15 +675,30 @@ procedure( s3dExportCommand()
     )
 )
 
+; The interpreter the 3D window runs under: S3D_PythonW (pythonw.exe, no
+; console), or S3D_Python when pythonw is configured as "". ONE place, asked by
+; the launch and by the check before it. Until round 114 each had its own
+; expression and they disagreed - the check ran python, the window pythonw - so
+; a pinned "python" with cadquery-ocp passed the check while a bare "pythonw",
+; which PATH resolved to another install, opened no window and said nothing
+; (review 23.10.2026, R2-2).
+procedure( s3dWindowPython()
+    if( (S3D_PythonW != "") then S3D_PythonW else S3D_Python )
+)
+
 ; Check that the Python side can actually start, BEFORE launching it detached.
 ;
 ; Why this exists: the GUI is started with "start" (detached) and normally with
 ; pythonw.exe, which has NO console. So when Python is missing from PATH, or
 ; cadquery-ocp / tkinter are not installed, the interpreter dies instantly and
 ; the error goes nowhere - the user sees the JSON get written, no window opens,
-; and nothing explains why. Here the interpreter is run ONCE, synchronously,
-; with stdout+stderr captured to a file, so the real ImportError can be shown in
-; the Allegro console together with the fact that the JSON itself is fine.
+; and nothing explains why. Here THAT interpreter - s3dWindowPython, the one
+; s3dLaunch will start - is run ONCE, synchronously, with stdout+stderr
+; captured to a file, so the real ImportError can be shown in the Allegro
+; console together with the fact that the JSON itself is fine. pythonw writes
+; to the handles cmd redirects exactly as python does: measured 31.10.2026 with
+; Python 3.11, 3.12 and 3.14, behind one and two cmd layers, the traceback
+; included.
 ;
 ; The command goes to cmd in one piece, in the shape s3dLaunch explains - the
 ; quoting rules there are the same ones here. "start /B /WAIT" is what makes it
@@ -735,7 +750,7 @@ procedure( s3dPreflight( t_workDir )
         pySpoke = nil
         out     = ""
         whichPy = ""
-        exe = if( (S3D_Python != "") then S3D_Python else S3D_PythonW )
+        exe = s3dWindowPython()
         logFile = strcat( t_workDir "/_simple3d_preflight.txt" )
 
         ; Importing stepbuilder.core pulls in OCP, the heavy dependency that is
@@ -785,7 +800,9 @@ procedure( s3dPreflight( t_workDir )
         cond(
             ( pySpoke
                 printf( "Python (%s) failed this check:\n" exe )
-                printf( "    import stepbuilder.core, tkinter\n\n" )
+                printf( "    import stepbuilder.core, tkinter\n" )
+                printf( "It is the interpreter the 3D window runs under (\"pythonw\",\n" )
+                printf( "or \"python\" when pythonw is set to \"\").\n\n" )
                 ; Name the interpreter that actually answered. "python" is a
                 ; name, not a program: installing anything that ships a Python
                 ; (node.js does) can put a different one ahead of yours on PATH,
@@ -808,7 +825,8 @@ procedure( s3dPreflight( t_workDir )
         printf( "     packages are in. Pin it by FULL PATH in the \"allegro\"\n" )
         printf( "     section of simple3d_config.local.json, beside\n" )
         printf( "     simple3d_config.json - that file is yours and is never\n" )
-        printf( "     overwritten by an update:\n" )
+        printf( "     overwritten by an update. Pin BOTH, to one install,\n" )
+        printf( "     since the window runs pythonw:\n" )
         printf( "         \"allegro\": { \"python\": \"C:/Python312/python.exe\",\n" )
         printf( "                      \"pythonw\": \"C:/Python312/pythonw.exe\" }\n" )
         printf( "     In use now:  python = \"%s\"   pythonw = \"%s\"\n"
@@ -858,10 +876,11 @@ procedure( s3dPreflight( t_workDir )
 ;      and nothing has to be cleaned up afterwards.
 ;
 ; S3D_PythonW (pythonw.exe) runs with no console at all; if it is empty we fall
-; back to S3D_Python but still detach so nothing stays on screen.
+; back to S3D_Python but still detach so nothing stays on screen. Which of the
+; two is s3dWindowPython's to say, the same answer s3dPreflight checked.
 procedure( s3dLaunch( t_argTail )
     prog( ( exe )                           ; prog: return() below needs it
-        exe = if( (S3D_PythonW != "") then S3D_PythonW else S3D_Python )
+        exe = s3dWindowPython()
         errset( system( strcat(
             "cmd /c start \"\" /D \"" S3D_ScriptDir "\" \"" exe "\" " t_argTail ) ) )
         return( t )

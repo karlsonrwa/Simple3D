@@ -11,6 +11,29 @@ to use the tool.
 
 ---
 
+- **2026-10-31** — **The pre-flight check runs the interpreter the window
+  runs.** It ran `python`, while the window is opened with `pythonw`, so the
+  check could answer for the wrong program. Measured in Allegro 25.1 with
+  `python` pinned to an install that has cadquery-ocp and `pythonw` to one
+  that has not: the check passed and the window would have died with nothing
+  said; the reverse pair was stopped although its window would have opened.
+  Both now ask one rule, `s3dWindowPython` (`pythonw`, or `python` when
+  `pythonw` is `""`), and the failure names the window's interpreter. pythonw
+  writes to the check's log as python does, also through Allegro's own
+  `system()`. Pin both names to one install. Three rows added to the mutation
+  table (396). /
+  **Предполётная проверка запускает тот интерпретатор, которым откроется
+  окно.** Она запускала `python`, а окно открывается через `pythonw`, поэтому
+  проверка могла отвечать не за ту программу. Замерено в Allegro 25.1: когда
+  `python` закреплён за установкой с cadquery-ocp, а `pythonw` за установкой
+  без него, проверка проходила, а окно умерло бы без единого слова; обратная
+  пара останавливалась, хотя её окно открылось бы. Теперь обе стороны берут
+  интерпретатор по одному правилу, `s3dWindowPython` (`pythonw`, а если он
+  задан как `""`, то `python`), и сообщение о неудаче называет интерпретатор
+  окна. pythonw пишет в журнал проверки так же, как python, в том числе через
+  `system()` самого Allegro. Закрепляйте оба имени на одну установку. В
+  таблицу мутаций добавлены три строки (396).
+
 - **2026-10-31** — **The legend's area check allows what the rounding of the
   coordinates explains, not a fixed 0.5 %.** Allegro's area for a legend
   polygon is that of the exact figure, while its vertex list comes back rounded

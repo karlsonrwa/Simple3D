@@ -53,11 +53,12 @@ DESIGN_DIR.mkdir(parents=True)
     encoding="utf-8")
 
 PY = sys.executable
-# s3dLaunch starts the window with pythonw - no console - and so does the
-# stand-in now (round 94). With python.exe, `start` gave it a console of its
-# own: a Windows Terminal window on the user's desktop, twice per run and four
-# copies at once under tools/mutate.py. The preflight keeps python.exe, as
-# s3dPreflight does; `start /B` shares the caller's console and opens nothing.
+# The config's two names: "python" and "pythonw". s3dLaunch starts the window
+# with pythonw - no console - and so does the stand-in (round 94: with
+# python.exe, `start` gave it a console of its own, a Windows Terminal window
+# on the user's desktop, twice per run and four copies at once under
+# tools/mutate.py). Since round 114 the preflight runs the same interpreter;
+# `start /B` with pythonw opens nothing either.
 PYW = (str(Path(PY).with_name("pythonw.exe"))
        if Path(PY).with_name("pythonw.exe").is_file() else PY)
 OUTF = WORK / "argv.json"
@@ -68,13 +69,24 @@ TAIL = (f'-m probepkg "{OUTF}" --json-dir "{DESIGN_DIR}" '
         f'--brd-name "my board" --dated-name')
 
 
-def launch_cmd():
+def window_python(python, pythonw):
+    """s3dWindowPython: the interpreter the 3D window runs under - pythonw,
+    or python when pythonw is configured as "". The launch and the check both
+    ask it. Until round 114 the check ran python and the window pythonw, and
+    this suite copied that, so it reproduced the mismatch instead of catching
+    it (review 23.10.2026, R2-2); [7] holds the source to this rule."""
+    return pythonw if pythonw != "" else python
+
+
+def launch_cmd(exe=None):
     """s3dLaunch: detached, no console, working directory set by /D."""
-    return f'cmd /c start "" /D "{SCRIPT_DIR}" "{PYW}" {TAIL}'
+    exe = exe or window_python(PY, PYW)
+    return f'cmd /c start "" /D "{SCRIPT_DIR}" "{exe}" {TAIL}'
 
 
-def preflight_cmd():
-    """s3dPreflight: synchronous (/B /WAIT), output captured to a file.
+def preflight_cmd(exe=None, imports="probepkg, tkinter"):
+    """s3dPreflight: synchronous (/B /WAIT), output captured to a file, run
+    with the interpreter the window will run under.
 
     The sentinels are SPLIT literals - print('S3D' '_OK') - and that is the
     point of case [3] below. From Python 3.13 a traceback echoes the source
@@ -83,10 +95,11 @@ def preflight_cmd():
     concatenate at compile time: the process still prints S3D_OK, the source
     text cannot contain it.
     """
-    return (f'cmd /c start /B /WAIT "" /D "{SCRIPT_DIR}" "{PY}" -u '
+    exe = exe or window_python(PY, PYW)
+    return (f'cmd /c start /B /WAIT "" /D "{SCRIPT_DIR}" "{exe}" -u '
             f'-c "import sys; print(\'S3D\' \'_PY\', sys.executable, '
             f'sys.version.split()[0]); '
-            f'import probepkg, tkinter; print(\'S3D\' \'_OK\')" > "{LOGF}" 2>&1')
+            f'import {imports}; print(\'S3D\' \'_OK\')" > "{LOGF}" 2>&1')
 
 
 # 40 s, not the 8 s this had: `start` is detached, so the wait is for a whole
@@ -243,6 +256,50 @@ check("the sibling is used only when it exists, and the fallback creates what it
       (flat.count("isDir( cad )"), flat.count("s3dMakeDirs( t_designDir )")))
 check("a folder that cannot be read is said rather than parsed",
       re.search(r'if\( !stringp\( t_designDir \) then s3dWarn\(', flat), flat[:160])
+
+print("\n[7] the check runs the interpreter the window runs (round 114, review 23.10.2026 R2-2)")
+# The reviewer's case: "python" pinned to an install with cadquery-ocp,
+# "pythonw" left a bare name that PATH resolves to one without it. A stand-in
+# module plays that dependency: it imports under python and refuses under
+# pythonw, as the other install would. No missing program is started for it -
+# `start` may answer one with a Windows message box, on whatever desktop runs
+# the suite.
+(SCRIPT_DIR / "ocp_standin.py").write_text(
+    "import sys\n"
+    "if sys.executable.lower().endswith('pythonw.exe'):\n"
+    "    raise ImportError('no cadquery-ocp for this pythonw (stand-in)')\n",
+    encoding="utf-8")
+if PYW == PY:
+    print("  (no pythonw.exe beside this interpreter: the behavioural half is skipped)")
+else:
+    log_py = run_preflight(preflight_cmd(PY, "ocp_standin, tkinter"))
+    check("checked with python, as before round 114, the stand-in install passes",
+          "S3D_OK" in log_py, f"log was {log_py!r}")
+    log_win = run_preflight(preflight_cmd(window_python(PY, PYW), "ocp_standin, tkinter"))
+    check("checked with the window's interpreter, it fails, and the log names pythonw",
+          "S3D_OK" not in log_win and "pythonw" in log_win.lower()
+          and "ImportError" in log_win, f"log was {log_win!r}")
+check('pythonw configured as "" falls back to python', window_python(PY, "") == PY)
+
+
+# simple3d.il holds the rule: one procedure says which interpreter, and both
+# the launch and the check ask it. A procedure that is not there reads as
+# empty, so its checks FAIL by name instead of ending the suite.
+def body(name):
+    start = il.find(f"procedure( {name}(")
+    if start < 0:
+        return ""
+    end = il.find("\nprocedure( ", start + 1)
+    return " ".join(uncommented(il[start:end if end > 0 else len(il)]).split())
+
+
+which = body("s3dWindowPython")
+check("s3dWindowPython: pythonw, or python when pythonw is empty",
+      'if( (S3D_PythonW != "") then S3D_PythonW else S3D_Python )' in which, which)
+for proc in ("s3dPreflight", "s3dLaunch"):
+    assigned = re.findall(r"\bexe = (\S+)", body(proc))
+    check(f"{proc} takes its interpreter from s3dWindowPython, and from nowhere else",
+          assigned == ["s3dWindowPython()"], assigned)
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

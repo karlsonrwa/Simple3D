@@ -39,7 +39,7 @@ bugs were fixed, and the features below were added.
 File → Export → Simple 3D          (simple3d.il, inside Allegro)
    │  1. finds  rev/cad  (sibling of  rev/pcb ), or writes beside the .brd
    │  2. writes one JSON per variant into it, tagged "format": "simple3d"
-   │  3. checks that Python can start, and says so if it cannot
+   │  3. checks that the window's Python can start, and says so if not
    └─ 4. opens the window with the paths filled in
             └─ <board>_simple_DD_MM_YYYY.step
 ```
@@ -105,8 +105,11 @@ uninstalled. Pin the one you meant, by full path, in the `allegro` section of
 }
 ```
 
-The pre-flight check prints the interpreter that actually answered — path and
-version — so the console says which one you got.
+The pre-flight check runs the very interpreter the window will be opened
+with, `pythonw` (or `python` when `pythonw` is `""`), and prints the one that
+actually answered, path and version, so the console says which one you got.
+Pin both names, to one install: the window runs `pythonw`, and a bare
+`pythonw` beside a pinned `python` is still whatever PATH finds first.
 
 **3. The files.** Clone or unpack the repository; its root already is the layout
 the tool expects — the two `.il` files, `simple3d_config.json` and the
@@ -248,7 +251,7 @@ The keys worth setting by hand — the rest mirror controls in the window:
 
 | Section | Key | What it does |
 |---|---|---|
-| `allegro` | `python` / `pythonw` | The interpreter. `pythonw` opens the window with **no console**; `""` falls back to `python`. |
+| `allegro` | `python` / `pythonw` | The interpreter. `pythonw` opens the window with **no console**; `""` falls back to `python`. The pre-flight check runs the same one the window will. |
 | | `menuLabel` / `commandName` | Menu text and command name. Read at load time, so a change needs a SKILL reload. |
 | | `defineAlwaysExportProp` | Create the **`ALWAYS_STEP_EXPORT`** property in the open design's property dictionary — when a board is opened and before every export — so it can be attached from Allegro's own Properties dialog. A part carrying it stays in every variant. Defining it is a change to the board, so `false` leaves every design untouched; the export still reads the property wherever it is already defined. See *What gets exported*. |
 | `gui` | `stepDirs` | The model folders, in search order (see the table above). |
@@ -986,7 +989,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 393 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 396 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1032,7 +1035,7 @@ C++ переписан на Python (то же ядро, без компилят�
 File → Export → Simple 3D          (simple3d.il, внутри Allegro)
    │  1. находит  rev/cad  (соседнюю с  rev/pcb ) или пишет рядом с .brd
    │  2. пишет туда по одному JSON на вариант с меткой "format": "simple3d"
-   │  3. проверяет, что Python вообще запускается, и говорит, если нет
+   │  3. проверяет, что Python окна запускается, и говорит, если нет
    └─ 4. открывает окно с уже заполненными путями
             └─ <плата>_simple_ДД_ММ_ГГГГ.step
 ```
@@ -1097,8 +1100,12 @@ Chocolatey, причём в системный PATH, который идёт *р
 }
 ```
 
-Предполётная проверка печатает тот интерпретатор, который реально ответил, —
-путь и версию, — так что в консоли видно, какой именно достался.
+Предполётная проверка запускает тот самый интерпретатор, которым потом
+откроется окно: `pythonw`, а если он задан как `""`, то `python`. Она печатает
+тот, что реально ответил, с путём и версией, так что в консоли видно, какой
+именно достался. Закрепляйте оба имени, и оба на одну установку: окно
+запускает `pythonw`, а голое `pythonw` рядом с закреплённым `python`
+по-прежнему значит то, что PATH найдёт первым.
 
 **3. Файлы.** Склонируйте или распакуйте репозиторий; его корень уже устроен
 так, как надо — оба `.il`, `simple3d_config.json` и пакет `stepbuilder\` в
@@ -1242,7 +1249,7 @@ JSON, ничего не записывается до конца сессии**,
 
 | Секция | Ключ | Что делает |
 |---|---|---|
-| `allegro` | `python` / `pythonw` | Интерпретатор. `pythonw` открывает окно **без консоли**; `""` откатывается на `python`. |
+| `allegro` | `python` / `pythonw` | Интерпретатор. `pythonw` открывает окно **без консоли**; `""` откатывается на `python`. Предполётная проверка запускает тот же, что и окно. |
 | | `menuLabel` / `commandName` | Текст пункта меню и имя команды. Читаются при загрузке, поэтому изменение требует перезагрузки SKILL. |
 | | `defineAlwaysExportProp` | Заводить свойство **`ALWAYS_STEP_EXPORT`** в словаре свойств открытого проекта — при открытии платы и перед каждым экспортом, — чтобы его можно было вешать из штатного диалога свойств Allegro. Деталь с этим свойством остаётся во всех вариантах. Заведение меняет плату, поэтому `false` не трогает ни один проект; экспорт при этом по-прежнему читает свойство там, где оно уже заведено. См. *Что попадает в экспорт*. |
 | `gui` | `stepDirs` | Папки моделей в порядке поиска (см. таблицу выше). |
@@ -1985,7 +1992,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 393 поломки, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы; один из них сохраняет её для пакетной команды artwork), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 396 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы; один из них сохраняет её для пакетной команды artwork), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

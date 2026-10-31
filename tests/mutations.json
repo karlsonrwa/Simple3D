@@ -4109,5 +4109,38 @@
    "tests/test_silk.py"
   ],
   "why": "the grid test is judged in shares of the step itself, so 20.000001 reads as a whole millimetre and its polygon gets a margin a thousand times too wide (review 23.10.2026, R2-8; round 113)"
+ },
+ {
+  "id": "skill-preflight-checks-python",
+  "file": "simple3d.il",
+  "old": "        exe = s3dWindowPython()\n        logFile = strcat( t_workDir \"/_simple3d_preflight.txt\" )\n",
+  "new": "        exe = if( (S3D_Python != \"\") then S3D_Python else S3D_PythonW )\n        logFile = strcat( t_workDir \"/_simple3d_preflight.txt\" )\n",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the check runs python again while the window runs pythonw: in Allegro, python with cadquery-ocp beside a pythonw without it passed the check and the window would have died silently, and the reverse pair was stopped though its window would have opened (review 23.10.2026, R2-2; round 114)"
+ },
+ {
+  "id": "skill-launch-picks-its-own",
+  "file": "simple3d.il",
+  "old": "        exe = s3dWindowPython()\n        errset( system( strcat(\n",
+  "new": "        exe = if( (S3D_Python != \"\") then S3D_Python else S3D_PythonW )\n        errset( system( strcat(\n",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the launch chooses its interpreter by a rule of its own, python first, so the window runs one the check never ran and gets a console (review 23.10.2026, R2-2; round 114)"
+ },
+ {
+  "id": "skill-window-python-order",
+  "file": "simple3d.il",
+  "old": "    if( (S3D_PythonW != \"\") then S3D_PythonW else S3D_Python )\n",
+  "new": "    if( (S3D_Python != \"\") then S3D_Python else S3D_PythonW )\n",
+  "suites": [
+   "tests/test_launch_cmd.py",
+   "tools/skill_checks.py"
+  ],
+  "why": "the one rule turns round: python first, pythonw only when python is empty - the window gets a console, and a configured pythonw is never used (review 23.10.2026, R2-2; round 114)"
  }
 ]

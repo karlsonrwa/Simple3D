@@ -5,7 +5,20 @@ Companion to `PROJECT_NOTES_eskd.md` (same user, same Allegro install).
 
 ---
 
-## READ THIS FIRST — state as of 2026-10-31 (rounds 95-113 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+## READ THIS FIRST — state as of 2026-10-31 (rounds 95-114 on `main`; pushed by the owner up to `fc75a18` on 28.10 at 18:03; the review's second round done 28.10 20:45)
+
+**Round 114 (2026-10-31), on `main`, not pushed.** At «Да, R2-2»: the
+pre-flight check runs the interpreter the window runs. It ran `python` while
+the window ran `pythonw`; now both ask `s3dWindowPython` (`pythonw`, or
+`python` when pythonw is `""`). Measured in Allegro 25.1 headless
+(`tools/probes/probe_preflight.il`, on a hidden desktop): python 3.14 with
+OCP + pythonw 3.11 without passed the old check (the window would have died
+silently) and fails the new one, naming 3.11's pythonw; the reverse pair,
+stopped by the old check, passes. pythonw's output reaches the check's log
+through Allegro's `system()` too. Record
+`docs/records/preflight-interpreter-2026-10-31.md`. Red first, rows 396, the
+10 rows on simple3d.il / test_launch_cmd caught, run_all 32/34. Read round
+114.
 
 **Round 113 (2026-10-31), on `main`, not pushed.** At «Да, R2-8»: the
 legend's area check allows what the rounding of the coordinates explains,
@@ -3407,6 +3420,69 @@ probe's procedure satisfy a call in the exporter).
 `core` reaches sideways to a sibling — `from .bend import ...` — and then it is
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
+
+## Update 2026-10-31 (round 114) — the pre-flight check runs the interpreter the window runs (R2-2 of the first review round)
+
+At the owner's «Да, R2-2». The finding (23.10, open in both rounds):
+`s3dPreflight` took `S3D_Python` first, `s3dLaunch` `S3D_PythonW` first, so
+with `python` pinned and `pythonw` a bare name PATH resolves to another
+install, the check passed and the window died silently; `test_launch_cmd`
+copied the same split and reproduced it. The record is
+`docs/records/preflight-interpreter-2026-10-31.md`.
+
+### Measured first (`build/fix-2026-10-31/r114/`)
+
+- `pyw_redirect.py`: through `cmd /c start /B /WAIT "" /D dir "exe" -u -c
+  "..." > log 2>&1` (the check's own shape), from a console process, one and
+  two cmd layers: pythonw.exe of 3.11, 3.12 and 3.14 writes its sentinels and
+  its tracebacks into the log exactly as python.exe does. 3.11 here has no
+  OCP, 3.14 and 3.12 have it.
+- `allegro.exe` is a GUI program (PE subsystem 2) and this harness's Python
+  has no console, so the cmd that Allegro's `system()` starts may get a
+  console window of its own on the owner's screen. Every Allegro run of the
+  round went through `on_desktop.py` (CreateProcessW with lpDesktop
+  "Simple3D-tests", inherited by everything below it). The owner's desktop
+  was not watched meanwhile; BaroSim's `tools/desktop_run.py --wait`, which
+  does both, was already there and I did not look for it first.
+- `tools/probes/probe_preflight.il` (new) loads a tree's `simple3d.il`, sets
+  `noconfirm`, and calls the real `s3dPreflight` per (python, pythonw) case.
+  Round 113's code (`58d46f2`, as `r114/head/`): good t; python 3.14 with OCP
+  + pythonw 3.11 without -> **t** (the reviewer's false pass); python 3.11 +
+  pythonw 3.14 -> **nil** (a false alarm the review had not named: a window
+  that would have opened was stopped); pythonw "" -> t. Round 114's: t, nil
+  naming 3.11's pythonw and "No module named 'OCP'", t, t. So pythonw's
+  output reaches the log through Allegro's own `system()` too.
+
+### What changed
+
+- `simple3d.il`: `s3dWindowPython()` - `pythonw`, or `python` when pythonw
+  is `""` - asked by `s3dPreflight` and `s3dLaunch` alike; the failure says
+  the checked interpreter is the window's, and the advice says to pin both to
+  one install.
+- `tests/test_launch_cmd.py`: both command lines from `window_python`, the
+  copy of the rule; [2] and [3] now run the preflight under pythonw; [7] (new)
+  holds the source to the rule (its one expression; each procedure's `exe =`
+  from it and from nowhere else) and plays the reviewer's case with a
+  stand-in module that refuses under pythonw.
+- README (both halves: the diagram's step 3, the pinning paragraph, the
+  settings table; the map's table count 393 -> 396), CHANGELOG, ARCHITECTURE
+  (`simple3d.il` rows, 22 probes).
+
+### Tests, red first, and the verification
+
+- Red on round 113's code (`head114` on the 4090, its `simple3d.il` with the
+  new suite): `test_launch_cmd` 3 FAIL, exactly [7]'s source checks. Its
+  first version crashed there instead (`il.index` found no
+  `s3dWindowPython`, and the checks after it never ran); `body()` reads a
+  missing procedure as empty now, so it FAILs by name.
+- Rows 393 -> 396: skill-preflight-checks-python, skill-launch-picks-its-own,
+  skill-window-python-order. The ten rows on `simple3d.il` or naming
+  `test_launch_cmd`: 10 of 10 caught, the three new by [7].
+- `skill_checks` passes `simple3d.il` and the probe (`REQUIRES: simple3d.il`
+  pools the shipped definitions in); `run_all` 32/34, only the two window
+  suites, as always in session 0. Run once more on the final tree after the
+  `body()` change (16:47-16:49): the same 10 of 10, the same 32/34; the
+  mirror equal to this tree in every file the round touched.
 
 ## Update 2026-10-31 (round 113) — the legend's area check allows what the rounding of the coordinates explains (R2-8 of the first review round)
 
