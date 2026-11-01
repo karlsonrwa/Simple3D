@@ -11,6 +11,49 @@ to use the tool.
 
 ---
 
+- **2026-11-01** — **The window: launch flags for one run, no cut-short STEP
+  after a cancel, and a place on a screen that shows it** (review findings
+  R6-4, R6-6, R6-7, R6-11, R6-12, R6-14, R6-15, R6n-5 and R6n-6, round 130).
+  The flags `--gui` takes are for this run only, as `--help` said: the close
+  used to write them into the settings, so one hand-run `--step-dir` or
+  `--no-silkscreen` replaced the remembered value for good. In the window
+  `--color` takes one of its board themes, in any case; `255,0,0`, and even
+  `blue`, built in the default colour with nothing said, and the close wrote
+  the name into the settings. A STEP file takes its name only once it is
+  complete (`<name>.step.part` until then), so Cancel, or the window closed,
+  never leaves a cut-short file under the final name; closing the window while
+  a build runs asks first. After Cancel nothing of the killed build reaches the
+  log, and the end it had reported can no longer end the next build. A layer
+  list asked for just before Generate waits for the build's end instead of
+  switching the greyed controls back on under it. Reset colors leaves alone
+  the one kind that has no swatch, `other`. A remembered window counts as on
+  screen only when its title strip lies on one monitor's work area: two
+  monitors set diagonally, or of different heights, left corners where it
+  opened unseen. A first run fits the primary monitor's work area, frame
+  included: on a 1366x768 screen Generate and the status line were under the
+  screen's edge. /
+  **Окно: флаги запуска действуют один раз, отмена не оставляет обрезанного
+  STEP, а окно открывается там, где его видно** (находки R6-4, R6-6, R6-7,
+  R6-11, R6-12, R6-14, R6-15, R6n-5 и R6n-6, раунд 130). Флаги `--gui`
+  действуют только на этот запуск, как и обещал `--help`. Раньше окно при
+  закрытии записывало их в настройки, и один ручной `--step-dir` или
+  `--no-silkscreen` заменял запомненное значение навсегда. В окне `--color`
+  принимает одну из его тем платы, в любом регистре. Раньше `255,0,0` и даже
+  `blue` давали сборку цвета по умолчанию без единого слова, а при закрытии
+  это имя попадало в настройки. STEP получает своё имя, только когда дописан
+  (до того это `<имя>.step.part`), поэтому ни Cancel, ни закрытое окно не
+  оставят обрезанный файл под настоящим именем. Если закрыть окно во время
+  сборки, оно сначала спросит. После Cancel от убитой сборки в лог больше
+  ничего не приходит, и её последнее сообщение уже не закроет следующую
+  сборку. Список слоёв, запрошенный перед самым Generate, ждёт конца сборки и
+  не включает обратно погашенные элементы у неё на ходу. Reset colors не
+  трогает единственный вид без квадратика, `other`. Запомненное окно
+  считается видимым, только если полоса его заголовка лежит в рабочей
+  области одного монитора: мониторы по диагонали или разной высоты оставляли
+  углы, где оно открывалось невидимым. Первый запуск умещается в рабочую
+  область основного монитора вместе с рамкой: на экране 1366x768 кнопка
+  Generate и строка состояния раньше уходили за край экрана.
+
 - **2026-11-01** — **The window's check stops nothing it cannot start, and a
   board on a network share writes to its own cad folder** (review findings
   R2n-14, R2n-15, R2n-16, R2n-17, R2n-18 and R2-11, round 129). The Python

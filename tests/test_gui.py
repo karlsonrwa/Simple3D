@@ -713,12 +713,9 @@ with SessionTurn() as turn:
 # short for 16 copies that hold it ~3 s each, or 16 of step2html's at ~2.4 s.
 check("and the turn is given back: another process takes it",
       sys.platform != "win32" or session_turn_elsewhere(120000) == TURN_TAKEN)
-app._busy = True
-class _Click:
-    x_root = y_root = 0
-app._show_edit_menu(_Click(), field)
-app._busy = False
-check("no menu while a build runs", True)   # reached: _show_edit_menu returned without a popup
+# "No menu while a build runs" stood here as check(..., True), which nothing
+# could fail (review 23.10.2026, R6-9): test_window_rules [8] calls the real
+# _show_edit_menu, busy and not, and counts the menus it posts (round 130).
 
 print("\n[7h] Ctrl+C / Ctrl+V on a Russian keyboard layout (round 83)")
 # Tk binds <Control-c> to the keysym "c"; the C key under a Cyrillic layout
@@ -1055,7 +1052,9 @@ check("and that button now says Cancel",
       app.generate_button.cget("text") == "Cancel")
 check("the log stays readable", app.log_view.winfo_exists()
       and str(app.log_view) not in live)      # disabled Text: read-only, scrollable
-check("a swatch click does nothing while busy", app._busy is True)
+# "A swatch click does nothing while busy" asked here only the flag set three
+# lines above (review 23.10.2026, R6-9): test_window_rules [8] calls the real
+# _pick_layer_color, busy and not, and counts the colour choosers it opens.
 
 # The two kinds of widget whose "disabled" has no LOOK. A tk.Text refuses edits
 # and keeps its white field; a Canvas swatch keeps its colour whatever its
@@ -1222,31 +1221,9 @@ print("\n[N] log severity: a note is advice, and gets its own colour")
 # The k-ceiling line is not a warning - nothing is wrong, a setting would just
 # serve the board better - so it must be findable in a long log without reading
 # it as trouble. Blue, its own tag, matched on the same prefix rule as the rest.
-from stepbuilder.gui import ERROR_PREFIXES, WARNING_PREFIXES, NOTE_PREFIXES
-
-
-def severity_of(message):
-    low = message.lstrip().lower()
-    if low.startswith(ERROR_PREFIXES):
-        return "error"
-    if low.startswith(WARNING_PREFIXES):
-        return "warning"
-    if low.startswith(NOTE_PREFIXES):
-        return "note"
-    return None
-
-
-for text, want in (
-    ("  note: this board's bend areas are laid out at k = 0", "note"),
-    ("  note: BEND_1's bend area is 3.000 mm across", "note"),
-    ("warning: 2 cutout(s) repeat another one exactly", "warning"),
-    ("error (board.json): pcb.edges is empty", "error"),
-    ("Traceback (most recent call last):", "error"),
-    ("Building board geometry", None),
-):
-    got = severity_of(text)
-    check(f"{text[:44]!r} -> {want}", got == want, got)
-
+# Which tag a line gets is asked of the real _append_log in test_window_rules
+# [8] since round 130: here a copy of its rule was checked, which a change to
+# the rule in the window could not fail (review 23.10.2026, R6-9).
 gui_src = (ROOT / "stepbuilder/gui.py").read_text(encoding="utf-8")
 check("the note tag is configured with a colour of its own",
       'tag_configure("note"' in gui_src)

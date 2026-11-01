@@ -53,11 +53,12 @@ def _open_window(args: argparse.Namespace) -> int:
       --output-dir DIR     where the .step files go
       --brd-name NAME      the board's name in its original case
       --dated-name         name the output <brd>_simple_DD_MM_YYYY
-      --color NAME         board color theme
+      --color NAME         one of the window's board themes, in any case
       --silk-color NAME    legend ink, White or Black
       --no-silkscreen      neither side
       --no-silk-top / --no-silk-bottom
       --flat-silkscreen    legend as surfaces rather than thin solids
+      --exposed-copper / --mask-openings
 
     The shipped launcher passes only --config, --json-dir, --output-dir,
     --brd-name and --dated-name; the rest exist for driving the window by hand.
@@ -85,6 +86,10 @@ def _open_window(args: argparse.Namespace) -> int:
             app.exposed_copper.set(True)
         if args.mask_openings:
             app.mask_openings.set(True)
+        # What the flags set is for this run only: the close writes back what
+        # the settings held for each of them (round 130, review 23.10.2026
+        # R6-4 - until then the last hand-run launch's flags were kept).
+        app.note_launch_values()
         app.prefill_jobs(
             json_dir=args.json_dir or None,
             json_file=args.gui_json_file or None,

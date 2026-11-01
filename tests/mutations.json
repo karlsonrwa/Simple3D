@@ -83,13 +83,14 @@
  {
   "id": "reachable-always",
   "file": "stepbuilder/winplace.py",
-  "old": "    return visible_w >= MIN_VISIBLE_WIDTH and visible_h >= MIN_VISIBLE_HEIGHT",
-  "new": "    return True",
+  "old": "            return True\n    return False",
+  "new": "            return True\n    return True",
   "suites": [
+   "tests/test_window_rules.py",
    "tests/test_geom.py",
    "tests/test_gui.py"
   ],
-  "why": "a window remembered on a monitor that is gone is restored there anyway"
+  "why": "a window remembered on a monitor that is gone is restored there anyway. Re-pointed in round 130 at the per-monitor rule (review 23.10.2026, R6-6)."
  },
  {
   "id": "pads-mask-data-ignored",
@@ -490,7 +491,7 @@
  {
   "id": "readme-count-23",
   "file": "README.md",
-  "old": "31 test suites",
+  "old": "32 test suites",
   "new": "23 test suites",
   "suites": [
    "tools/audit_docs.py"
@@ -500,8 +501,8 @@
  {
   "id": "readme-count-unstated",
   "file": "README.md",
-  "old": "31 test suites",
-  "new": "thirty test suites",
+  "old": "32 test suites",
+  "new": "thirty-two test suites",
   "suites": [
    "tools/audit_docs.py"
   ],
@@ -2087,24 +2088,26 @@
  {
   "id": "winplace-above-screen-allowed",
   "file": "stepbuilder/winplace.py",
-  "old": "    if y < vy:\n        return False                      # title bar above every screen",
-  "new": "    if False:\n        return False                      # title bar above every screen",
+  "old": "        if across >= MIN_VISIBLE_WIDTH and my <= y and y + MIN_VISIBLE_HEIGHT <= my + mh:\n",
+  "new": "        if across >= MIN_VISIBLE_WIDTH and y + MIN_VISIBLE_HEIGHT <= my + mh:\n",
   "suites": [
+   "tests/test_window_rules.py",
    "tests/test_geom.py",
    "tests/test_gui.py"
   ],
-  "why": "a window whose title bar is above every screen is restored, and there is no way to drag it back. MEASURED: caught by tests/test_geom.py, FAIL  title bar above all screens is not  <-"
+  "why": "a window whose title bar is above a monitor's top counts as on it, and there is no way to drag it back: the lowered right monitor's case. Re-pointed in round 130 at the per-monitor rule (review 23.10.2026, R6-6)."
  },
  {
   "id": "winplace-sliver-is-enough",
   "file": "stepbuilder/winplace.py",
-  "old": "    return visible_w >= MIN_VISIBLE_WIDTH and visible_h >= MIN_VISIBLE_HEIGHT",
-  "new": "    return visible_w >= 0 and visible_h >= 0",
+  "old": "        if across >= MIN_VISIBLE_WIDTH and my <= y and y + MIN_VISIBLE_HEIGHT <= my + mh:\n",
+  "new": "        if across > 0 and my <= y and y < my + mh:\n",
   "suites": [
+   "tests/test_window_rules.py",
    "tests/test_geom.py",
    "tests/test_gui.py"
   ],
-  "why": "a 70 px sliver on a screen edge counts as reachable, so the window opens where it cannot be grabbed. MEASURED: caught by tests/test_geom.py, FAIL  centred instead  <- 9000"
+  "why": "any sliver on a monitor counts as reachable, so the window opens where it cannot be grabbed. Re-pointed in round 130 at the per-monitor rule (review 23.10.2026, R6-6)."
  },
  {
   "id": "winplace-negative-offsets-refused",
@@ -2209,6 +2212,7 @@
   "old": "        if self.process is None or self.process.is_alive() or self.finished:",
   "new": "        if True:",
   "suites": [
+   "tests/test_window_rules.py",
    "tests/test_gui.py"
   ],
   "why": "a child that died of an access violation is never noticed: the window sits frozen on a build that is gone. MEASURED: caught by tests/test_gui.py, FAIL  a cancelled build is not reported as a crash  <- ('Cancelled', [])"
@@ -2652,6 +2656,7 @@
   "old": "        for kind in painted:\n            self.layer_colors[kind] = DEFAULT_LAYER_COLORS[kind]",
   "new": "        for kind in DEFAULT_LAYER_COLORS:\n            self.layer_colors[kind] = DEFAULT_LAYER_COLORS[kind]",
   "suites": [
+   "tests/test_window_rules.py",
    "tests/test_gui.py"
   ],
   "why": "Reset colors also rewrites the colours of greyed swatches, unseen"
@@ -4794,8 +4799,8 @@
  {
   "id": "docs-check-count-in-words",
   "file": "ARCHITECTURE.md",
-  "old": "| the 4 checks + 31 suites as subprocesses |",
-  "new": "| the four checks + 31 suites as subprocesses |",
+  "old": "| the 4 checks + 32 suites as subprocesses |",
+  "new": "| the four checks + 32 suites as subprocesses |",
   "suites": [
    "tools/audit_docs.py"
   ],
@@ -4814,7 +4819,7 @@
  {
   "id": "docs-mutation-count-stale",
   "file": "README.md",
-  "old": "(tests/mutations.json, 568 faults, applied",
+  "old": "(tests/mutations.json, 597 faults, applied",
   "new": "(tests/mutations.json, 999 faults, applied",
   "suites": [
    "tools/audit_docs.py"
@@ -5382,14 +5387,14 @@
   "why": "a point on a nested zone's edge is in the nested zone only: a drawn opening drawn up to it from the zone around is clipped instead of built whole (round 127, R3-6/R3-7, review 23.10.2026)"
  },
  {
-  "id": "audit-suite-count-singular-unread",
+  "id": "audit-suite-count-few-form-unread",
   "file": "tools/audit_docs.py",
   "old": "|набора тестов|набор тестов)\", text)",
-  "new": "|набора тестов)\", text)",
+  "new": "|набор тестов)\", text)",
   "suites": [
    "tools/audit_docs.py"
   ],
-  "why": "the Russian count in the singular - 31 набор тестов - is not read, and README states the suite count once where it states it once per language (round 127, the 31st suite)"
+  "why": "the Russian count in its 2-4 form - 32 набора тестов - is not read, and README states the suite count once where it states it once per language. Round 127's row audit-suite-count-singular-unread on the singular, 31 набор тестов, re-pointed in round 130: with 32 suites no doc states that form, and the row survived"
  },
  {
   "id": "thickness-without-mask-drops-all-outside",
@@ -5882,5 +5887,302 @@
    "tools/skill_checks.py"
   ],
   "why": "a probe's REQUIRES of a tools/ helper ignored: probe_launch.il's calls into the hand test s3d_userprop_test.il read as undefined, and the check red on a clean tree (round 129)"
+ },
+ {
+  "id": "winplace-reachable-on-the-bounding-box",
+  "file": "stepbuilder/winplace.py",
+  "old": "    for mx, my, mw, mh in areas:\n",
+  "new": "    for mx, my, mw, mh in [(min(a[0] for a in areas), min(a[1] for a in areas), max(a[0] + a[2] for a in areas) - min(a[0] for a in areas), max(a[1] + a[3] for a in areas) - min(a[1] for a in areas))]:\n",
+  "suites": [
+   "tests/test_window_rules.py",
+   "tests/test_geom.py"
+  ],
+  "why": "the window is looked for on the rectangle round all monitors, as before round 130: a window left in a corner no screen shows - two monitors set diagonally - is taken for visible (R6-6) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "winplace-monitors-as-one-rectangle",
+  "file": "stepbuilder/winplace.py",
+  "old": "        if areas:\n            return areas\n",
+  "new": "        if areas:\n            return [virtual_screen(root)]\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the monitors listed and then given back as the one rectangle round them all (R6-6) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "winplace-monitor-not-work-area",
+  "file": "stepbuilder/winplace.py",
+  "old": "                r = info.rcWork\n",
+  "new": "                r = info.rcMonitor\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "each monitor taken whole, its taskbar included: a title strip under the taskbar counts as visible (R6-6) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "winplace-title-strip-any-width",
+  "file": "stepbuilder/winplace.py",
+  "old": "        if across >= MIN_VISIBLE_WIDTH and my <= y",
+  "new": "        if across > 0 and my <= y",
+  "suites": [
+   "tests/test_window_rules.py",
+   "tests/test_geom.py"
+  ],
+  "why": "a 70 px sliver of the title strip at a monitor's side counts as reachable (R6-6) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "winplace-first-run-height-unbounded",
+  "file": "stepbuilder/winplace.py",
+  "old": "    h = max(1, min(root.winfo_reqheight(), wh - FRAME_ALLOWANCE))\n",
+  "new": "    h = root.winfo_reqheight()\n",
+  "suites": [
+   "tests/test_window_rules.py",
+   "tests/test_geom.py"
+  ],
+  "why": "the first run's height is the 910 px the window asks for on any screen: on a 1366x768 one Generate and the status line are under its edge (R6-7) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "winplace-first-run-frame-forgotten",
+  "file": "stepbuilder/winplace.py",
+  "old": "    h = max(1, min(root.winfo_reqheight(), wh - FRAME_ALLOWANCE))\n",
+  "new": "    h = max(1, min(root.winfo_reqheight(), wh))\n",
+  "suites": [
+   "tests/test_window_rules.py",
+   "tests/test_geom.py"
+  ],
+  "why": "the first run's height fills the work area with the client alone, and the title bar and border push the bottom 47 px under the taskbar (R6-7) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "winplace-first-run-y-without-frame",
+  "file": "stepbuilder/winplace.py",
+  "old": "    y = wy + max(0, (wh - h - FRAME_ALLOWANCE) // 2)\n",
+  "new": "    y = wy + max(0, (wh - h) // 2)\n",
+  "suites": [
+   "tests/test_window_rules.py",
+   "tests/test_geom.py"
+  ],
+  "why": "the window centred as if it had no frame: on a short work area its bottom is below it (R6-7) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "winplace-first-run-work-origin-dropped",
+  "file": "stepbuilder/winplace.py",
+  "old": "    x = wx + max(0, (ww - w) // 2)\n    y = wy + ",
+  "new": "    x = max(0, (ww - w) // 2)\n    y = ",
+  "suites": [
+   "tests/test_window_rules.py",
+   "tests/test_geom.py"
+  ],
+  "why": "the work area's origin dropped: with the taskbar at the top or left, the window opens under it (R6-7) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "winplace-first-run-on-the-screen",
+  "file": "stepbuilder/winplace.py",
+  "old": "        if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the first run is centred on the primary screen whole, the taskbar's part included (R6-7) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "gui-theme-any-name",
+  "file": "stepbuilder/gui.py",
+  "old": "        theme = next((t for t in BOARD_THEMES if t.casefold() == wanted), None)\n",
+  "new": "        theme = str(name)\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "--color 255,0,0 goes into the theme as given, as before round 130: the build takes the default colour with nothing said, and the close writes \"255,0,0\" into the settings (R6n-6) (round 130, review 28.10.2026)"
+ },
+ {
+  "id": "gui-theme-case-sensitive",
+  "file": "stepbuilder/gui.py",
+  "old": "        theme = next((t for t in BOARD_THEMES if t.casefold() == wanted), None)\n",
+  "new": "        theme = next((t for t in BOARD_THEMES if t == str(name).strip()), None)\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "--color blue is no theme: the window keeps its colour, though Blue is one (R6n-6) (round 130, review 28.10.2026)"
+ },
+ {
+  "id": "gui-theme-unknown-unsaid",
+  "file": "stepbuilder/gui.py",
+  "old": "            kept = self.theme.get()\n            self.after(180, lambda: self._append_log(\n",
+  "new": "            kept = self.theme.get()\n            (lambda: self._append_log(\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "a colour the window has no theme for is passed over without a word (R6n-6) (round 130, review 28.10.2026)"
+ },
+ {
+  "id": "gui-layer-refresh-during-build",
+  "file": "stepbuilder/gui.py",
+  "old": "        if self._busy:\n            self._layer_refresh_pending = True\n            return\n",
+  "new": "        if False:\n            self._layer_refresh_pending = True\n            return\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the layer list put off 400 ms after the JSON field changed is rebuilt mid-build, its rows live under a build that has taken its settings (R6-11) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "gui-layer-refresh-pending-dropped",
+  "file": "stepbuilder/gui.py",
+  "old": "            if self._layer_refresh_pending:\n",
+  "new": "            if False:\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "a layer refresh put off by a build never comes: the list stays the old board's (R6-11) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "gui-silk-row-updated-while-busy",
+  "file": "stepbuilder/gui.py",
+  "old": "        if self._busy:\n            return\n        on = self.silk_top.get() or self.silk_bottom.get()\n",
+  "new": "        on = self.silk_top.get() or self.silk_bottom.get()\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the silkscreen row's own update switches the frozen group back on during a build (R6-11) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "swatch-reset-other-unseen",
+  "file": "stepbuilder/gui.py",
+  "old": "        painted = self._kinds_painted() & frozenset(self._swatches)\n",
+  "new": "        painted = self._kinds_painted()\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "Reset colors resets \"other\", which has no swatch: a layerColors.other set by hand is lost in the two layer-coloured modes with nothing on screen to show it (R6-15) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "swatch-reset-log-by-every-kind",
+  "file": "stepbuilder/gui.py",
+  "old": "        if painted == frozenset(self._swatches):\n",
+  "new": "        if painted == frozenset(DEFAULT_LAYER_COLORS):\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "with every swatch reset the log lists them one by one, as if some were left (R6-15) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "gui-close-stops-build-unasked",
+  "file": "stepbuilder/gui.py",
+  "old": "        if self._bridge.alive and not messagebox.askokcancel(\n",
+  "new": "        if False and not messagebox.askokcancel(\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "closing the window stops a running build without a word, as before round 130 (R6-14) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "gui-close-no-not-honoured",
+  "file": "stepbuilder/gui.py",
+  "old": "                \"a STEP file takes its name only once it is complete.\", parent=self):\n            return\n",
+  "new": "                \"a STEP file takes its name only once it is complete.\", parent=self):\n            None\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the close asks, and answered Cancel closes the window and stops the build all the same (R6-14) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "stepdoc-written-under-its-name",
+  "file": "stepbuilder/stepdoc.py",
+  "old": "            status = writer.Write(str(partial))\n",
+  "new": "            status = writer.Write(str(path))\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the STEP file written under its own name: a build stopped mid-write leaves a cut-short .step that looks like any other (R6-14) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "stepdoc-part-left-on-error",
+  "file": "stepbuilder/stepdoc.py",
+  "old": "            try:\n                partial.unlink()\n            except OSError:\n                pass\n            raise\n",
+  "new": "            raise\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "a write that fails or is interrupted leaves its .step.part behind (R6-14) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "stepdoc-part-never-renamed",
+  "file": "stepbuilder/stepdoc.py",
+  "old": "            os.replace(partial, path)\n",
+  "new": "            partial.stat()\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the finished .step.part never takes its name: a build writes nothing anyone opens (R6-14) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "gui-launch-flags-saved",
+  "file": "stepbuilder/gui.py",
+  "old": "        if self._launch_values is not None and self._loaded_settings is not None:\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the close writes what the launch flags set, as before round 130: one hand-run --step-dir or --no-silkscreen replaces the remembered value for good (R6-4) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "cli-launch-values-unnoted",
+  "file": "stepbuilder/__main__.py",
+  "old": "        app.note_launch_values()\n",
+  "new": "        pass\n",
+  "suites": [
+   "tests/test_launcher.py",
+   "tests/test_window_rules.py"
+  ],
+  "why": "the launcher never tells the window what its flags set, so the close keeps them (R6-4) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "settings-launch-override-takes-later-change",
+  "file": "stepbuilder/settings.py",
+  "old": "        if at_launch != getattr(loaded, f.name) and getattr(values, f.name) == at_launch:\n",
+  "new": "        if at_launch != getattr(loaded, f.name):\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "a setting changed in the window after a launch that had set it is thrown away at the close (R6-4) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "settings-launch-takes-the-window-place",
+  "file": "stepbuilder/settings.py",
+  "old": "        if f.name in _NOT_FROM_FLAGS:\n            continue\n",
+  "new": "        if False:\n            continue\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the window's place and its paths taken for a flag's: a window centred at a launch with flags and closed where it was forgets that place (R6-4) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "bridge-one-queue-per-session",
+  "file": "stepbuilder/worker_bridge.py",
+  "old": "        self._drop_queue()\n        self._queue = multiprocessing.Queue()\n",
+  "new": "        if self._queue is None:\n            self._queue = multiprocessing.Queue()\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "a new build takes over the last one's queue: what that build sent late reaches the new one (R6-12, R6n-5) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "bridge-cancel-keeps-reading",
+  "file": "stepbuilder/worker_bridge.py",
+  "old": "        # with its queue: after \"Cancelled\" nothing of it arrives.\n        self._drop_queue()\n",
+  "new": "        # with its queue: after \"Cancelled\" nothing of it arrives.\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "after a cancel the drain goes on reading the killed build's queue: 64 lines and its last stage after \"Cancelled\", and its done (R6-12) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "bridge-drain-without-a-queue",
+  "file": "stepbuilder/worker_bridge.py",
+  "old": "        if self._queue is None:\n            self.check_alive()\n            return\n        try:\n",
+  "new": "        try:\n",
+  "suites": [
+   "tests/test_window_rules.py"
+  ],
+  "why": "the drain reads a queue a cancel has dropped: the window's timer raises every tick (R6-12) (round 130, review 23.10.2026)"
  }
 ]

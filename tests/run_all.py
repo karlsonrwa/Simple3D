@@ -61,6 +61,7 @@ JOBS = [
     ("settings: the gui section, no window",    TESTS / "test_settings.py", False),
     ("GUI widgets and config",                  TESTS / "test_gui.py", False),
     ("GUI window placement",                    TESTS / "test_geom.py", False),
+    ("the window's rules, no screen needed",    TESTS / "test_window_rules.py", False),
 ]
 
 

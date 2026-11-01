@@ -12,6 +12,7 @@ set-up and the write block of `generate`, as a class.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from OCP.IFSelect import IFSelect_ReturnStatus
@@ -84,6 +85,21 @@ class StepDocument:
 
         if not writer.Transfer(self.doc, STEPControl_StepModelType.STEPControl_AsIs):
             raise StepBuilderError("STEP writer transfer failed")
-        status = writer.Write(str(path))
-        if status != IFSelect_ReturnStatus.IFSelect_RetDone:
-            raise StepBuilderError(f"Failed to write {path} (status {status})")
+        # Written beside its name and renamed into place once complete (round
+        # 130): a build stopped in the middle of the write - Cancel, or the
+        # window closed - could leave a cut-short .step under the final name
+        # (review 23.10.2026, R6-14). A kill now leaves <name>.step.part; an
+        # error takes that away too.
+        path = Path(path)
+        partial = path.with_name(path.name + ".part")
+        try:
+            status = writer.Write(str(partial))
+            if status != IFSelect_ReturnStatus.IFSelect_RetDone:
+                raise StepBuilderError(f"Failed to write {path} (status {status})")
+            os.replace(partial, path)
+        except BaseException:
+            try:
+                partial.unlink()
+            except OSError:
+                pass
+            raise

@@ -3522,6 +3522,72 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-01 (round 130) — the window findings (R6-4, R6-6, R6-7, R6-9, R6-11, R6-12, R6-14, R6-15, R6n-5, R6n-6)
+
+Batch 7 of the owner's «Пройдись дальше сам по всем оставшимся находкам»,
+done at his «Да, пакет 7»; the record is
+`docs/records/window-batch-2026-11-01.md`, scratch in
+`build/fix-2026-10-31/r130/`.
+
+- How it was measured with nothing on the owner's desktop: the real
+  `StepBuilderApp` on a desktop of its own in the 4090's session 0, driven by
+  `window_measure.py` - built and asked, never clicked; a build was a bridge
+  that starts nothing or `WorkerBridge` with a stand-in process; monitors and
+  work areas handed in. The frame Windows draws round the client was measured
+  by `frame_measure.py`: a 908x600 client in a 926x647 frame, 38 px above,
+  9 below.
+- Measured first, on HEAD 9a3e2e1: one hand-run launch with `--step-dir`,
+  `--color Blue`, `--no-silkscreen`, `--exposed-copper` wrote all four into
+  the local file (R6-4); `--color 255,0,0` made the theme "255,0,0", the
+  build's colour None, saved as such, and `blue` the same (R6n-6); the layer
+  refresh landing 0.8 s into a build switched the ink box and Make surface
+  back on (R6-11); Reset colors set a hand-set `other` back in layers and
+  inspect (R6-15); closing during a build asked nothing (R6-14); a chatty
+  build cancelled sent 64 events after "Cancelled", and a done sent before
+  the cancel was delivered after it (R6-12) and ended the next build, whose
+  crash then went unnamed (R6n-5); a window on the review's three desks, with
+  0 px of its title strip on a monitor, was "reachable" (R6-6); a first run
+  was 908x910 on any screen, 76, 142 and 190 px below the edge on work areas
+  834, 768 and 720 px high (R6-7). Found fixed already by round 107: R6-8
+  (zDatum `Bottom` reads as bottom, `1` as top with a warning) and R6-10 (a
+  close writes only the colour changed).
+- The fix: `settings.without_launch_overrides` and the window's
+  `note_launch_values` (the launcher's note after the flags; the window's
+  place and paths are never a flag's); `set_theme` by the window's own themes,
+  any case, a log line otherwise; `_refresh_layers` waits for a build's end
+  and `_update_silk_row` keeps out of one; the reset only for kinds with a
+  swatch; the close asks; `WorkerBridge` a queue per build, dropped by
+  `cancel`; `StepDocument.write` through `<name>.step.part` and `os.replace`;
+  `winplace.monitor_areas` (each monitor's work area) and a rule per
+  monitor, `primary_work_area` and `center_on_primary` within it, frame
+  included (`FRAME_ALLOWANCE` 48). R6-9: test_gui's three checks that could
+  not fail - a literal True, a flag set a line above, a copy of the
+  colouring rule - are gone, and test_window_rules [8] calls the window's own
+  methods instead.
+- Tests: the new `tests/test_window_rules.py` (nine sections, no screen, no
+  clipboard, no child process), so the rows of these rules are proved in
+  session 0; test_launcher's stub gained `note_launch_values` and its crash
+  box is a recorder - without them the suite sat on a modal box in session 0
+  until it was killed (pid 5240, still there at 22:36); test_geom's centring
+  checks take the work area, [6] the monitor lists, a new [9] a 1366x768
+  work area. Rows 568 -> 597; six re-pointed, two given the new suite (and
+  one more re-pointed after job130b, below).
+- The 4090, job130 (22:36-22:39, the 14 changed files hash-checked): red on
+  HEAD's code with the new tests (test_window_rules 1 FAIL then a crash on
+  the API it does not have, test_launcher 1 FAIL); green test_window_rules,
+  test_launcher, test_settings, test_config_merge, test_mutations,
+  `skill_checks.py`, `check_arity.py`, the audit, `python_names.py`; the 127
+  rows the round touches: 89 caught, every one of round 130's among them,
+  38 unproven - their only suites, test_gui and test_geom, are red in
+  session 0; run_all 34/36, the same two. job130b (22:44), the docs written:
+  the audit, test_mutations, test_launcher, test_window_rules green; 21 rows
+  on the docs and `__main__.py`, 20 caught, one SURVIVED - round 127's row on
+  the Russian singular «31 набор тестов», a form no doc states at 32 suites;
+  re-pointed at «набора тестов» (`audit-suite-count-few-form-unread`), caught
+  by job130c (22:45).
+- Not run: test_gui and test_geom in the owner's session, and the 38 rows
+  with them - his clipboard for some minutes, so only at his yes.
+
 ## Update 2026-11-01 (round 129) — the launch findings (R2n-14, R2n-15, R2n-16, R2n-17, R2n-18, R2-11)
 
 Batch 6 of the owner's «Пройдись дальше сам по всем оставшимся находкам»,

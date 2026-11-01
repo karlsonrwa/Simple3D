@@ -46,8 +46,15 @@ class _FakeApp:
         self.step_dirs = None
         self.themed = None
         self.prefill = None
+        self.noted = None
         self.looped = False
         _FakeApp.made.append(self)
+
+    def note_launch_values(self):
+        # What the window held when the launcher took its note (round 130,
+        # R6-4): after the flags, before the board's paths.
+        self.noted = {"steps": self.step_dirs, "theme": self.theme.get(),
+                      "silk_bottom": self.silk_bottom.get(), "prefilled": self.prefill is not None}
 
     def set_step_dirs(self, dirs):
         self.step_dirs = list(dirs)
@@ -64,6 +71,23 @@ class _FakeApp:
 
 
 gui_mod.StepBuilderApp = _FakeApp        # _open_window imports it at call time
+
+# A stand-in that lacks something the launcher calls lands in _open_window's
+# crash handler, which shows a real modal message box: on a desktop a window
+# on the user's screen, in the 4090's session 0 a wait nobody can end (round
+# 130: note_launch_values was missing here, and the suite sat on that box
+# until it was killed). The box is a recorder in this suite, and says what it
+# would have shown.
+import tkinter.messagebox as _messagebox  # noqa: E402
+CRASHES: list = []
+
+
+def _crash_box(title, text, **_kw):
+    CRASHES.append(text)
+    print(f"  the launcher's crash box: {title}: {text.strip().splitlines()[-1]}")
+
+
+_messagebox.showerror = _crash_box
 
 
 def launch(argv):
@@ -116,6 +140,13 @@ check("the legend ink", app.silk_color.get() == "Black")
 check("one side off, the other left as the config had it",
       app.silk_top.get() and not app.silk_bottom.get())
 check("flat legend", app.silk_flat.get())
+# Round 130 (review 23.10.2026, R6-4): the flags are for this run only, and the
+# window learns which values they set from a note the launcher takes after
+# applying them and before the board's paths go in (test_window_rules [1]
+# closes the real window and reads the file).
+check("the launcher notes the flags' values after applying them, before the paths",
+      app.noted == {"steps": ["D:/lib", "D:/lib2", "D:/proj/lib"], "theme": "Black",
+                    "silk_bottom": False, "prefilled": False}, app.noted)
 code, app = launch(["--gui", "--no-silkscreen"])
 check("--no-silkscreen is both sides", not app.silk_top.get() and not app.silk_bottom.get())
 code, app = launch(["--gui", "--silk-color", "Black", "--no-silk-top"])
@@ -166,6 +197,9 @@ passed = sorted({f for f in re.findall(r"--[a-z][a-z-]+", il)})
 known = set(build_parser()._option_string_actions)
 check("the launcher and the parser agree", passed and all(f in known for f in passed),
       f"passed {passed}, unknown {[f for f in passed if f not in known]}")
+
+check("the launcher never fell into its crash handler", not CRASHES,
+      CRASHES[0].strip().splitlines()[-1] if CRASHES else "")
 
 print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")

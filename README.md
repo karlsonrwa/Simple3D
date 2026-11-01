@@ -240,7 +240,7 @@ Most controls say what they do. These are the ones worth knowing about:
 | **Mask openings (as surfaces)** | The solder-mask openings as surfaces in the dielectric's colour (`base` in *layerColors*): every pin's and via's opening from its padstack, instanced like the pads, and every opening drawn on the `SOLDERMASK` layers — a line, a shape or rectangle, a text. With *Exposed copper* on, what the copper leaves of each opening: the ring around a copper-defined pad, the laminate a label cut into the mask shows; on its own, the openings whole. Windows on the board's edge or over a cutout are clipped to the board as the pads are. Needs a JSON written with `format_version` 11 for the padstacks' openings, 12 for the drawn ones. The colour is the *Base* swatch's, live in any stitching while this is ticked. See *Exposed copper*. |
 | **Compact STEP** | Drops parametric surface curves — roughly half the file, identical geometry. |
 | **Build the full-board file too** | With a folder queued, whether the batch also builds `<board>.json` — the whole board, variants ignored (`settings.exportFullBoard` is what writes it). A file you point at directly is always built: choosing it is choice enough. |
-| **Generate** / **Cancel** | While a build runs every other control is greyed out — a snapshot of the settings has already been taken, so changing them mid-build would only look as if it did something — and this button becomes **Cancel**. Cancelling kills the build outright, which is the only thing that works on a boolean that has been inside OCCT for a minute; the file being written at that moment may be left incomplete, and the log says so. |
+| **Generate** / **Cancel** | While a build runs every other control is greyed out — a snapshot of the settings has already been taken, so changing them mid-build would only look as if it did something — and this button becomes **Cancel**. Cancelling kills the build outright, which is the only thing that works on a boolean that has been inside OCCT for a minute. A STEP file is written as `<name>.step.part` and takes its own name only once complete, so a cancel never leaves a cut-short file under the final name: at most that part, which the log names and which can be deleted. Nothing the killed build sent reaches the log after the cancel. Closing the window while a build runs asks first, and stops the build only on OK. |
 
 The log is color-coded: orange warnings, dark red errors, green on success. The
 progress bar covers the whole build and the line beside it says which stage.
@@ -336,6 +336,14 @@ The rest of `gui` mirrors the window and is written back when it closes —
 * `windowGeometry`, `windowState` — where the window was and whether it was
   maximized, so on a multi-monitor desk it comes back on the same screen. A
   position that is no longer reachable is ignored and the window is centred.
+  Reachable means the window's title strip, the top 40 px of its frame and at
+  least 120 px of them wide, lies on one monitor's work area, the screen less
+  its taskbar. Two monitors set diagonally, or of different heights, leave
+  corners of the desk that no screen shows; a window remembered there is
+  centred too. A centred window, like a first run's, opens in the middle of
+  the primary monitor's work area and no taller than that, frame included: on a
+  1366x768 screen it is shorter than its natural 910 px, and the log, the one
+  row that grows, gives the room back.
 
 Two keys are read but never written, so a config from an older build keeps
 working: `stepDir` (one folder, superseded by `stepDirs`) and `debugLayers`
@@ -1112,6 +1120,17 @@ they would collide), `--no-silkscreen`, `--no-silk-top`, `--no-silk-bottom`,
 the choices - Python's argparse says why and stops); 1 on any other error,
 a build that fails included.
 
+`python -m stepbuilder --gui` opens the window with its fields filled in, the
+form the Allegro launcher uses: `--config FILE`, `--json-dir`, `--json-file`,
+`--output-dir`, `--brd-name`, `--dated-name`, and for driving the window by
+hand `--step-dir`, `--color`, `--silk-color`, `--no-silkscreen`, `--no-silk-top`,
+`--no-silk-bottom`, `--flat-silkscreen`, `--exposed-copper`, `--mask-openings`.
+They are for this run only: closing the window writes back what the settings
+held for each of them, unless it was changed again in the window. In the
+window `--color` names one of its board themes, in any case (`blue` is Blue);
+`r,g,b` and `#rrggbb` are for a build without the window - given to the window,
+the log says so and the colour stays as it was.
+
 ## What is where
 
 ```
@@ -1145,7 +1164,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 31 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 568 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, one that runs the export command into folders it is given, and four that change the copy or the disk otherwise - its design units, a drill offset, a device's STEP mapping, folders on a UNC path and a property the hand test adds and takes off - two of them exporting it), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 32 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 597 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, one that runs the export command into folders it is given, and four that change the copy or the disk otherwise - its design units, a drill offset, a device's STEP mapping, folders on a UNC path and a property the hand test adds and takes off - two of them exporting it), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1393,7 +1412,7 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **Mask openings (as surfaces)** | Вскрытия паяльной маски поверхностями цвета диэлектрика (`base` из *layerColors*): вскрытие каждого вывода и переходного отверстия из его падстека, вхождениями как площадки, и каждое вскрытие, нарисованное на слоях `SOLDERMASK` — линия, фигура или прямоугольник, текст. Вместе с *Exposed copper* — то, что от вскрытия оставляет медь: кольцо вокруг copper-defined площадки, текстолит, который показывает прорезанная в маске надпись; сами по себе — вскрытия целиком. Окна на кромке платы или над вырезом обрезаются по плате, как площадки. Нужен JSON с `format_version` 11 для вскрытий падстеков, 12 для нарисованных. Цвет — квадратика *Base*, живого при любой сшивке, пока отмечена эта галка. См. *Открытая медь*. |
 | **Compact STEP** | Убирает параметрические кривые на поверхностях — примерно вдвое меньший файл при той же геометрии. |
 | **Build the full-board file too** | Когда в очереди папка — собирать ли вместе с вариантами `<плата>.json`, всю плату без учёта вариантов (пишет его `settings.exportFullBoard`). Файл, выбранный напрямую, собирается всегда: выбор и есть выбор. |
-| **Generate** / **Cancel** | Пока идёт сборка, остальные элементы погашены — настройки уже сняты снимком, и правка на ходу лишь выглядела бы действием, — а кнопка становится **Cancel**. Отмена убивает сборку немедленно: с булевой операцией, которая уже минуту внутри OCCT, иначе не выйдет. Файл, который писался в этот момент, может остаться недописанным — лог об этом говорит. |
+| **Generate** / **Cancel** | Пока идёт сборка, остальные элементы погашены — настройки уже сняты снимком, и правка на ходу лишь выглядела бы действием, — а кнопка становится **Cancel**. Отмена убивает сборку немедленно: с булевой операцией, которая уже минуту внутри OCCT, иначе не выйдет. STEP пишется как `<имя>.step.part` и получает своё имя, только когда дописан, поэтому обрезанного файла под настоящим именем отмена не оставит: в худшем случае этот кусок, лог его назовёт, и его можно удалить. Что убитая сборка успела отправить, после отмены в лог не попадает. Если закрыть окно во время сборки, оно сначала спросит и остановит сборку только после OK. |
 
 Лог раскрашен: оранжевый — предупреждения, тёмно-красный — ошибки, зелёный —
 успех. Прогресс охватывает всю сборку, а строка рядом говорит, какой это этап.
@@ -1487,7 +1506,15 @@ JSON, ничего не записывается до конца сессии**,
   плату, а не предпочтение.
 * `windowGeometry`, `windowState` — где стояло окно и было ли развёрнуто, чтобы
   на многомониторном столе оно вернулось на тот же экран. Недостижимое
-  положение игнорируется, окно центрируется.
+  положение игнорируется, окно центрируется. Достижимым считается окно, у
+  которого полоса заголовка (верхние 40 пикселей рамки, не меньше 120 в
+  ширину) лежит в рабочей области одного монитора, то есть на экране без
+  панели задач. Мониторы, поставленные по диагонали или разной высоты,
+  оставляют углы стола, которых не показывает ни один экран, и окно,
+  запомненное там, тоже центрируется. Центрированное окно, как и при первом
+  запуске, встаёт посередине рабочей области основного монитора и не выше
+  её вместе с рамкой: на экране 1366x768 оно ниже своих обычных 910
+  пикселей, и место отдаёт лог, единственная растущая строка.
 
 Два ключа читаются, но не записываются, чтобы конфиг от старой сборки
 продолжал работать: `stepDir` (одна папка, заменён на `stepDirs`) и
@@ -2272,6 +2299,17 @@ python -m stepbuilder STEP_DIR JSON_DIR  OUTPUT_DIR --batch  # все вариа
 списка: argparse из Python называет причину и останавливается); 1 при любой
 другой ошибке, в том числе при неудачной сборке.
 
+`python -m stepbuilder --gui` открывает окно с заполненными полями, так его
+запускает Allegro: `--config FILE`, `--json-dir`, `--json-file`, `--output-dir`,
+`--brd-name`, `--dated-name`, а для запуска окна руками ещё `--step-dir`,
+`--color`, `--silk-color`, `--no-silkscreen`, `--no-silk-top`, `--no-silk-bottom`,
+`--flat-silkscreen`, `--exposed-copper`, `--mask-openings`. Действуют они только
+на этот запуск: при закрытии окно записывает для каждого то, что было в
+настройках, если его не меняли уже в окне. В окне `--color` называет одну из
+его тем платы, в любом регистре (`blue` это Blue); `r,g,b` и `#rrggbb` нужны
+сборке без окна. Если передать их окну, лог скажет об этом, а цвет останется
+прежним.
+
 ## Что где лежит
 
 ```
@@ -2305,7 +2343,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 31 набор тестов, два золотых корпуса (STEP и экспорт SKILL, второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 568 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, одного, который запускает команду экспорта в данные ему папки, и четырёх, меняющих копию или диск иначе: её единицы, смещение сверла, привязку модели STEP к компоненту, папки на UNC-пути и свойство, которое ручной тест ставит и снимает; два из них её выгружают), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 32 набора тестов, два золотых корпуса (STEP и экспорт SKILL, второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 597 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, одного, который запускает команду экспорта в данные ему папки, и четырёх, меняющих копию или диск иначе: её единицы, смещение сверла, привязку модели STEP к компоненту, папки на UNC-пути и свойство, которое ручной тест ставит и снимает; два из них её выгружают), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

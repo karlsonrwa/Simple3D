@@ -16,10 +16,18 @@ from typing import Callable
 # weight, gives the room back as soon as the window is widened.
 FIRST_RUN_WIDTH = 908
 
-# How much of a remembered window must still be on some screen for the
-# position to count as usable: enough to see and grab.
+# How much of a remembered window must still be on ONE monitor for the
+# position to count as usable: enough to see and grab - its title strip, the
+# top MIN_VISIBLE_HEIGHT px of the frame, at least MIN_VISIBLE_WIDTH of them
+# wide (geometry_is_reachable).
 MIN_VISIBLE_WIDTH = 120
 MIN_VISIBLE_HEIGHT = 40
+
+# What Windows draws round the client area a geometry's size describes: the
+# title bar and border above it, the border below. Measured 01.11.2026 at
+# 100% scaling with Tk 8.6 (build/fix-2026-10-31/r130/frame_measure.py): a
+# 908x600 client in a 926x647 frame, 38 px above the client and 9 below.
+FRAME_ALLOWANCE = 48
 
 # A window this close to the screen's own size is maximized in all but name,
 # and its rect must not be remembered as the "normal" one.
@@ -57,21 +65,67 @@ def virtual_screen(root) -> tuple[int, int, int, int]:
     return 0, 0, root.winfo_screenwidth(), root.winfo_screenheight()
 
 
-def geometry_is_reachable(virtual: tuple[int, int, int, int],
+def monitor_areas(root) -> list[tuple[int, int, int, int]]:
+    """(x, y, w, h) of each monitor's work area - the part no taskbar covers -
+    in the virtual desktop's coordinates (EnumDisplayMonitors and
+    GetMonitorInfoW's rcWork); [virtual_screen(root)] when they cannot be
+    listed, so this degrades to the rectangle it replaced.
+
+    The virtual screen alone is the rectangle round EVERY monitor, and
+    monitors need not fill it: two set diagonally, or a tall one beside a
+    short one, leave corners that no screen shows. A window remembered there
+    was taken for visible and opened where nobody could see it (review
+    23.10.2026, R6-6, round 130).
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                        ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+        user32 = ctypes.windll.user32
+        user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFO)]
+        found = []
+
+        def one(handle, _dc, _rect, _data):
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(MONITORINFO)
+            if user32.GetMonitorInfoW(handle, ctypes.byref(info)):
+                r = info.rcWork
+                found.append((r.left, r.top, r.right - r.left, r.bottom - r.top))
+            return True
+
+        each = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HANDLE, wintypes.HDC,
+                                  ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)(one)
+        user32.EnumDisplayMonitors(None, None, each, 0)
+        areas = [a for a in found if a[2] > 0 and a[3] > 0]
+        if areas:
+            return areas
+    except Exception:
+        pass
+    return [virtual_screen(root)]
+
+
+def geometry_is_reachable(areas: list[tuple[int, int, int, int]],
                           w: int, h: int, x: int, y: int) -> bool:
     """Can the user actually see and grab a window placed here?
 
     The case that matters: the window was last closed on a second monitor
-    that is no longer attached. Restoring those coordinates puts it
-    somewhere invisible with no way to drag it back, which reads as the
-    program failing to start. *virtual* is what virtual_screen() gave.
+    that is no longer attached, or that has moved. Restoring those
+    coordinates puts it somewhere invisible with no way to drag it back,
+    which reads as the program failing to start. *areas* is what
+    monitor_areas() gave; the window counts when its title strip - the top
+    MIN_VISIBLE_HEIGHT px of the frame, MIN_VISIBLE_WIDTH of them wide at the
+    least - lies on one of them. Until round 130 the test was any overlap
+    with the rectangle round all of them (R6-6).
     """
-    vx, vy, vw, vh = virtual
-    if y < vy:
-        return False                      # title bar above every screen
-    visible_w = max(0, min(x + w, vx + vw) - max(x, vx))
-    visible_h = max(0, min(y + h, vy + vh) - max(y, vy))
-    return visible_w >= MIN_VISIBLE_WIDTH and visible_h >= MIN_VISIBLE_HEIGHT
+    for mx, my, mw, mh in areas:
+        across = min(x + w, mx + mw) - max(x, mx)
+        if across >= MIN_VISIBLE_WIDTH and my <= y and y + MIN_VISIBLE_HEIGHT <= my + mh:
+            return True
+    return False
 
 
 def parse_geometry(text: str | None) -> tuple[int, int, int, int] | None:
@@ -84,15 +138,43 @@ def parse_geometry(text: str | None) -> tuple[int, int, int, int] | None:
     return tuple(int(g) for g in match.groups())   # type: ignore[return-value]
 
 
-def center_on_primary(root, width: int = FIRST_RUN_WIDTH) -> None:
-    """First run, or a remembered position that is no longer usable."""
+def primary_work_area(root) -> tuple[int, int, int, int]:
+    """(x, y, w, h) of the primary monitor's work area - the screen less the
+    taskbar (SystemParametersInfoW, SPI_GETWORKAREA); the primary screen
+    whole when that call is unavailable."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        rect = wintypes.RECT()
+        if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):
+            if rect.right > rect.left and rect.bottom > rect.top:
+                return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+    except Exception:
+        pass
+    return 0, 0, root.winfo_screenwidth(), root.winfo_screenheight()
+
+
+def center_on_primary(root, width: int = FIRST_RUN_WIDTH,
+                      work: tuple[int, int, int, int] | None = None) -> None:
+    """First run, or a remembered position that is no longer usable: centred
+    in the primary monitor's work area (*work*, else primary_work_area), and
+    no taller than it, frame included.
+
+    The window asks for 910 px of client; until round 130 that was the height
+    whatever the screen, with the top clamped to 0, so on a 1366x768 screen
+    the bottom 142 px - the progress bar, Generate and the status line - were
+    under the screen's edge (review 23.10.2026, R6-7). A shorter window gives
+    the room back from the log, the one row that grows.
+    """
     root.update_idletasks()
-    w = width
-    h = root.winfo_reqheight()
+    wx, wy, ww, wh = work if work is not None else primary_work_area(root)
+    w = min(width, ww)
+    h = max(1, min(root.winfo_reqheight(), wh - FRAME_ALLOWANCE))
     root.geometry(f"{w}x{h}")
     root.update_idletasks()
-    x = max(0, (root.winfo_screenwidth() - w) // 2)
-    y = max(0, (root.winfo_screenheight() - h) // 2)
+    x = wx + max(0, (ww - w) // 2)
+    y = wy + max(0, (wh - h - FRAME_ALLOWANCE) // 2)
     root.geometry(f"+{x}+{y}")
 
 

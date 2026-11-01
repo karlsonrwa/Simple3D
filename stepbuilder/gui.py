@@ -233,7 +233,12 @@ class StepBuilderApp(tk.Tk):
         # The settings as _load_config read them: the close writes only what
         # differs from these (settings.save_gui_settings, `loaded`).
         self._loaded_settings: settings.GuiSettings | None = None
+        # What the launch flags set, when there were any (note_launch_values):
+        # for this run only, so the close writes back what was loaded.
+        self._launch_values: settings.GuiSettings | None = None
         self._layer_refresh_job = None
+        # A layer refresh asked for while a build runs waits for its end.
+        self._layer_refresh_pending = False
         self._drain_job = None
 
         # Window placement, remembered across runs. Filled by _load_config
@@ -516,13 +521,13 @@ class StepBuilderApp(tk.Tk):
 
     # --------------------------------------------------- window placement -- #
 
-    def _virtual_screen(self) -> tuple[int, int, int, int]:
-        """(x, y, w, h) of every monitor - winplace.virtual_screen; a method so a
-        test can stand in a different desk."""
-        return winplace.virtual_screen(self)
+    def _monitor_areas(self) -> list[tuple[int, int, int, int]]:
+        """(x, y, w, h) of each monitor's work area - winplace.monitor_areas; a
+        method so a test can stand in a different desk."""
+        return winplace.monitor_areas(self)
 
     def _geometry_is_reachable(self, w: int, h: int, x: int, y: int) -> bool:
-        return winplace.geometry_is_reachable(self._virtual_screen(), w, h, x, y)
+        return winplace.geometry_is_reachable(self._monitor_areas(), w, h, x, y)
 
     FIRST_RUN_WIDTH = winplace.FIRST_RUN_WIDTH
 
@@ -588,12 +593,16 @@ class StepBuilderApp(tk.Tk):
         # The LIVE swatches only (round 93). Until then every live swatch was
         # every swatch; now Solid with Exposed copper shows Copper alone, and
         # a reset that also rewrote the greyed ones would throw away, unseen,
-        # a stiffener colour kept for the next layer-coloured build.
-        painted = self._kinds_painted()
+        # a stiffener colour kept for the next layer-coloured build. And only
+        # the kinds that HAVE a swatch: "other" has none, and in the two
+        # layer-coloured modes it is painted too - a layerColors.other set by
+        # hand was reset there without anything on screen to show it (review
+        # 23.10.2026, R6-15, round 130).
+        painted = self._kinds_painted() & frozenset(self._swatches)
         for kind in painted:
             self.layer_colors[kind] = DEFAULT_LAYER_COLORS[kind]
         self._update_layer_swatches()
-        if painted == frozenset(DEFAULT_LAYER_COLORS):
+        if painted == frozenset(self._swatches):
             self._append_log("Layer colors reset to the Allegro material defaults")
         else:
             names = [label for key, label, _ in LAYER_KINDS if key in painted]
@@ -761,11 +770,29 @@ class StepBuilderApp(tk.Tk):
         rgb = BOARD_THEMES.get(self.theme.get(), (128, 128, 128))
         self._swatch.configure(bg="#%02x%02x%02x" % rgb)
 
-    def set_theme(self, name: str) -> None:
-        """Pick a board colour theme by name, swatch included - what the
-        launcher's --color does (round 74, C6)."""
-        self.theme.set(name)
+    def set_theme(self, name: str) -> bool:
+        """Pick a board colour theme by name, in any case, swatch included -
+        what the launcher's --color does (round 74, C6). True when it did.
+
+        A name the window has no theme for leaves the theme as it was and
+        says so in the log. The window's colour is one of its themes; the
+        command line's --color also takes 'r,g,b' and '#rrggbb', for a build
+        without the window. Until round 130 any name went into the theme as
+        given: "255,0,0" and even "blue" built in the default colour with
+        nothing said, and the close wrote the name into the settings (review
+        28.10.2026, R6n-6)."""
+        wanted = str(name).strip().casefold()
+        theme = next((t for t in BOARD_THEMES if t.casefold() == wanted), None)
+        if theme is None:
+            kept = self.theme.get()
+            self.after(180, lambda: self._append_log(
+                f"warning: --color {name}: the window has no such board theme - it takes "
+                f"{', '.join(THEME_ORDER)}; 'r,g,b' and '#rrggbb' are for a build from the "
+                f"command line. The colour stays {kept}."))
+            return False
+        self.theme.set(theme)
         self._update_swatch()
+        return True
 
     def _update_rim_swatch(self) -> None:
         # The rim color paints the side walls a different color from the faces,
@@ -817,8 +844,18 @@ class StepBuilderApp(tk.Tk):
         self._layer_refresh_job = self.after(400, self._refresh_layers)
 
     def _refresh_layers(self) -> None:
-        """Read the queued JSON(s) and redraw the checkbox list."""
+        """Read the queued JSON(s) and redraw the checkbox list.
+
+        Not while a build runs: it waits for the build's end (_set_busy). The
+        refresh is put off 400 ms after the JSON field changes, so a path typed
+        and Generate pressed at once landed here mid-build, and the rebuilt rows
+        came up live while _update_silk_row switched the whole group back on -
+        under a build whose settings were already taken (review 23.10.2026,
+        R6-11, round 130)."""
         self._layer_refresh_job = None
+        if self._busy:
+            self._layer_refresh_pending = True
+            return
         field = self.json_file.get().strip()
         found: dict[str, dict[str, int]] = {}
         if field:
@@ -857,7 +894,12 @@ class StepBuilderApp(tk.Tk):
         return self.layers.rows
 
     def _update_silk_row(self) -> None:
-        """Keep the ink swatch and the enabled state in step with the checkboxes."""
+        """Keep the ink swatch and the enabled state in step with the checkboxes.
+
+        Never while a build runs, for the reason _update_layer_swatches gives:
+        it would put back a live look _freeze_inputs has just dimmed."""
+        if self._busy:
+            return
         on = self.silk_top.get() or self.silk_bottom.get()
         # Grey the layers of a side that is off. State only - the variables are
         # untouched, so the ticks come back exactly as they were.
@@ -1200,6 +1242,10 @@ class StepBuilderApp(tk.Tk):
         else:
             self._thaw_inputs()
             self.generate_button.configure(text="Generate", command=self.on_generate)
+            # The layer list the field asked for while the build ran.
+            if self._layer_refresh_pending:
+                self._layer_refresh_pending = False
+                self._refresh_layers()
 
     def on_cancel(self) -> None:
         """Stop the running build.
@@ -1208,14 +1254,18 @@ class StepBuilderApp(tk.Tk):
         polite request - which is the only thing that works: OCCT spends
         minutes inside a single boolean and nothing checks a flag in there.
 
-        What it costs is said out loud: the file being written at that moment
-        can be left half finished, and a half-written STEP is not obviously
-        broken when you open it.
+        What it costs is said out loud. Until round 130 that was "the file
+        being written may be incomplete": a half-written STEP is not obviously
+        broken when you open it. Since then a STEP file takes its name only
+        once complete (stepdoc.StepDocument.write), so what a kill leaves is a
+        .step.part beside it - and nothing the build sends after the kill
+        reaches the window (worker_bridge, R6-12).
         """
         if not self._bridge.alive:
             return
-        self._append_log("Cancelled. Any file being written just now may be "
-                         "incomplete - check its size, or build it again.",
+        self._append_log("Cancelled. A file it was writing is left as "
+                         "<name>.step.part, never under its own name - that "
+                         "one can be deleted.",
                          "warning")
         self._bridge.cancel()
         self._set_busy(False)
@@ -1288,18 +1338,21 @@ class StepBuilderApp(tk.Tk):
         self._saved_geometry = s.window_geometry
         self._saved_state = s.window_state
 
-    def _save_config(self) -> list[str]:
-        """Write the "gui" section into the LOCAL settings file.
+    def note_launch_values(self) -> None:
+        """Take note of what the launch flags set - __main__ calls this right
+        after applying them, before the board's paths are filled in.
 
-        What the widgets hold, handed to settings.save_gui_settings, which
-        owns the rules: the tracked file is never written, nothing is written
-        unless both files were understood at load AND the local one reads
-        cleanly now, only what differs from the shipped default is kept, and
-        the paths Allegro supplied are not a setting. Why each of those is a
-        rule is said there. Returns its sentences about values written over
-        a change made in the file while the window was open.
-        """
-        values = settings.GuiSettings(
+        The flags are for this run only, as --help says, and the close writes
+        back what was loaded for every setting they changed and the window
+        did not change again (settings.without_launch_overrides). Until round
+        130 a hand-run `--gui --step-dir D:/oneoff --color Blue
+        --no-silkscreen` replaced the remembered folders, colour and legend
+        for good (review 23.10.2026, R6-4)."""
+        self._launch_values = self._gui_values()
+
+    def _gui_values(self) -> settings.GuiSettings:
+        """What the widgets hold, as the settings file's `gui` section."""
+        return settings.GuiSettings(
             step_dirs=self.step_dirs(),
             z_datum=self.z_datum.get(),
             theme=self.theme.get(),
@@ -1333,6 +1386,24 @@ class StepBuilderApp(tk.Tk):
             json_file=self.json_file.get(),
             output_dir=self.output_dir.get(),
         )
+
+    def _save_config(self) -> list[str]:
+        """Write the "gui" section into the LOCAL settings file.
+
+        What the widgets hold, handed to settings.save_gui_settings, which
+        owns the rules: the tracked file is never written, nothing is written
+        unless both files were understood at load AND the local one reads
+        cleanly now, only what differs from the shipped default is kept, and
+        the paths Allegro supplied are not a setting. Why each of those is a
+        rule is said there. What the launch flags set and nothing changed
+        since goes back to what was loaded first (note_launch_values). Returns
+        the sentences about values written over a change made in the file
+        while the window was open.
+        """
+        values = self._gui_values()
+        if self._launch_values is not None and self._loaded_settings is not None:
+            values = settings.without_launch_overrides(values, self._launch_values,
+                                                       self._loaded_settings)
         return settings.save_gui_settings(
             self.config_path, values,
             paths_from_launcher=self._paths_from_launcher,
@@ -1341,6 +1412,17 @@ class StepBuilderApp(tk.Tk):
             loaded=self._loaded_settings)
 
     def _on_close(self) -> None:
+        # A build is running: the close asks first (review 23.10.2026, R6-14,
+        # round 130). It used to stop the build without a word - in the middle
+        # of a write that could leave a cut-short .step under the file's own
+        # name; since that round a STEP file only gets its name once complete
+        # (stepdoc.StepDocument.write).
+        if self._bridge.alive and not messagebox.askokcancel(
+                "Simple 3D",
+                "A build is running. Close the window and stop it?\n\n"
+                "Files it has finished are kept. The one it is writing is not: "
+                "a STEP file takes its name only once it is complete.", parent=self):
+            return
         replaced = self._save_config()
         if replaced:
             # The log closes with the window, so this is where it is read: a

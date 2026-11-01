@@ -61,13 +61,22 @@ class WorkerBridge:
     """A build process and its queue. `process` is the live
     `multiprocessing.Process` or None; `finished` says the build reported its
     end (done or error) or was seen dead; `cancelled` marks a kill on purpose,
-    so the exit code is not reported as a crash."""
+    so the exit code is not reported as a crash.
+
+    One queue PER BUILD, made by `start` and dropped by `cancel`: what a
+    build says reaches the window only while it is the build the window is
+    waiting for. Until round 130 one queue served the whole session, and the
+    drain went on reading it after a cancel - a chatty build's 64 lines and
+    its last stage after "Cancelled", a done it had sent before the cancel
+    delivered after it, and with Generate pressed again at once, that old
+    done ended the NEW build, whose crash then went unnamed (review
+    23.10.2026, R6-12; 28.10.2026, R6n-5)."""
 
     def __init__(self, *, on_log: Callable[[str], None],
                  on_progress: Callable[[int, int, str | None], None],
                  on_done: Callable[[str], None], on_error: Callable[[str], None],
                  on_crash: Callable[[str], None]) -> None:
-        self._queue = multiprocessing.Queue()
+        self._queue = None
         self.process: multiprocessing.Process | None = None
         self.finished = False
         self.cancelled = False
@@ -87,13 +96,29 @@ class WorkerBridge:
             return False
         self.finished = False
         self.cancelled = False
+        self._drop_queue()
+        self._queue = multiprocessing.Queue()
         self.process = multiprocessing.Process(
             target=run_jobs, args=(settings, self._queue), daemon=True)
         self.process.start()
         return True
 
+    def _drop_queue(self) -> None:
+        """Let go of the current build's queue: nothing more is read from it."""
+        if self._queue is None:
+            return
+        try:
+            self._queue.close()
+            self._queue.cancel_join_thread()
+        except Exception:
+            pass
+        self._queue = None
+
     def drain_once(self) -> None:
         """Hand everything queued to the callbacks, then look for a death."""
+        if self._queue is None:
+            self.check_alive()
+            return
         try:
             while True:
                 kind, payload = self._queue.get_nowait()
@@ -142,8 +167,9 @@ class WorkerBridge:
 
         A real kill rather than a polite request - the only thing that works:
         OCCT spends minutes inside a single boolean and nothing checks a flag
-        in there. The file being written at that moment can be left half
-        finished; the window says so.
+        in there. A STEP file being written at that moment is left as its
+        .step.part, never under its own name (stepdoc, round 130); the window
+        says so.
         """
         if not self.alive:
             return False
@@ -152,14 +178,13 @@ class WorkerBridge:
         process.terminate()
         self.process = None
         self.finished = True
+        # What the killed build said and the window has not read is dropped
+        # with its queue: after "Cancelled" nothing of it arrives.
+        self._drop_queue()
         return True
 
     def close(self) -> None:
         """The window is going: kill a live build, let the queue go."""
         if self.alive:
             self.process.terminate()
-        try:
-            self._queue.close()
-            self._queue.cancel_join_thread()
-        except Exception:
-            pass
+        self._drop_queue()

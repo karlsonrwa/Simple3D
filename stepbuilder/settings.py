@@ -29,9 +29,10 @@ another tool would copy.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Callable
 
@@ -510,6 +511,29 @@ def load_gui_settings(config_path: Path) -> tuple[GuiSettings, str | None, str |
         raw = section.get(key.name, key.default)
         values[key.field] = key.read(raw, section)
     return GuiSettings(**values), base_problem, local_problem
+
+
+# Where the window is and what it was last pointed at are no launch flag's:
+# the launch takes its note before the board's paths are filled in, and the
+# window's place moves with the window (gui.note_launch_values).
+_NOT_FROM_FLAGS = frozenset({"window_geometry", "window_state", "json_file", "output_dir"})
+
+
+def without_launch_overrides(values: GuiSettings, launched: GuiSettings,
+                             loaded: GuiSettings) -> GuiSettings:
+    """*values* with every setting the launch flags changed - it differs
+    between *loaded* and *launched*, the window's values right after the
+    flags - and that is still as the flags left it, put back to *loaded*: the
+    flags are for this run only (review 23.10.2026, R6-4, round 130). A
+    setting changed in the window after the launch is the user's and stays."""
+    out = copy.copy(values)
+    for f in fields(GuiSettings):
+        if f.name in _NOT_FROM_FLAGS:
+            continue
+        at_launch = getattr(launched, f.name)
+        if at_launch != getattr(loaded, f.name) and getattr(values, f.name) == at_launch:
+            setattr(out, f.name, copy.deepcopy(getattr(loaded, f.name)))
+    return out
 
 
 # What _without_shipped gives for a value the shipped file holds as it is.
