@@ -3585,8 +3585,11 @@ done at his «Да, пакет 7»; the record is
   the Russian singular «31 набор тестов», a form no doc states at 32 suites;
   re-pointed at «набора тестов» (`audit-suite-count-few-form-unread`), caught
   by job130c (22:45).
-- Not run: test_gui and test_geom in the owner's session, and the 38 rows
-  with them - his clipboard for some minutes, so only at his yes.
+- The owner's session, at his «Да, запускай»: job17 (23:02:07-23:05:51, a
+  one-shot task in session 2, the 19 changed files hash-checked) - run_all
+  36/36 in 96 s with test_gui and test_geom (test_geom's new [9] green); the
+  38 rows they alone hold, 38 of 38; his clipboard text (108 chars) put back
+  and read back equal; the task deleted, nothing left running.
 
 ## Update 2026-11-01 (round 129) — the launch findings (R2n-14, R2n-15, R2n-16, R2n-17, R2n-18, R2-11)
 
