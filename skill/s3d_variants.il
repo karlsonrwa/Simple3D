@@ -417,8 +417,8 @@ procedure( s3dCheckMfrPn()
             ; model - that list is for parts that WOULD be exported if they had
             ; one, and padding it with deliberate exclusions makes it useless.
             when( sym->refdes && !s3dNoStepExport( sym )
-                mapping = nil
-                errset( mapping = axlStepGet( nil nil sym ) )
+                ; the footprint's binding, else the device's (round 128)
+                mapping = s3dStepMapping( sym )
                 if( mapping && mapping->step_name then
                     ; MFRPN check DISABLED (property attachment unreliable);
                     ; kept for future - restore the two lines below to re-enable:

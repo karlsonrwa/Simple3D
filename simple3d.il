@@ -528,7 +528,7 @@ procedure( s3dMeterOff()
 ; let it raises "return can only be used within a prog". prog also means the
 ; body's last value is NOT the result: every exit has to be an explicit return().
 procedure( s3dExportCommand()
-    prog( ( designName designDir cadDir check noMfrPn noModel argTail pyOk unsafe )
+    prog( ( designName designDir cadDir argTail pyOk unsafe )
 
         ; The folder may have been set since this file loaded - and if it still
         ; is not known, everything below would fail somewhere less obvious: the
@@ -592,16 +592,12 @@ procedure( s3dExportCommand()
         s3dMeterOn( "Checking components..." )
 
         ; --- pre-flight: components with no 3D model ------------------
-        ; s3dCheckMfrPn still returns the no-model list (2nd element); its MFRPN
-        ; half is disabled - property attachment unreliable - but kept for future.
-        check = s3dCheckMfrPn()
+        ; Named by the export itself since round 128 (makeVariant3dIntermediates,
+        ; R1n-15 of the 28.10.2026 review), so a console run says it too; here
+        ; it would be said twice. s3dCheckMfrPn's MFRPN half is disabled -
+        ; property attachment unreliable - but kept for future:
+        ; check = s3dCheckMfrPn()
         ; noMfrPn = car( check )                        ; MFRPN DISABLED (future)
-        noModel = cadr( check )
-
-        when( noModel
-            printf( "Simple 3D: %d component(s) have no 3D model, not exported: %L\n"
-                    length( noModel ) noModel )
-        )
         ; --- MFRPN pre-flight DISABLED (kept for future) --------------
         ; when( noMfrPn
         ;     printf( "Simple 3D: %d exported component(s) have no MFRPN: %L\n"

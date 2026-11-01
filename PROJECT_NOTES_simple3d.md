@@ -3522,6 +3522,88 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-01 (round 128) — the SKILL core findings (R1-3, R1-4, R1-5, R1-6, R1-7, R1-8, R1n-10, R1n-11, R1n-12, R1n-13, R1n-15)
+
+Batch 5 of the owner's «Пройдись дальше сам по всем оставшимся находкам»,
+done at his «Да, пакет 5»; the record is
+`docs/records/skill-core-batch-2026-11-01.md`, scratch in
+`build/fix-2026-10-31/r128/`, every Allegro run headless under
+`r116/watch.py`.
+
+- Measured first, in Allegro, by three new probes in `tools/probes/`.
+  `probe_units.il`: `axlDBGetDesignUnits()` answers `("millimeters" 4 10000)`
+  on circle-A0 and `("mils" 2 100)` on a copy turned to mils by
+  `axlDBChangeDesignUnits( "mils" 2 )`. `probe_drill_offset.il`: a mirrored
+  pin's drill is xy + R(rotation)·M·offset - x flipped, then turned. On copies
+  of the demo and flex3-a0 with every drilled padstack given drillOffset
+  (0.375 0.25), the 235 pins not mirrored (0, 90, 180, 270 degrees) agreed
+  with `s3dDrillXY` and the 4 mirrored ones were 0.750 mm off, twice the
+  offset's x; the demo's 28 mirrored pins at 0 degrees could not be asked
+  (`axlPadstackEdit` nil for their two padstacks). After
+  `axlTransformObject` a symbol's pins read their old rotation and mirror, so
+  the probe uses the board's own placements. `probe_stepget.il`:
+  `axlStepGet( nil nil instance )` answers the footprint's binding only; a
+  part mapped by its device alone answered nil while `axlStepMappedInstance`
+  said t - the export left it out as having no model. `axlStepSet` answered
+  nil until `axlSetVariable( "steppath" dir )`.
+- SKILL: a design in any unit but millimeters is refused before anything is
+  written, its unit named (R1-3; converting instead is the owner's option,
+  parked in the triage); the parts without a model are named by the export
+  itself, once (R1n-15; the menu's own line removed); on a board with zones a
+  part whose origin lies in no zone is named, once per export (R1-5);
+  `s3dStepMapping` - the footprint's binding, else the device's - and a part
+  bound to two different models is named (R1-7); `s3dDrillXY` flips a
+  mirrored pin's offset x before the turn (R1-4); `makeSlotAt`'s first half
+  circle is entered at alpha, ccw "true" (R1-8); `s3dLayerIsNegative` reads
+  the function and the name each on its own, in letters and digits, as
+  `stackup._is_soldermask` reads a mask (R1n-10); eight `errset`s of
+  s3d_stackup.il and `s3dContourJson`'s walk print Allegro's refusal and say
+  what it costs (R1n-13).
+- Python: `thickness_without_soldermask` - a flex stack built Solid with
+  *Do not include soldermask* was 0.215 mm, the layer build of the same file
+  0.365; now both 0.365 (R1-6). The STEP tool names a part with no zone and the
+  face it puts it on (R1-5). `tools/skill_checks.py` check 6 reads
+  `axlUIWPrint( nil msg )` (R1n-11); test_emit [4] asks strcat's own
+  arguments (R1n-12).
+- Tests: test_skill_pins [1], [2], [2b], [5h] and [7] (Allegro's own answers,
+  140 cases re-recorded), test_nomask [7], test_surface P4 and P5, test_emit
+  [4]. Rows 519 -> 538.
+- The 4090 (job128a, 19:39-19:49): every suite green, test_mutations ALL
+  PASS, the audit no findings, run_all 33/35 (the two window suites of
+  session 0); 192 of 193 rows caught. **emit-value-glued-in-a-key-literal
+  SURVIVED**: the new strcat guard took the comments off with `split(";")`,
+  and 25 lines of the exporter hold a ';' inside a message, so from the first
+  of them on the quotes paired wrong and the guard read most of the source as
+  one literal. It now strips them with `tools/skill_lex.strip_comments`, with
+  a self-check that every literal closes on its own line; the mutant fails
+  test_emit. The eight v12 review exports through HEAD's core and the new,
+  Solid and Solid with *Do not include soldermask*: volumes identical.
+- HEAD's SKILL against the new on nine boards (`export_cmp.py`): the JSON
+  equal but the slots' first arcs - the demo's SLOT_1X2 drill and two
+  cutouts, flex-b2's B385_105H340_60M395_115 and two cutouts. Walked in order
+  (`slot_areas.py`), the demo's slot measured 1.0000 mm2 with a 1.000 mm gap at
+  a joint and measures 1.7854 closed, flex-b2's 1.6800 with 0.600 and 1.9627.
+  The console adds only the no-model lines (circle-A0, flex-b2,
+  my_test_board-a0, my_test_board2, variants_test-b0); no zone, two-model or
+  refusal line on any board.
+- The 4090 again (job128b, 20:00-20:06), on the fixed guard and the 25
+  files hash-checked against mine: test_emit and the audit green,
+  test_mutations ALL PASS, the nine rows that run test_emit 9 of 9, the
+  survivor among them - so all 193 rows of the round caught. The two boards
+  whose export changed, from HEAD's JSON and from the new, built Solid and
+  Not stitched with the copper and the openings (`boards128b.py`): volumes
+  (flex-b2 407.680738 and 407.680746 mm3, the demo 22413.416346 both),
+  solids, pads, openings and every warning equal - the STEP tool builds a
+  slot the same from either reading; the files differ by 2 bytes to 8 kB
+  (flex-b2's Solid 476198 -> 476284, the demo's 75912274 -> 75920381).
+- The final bytes (job128c, 20:08-20:09; since job128b only comments, a
+  row's "why" and the docs had changed - the slot in the SKILL's comment is
+  flex-b2's 0.6 x 3.4, and the mirrored pins' error twice the offset's x, not
+  twice the offset): the 26 files hash-checked, test_skill_pins, test_emit,
+  skill_checks, check_arity, python_names, the audit and test_mutations
+  green, the four rows on s3d_geometry.il 4 of 4. run_all last ran in
+  job128a (33/35).
+
 ## Update 2026-11-01 (round 127) — a zone drawn inside another (R3-6, R3-7)
 
 Unparked the same day: the owner sent Cadence's BoardSurfers blog

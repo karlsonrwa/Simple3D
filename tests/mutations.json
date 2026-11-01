@@ -156,8 +156,8 @@
  {
   "id": "skill-nothing-is-negative",
   "file": "skill/s3d_stackup.il",
-  "old": "                    when( substring( probe i strlen( key ) ) == upperCase( key )\n                        neg = t",
-  "new": "                    when( substring( probe i strlen( key ) ) == upperCase( key )\n                        neg = nil",
+  "old": "                            when( substring( part i strlen( word ) ) == word\n                                neg = t",
+  "new": "                            when( substring( part i strlen( word ) ) == word\n                                neg = nil",
   "suites": [
    "tests/test_neg.py",
    "tools/skill_checks.py",
@@ -863,7 +863,7 @@
  {
   "id": "board-ignore-mask-keeps-thickness",
   "file": "stepbuilder/core.py",
-  "old": "        thickness = float(parts[\"board\"])",
+  "old": "        thickness = thickness_without_soldermask(parts, data.get(\"stackups\"))",
   "new": "        thickness = total_board_thickness(parts)",
   "suites": [
    "tests/test_nomask.py"
@@ -4814,7 +4814,7 @@
  {
   "id": "docs-mutation-count-stale",
   "file": "README.md",
-  "old": "(tests/mutations.json, 519 faults, applied",
+  "old": "(tests/mutations.json, 538 faults, applied",
   "new": "(tests/mutations.json, 999 faults, applied",
   "suites": [
    "tools/audit_docs.py"
@@ -5390,5 +5390,195 @@
    "tools/audit_docs.py"
   ],
   "why": "the Russian count in the singular - 31 набор тестов - is not read, and README states the suite count once where it states it once per language (round 127, the 31st suite)"
+ },
+ {
+  "id": "thickness-without-mask-drops-all-outside",
+  "file": "stepbuilder/core.py",
+  "old": "        thickness = thickness_without_soldermask(parts, data.get(\"stackups\"))\n",
+  "new": "        thickness = float(parts[\"board\"])\n",
+  "suites": [
+   "tests/test_nomask.py"
+  ],
+  "why": "Ignore soldermask takes everything outside the conductors off a Solid board: a flex stack's coverlay and adhesive go with the mask, 0.215 mm for 0.365, while the layer builds keep them (R1-6) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "thickness-without-mask-file-has-no-layers",
+  "file": "stepbuilder/core.py",
+  "old": "    if not layers:\n        return float(parts[\"board\"])\n",
+  "new": "    if not layers:\n        return total_board_thickness(parts)\n",
+  "suites": [
+   "tests/test_nomask.py"
+  ],
+  "why": "a file without stackup layers keeps its two soldermasks in its thickness with Ignore soldermask on (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "part-in-no-zone-unnamed",
+  "file": "stepbuilder/core.py",
+  "old": "        if levels and component.get(\"zone\") not in levels:\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a part whose zone the export could not tell and whose origin no zone holds stands on the board's outer face without a word (R1-5) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "part-in-a-zone-named-zoneless",
+  "file": "stepbuilder/core.py",
+  "old": "            if not stack.surface or stack.surface.at(px, py) is None:\n",
+  "new": "            if True:\n",
+  "suites": [
+   "tests/test_surface.py"
+  ],
+  "why": "a part with no zone named whose origin a zone holds - it stands on the surface there - is named as standing in none (R1-5) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "skill-design-units-unasked",
+  "file": "skill/s3d_export.il",
+  "old": "        unless( stringp( units ) && (lowerCase( units ) == \"millimeters\")\n",
+  "new": "        unless( t\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a design in mils is exported as if in millimetres, 25.4 times its models' size, with no word (R1-3; the refusal measured in Allegro on a copy of circle-A0 turned to mils, tools/probes/probe_units.il) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "skill-no-model-unsaid-by-the-export",
+  "file": "skill/s3d_export.il",
+  "old": "        noModel = cadr( s3dCheckMfrPn() )\n",
+  "new": "        noModel = nil\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the parts without a STEP model are left out of a console or skill_export.py run without a word, only the menu command having named them (R1n-15) (round 128, review 28.10.2026)"
+ },
+ {
+  "id": "skill-part-in-no-zone-named-per-file",
+  "file": "skill/s3d_export.il",
+  "old": "            g_state['noZone][refDes] = t\n",
+  "new": "            t\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a part in no zone is named again for every file of the export, not once (R1-5) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "skill-part-in-no-zone-unnamed",
+  "file": "skill/s3d_export.il",
+  "old": "        when( stepFileName && !zoneName && g_state['hasZones] && tablep( g_state['noZone] )\n",
+  "new": "        when( nil && stepFileName && !zoneName && g_state['hasZones] && tablep( g_state['noZone] )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "on a board with zones a part whose origin lies in none is written with \"zone\": null and no console line (R1-5) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "skill-step-device-binding-unasked",
+  "file": "skill/s3d_props.il",
+  "old": "            errset( m = axlStepGet( nil nil o_sym->component->compdef ) )\n",
+  "new": "            t\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a part bound to its STEP model by its device alone is left out as having no model: asked of the instance, axlStepGet answered nil while axlStepMappedInstance said it had one (R1-7, tools/probes/probe_stepget.il) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "skill-step-no-model-list-asks-the-instance",
+  "file": "skill/s3d_variants.il",
+  "old": "                mapping = s3dStepMapping( sym )\n",
+  "new": "                errset( mapping = axlStepGet( nil nil sym ) )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the no-model list asks the symbol instance alone and names a part bound by its device (R1-7) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "skill-step-two-models-unnamed",
+  "file": "skill/s3d_export.il",
+  "old": "                  && (deviceData->step_name != mappingData->step_name)\n",
+  "new": "                  && nil\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a part bound to two different STEP models, by its footprint and by its device, is exported with the footprint's and nothing said (R1-7) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "skill-drill-offset-mirror-ignored",
+  "file": "skill/s3d_geometry.il",
+  "old": "        when( pin->isMirrored  dx = -dx )\n",
+  "new": "        when( nil  dx = -dx )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a mirrored pin's drill offset is turned without the flip: 0.750 mm off - twice the offset's x - on the four mirrored pins measured against axlPolyFromDrillHole (R1-4, tools/probes/probe_drill_offset.il) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "skill-slot-first-arc-walked-backwards",
+  "file": "skill/s3d_geometry.il",
+  "old": "            ; joins the edges in any order.\n            ccw = \"true\"\n",
+  "new": "            ; joins the edges in any order.\n            ccw = \"false\"\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a slot's first half circle is written as entered from beta: walked in order the two halves cancel, 0.840 mm2 for a 0.6 x 2.0 slot of 1.123 (R1-8) (round 128, review 23.10.2026)"
+ },
+ {
+  "id": "skill-polarity-key-read-unbroken",
+  "file": "skill/s3d_stackup.il",
+  "old": "    pcreReplace( pcreCompile( \"[^A-Z0-9]\" ) upperCase( t_text ) \"\" 0 )\n",
+  "new": "    upperCase( t_text )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a function spelled SOLDER_MASK or \"Solder Mask\" does not make a mask layer negative, which the STEP tool calls a mask - its shapes built as material (R1n-10; Allegro's own answers in skill_answers.json) (round 128, review 28.10.2026)"
+ },
+ {
+  "id": "skill-layer-thickness-refusal-unsaid",
+  "file": "skill/s3d_stackup.il",
+  "old": "        unless( errset( thk = o_layer->thickness t )\n",
+  "new": "        unless( errset( thk = o_layer->thickness ) || t\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a stackup layer whose thickness cannot be read counts as 0 without a word (R1n-13) (round 128, review 28.10.2026)"
+ },
+ {
+  "id": "skill-zone-outline-refusal-unsaid",
+  "file": "skill/s3d_stackup.il",
+  "old": "                unless( errset( outline = car( g->groupMembers ) t )\n",
+  "new": "                unless( errset( outline = car( g->groupMembers ) ) || t\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a zone whose outline cannot be read is left out of the file without a word (R1n-13) (round 128, review 28.10.2026)"
+ },
+ {
+  "id": "skill-contour-fault-unplaced",
+  "file": "skill/s3d_geometry.il",
+  "old": "            errset( box = o_dbid->bBox )\n",
+  "new": "            box = nil\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "an outline that cannot be read whole is named without its box: a second one is the same line, which Allegro's console drops (R1n-13) (round 128, review 28.10.2026)"
+ },
+ {
+  "id": "skill-check-uiwprint-one-argument-unseen",
+  "file": "tools/skill_checks.py",
+  "old": "            fmt = rest[0] if len(rest) == 1 or (rest and _constant_format(rest[0])) else (\n",
+  "new": "            fmt = rest[0] if (rest and _constant_format(rest[0])) else (\n",
+  "suites": [
+   "tools/skill_checks.py"
+  ],
+  "why": "check 6 takes axlUIWPrint( nil msg )'s message for a level and asks for a format that is not there - a % in the message stops the export, the check green (R1n-11) (round 128, review 28.10.2026)"
+ },
+ {
+  "id": "emit-value-glued-in-a-key-literal",
+  "file": "skill/s3d_export.il",
+  "old": "                \"\\t\\\"angle\\\": \" sprintf( nil \"%f\" angle ) \"\\n\"\n",
+  "new": "                \"\\t\\\"angle\\\": \\\"\" sprintf( nil \"%f\" angle ) \"\\\"\\n\"\n",
+  "suites": [
+   "tests/test_emit.py"
+  ],
+  "why": "a value glued between a key's opening quote and a closing one in strcat - the form the line test of [4] did not see (R1n-12) (round 128, review 28.10.2026)"
  }
 ]

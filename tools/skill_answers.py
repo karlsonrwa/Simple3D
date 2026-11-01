@@ -39,6 +39,10 @@ CASES: dict[str, dict[str, dict]] = {
                       "ADHESIVE_BOTTOM", "TOP", "BOTTOM")},
         "name=MASK_7 function=Coverlay": {"name": "MASK_7", "func": "Coverlay", "keys": None},
         "name=nil function=nil": {"name": None, "func": None, "keys": None},
+        "name=SM_TOP function=SOLDER_MASK": {"name": "SM_TOP", "func": "SOLDER_MASK", "keys": None},
+        "name=MASK_9 function=Solder Mask": {"name": "MASK_9", "func": "Solder Mask", "keys": None},
+        "name=SOLDER-MASK_TOP": {"name": "SOLDER-MASK_TOP", "func": None, "keys": None},
+        "name=LAY_TOP function=COVER": {"name": "LAY_TOP", "func": "COVER", "keys": None},
         "keys=(EPOXY) name=EPOXY_TOP": {"name": "EPOXY_TOP", "func": None, "keys": ["EPOXY"]},
         "keys=(EPOXY) name=COVERLAY_TOP": {"name": "COVERLAY_TOP", "func": None, "keys": ["EPOXY"]},
         "keys=() name=COVERLAY_TOP": {"name": "COVERLAY_TOP", "func": None, "keys": []},
@@ -53,6 +57,9 @@ CASES: dict[str, dict[str, dict]] = {
         "rot=90 off=nil":        {"pin_xy": [2.19, 0.375], "rotation": 90.0,  "offset": None},
         "rot=270 off=(0 0)":     {"pin_xy": [2.19, 0.375], "rotation": 270.0, "offset": [0.0, 0.0]},
         "rot=nil off=(0.375 0)": {"pin_xy": [2.19, 0.375], "rotation": None,  "offset": [0.375, 0.0]},
+        **{f"mirrored rot={r:g} off=(0.375 0.25)": {"pin_xy": [2.19, 0.375], "rotation": float(r),
+                                                    "offset": [0.375, 0.25], "mirrored": True}
+           for r in (0, 90, 180, 270)},
     },
     "s3dBoxesMeet": {},          # filled in below - each case has a reversed twin
     "s3dJsonQuote": {

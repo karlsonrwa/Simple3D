@@ -160,6 +160,16 @@ procedure( s3dDrillXY( pin padstack )
             when( numberp( yCoord( offset ) )  dy = yCoord( offset ) )
         )
         unless( numberp( rotation )  rotation = 0.0 )
+        ; A mirrored pin's padstack is flipped with its part, x to -x, before
+        ; it is turned - the order Allegro applies, and the pads' figures
+        ; (stepbuilder/pads.py). Measured with axlPolyFromDrillHole, every
+        ; drilled padstack of Cadence's demo and flex3-a0 given the offset
+        ; (0.375 0.25) (tools/probes/probe_drill_offset.il, round 128, R1-4 of
+        ; the 23.10.2026 review): the 235 pins not mirrored, at 0, 90, 180 and
+        ; 270 degrees, where the turn alone put them; the 4 mirrored ones, at
+        ; 90 and 180 degrees, 0.750 mm off - twice the offset's x - until
+        ; the flip came first.
+        when( pin->isMirrored  dx = -dx )
         if( (dx == 0.0) && (dy == 0.0) then
             ; Nothing to apply. Returned as-is rather than rotated by zero, so
             ; the overwhelmingly common padstack is not put through a sin/cos
@@ -219,7 +229,15 @@ procedure( makeSlotAt( xy rotation padstack )
             beta = 180.0 + rotation
             alpha = modf( alpha 360.0 )
             beta = modf( beta 360.0 )
-            ccw = "false"
+            ; Entered at alpha, the right end, where the last line arrives,
+            ; and left at beta, where the first line starts: "true", the
+            ; reader's way (alpha..beta bound the arc, ccw says which end the
+            ; contour enters by). "false" walked it backwards, the slot's two
+            ; half circles cancelled and a walk in order measured flex-b2's
+            ; 0.6 x 3.4 slot 1.680 mm2 for 1.963 (round 128, R1-8 of the
+            ; 23.10.2026 review). The solid never showed it: OpenCASCADE
+            ; joins the edges in any order.
+            ccw = "true"
 
             segment = strcat(
                 "{\n\t\"type\": \"arc\",\n"
@@ -344,19 +362,26 @@ procedure( boardGeometryParseSegment( segment )
 ; Same parser the board outline uses - a zone outline, a stiffener shape and
 ; the board edge all carry the same line/arc segments.
 procedure( s3dContourJson( o_dbid )
-    let( ( contour element )
+    let( ( contour element box )
         contour = nil
-        errset(
-            foreach( segment o_dbid->segments
-                element = boardGeometryParseSegment( segment )
-                when( element
-                    if( contour then
-                        tconc( contour element )
-                    else
-                        contour = tconc( nil element )
-                    )
-                )
-            )
+        ; A fault part way along used to leave the part read, silently; it is
+        ; named now, with the outline's box to find it by (round 128, R1n-13
+        ; of the 28.10.2026 review) - Allegro drops a warning word for word
+        ; the same as the one before it.
+        unless( errset(
+                    foreach( segment o_dbid->segments
+                        element = boardGeometryParseSegment( segment )
+                        when( element
+                            if( contour then
+                                tconc( contour element )
+                            else
+                                contour = tconc( nil element )
+                            )
+                        )
+                    ) t )
+            box = nil
+            errset( box = o_dbid->bBox )
+            s3dWarn( sprintf( nil "Simple 3D: an outline in %L could not be read whole (message above) - what was read is written" box ) )
         )
         when( contour
             strcat( "[\n" s3dAddIndent( buildString( car( contour ) ",\n" ) ) "\n]" )

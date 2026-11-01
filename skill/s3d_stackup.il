@@ -34,14 +34,21 @@
 procedure( s3dBoardThickness()
     let( ( names query all layers span ( above 0.0 ) ( core 0.0 ) ( below 0.0 ) ( i 0 ) )
         names = nil
-        errset( names = axlXSectionGet( nil 'stackups ) )
+        ; A refusal is named, not taken for "a plain board" (round 128, R1n-13
+        ; of the 28.10.2026 review); errset's t prints Allegro's own message.
+        unless( errset( names = axlXSectionGet( nil 'stackups ) t )
+            s3dWarn( "Simple 3D: the stackup names could not be read (message above) - the board's thickness is taken from the cross section itself" )
+        )
         query = cond(
             ( !names                      nil )        ; a plain board: the cross section itself
             ( member( "PRIMARY" names )   "PRIMARY" )
             ( t                           'none ) )
         all = nil
         unless( query == 'none
-            errset( all = axlXSectionGet( query 'all ) )
+            unless( errset( all = axlXSectionGet( query 'all ) t )
+                s3dWarn( sprintf( nil "Simple 3D: the layers of %s could not be read (message above) - the file carries no pcb.thickness, the STEP tool measures it from the stackups"
+                                  if( stringp( query ) then strcat( "stackup " query ) else "the cross section" ) ) )
+            )
         )
         layers = nil
         foreach( layer all
@@ -96,9 +103,16 @@ procedure( s3dBoardThickness()
 ; Thickness of one cross-section entry, 0.0 when it has none (the two
 ; surface entries).
 procedure( s3dLayerThk( o_layer )
-    let( ( thk )
+    let( ( thk nm )
         thk = nil
-        errset( thk = o_layer->thickness )
+        ; nil, no error, on the two surface entries; an error is named
+        ; (round 128, R1n-13), the layer counted as 0 as before.
+        unless( errset( thk = o_layer->thickness t )
+            nm = nil
+            errset( nm = o_layer->name )
+            s3dWarn( sprintf( nil "Simple 3D: the thickness of stackup layer %s could not be read (message above) - counted as 0"
+                              if( stringp( nm ) then nm else "(no name)" ) ) )
+        )
         if( thk && numberp( thk ) then thk else 0.0 )
     )
 )
@@ -161,37 +175,57 @@ S3D_ExportFullBoard = t
 ;
 ; Determined by IPC-2581 layer FUNCTION where the design carries one -
 ; layerFunction is what the Mask Layer Site File assigns, per the rigid-flex
-; documentation - and by name prefix otherwise.
+; documentation - and by the name otherwise: a key anywhere in either.
+;
+; Both are read in letters and digits only, each on its own, as the STEP tool
+; reads a soldermask (stepbuilder/stackup.py, _is_soldermask): a function
+; spelled SOLDER_MASK or "Solder Mask" and a name like SOLDER-MASK_TOP carry
+; the key SOLDERMASK the same way. Until round 128 the key had to stand
+; unbroken in the upper-cased text, so such a mask was built from its shapes
+; as material while the STEP tool called it a mask (R1n-10 of the 28.10.2026
+; review). Each on its own, so the end of the function and the start of the
+; name make no word between them.
 ;
 ; NOT by negativeArtwork: that flag is about film generation and reads nil on
 ; every layer of a real rigid-flex board, including the coverlay, which is
 ; unambiguously drawn as openings. Believing it produced a board with the
 ; coverlay inverted - material where the windows should be.
 procedure( s3dLayerIsNegative( o_layer )
-    let( ( nm fn ( neg nil ) probe )
+    let( ( nm fn ( neg nil ) parts word )
         nm = nil
         errset( nm = o_layer->name )
         fn = nil
         errset( fn = o_layer->layerFunction )
 
-        ; the function name, when there is one, carries the same words
-        probe = ""
-        when( stringp( fn )  probe = upperCase( fn ) )
-        when( stringp( nm )  probe = strcat( probe " " upperCase( nm ) ) )
+        ; the function, when there is one, carries the same words as a name
+        parts = nil
+        when( stringp( fn )  parts = cons( s3dLettersAndDigits( fn ) parts ) )
+        when( stringp( nm )  parts = cons( s3dLettersAndDigits( nm ) parts ) )
 
         foreach( key S3D_NegativeLayers
-            when( stringp( key ) && (strlen( key ) > 0)
-                ; substring search, so COVERLAY matches COVERLAY_TOP and a
-                ; function spelled "Coverlay" alike
-                for( i 1 (strlen( probe ) - strlen( key ) + 1)
-                    when( substring( probe i strlen( key ) ) == upperCase( key )
-                        neg = t
+            when( stringp( key )
+                word = s3dLettersAndDigits( key )
+                when( strlen( word ) > 0
+                    ; substring search, so COVERLAY matches COVERLAY_TOP and a
+                    ; function spelled "Coverlay" alike
+                    foreach( part parts
+                        for( i 1 (strlen( part ) - strlen( word ) + 1)
+                            when( substring( part i strlen( word ) ) == word
+                                neg = t
+                            )
+                        )
                     )
                 )
             )
         )
         neg
     )
+)
+
+; Upper case, letters and digits only: "Solder Mask" and SOLDER_MASK both
+; read SOLDERMASK (s3dLayerIsNegative, round 128).
+procedure( s3dLettersAndDigits( t_text )
+    pcreReplace( pcreCompile( "[^A-Z0-9]" ) upperCase( t_text ) "" 0 )
 )
 
 ; One drawn shape as { "outline": [...], "voids": [ [...], ... ] }.
@@ -249,7 +283,9 @@ procedure( s3dCollectRigidFlexShapes( g_state )
         table = makeTable( "s3dRigidFlexShapes" nil )
         g_state['shapes] = table
         shapes = nil
-        errset( shapes = axlDBGetShapes( "RIGID FLEX" ) )
+        unless( errset( shapes = axlDBGetShapes( "RIGID FLEX" ) t )
+            s3dWarn( "Simple 3D: the RIGID FLEX shapes could not be read (message above) - no stackup layer carries its drawn shapes" )
+        )
 
         foreach( s shapes
             key = nil
@@ -310,12 +346,17 @@ procedure( s3dZoneList()
     let( ( out groups outline )
         out = tconc( nil nil )
         groups = nil
-        errset( groups = axlDBGetDesign()->groups )
+        unless( errset( groups = axlDBGetDesign()->groups t )
+            s3dWarn( "Simple 3D: the design's groups could not be read (message above) - no zone is exported" )
+        )
 
         foreach( g groups
             when( g && (g->type == "ZONE_GROUP") && g->stackup
                 outline = nil
-                errset( outline = car( g->groupMembers ) )
+                unless( errset( outline = car( g->groupMembers ) t )
+                    s3dWarn( sprintf( nil "Simple 3D: the outline of zone %s could not be read (message above) - the zone is left out"
+                                      g->name ) )
+                )
                 when( outline && outline->segments
                     tconc( out list( g->name g->stackup outline ) )
                 )
@@ -381,7 +422,10 @@ procedure( s3dStackupJson( t_name g_stackup g_state )
            ( nSkip 0 ) zTop zBot shapes body out ( first t )
            silkTop silkBot allSpan )
         all = nil
-        errset( all = axlXSectionGet( g_stackup 'all ) )
+        unless( errset( all = axlXSectionGet( g_stackup 'all ) t )
+            s3dWarn( sprintf( nil "Simple 3D: the layers of stackup %s could not be read (message above) - it is written with none"
+                              t_name ) )
+        )
 
         ; Drop what is not part of the body BEFORE anything is measured: the
         ; z walk below closes the remaining layers up against the core, so a
@@ -489,7 +533,9 @@ procedure( s3dStackupJson( t_name g_stackup g_state )
 procedure( s3dStackupsJson( g_state )
     let( ( names out ( first t ) )
         names = nil
-        errset( names = axlXSectionGet( nil 'stackups ) )
+        unless( errset( names = axlXSectionGet( nil 'stackups ) t )
+            s3dWarn( "Simple 3D: the stackup names could not be read (message above) - the file carries no stackups" )
+        )
         if( names then
             out = "\"stackups\": {\n"
             foreach( s names

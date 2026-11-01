@@ -47,7 +47,10 @@
 ;  USAGE
 ;    makeVariant3dIntermediates( outputDir [ pcbColor ] [ configFile ] )
 ;  Writes <design>.json (or one <design>_<variant>.json per variant if a
-;  Variants.lst sits BESIDE THE BOARD) into outputDir. Design units must be mm.
+;  Variants.lst sits BESIDE THE BOARD) into outputDir. Design units must be
+;  millimeters: any other is refused before anything is written (round 128).
+;  Names the components without a STEP model, and on a board with zones each
+;  one whose origin lies in no zone.
 ;  configFile is the silkscreen layer/settings JSON; when omitted,
 ;  "simple3d_config.json" in the working directory is used if present, and
 ;  otherwise the built-in defaults apply.
@@ -63,7 +66,7 @@
 ; through and refdes is read off it. A string is still accepted, because it
 ; costs three lines and keeps the old call shape working.
 procedure( symbolReturn3DElements( g_symbol g_state )
-    let( ( stepPackageMapping refDes dbid sym mappingData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole mfrPn zone zoneName ( holes 'unbound ) )
+    let( ( stepPackageMapping refDes dbid sym mappingData deviceData stepFileName offset_x offset_y offset_z rotation_x rotation_y rotation_z isMirrored xy angle hole mfrPn zone zoneName ( holes 'unbound ) )
 
         stepPackageMapping = nil
 
@@ -94,7 +97,20 @@ procedure( symbolReturn3DElements( g_symbol g_state )
         ; when(stepFileName ...) below still skips it, so behaviour is unchanged
         ; apart from the message.
         if( sym then
-            mappingData = axlStepGet( nil nil sym )
+            ; the footprint's binding, else the device's (s3dStepMapping,
+            ; round 128, R1-7 of the 23.10.2026 review)
+            mappingData = s3dStepMapping( sym )
+            ; Two bindings naming different models: the footprint's is taken,
+            ; and the part is named once per export.
+            deviceData = nil
+            errset( deviceData = axlStepGet( nil nil sym->component->compdef ) )
+            when( mappingData && deviceData && deviceData->step_name
+                  && (deviceData->step_name != mappingData->step_name)
+                  && tablep( g_state['twoModels] ) && !g_state['twoModels][refDes]
+                g_state['twoModels][refDes] = t
+                s3dWarn( sprintf( nil "Simple 3D: %s is bound to two STEP models - %s by its footprint and %s by its device; the export takes the footprint's"
+                                  refDes mappingData->step_name deviceData->step_name ) )
+            )
         else
             printf( "Simple 3D: %s - not found in the design, skipped.\n" refDes )
         )
@@ -134,6 +150,18 @@ procedure( symbolReturn3DElements( g_symbol g_state )
             errset( zoneName = zone->name )
         )
         unless( stringp( zoneName )  zoneName = nil )
+        ; On a board with zones, a part whose origin lies in none is named,
+        ; once per export (round 128, R1-5 of the 23.10.2026 review): "zone":
+        ; null said nothing, and the STEP tool then stood the part on the
+        ; board's thickest face - 2.075 mm off on flex2-a0's stacks. Its place
+        ; is in the line: Allegro drops a warning word for word the same as
+        ; the one before it.
+        when( stepFileName && !zoneName && g_state['hasZones] && tablep( g_state['noZone] )
+                           && !g_state['noZone][refDes]
+            g_state['noZone][refDes] = t
+            s3dWarn( sprintf( nil "Simple 3D: %s stands in no zone - its origin (%g, %g) lies outside every zone outline"
+                              refDes xCoord( xy ) yCoord( xy ) ) )
+        )
 
         ; set step package mapping
         when( stepFileName
@@ -455,7 +483,7 @@ procedure( create3dIntermediateFormat( thicknesses edgeCuts pcbColor symbols var
 
 procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configFile nil ) )
     let( (  ( variantFile s3dVariantFilePath() ) dsnName dsn thicknesses edgeCuts silk silkConfig pads variantInformation variantSymbolList alternateParts variant variantCount symbols variantName fileName state
-            variantNames clashes message )
+            variantNames clashes message units noModel )
         ; The list used to go on: a second `thicknesses`, and `elements placement
         ; outFile outPort pcb lines` - names this procedure never touches. They
         ; were create3dIntermediateFormat's, reaching its let through SKILL's
@@ -469,6 +497,33 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
         ; get design and design name
         dsnName = axlCurrentDesign()
         dsn = axlDBGetDesign()
+
+        ; Millimetres only (round 128, R1-3 of the 23.10.2026 review). Every
+        ; coordinate, offset and thickness leaves Allegro in DESIGN units -
+        ; axlStepGet's offsets and axlXSectionGet's thicknesses say so on
+        ; their reference pages - the file carries no unit, and the STEP tool
+        ; reads millimetres: a board in mils came out 25.4 times the size of
+        ; its models, without a word. Refused before anything is written;
+        ; converting on export is the owner's to decide.
+        units = nil
+        errset( units = car( axlDBGetDesignUnits() ) )
+        unless( stringp( units ) && (lowerCase( units ) == "millimeters")
+            error( "%s" strcat(
+                sprintf( nil "Simple 3D: the design is in %s, and the export writes millimetres only - every coordinate, offset and thickness would be read as millimetres.\n"
+                         if( stringp( units ) then units else "units Allegro does not report" ) )
+                "Set the design units to millimeters (Setup > Design Parameters > Design) on a copy of the board and export that.\n" ) )
+        )
+
+        ; The parts without a STEP model, named by the export itself (round
+        ; 128, R1n-15 of the 28.10.2026 review): run from the console or by
+        ; tools/skill_export.py it left them out without a word, and only the
+        ; menu command said so, before calling this. Once per export, the
+        ; whole design but what NO_STEP_EXPORT excludes - s3dCheckMfrPn's list.
+        noModel = cadr( s3dCheckMfrPn() )
+        when( noModel
+            printf( "Simple 3D: %d component(s) have no 3D model, not exported: %L\n"
+                    length( noModel ) noModel )
+        )
 
         ; The export state (round 77, D7): what one export accumulates, in one
         ; table handed down through the writers instead of four session
@@ -488,6 +543,12 @@ procedure( makeVariant3dIntermediates( dir, @optional ( pcbColor nil ) ( configF
         state['silkWarnings] = nil
         state['warnings] = nil
         state['mechSeq] = 0
+        ; Does the board have zones, and which parts standing in none were
+        ; named already - per export, so a part is named once, not per file
+        ; (symbolReturn3DElements, round 128).
+        state['hasZones] = (dsn->zone != nil)
+        state['noZone] = makeTable( "s3dNoZone" nil )
+        state['twoModels] = makeTable( "s3dTwoModels" nil )
 
         ; create dir (recursively - createDir makes only one level at a time,
         ; so walk the path and create each missing segment).

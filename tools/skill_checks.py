@@ -260,8 +260,13 @@ def check_formats(code):
             index = FORMAT_PARAMS[name][1]
             fmt = args[index] if len(args) > index else None
         else:                                     # axlUIWPrint( form [level] format args )
+            # One argument after the form is the format, whatever it is: a
+            # level never comes without one. axlUIWPrint( nil msg ) went
+            # unseen until round 128 (R1n-11 of the 28.10.2026 review), the
+            # second argument taken for a level and the third, absent, asked.
             rest = args[1:]
-            fmt = rest[0] if rest and _constant_format(rest[0]) else (rest[1] if len(rest) > 1 else None)
+            fmt = rest[0] if len(rest) == 1 or (rest and _constant_format(rest[0])) else (
+                rest[1] if len(rest) > 1 else None)
         if fmt is None or fmt in allowed or _constant_format(fmt):
             continue
         shown = re.sub(r'"(\d+)"', lambda k: lits[int(k.group(1))], fmt)
@@ -383,10 +388,13 @@ def self_test():
     fmt_bad = ('fprintf( port strcat( "\\t" line ) )\n'
                'error( strcat( sprintf( nil "%s\\n" path ) "the rest" ) )\n'
                's3dSelectVisibleOn( layers filter fmt )\n'
-               'printf( name )\n')
+               'printf( name )\n'
+               'axlUIWPrint( nil msg )\n'
+               "axlUIWPrint( nil 'warn msg )\n")
     found = [call.split("(")[0] for _, call in check_formats(fmt_bad)]
-    if found != ["fprintf", "error", "s3dSelectVisibleOn", "printf"]:
-        problems.append(f"the format check sees {found}, not fprintf, error, s3dSelectVisibleOn and printf")
+    if found != ["fprintf", "error", "s3dSelectVisibleOn", "printf", "axlUIWPrint", "axlUIWPrint"]:
+        problems.append(f"the format check sees {found}, not fprintf, error, s3dSelectVisibleOn, printf "
+                        f"and axlUIWPrint twice")
     fmt_good = ('fprintf( port "\\t%s\\n" line )\n'
                 'printf( "a %d\\n" n )\n'
                 'axlUIWPrint( nil s_level "%s" msg )\n'

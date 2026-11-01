@@ -68,6 +68,66 @@ glued = [l.strip() for l in outside.splitlines()
 check("no line glues a value between quote characters", not glued, str(glued[:3]))
 quoted_fmt = [l.strip() for l in outside.splitlines() if re.search(r'fprintf\(.*\\"%s\\"', l)]
 check("no fprintf writes a value through a quoted %s", not quoted_fmt, str(quoted_fmt[:3]))
+# The line test above sees a value glued to a literal that is a quote
+# character alone, "\"". A key and its opening quote in one literal,
+# "\"key\": \"" value "\",\n", passed it (R1n-12 of the 28.10.2026 review,
+# round 128): strcat's own arguments are asked now, a literal ending with \"
+# before a value and a value before a literal starting with \".
+sys.path.insert(0, str(ROOT / "tools"))
+from check_arity import split_top_level  # noqa: E402
+from skill_lex import strip_comments  # noqa: E402
+
+# The comments off by the lexer, which keeps a ';' inside a literal: the line
+# cut above (`split(";")`) breaks 25 of the exporter's lines inside a message,
+# harmless to a test of one line and fatal to one that reads the whole text -
+# every literal after the first such line paired the wrong quotes, and the
+# first version of this guard passed the round-128 mutant it was written for.
+lexed = strip_comments(IL)
+open_lines = [l.strip()[:80] for l in lexed.splitlines() if '"' in re.sub(r'"(\\.|[^"\\])*"', "", l)]
+check("with the comments off, every literal of the exporter closes on its own line",
+      not open_lines, open_lines[:3])
+lq = re.search(r"procedure\( s3dJsonQuote\(.*?\n\)\n", lexed, re.S)
+lexed_outside = lexed[:lq.start()] + lexed[lq.end():] if lq else lexed
+
+
+def glued_in_strcat(code):
+    """'literal value' / 'value literal' for every value glued to a quote
+    character among strcat's arguments in *code* (comments already off)."""
+    lits = []
+
+    def mask(match):
+        lits.append(match.group(0))
+        return f'"{len(lits) - 1}"'
+    masked = re.sub(r'"(\\.|[^"\\])*"', mask, code)
+    found = []
+    for call in re.finditer(r"\bstrcat\(", masked):
+        depth = 0
+        for end in range(call.end() - 1, len(masked)):
+            if masked[end] == "(":
+                depth += 1
+            elif masked[end] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+        args = [re.sub(r'"(\d+)"', lambda k: lits[int(k.group(1))], a)
+                for a in split_top_level(masked[call.end():end])]
+        for a, b in zip(args, args[1:]):
+            if (a.startswith('"') and a.endswith('\\""') and not b.startswith('"')) or \
+               (not a.startswith('"') and b.startswith('"\\"')):
+                found.append(f"{a} {b}")
+    return found
+
+
+check("the strcat guard sees both forms on fragments, and not a value quoted through s3dJsonQuote",
+      len(glued_in_strcat('strcat( "\\"" name "\\"" )')) == 2
+      and len(glued_in_strcat('strcat( "\\"key\\": \\"" value "\\",\\n" )')) == 2
+      and not glued_in_strcat('strcat( "\\t\\"step_name\\": " s3dJsonQuote( x ) ",\\n" )'),
+      (glued_in_strcat('strcat( "\\"" name "\\"" )'), glued_in_strcat('strcat( "\\"key\\": \\"" value "\\",\\n" )')))
+check("and on the source: s3dJsonQuote's own glue, the one place it is meant",
+      bool(lq) and glued_in_strcat(lexed[lq.start():lq.end()]) != [],
+      glued_in_strcat(lexed[lq.start():lq.end()]) if lq else None)
+glued_strcat = glued_in_strcat(lexed_outside)
+check("no strcat glues a value to a quote character outside s3dJsonQuote", not glued_strcat, glued_strcat[:3])
 check("s3dHasJsonSpecial is gone with the skip it served", "s3dHasJsonSpecial" not in IL)
 for site in ('s3dJsonQuote( sprintf( nil "%s" refDes ) )', 's3dJsonQuote( sprintf( nil "%s" stepFileName ) )',
              's3dJsonQuote( zoneName )', 's3dJsonQuote( layer )', 's3dJsonQuote( message )',

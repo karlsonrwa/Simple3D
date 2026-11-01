@@ -93,7 +93,9 @@ into the output folder and deleted as soon as it has been read.
 **The board must be in millimetres** (Allegro's *Setup → Design Parameters →
 Design → User Units*). The exporter writes the board's numbers as Allegro
 holds them, and the Python half reads every one of them as millimetres; it
-converts nothing.
+converts nothing. A board in any other unit is refused before anything is
+written, and the console names its unit; before round 128 a board in mils
+came out 25.4 times the size of its models, without a word.
 
 **1. Python 3.10+** from python.org, with *Add Python to PATH* ticked. `tkinter`
 comes with the standard Windows installer.
@@ -339,6 +341,17 @@ onto the board — minus two exclusions.
 component or component definition to drop every instance of a part, and it stays
 out of the model even if the variant installs it. Each one is named in the
 console.
+
+**A part needs a STEP model mapped in Allegro**, by its footprint or by its
+device (*Device/Package STEP Mapping*). The export names the parts that have
+none, once, however it is run - from the menu, the console or
+`tools/skill_export.py`. A part mapped by its device alone used to be among
+them, though Allegro said it had a model: asked of a placed symbol, Allegro's
+`axlStepGet` answers the footprint's mapping only (measured in round 128).
+When a part has both and they name different models, the footprint's is taken
+and the part is named. On a board with zones, a part whose origin lies in no
+zone is named in the console and in the window's log, with the face it is put
+on.
 
 **The variant list governs everything that has a reference designator.** A
 refdes is exactly what makes a part nameable in a `Variants.lst`, so mechanical
@@ -1117,7 +1130,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 31 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 519 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 31 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 538 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, one that runs the export command into folders it is given, and three that change the copy otherwise - its design units, a drill offset, a device's STEP mapping - two of them exporting it), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1216,6 +1229,9 @@ STEP-модели, но не имеет `x`, `y`, `angle`, `is_mirrored` или 
 **Плата должна быть в миллиметрах** (в Allegro *Setup → Design Parameters →
 Design → User Units*). Экспортёр пишет числа платы так, как их держит Allegro,
 а Python-половина читает каждое из них как миллиметры и ничего не переводит.
+Плату в других единицах экспорт отклоняет до того, как что-либо записано, и
+консоль называет её единицы; до раунда 128 плата в милах выходила в 25,4 раза
+больше своих моделей, и об этом не говорилось ни слова.
 
 **1. Python 3.10+** с python.org, с галочкой *Add Python to PATH*. `tkinter`
 входит в стандартный установщик под Windows.
@@ -1463,6 +1479,17 @@ JSON, ничего не записывается до конца сессии**,
 либо на компонент или его определение, чтобы убрать все экземпляры детали, — и
 он не попадёт в модель, даже если вариант его устанавливает. Каждый такой символ
 называется в консоли.
+
+**Детали нужна модель STEP, привязанная в Allegro** к посадочному месту или к
+компоненту (*Device/Package STEP Mapping*). Детали без модели экспорт называет
+один раз, как бы его ни запустили: из меню, из консоли или через
+`tools/skill_export.py`. Деталь с моделью, привязанной только к компоненту,
+раньше попадала в этот список, хотя Allegro говорил, что модель у неё есть:
+по поставленному символу `axlStepGet` отдаёт только привязку посадочного места
+(замерено в раунде 128). Если у детали есть обе привязки и они называют разные
+модели, берётся модель посадочного места, а деталь называется. На плате с
+зонами деталь, чьё начало координат не лежит ни в одной зоне, называется в
+консоли и в журнале окна вместе с гранью, на которую её поставили.
 
 **Список варианта решает за всё, у чего есть позиционное обозначение.**
 Обозначение — это ровно то, чем деталь можно назвать в `Variants.lst`, поэтому
@@ -2249,7 +2276,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 31 набор тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 519 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 31 набор тестов, два золотых корпуса (STEP и экспорт SKILL, второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 538 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, одного, который запускает команду экспорта в данные ему папки, и трёх, меняющих копию иначе: её единицы, смещение сверла, привязку модели STEP к компоненту; два из них её выгружают), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

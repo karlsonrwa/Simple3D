@@ -154,8 +154,8 @@ def rotateXY(origin, xy, angle):
             origin[1] + dx * math.sin(rad) + dy * math.cos(rad)]
 
 
-def s3dDrillXY(pin_xy, pin_rotation, drill_offset):
-    """pin->xy, pin->rotation, padstack->drillOffset."""
+def s3dDrillXY(pin_xy, pin_rotation, drill_offset, mirrored=False):
+    """pin->xy, pin->rotation, padstack->drillOffset, pin->isMirrored."""
     dx = dy = 0.0
     if drill_offset is not None:
         if isinstance(drill_offset[0], (int, float)):
@@ -164,9 +164,40 @@ def s3dDrillXY(pin_xy, pin_rotation, drill_offset):
             dy = drill_offset[1]
     if not isinstance(pin_rotation, (int, float)):
         pin_rotation = 0.0
+    if mirrored:                                  # flipped before it is turned (round 128)
+        dx = -dx
     if dx == 0.0 and dy == 0.0:
         return pin_xy
     return rotateXY(pin_xy, [pin_xy[0] + dx, pin_xy[1] + dy], pin_rotation)
+
+
+# mirrors skill/s3d_geometry.il: makeSlotAt
+def make_slot_at(xy, rotation, width, height, flags=("true", "true")):
+    """The slot makeSlotAt writes, as the intermediate's primitives: the
+    first half circle, the left line, the second half circle, the right line,
+    turned by *rotation* about *xy*. *flags* are the two arcs' ccw words as
+    the SKILL spells them - test_skill_pins reads them out of the source, so
+    this copy walks the slot the way the file does (round 128, R1-8)."""
+    x, y = xy
+    if width == height:
+        return [{"type": "circle", "x": x, "y": y, "radius": width / 2}]
+    if not height >= width:
+        width, height = height, width
+        rotation = rotation + 90.0
+    radius = width / 2
+    half = (height - width) / 2
+
+    def turned(px, py):
+        return rotateXY(xy, [px, py], rotation)
+
+    return [{"type": "arc", "center": turned(x, y + half), "radius": radius,
+             "alpha": math.fmod(0.0 + rotation, 360.0), "beta": math.fmod(180.0 + rotation, 360.0),
+             "ccw": flags[0] == "true"},
+            {"type": "segment", "start": turned(x - radius, y + half), "end": turned(x - radius, y - half)},
+            {"type": "arc", "center": turned(x, y - half), "radius": radius,
+             "alpha": math.fmod(180.0 + rotation, 360.0), "beta": math.fmod(360.0 + rotation, 360.0),
+             "ccw": flags[1] == "true"},
+            {"type": "segment", "start": turned(x + radius, y - half), "end": turned(x + radius, y + half)}]
 
 
 # mirrors skill/s3d_util.il: s3dDesignFolder, s3dVariantFilePath
@@ -529,7 +560,7 @@ def in_body(nm, fn):
     return not ("SILK" in probe or "PASTE" in probe)
 
 
-# mirrors skill/s3d_stackup.il: s3dLayerIsNegative
+# mirrors skill/s3d_stackup.il: s3dLayerIsNegative, s3dLettersAndDigits
 # The default S3D_NegativeLayers, as simple3d_config.json ships it.
 NEGATIVE_LAYER_KEYS = ["COVERLAY", "SOLDERMASK", "PASTEMASK"]
 
@@ -549,5 +580,14 @@ def s3d_layer_is_negative(name, func=None, keys=None):
     """
     if keys is None:
         keys = NEGATIVE_LAYER_KEYS
-    probe = (func or "").upper() + " " + (name or "").upper()
-    return any(k.upper() in probe for k in keys if k)
+    # Since round 128 (R1n-10): the function and the name each on its own,
+    # in letters and digits only, as the STEP tool reads a soldermask.
+    parts = [letters_and_digits(p) for p in (func, name) if isinstance(p, str)]
+    words = [letters_and_digits(k) for k in keys if isinstance(k, str)]
+    return any(w in part for w in words if w for part in parts)
+
+
+def letters_and_digits(text):
+    """s3dLettersAndDigits: upper case, A-Z and 0-9 only - SKILL's pcreReplace
+    of [^A-Z0-9] after upperCase, which leaves no other letter."""
+    return "".join(c for c in text.upper() if "A" <= c <= "Z" or "0" <= c <= "9")

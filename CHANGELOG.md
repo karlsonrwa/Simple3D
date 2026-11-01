@@ -11,6 +11,44 @@ to use the tool.
 
 ---
 
+- **2026-11-01** — **The exporter says what it used to pass over** (review
+  findings R1-3, R1-4, R1-5, R1-6, R1-7, R1-8, R1n-10, R1n-11, R1n-12, R1n-13
+  and R1n-15, round 128). A design in any unit but millimetres is refused
+  before anything is written. The parts without a STEP model are named by the
+  export itself, however it is run. A part whose model is mapped to its device
+  alone was among them, though Allegro said it had one; it is exported with
+  that model now, and a part mapped two ways to different models is named. On
+  a board with zones, a part whose origin lies in no zone is named, in the
+  console and in the window's log. A mirrored part's drill offset is applied
+  as Allegro applies it, flipped and then turned: the hole was off by twice the
+  offset's x. A slot's outline in the JSON now closes when walked in order
+  (its first half circle was marked as entered from the wrong end); the STEP
+  tool built the same bodies from either. A refusal of Allegro's while the
+  stackups, zones or outlines are read is named instead of swallowed. With
+  *Do not include soldermask* a flex board in Solid keeps its coverlay,
+  0.365 mm, as the layer builds of the same file always did. A mask layer
+  whose function is spelled SOLDER_MASK or "Solder Mask" has its shapes read
+  as openings, as the STEP tool already took it for a mask. /
+  **Экспортёр называет то, мимо чего проходил молча** (находки R1-3, R1-4,
+  R1-5, R1-6, R1-7, R1-8, R1n-10, R1n-11, R1n-12, R1n-13 и R1n-15, раунд 128).
+  Плату в любых единицах, кроме миллиметров, экспорт отклоняет до того, как
+  что-либо записано. Детали без модели STEP называет сам экспорт, как бы его
+  ни запустили. Деталь, чья модель привязана только к компоненту, попадала в
+  этот список, хотя Allegro говорил, что модель у неё есть; теперь она
+  выгружается с этой моделью, а деталь с двумя привязками к разным моделям
+  называется. На плате с зонами деталь, чьё начало координат не лежит ни в
+  одной зоне, называется в консоли и в журнале окна. Смещение сверла у
+  отражённой детали применяется так, как его применяет Allegro: сначала
+  отражение, потом поворот; раньше отверстие уходило в сторону на удвоенную
+  x-составляющую смещения. Контур паза в JSON теперь замыкается при обходе по
+  порядку (его первая полуокружность была помечена входящей не с того конца);
+  сборщик STEP строил из обоих контуров одинаковые тела. Отказ Allegro при чтении стеков, зон и контуров называется, а не
+  проглатывается. С *Do not include soldermask* гибкая плата в режиме Solid
+  сохраняет коверлей, 0,365 мм, как всегда было в послойных сборках того же
+  файла. Фигуры слоя маски, чья функция записана как SOLDER_MASK или
+  «Solder Mask», читаются как окна: сборщик STEP и раньше считал такой слой
+  маской.
+
 - **2026-11-01** — **A zone drawn inside another holds its own area** (review
   findings R3-6 and R3-7, round 127). Allegro nests stackup zones since release
   22.1 QIR2: a zone drawn inside another is the stackup of that area, and the

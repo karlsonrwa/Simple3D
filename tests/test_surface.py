@@ -85,6 +85,12 @@ board["components"] = {
     "P2": {"x": OPENING[0], "y": OPENING[1], "angle": 0.0, "is_mirrored": True, "zone": "S2",
            "step_mapping": dict(ZERO)},
     "P3": {"x": SOLID_POINT[0], "y": SOLID_POINT[1], "angle": 0.0, "is_mirrored": False, "zone": "S2",
+           "step_mapping": dict(ZERO)},
+    # round 128 (R1-5): the export could not tell their zone - one with its
+    # origin where no zone is (x 16..41 under F2 is no zone's), one in S2
+    "P4": {"x": 30.0, "y": 5.0, "angle": 0.0, "is_mirrored": False, "zone": None,
+           "step_mapping": dict(ZERO)},
+    "P5": {"x": SOLID_POINT[0], "y": SOLID_POINT[1], "angle": 0.0, "is_mirrored": False, "zone": None,
            "step_mapping": dict(ZERO)}}
 jf = OUT / "windowed.json"
 jf.write_text(json.dumps(board), encoding="utf-8")
@@ -176,6 +182,15 @@ check("and the one under the opened coverlay, with how far above the bottom",
       [m for m in logs if "stands on" in m])
 check("the part on the stiffener is not named", not any("P3 stands" in m for m in logs),
       [m for m in logs if "stands on" in m])
+# R1-5 of the 23.10.2026 review (round 128): "zone": null and an origin in
+# no zone put a part on the board's thickest face without a word - 2.075 mm
+# off on flex2-a0's stacks.
+check("a part whose zone is unknown and whose origin no zone holds is named, with the face it is put on",
+      any(m.startswith("warning: P4 stands in no zone - its origin (30, 5) lies outside every zone outline; "
+                       f"placed on the board's top face, z {stack.board_top_z:.3f}") for m in logs),
+      [m for m in logs if "no zone" in m])
+check("one with no zone whose origin a zone holds stands on the surface there, unnamed",
+      not any("P5 stands" in m for m in logs), [m for m in logs if "P5" in m])
 
 print("\n[3] a pad, its window and a drawn opening lie on the surface under them")
 flat = []                          # (x, y, z) of every face the build wrote outside the board solid

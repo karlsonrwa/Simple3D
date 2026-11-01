@@ -14,7 +14,7 @@ mapping, and optionally the silkscreen. Full description, with the reasons:
 ## Running it
 
 1. In Allegro PCB Editor: **File → Export → Simple 3D**. The design units must
-   be **mm**.
+   be **mm**; a board in any other unit is refused, and the console says so.
 2. The board is read and `<board>.json` written into the `cad` folder beside
    `pcb` (or beside the `.brd` when there is none); then the window opens with
    the paths filled in. Allegro's own progress form covers all of that — our

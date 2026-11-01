@@ -1,6 +1,6 @@
 {
- "_comment": "What Allegro's own SKILL interpreter answered, run by tools/probes/probe_translit.il on Cadence_Demo.s3dProbeTranslit.txt and turned into this file by tools/skill_answers.py. The oracle for the Python copies in tests/skill_transliterations.py, compared against it in test_skill_pins [7]. `inputs` are this repository's; `answer` is Allegro's.",
- "source": "Cadence_Demo.s3dProbeTranslit.txt",
+ "_comment": "What Allegro's own SKILL interpreter answered, run by tools/probes/probe_translit.il on demo.s3dProbeTranslit.txt and turned into this file by tools/skill_answers.py. The oracle for the Python copies in tests/skill_transliterations.py, compared against it in test_skill_pins [7]. `inputs` are this repository's; `answer` is Allegro's.",
+ "source": "demo.s3dProbeTranslit.txt",
  "skipped": [
   "s3dJsonQuote | control 0x01 | sprintf %c is not available here",
   "s3dJsonQuote | control 0x08 | sprintf %c is not available here",
@@ -146,6 +146,46 @@
    "inputs": {
     "name": null,
     "func": null,
+    "keys": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=SM_TOP function=SOLDER_MASK",
+   "inputs": {
+    "name": "SM_TOP",
+    "func": "SOLDER_MASK",
+    "keys": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=MASK_9 function=Solder Mask",
+   "inputs": {
+    "name": "MASK_9",
+    "func": "Solder Mask",
+    "keys": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=SOLDER-MASK_TOP",
+   "inputs": {
+    "name": "SOLDER-MASK_TOP",
+    "func": null,
+    "keys": null
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dLayerIsNegative",
+   "case": "name=LAY_TOP function=COVER",
+   "inputs": {
+    "name": "LAY_TOP",
+    "func": "COVER",
     "keys": null
    },
    "answer": null
@@ -350,6 +390,86 @@
    "answer": [
     2.565,
     0.375
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "mirrored rot=0 off=(0.375 0.25)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 0.0,
+    "offset": [
+     0.375,
+     0.25
+    ],
+    "mirrored": true
+   },
+   "answer": [
+    1.815,
+    0.625
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "mirrored rot=90 off=(0.375 0.25)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 90.0,
+    "offset": [
+     0.375,
+     0.25
+    ],
+    "mirrored": true
+   },
+   "answer": [
+    1.94,
+    1.530808e-17
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "mirrored rot=180 off=(0.375 0.25)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 180.0,
+    "offset": [
+     0.375,
+     0.25
+    ],
+    "mirrored": true
+   },
+   "answer": [
+    2.565,
+    0.125
+   ]
+  },
+  {
+   "procedure": "s3dDrillXY",
+   "case": "mirrored rot=270 off=(0.375 0.25)",
+   "inputs": {
+    "pin_xy": [
+     2.19,
+     0.375
+    ],
+    "rotation": 270.0,
+    "offset": [
+     0.375,
+     0.25
+    ],
+    "mirrored": true
+   },
+   "answer": [
+    2.44,
+    0.75
    ]
   },
   {

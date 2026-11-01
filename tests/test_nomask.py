@@ -110,5 +110,31 @@ for nm,ig,want in [("p9_with",False,1.096),("p9_without",True,1.036)]:
     v=volume(read_step(OUT/f"{nm}.step"))
     check(f"v9 {'без' if ig else 'с'} маской: толщина {want}", abs(v-100*want)<0.01, f"{v/100:.4f}")
 
+print("\n[7] гибкая плата без маски: в Solid остаётся коверлей, как в послойной сборке (раунд 128)")
+# R1-6 ревью 23.10.2026: pcb.thickness с раунда 76 делится по ПОЛОЖЕНИЮ -
+# всё снаружи крайних проводников, а у гибкого стека там коверлей и клей, не
+# маска. Solid с «Ignore soldermask» выбрасывал эти 0.150 мм, а послойная
+# сборка того же файла их держала: 0.215 против 0.365 мм. Теперь из толщины
+# вычитаются только слои маски стека платы, по тому же правилу, что в
+# drop_soldermask.
+FLEX=[("COVERLAY_TOP","MASK",0.025),("ADHESIVE_TOP","MASK",0.05),("TOP","CONDUCTOR",0.045),
+      ("DIEL","DIELECTRIC",0.125),("BOTTOM","CONDUCTOR",0.045),("ADHESIVE_BOTTOM","MASK",0.05),
+      ("COVERLAY_BOTTOM","MASK",0.025)]
+d4={"format":"simple3d","format_version":12,"name":"flexonly",
+    "pcb":{"thickness":{"soldermask_top":0.075,"board":0.215,"soldermask_bottom":0.075},
+           "color":base["pcb"]["color"],"edges":[rect(0,0,10,10)]},
+    "stackups":{"FLEX":{"thickness":0.365,"layers":core.restack(mk(FLEX))}},
+    "components":{}}
+f4=OUT/"flexonly.json"; f4.write_text(json.dumps(d4))
+got={}
+for nm,mode in [("f_solid","solid"),("f_inspect","inspect")]:
+    core.generate(step_dir=ROOT/"demo/step_files",json_file=f4,output_dir=OUT,
+                  output_name=nm,ignore_soldermask=True,board_mode=mode,log=lambda m:None)
+    got[mode]=volume(read_step(OUT/f"{nm}.step"))/100
+check(f"Solid без маски: 0.365 мм, коверлей и клей на месте ({got['solid']:.4f})",
+      abs(got["solid"]-0.365)<1e-6, f"{got['solid']:.4f}")
+check(f"и столько же, сколько послойная сборка того же файла ({got['inspect']:.4f})",
+      abs(got["solid"]-got["inspect"])<1e-6, f"{got['solid']:.4f} / {got['inspect']:.4f}")
+
 print("\nРЕЗУЛЬТАТ:", "ВСЁ ПРОЙДЕНО" if not fails else f"{len(fails)} ОШИБОК: {fails}")
 sys.exit(0 if not fails else 1)

@@ -282,9 +282,31 @@ procedure( s3dEmbeddedModelsJson()
 ; association (FORMAT, DRAFTING, plain graphics) returns nil and is not admitted,
 ; so this needs no separate symbol-type filter.
 procedure( s3dHasStepModel( o_sym )
+    when( s3dStepMapping( o_sym )  t )
+)
+
+; The STEP mapping of a placed symbol: its footprint's binding (the symdef's)
+; when it has one, else its device's (the compdef's); nil when neither.
+;
+; axlStepGet asked of the symbol INSTANCE - the form the exporter used, where
+; the reference names "a symdef or compdef" - answers the footprint's binding
+; only. Measured in Allegro 25.1 on a copy of my_test_board-a0 (round 128,
+; R1-7 of the 23.10.2026 review, tools/probes/probe_stepget.il): SB1 bound by
+; its footprint answered that model from the instance and the symdef alike;
+; with a second binding made on its device, the instance still answered the
+; footprint's; with the footprint's deleted and the device's alone, the
+; instance answered nil - the part left out as "no 3D model" - while
+; axlStepMappedInstance said it had one. Which of two bindings Allegro's own
+; 3D takes was not measured; the footprint's stays the one taken, as before,
+; and symbolReturn3DElements names a part whose two bindings differ.
+procedure( s3dStepMapping( o_sym )
     let( ( m )
         m = nil
         errset( m = axlStepGet( nil nil o_sym ) )
-        m && m->step_name && t
+        unless( m && m->step_name
+            m = nil
+            errset( m = axlStepGet( nil nil o_sym->component->compdef ) )
+        )
+        when( m && m->step_name  m )
     )
 )

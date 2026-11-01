@@ -165,6 +165,16 @@ procedure( s3dProbeTranslit()
             s3dLayerIsNegative( s3dProbeTranslitLayer( "MASK_7" "Coverlay" ) ) )
         s3dProbeTranslitCase( "s3dLayerIsNegative" "name=nil function=nil"
             s3dLayerIsNegative( s3dProbeTranslitLayer( nil nil ) ) )
+        ; round 128 (R1n-10): letters and digits only, the function and the
+        ; name each on its own
+        s3dProbeTranslitCase( "s3dLayerIsNegative" "name=SM_TOP function=SOLDER_MASK"
+            s3dLayerIsNegative( s3dProbeTranslitLayer( "SM_TOP" "SOLDER_MASK" ) ) )
+        s3dProbeTranslitCase( "s3dLayerIsNegative" "name=MASK_9 function=Solder Mask"
+            s3dLayerIsNegative( s3dProbeTranslitLayer( "MASK_9" "Solder Mask" ) ) )
+        s3dProbeTranslitCase( "s3dLayerIsNegative" "name=SOLDER-MASK_TOP"
+            s3dLayerIsNegative( s3dProbeTranslitLayer( "SOLDER-MASK_TOP" nil ) ) )
+        s3dProbeTranslitCase( "s3dLayerIsNegative" "name=LAY_TOP function=COVER"
+            s3dLayerIsNegative( s3dProbeTranslitLayer( "LAY_TOP" "COVER" ) ) )
         S3D_NegativeLayers = list( "EPOXY" )
         s3dProbeTranslitCase( "s3dLayerIsNegative" "keys=(EPOXY) name=EPOXY_TOP"
             s3dLayerIsNegative( s3dProbeTranslitLayer( "EPOXY_TOP" nil ) ) )
@@ -203,6 +213,19 @@ procedure( s3dProbeTranslit()
         pin->rotation = nil
         padstack->drillOffset = list( 0.375 0.0 )
         s3dProbeTranslitCase( "s3dDrillXY" "rot=nil off=(0.375 0)" s3dDrillXY( pin padstack ) )
+        ; round 128 (R1-4): a mirrored pin's offset flipped before the turn
+        foreach( c list( list( "mirrored rot=0 off=(0.375 0.25)"   0.0   0.375 0.25 )
+                         list( "mirrored rot=90 off=(0.375 0.25)"  90.0  0.375 0.25 )
+                         list( "mirrored rot=180 off=(0.375 0.25)" 180.0 0.375 0.25 )
+                         list( "mirrored rot=270 off=(0.375 0.25)" 270.0 0.375 0.25 ) )
+            pin = ncons( nil )
+            pin->xy = list( 2.19 0.375 )
+            pin->rotation = cadr( c )
+            pin->isMirrored = t
+            padstack = ncons( nil )
+            padstack->drillOffset = list( caddr( c ) cadddr( c ) )
+            s3dProbeTranslitCase( "s3dDrillXY" car( c ) s3dDrillXY( pin padstack ) )
+        )
 
         s3dProbeTranslitSay( "\n===== s3dBoxesMeet =====" )
         foreach( c list(

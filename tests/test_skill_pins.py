@@ -98,11 +98,16 @@ print("\n[1] s3dLayerIsNegative - what makes a layer negative")
 # fourteen assertions never saw it, because they were asking a copy of this
 # written three lines above them.
 pin("s3dLayerIsNegative",
-    'probe = ""',
-    'when( stringp( fn )  probe = upperCase( fn ) )',
-    'when( stringp( nm )  probe = strcat( probe " " upperCase( nm ) ) )',
-    'for( i 1 (strlen( probe ) - strlen( key ) + 1)',
-    'when( substring( probe i strlen( key ) ) == upperCase( key ) neg = t )')
+    'parts = nil',
+    'when( stringp( fn )  parts = cons( s3dLettersAndDigits( fn ) parts ) )',
+    'when( stringp( nm )  parts = cons( s3dLettersAndDigits( nm ) parts ) )',
+    'word = s3dLettersAndDigits( key )',
+    'for( i 1 (strlen( part ) - strlen( word ) + 1)',
+    'when( substring( part i strlen( word ) ) == word neg = t )')
+# Since round 128 (R1n-10 of the 28.10.2026 review) the key is read the way
+# the STEP tool reads a soldermask: letters and digits only.
+pin("s3dLettersAndDigits",
+    'pcreReplace( pcreCompile( "[^A-Z0-9]" ) upperCase( t_text ) "" 0 )')
 
 neg_body = normalise(body("s3dLayerIsNegative") or "")
 check("the only assignment to neg is `neg = t`",
@@ -126,6 +131,21 @@ check("the copy reads the layer function too",
       T.s3d_layer_is_negative("MASK_7", "Coverlay"))
 check("and an empty key list makes nothing negative",
       not T.s3d_layer_is_negative("COVERLAY_TOP", None, []))
+check("the copy reads a function spelled SOLDER_MASK as the soldermask, as the STEP tool does",
+      T.s3d_layer_is_negative("SM_TOP", "SOLDER_MASK")
+      and T.s3d_layer_is_negative("MASK_9", "Solder Mask")
+      and T.s3d_layer_is_negative("SOLDER-MASK_TOP", None))
+check("and the function's end and the name's start make no word between them",
+      not T.s3d_layer_is_negative("LAY_TOP", "COVER"))
+# The STEP tool's own rule for a soldermask, asked of the same names: the two
+# sides of the file have to agree on what is a mask.
+from stepbuilder.stackup import _is_soldermask  # noqa: E402
+for nm, fn in (("SM_TOP", "SOLDER_MASK"), ("MASK_9", "Solder Mask"), ("SOLDER-MASK_TOP", None),
+               ("SOLDERMASK_BOTTOM", None), ("COVERLAY_TOP", "Coverlay")):
+    check(f"the exporter and the STEP tool agree on {nm}/{fn}: "
+          f"{'a mask' if _is_soldermask({'name': nm, 'function': fn}) else 'no mask'}",
+          (not _is_soldermask({"name": nm, "function": fn})) or T.s3d_layer_is_negative(nm, fn),
+          (T.s3d_layer_is_negative(nm, fn), _is_soldermask({"name": nm, "function": fn})))
 
 print("\n[2] s3dDrillXY and rotateXY - where the hole is")
 
@@ -135,6 +155,7 @@ pin("s3dDrillXY",
     'when( numberp( xCoord( offset ) )  dx = xCoord( offset ) )',
     'when( numberp( yCoord( offset ) )  dy = yCoord( offset ) )',
     'unless( numberp( rotation )  rotation = 0.0 )',
+    'when( pin->isMirrored  dx = -dx )',
     'if( (dx == 0.0) && (dy == 0.0) then',
     'rotateXY( xy list( xCoord( xy ) + dx  yCoord( xy ) + dy ) rotation )')
 
@@ -161,6 +182,41 @@ if m:
           f"({m.group(1)}dx, {m.group(2)}dy)",
           abs(got[0] - want[0]) < 1e-12 and abs(got[1] - want[1]) < 1e-12,
           (got, want))
+
+print("\n[2b] makeSlotAt - a slot walks round in order (round 128, R1-8)")
+
+pin("makeSlotAt",
+    'radius = drillSizeWidth / 2',
+    'yCenter = y + ( drillSizeHeight - drillSizeWidth ) / 2',
+    'yCenter = y - ( drillSizeHeight - drillSizeWidth ) / 2',
+    'alpha = 0.0 + rotation',
+    'beta = 180.0 + rotation',
+    'alpha = 180.0 + rotation',
+    'beta = 360.0 + rotation',
+    'xStart = x - radius',
+    'xStart = x + radius')
+
+# Derived: the two arcs' ccw words are read out of the SKILL, in order, and
+# the copy builds the slot with them. Walked in order as contour_points walks
+# it, the slot must close at every joint and hold its area: the first arc's
+# "false" walked it backwards, the two half circles cancelled, and the
+# review measured 0.840 mm2 for a 0.6 x 2.0 slot of 1.123 (R1-8 of the
+# 23.10.2026 review; flex-b2's golden slot 1.680 for 1.963).
+import math  # noqa: E402
+from stepbuilder.contour import contour_points, polygon_area  # noqa: E402
+
+slot_flags = re.findall(r'ccw = "(true|false)"', normalise(body("makeSlotAt") or ""))
+check("the SKILL spells two ccw words, one per half circle", len(slot_flags) == 2, slot_flags)
+if len(slot_flags) == 2:
+    want = math.pi * 0.3 ** 2 + 0.6 * 1.4
+    for turn in (0.0, 30.0, 270.0):
+        prims = T.make_slot_at([10.0, 20.0], turn, 0.6, 2.0, slot_flags)
+        ends = [contour_points([p], arc_steps=64) for p in prims]
+        jump = max(math.dist(a[-1], b[0]) for a, b in zip(ends, ends[1:] + ends[:1]))
+        area = abs(polygon_area(contour_points(prims, arc_steps=256)))
+        check(f"a 0.6 x 2.0 slot turned {turn:g} deg ({slot_flags}): every joint closes "
+              f"and the walk holds {want:.4f} mm2", jump < 1e-9 and abs(area - want) < 1e-3,
+              (round(jump, 6), round(area, 4)))
 
 print("\n[3] s3dBoxesMeet - the separating axis")
 
@@ -872,6 +928,73 @@ check("cmd's own names in the SKILL are the copy's",
       own is not None and tuple(re.findall(r'"([^"]+)"', own.group(1))) == T.CMD_OWN_NAMES,
       own.group(1) if own else None)
 
+print("\n[5h] the export names what it used to pass over in silence (round 128)")
+
+# R1-3 of the 23.10.2026 review: millimetres only, refused before anything
+# is written - measured in Allegro on a copy of circle-A0 turned to mils
+# (tools/probes/probe_units.il): the export stopped with this message and
+# wrote no file.
+pin("makeVariant3dIntermediates",
+    'errset( units = car( axlDBGetDesignUnits() ) )',
+    'unless( stringp( units ) && (lowerCase( units ) == "millimeters")',
+    # R1n-15 of the 28.10.2026 review: the parts without a model named by
+    # the export itself, once
+    'noModel = cadr( s3dCheckMfrPn() )',
+    'printf( "Simple 3D: %d component(s) have no 3D model, not exported: %L\\n" length( noModel ) noModel )',
+    # R1-5: whether the board has zones, and the parts named already
+    "state['hasZones] = (dsn->zone != nil)",
+    """state['noZone] = makeTable( "s3dNoZone" nil )""",
+    """state['twoModels] = makeTable( "s3dTwoModels" nil )""")
+check("and the unit is asked before the stackups, the outline or a file - the first thing after the design",
+      normalise(body("makeVariant3dIntermediates") or "").find("axlDBGetDesignUnits")
+      < normalise(body("makeVariant3dIntermediates") or "").find("s3dBoardThickness()"),
+      "axlDBGetDesignUnits after s3dBoardThickness")
+check("and the menu command no longer says the no-model line itself: it would be said twice",
+      "have no 3D model, not exported" not in re.sub(r";[^\n]*", "", (ROOT / "simple3d.il").read_text(encoding="utf-8")))
+
+# R1-5 and R1-7, in the placement writer: a part in no zone named once per
+# export; the model from s3dStepMapping, a part bound to two models named.
+pin("symbolReturn3DElements",
+    "when( stepFileName && !zoneName && g_state['hasZones] && tablep( g_state['noZone] ) && !g_state['noZone][refDes]",
+    "g_state['noZone][refDes] = t",
+    'mappingData = s3dStepMapping( sym )',
+    "errset( deviceData = axlStepGet( nil nil sym->component->compdef ) )",
+    "&& (deviceData->step_name != mappingData->step_name)")
+# R1-7: the footprint's binding, else the device's - measured in Allegro
+# (tools/probes/probe_stepget.il): with the device's alone the instance form
+# answered nil, the part left out as having no model.
+pin("s3dStepMapping",
+    'errset( m = axlStepGet( nil nil o_sym ) )',
+    'unless( m && m->step_name m = nil errset( m = axlStepGet( nil nil o_sym->component->compdef ) ) )')
+for caller in ("s3dCheckMfrPn", "s3dHasStepModel"):
+    check(f"{caller} asks s3dStepMapping, not the instance alone",
+          "s3dStepMapping( " in normalise(body(caller) or "")
+          and "axlStepGet( nil nil" not in normalise(body(caller) or ""), normalise(body(caller) or "")[:160])
+
+# R1n-13 of the 28.10.2026 review: every errset that used to swallow a
+# refusal - the stackup names and layers, a layer's thickness, the RIGID
+# FLEX shapes, the groups and a zone's outline, an outline's segments - now
+# prints Allegro's message (errset's t) and says what it costs.
+for proc, statement in (
+        ("s3dBoardThickness", "unless( errset( names = axlXSectionGet( nil 'stackups ) t )"),
+        ("s3dBoardThickness", "unless( errset( all = axlXSectionGet( query 'all ) t )"),
+        ("s3dLayerThk", "unless( errset( thk = o_layer->thickness t )"),
+        ("s3dCollectRigidFlexShapes", 'unless( errset( shapes = axlDBGetShapes( "RIGID FLEX" ) t )'),
+        ("s3dZoneList", "unless( errset( groups = axlDBGetDesign()->groups t )"),
+        ("s3dZoneList", "unless( errset( outline = car( g->groupMembers ) t )"),
+        ("s3dStackupJson", "unless( errset( all = axlXSectionGet( g_stackup 'all ) t )"),
+        ("s3dStackupsJson", "unless( errset( names = axlXSectionGet( nil 'stackups ) t )")):
+    pin(proc, statement)
+for proc in ("s3dBoardThickness", "s3dLayerThk", "s3dCollectRigidFlexShapes", "s3dZoneList",
+             "s3dStackupJson", "s3dStackupsJson", "s3dContourJson"):
+    text = normalise(body(proc) or "")
+    check(f"{proc}: each such errset is followed by its s3dWarn",
+          text.count("unless( errset(") >= 1 and text.count("unless( errset(") <= text.count("s3dWarn("),
+          (text.count("unless( errset("), text.count("s3dWarn(")))
+check("s3dContourJson: a fault part way along the segments is named, with the outline's box",
+      "errset( box = o_dbid->bBox )" in normalise(body("s3dContourJson") or ""),
+      normalise(body("s3dContourJson") or "")[:200])
+
 print("\n[6] every copy is pinned, and pins something that exists")
 
 # The loop the audit's finding is really about: a transliteration added later
@@ -967,7 +1090,8 @@ def ask_copy(procedure, inputs):
                T.s3d_layer_is_negative(inputs["name"], inputs["func"], keys))
         return True if got else None          # SKILL answers t or nil
     if procedure == "s3dDrillXY":
-        return list(T.s3dDrillXY(inputs["pin_xy"], inputs["rotation"], inputs["offset"]))
+        return list(T.s3dDrillXY(inputs["pin_xy"], inputs["rotation"], inputs["offset"],
+                                 inputs.get("mirrored", False)))
     if procedure == "s3dBoxesMeet":
         a = [tuple(p) for p in inputs["a"]] if inputs["a"] else inputs["a"]
         b = [tuple(p) for p in inputs["b"]] if inputs["b"] else inputs["b"]

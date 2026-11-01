@@ -138,6 +138,27 @@ def total_board_thickness(thickness: dict) -> float:
     )
 
 
+def thickness_without_soldermask(parts: dict, stackups: dict | None) -> float:
+    """The board's thickness less its soldermask - the board stackup's
+    SOLDERMASK layers out of the whole, and nothing else, the rule
+    `drop_soldermask` applies to the layers.
+
+    pcb.thickness's soldermask_top and soldermask_bottom are by POSITION since
+    round 76: everything outside the outer conductors, which on a flex stack
+    is coverlay and adhesive, not mask. Dropping them lost a flex board's
+    0.150 mm of coverlay in Solid while the layer builds of the same file kept
+    it: 0.215 mm against 0.365 (R1-6 of the 23.10.2026 review, round 128). A
+    file without stackup layers has only the three numbers, and there the two
+    outer ones are the masks, as the exporter before round 76 wrote them.
+    """
+    chosen = board_stackup(stackups or {})
+    layers = [lay for lay in ((chosen[1].get("layers") or []) if chosen else []) if isinstance(lay, dict)]
+    if not layers:
+        return float(parts["board"])
+    mask = sum(float(lay.get("thickness") or 0.0) for lay in layers if _is_soldermask(lay))
+    return total_board_thickness(parts) - mask
+
+
 def board_thickness_parts(data: dict, log: LogFn) -> dict:
     """{soldermask_top, board, soldermask_bottom}: `pcb.thickness` when the file
     has it and the stackups agree, the stackups otherwise.
@@ -270,8 +291,9 @@ def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
     parts = board_thickness_parts(data, log)
     if ignore_soldermask:
         # The plain-board path keeps its masks in pcb.thickness rather than as
-        # stackup layers, so it is the same decision expressed twice.
-        thickness = float(parts["board"])
+        # stackup layers, so it is the same decision expressed twice - and
+        # asked of the same layers (round 128).
+        thickness = thickness_without_soldermask(parts, data.get("stackups"))
     else:
         thickness = total_board_thickness(parts)
 
@@ -1010,6 +1032,7 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
 
     total = len(components)
     lowered = []            # (ref_des, zone, bottom side, how far inside its zone's face), round 103
+    zoneless = []           # (ref_des, x, y, bottom side, z), round 128
     for i, (ref_des, component) in enumerate(components.items(), start=1):
         phase(75 + 20.0 * i / max(total, 1), f"Placing components {i}/{total}")
 
@@ -1041,6 +1064,15 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
         below = _below_zone_face(component, levels, stack.surface)
         if below:
             lowered.append((ref_des, component.get("zone"), bool(component["is_mirrored"]), below))
+        # On a board with zones, a part whose zone the export could not tell
+        # and whose origin no zone holds stands on the board's outer face -
+        # the thickest zone's - and is named (round 128, R1-5 of the
+        # 23.10.2026 review: 2.075 mm off on flex2-a0's stacks, not a word).
+        if levels and component.get("zone") not in levels:
+            px, py = float(component["x"]), float(component["y"])
+            if not stack.surface or stack.surface.at(px, py) is None:
+                zoneless.append((ref_des, px, py, bool(component["is_mirrored"]),
+                                 board_bottom_z if component["is_mirrored"] else board_top_z))
 
         # A folded board carries its parts with it. The component is placed in
         # the FLAT frame first and then moved by whatever its panel does, which
@@ -1090,6 +1122,11 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
             f"{zone}: the zone's {'lower' if bottom else 'upper'} layers have no material there")
     if len(lowered) > LOWERED_SHOWN:
         log(f"  ... and {len(lowered) - LOWERED_SHOWN} more part(s) the same way")
+    for ref_des, px, py, bottom, z in zoneless[:LOWERED_SHOWN]:
+        log(f"warning: {ref_des} stands in no zone - its origin ({px:g}, {py:g}) lies outside every "
+            f"zone outline; placed on the board's {'bottom' if bottom else 'top'} face, z {z:.3f}")
+    if len(zoneless) > LOWERED_SHOWN:
+        log(f"warning: ... and {len(zoneless) - LOWERED_SHOWN} more part(s) in no zone")
 
     _report_embedded_only(data, result, log)
 
