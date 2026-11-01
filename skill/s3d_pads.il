@@ -227,7 +227,7 @@ procedure( s3dHoleAtOrigin( o_padstack )
 ; One padstack of the library, as  "NAME": { usage, drill, pads }, or nil
 ; when Allegro cannot load it by that name.
 procedure( s3dPadstackJson( t_name )
-    let( ( ps pads out ( first t ) hole usage lay body )
+    let( ( ps pads out ( first t ) hole usage lay body paths )
         ps = nil
         errset( ps = axlLoadPadstack( t_name ) )
         when( ps
@@ -244,6 +244,17 @@ procedure( s3dPadstackJson( t_name )
             foreach( pd pads
                 when( s3dIsPadCopperOrMask( pd )
                     lay = pd->layer
+                    ; The outline is the figure's FIRST path (s3dPadFigureJson):
+                    ; every one of the 604 pads with a figure on the nine boards
+                    ; on hand, seven SHAPE pads among them, has one, but a
+                    ; SHAPE with a hole or two islands would lose the rest
+                    ; (round 126, R4n-16 of the 28.10.2026 review).
+                    paths = nil
+                    errset( paths = pd->figure )
+                    when( listp( paths ) && (length( paths ) > 1)
+                        s3dWarn( sprintf( nil "Simple 3D: padstack %s: its %s pad on %s has %d paths; only the first is written."
+                                          t_name pd->figureName lay length( paths ) ) )
+                    )
                     body = strcat( s3dJsonQuote( lay ) ": " s3dPadFigureJson( pd ) )
                     out = strcat( out if( first then "\n" else ",\n" ) s3dAddIndent( body 2 ) )
                     first = nil
@@ -326,8 +337,13 @@ procedure( s3dCollectPads( @optional ( l_maskTop nil ) ( l_maskBottom nil ) ( s_
             )
         )
         vias = nil
-        errset( vias = s3dSelectVisibleOn( s3dViaLayers() list( "noall" "vias" )
-                                           "Simple 3D: no such layer: %s" ) )
+        ; A failure here left every via out of the JSON, with "0 via(s)" on
+        ; the console and nothing else (round 126, R4n-15 of the 28.10.2026
+        ; review; build/fix-2026-10-31/r126/probe_via_fail.il makes it fail).
+        unless( errset( vias = s3dSelectVisibleOn( s3dViaLayers() list( "noall" "vias" )
+                                                   "Simple 3D: no such layer: %s" ) )
+            s3dWarn( "Simple 3D: the vias could not be selected; none of them is in the JSON, so their rings and openings are missing." )
+        )
         foreach( v vias
             when( stringp( v->name ) && v->xy
                 nVias = nVias + 1
@@ -556,10 +572,16 @@ procedure( s3dCollectExposed( l_layers t_side s_endCap )
             ; 51 such paths, and "clines" alone selected none of them
             ; (tools/probes/probe_etchtext.il: "lines" 38 in the band,
             ; "clines" 0; 52 no-net paths on ETCH/TOP in all).
+            ;
+            ; And "text": copper written with Add Text on ETCH is a text,
+            ; which no word of the filter took in, and an opening over it
+            ; came back as bare laminate with nothing said (round 126, R4-4
+            ; of the 23.10.2026 review; tools/probes/probe_etchtext_open.il).
+            ; s3dCopperPolys strokes it as the legend strokes its texts.
             saveVis     = axlVisibleGet()
             saveEnabled = axlGetFindFilter( t )
             saveOn      = axlGetFindFilter( nil )
-            filter = list( "noall" "lines" "clines" "shapes" "pins" "vias" )
+            filter = list( "noall" "lines" "clines" "shapes" "text" "pins" "vias" )
             axlVisibleDesign( nil )
             axlVisibleLayer( etch t )
             errset( axlVisibleLayer( pinLayer t ) )

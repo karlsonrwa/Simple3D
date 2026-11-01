@@ -11,6 +11,31 @@ to use the tool.
 
 ---
 
+- **2026-11-01** — **The pads and openings the review found wrong** (review
+  findings R4-1, R4-3, R4-4, R4-5, R4-6, R4-8, R4n-12, R4n-13, R4n-15, R4n-16, round
+  126). A pin in the middle of a large cutout is off the board, its copper and
+  opening not drawn in the air. A format_version 12 board whose pads are all
+  under the mask draws none of them, without advising a re-export. Copper
+  written as text on an ETCH layer under a drawn mask opening is copper, not
+  bare laminate. With *Do not include soldermask* the copper under drawn
+  openings stays, as the pads' copper does. A flat legend, the windows, the
+  copper and the drawn openings' parts stand on four different heights, so a
+  legend line over a window no longer flickers. The log counts the drawn
+  openings the clip leaves something of, says a pad drawn as its box, and
+  says when the vias could not be selected. /
+  **Площадки и окна, которые ревью нашло неверными** (находки R4-1, R4-3, R4-4,
+  R4-5, R4-6, R4-8, R4n-12, R4n-13, R4n-15, R4n-16, раунд 126). Вывод посреди
+  большого выреза считается вне платы: его медь и окно не висят в воздухе.
+  Плата format_version 12, у которой все площадки под маской, не рисует ни
+  одной и не советует повторный экспорт. Медь, написанная текстом на слое
+  ETCH под нарисованным окном маски, выгружается как медь, а не как голый
+  текстолит. С *Do not include soldermask* медь под нарисованными окнами
+  остаётся, как и медь площадок. Плоская легенда, окна, медь и детали
+  нарисованных окон стоят на четырёх разных высотах, так что линия легенды
+  над окном больше не мерцает. Лог считает нарисованные окна, от которых
+  после обрезки что-то осталось, называет площадку, нарисованную своей
+  рамкой, и говорит, когда переходные не удалось выбрать.
+
 - **2026-11-01** — **What the build cannot make is refused by name** (review
   findings R3-4, R3-8, R3-9 and R3-12, round 125). A board outline, a cutout or
   a zone outline that crosses itself or encloses no area stops the build with

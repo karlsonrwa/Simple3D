@@ -191,25 +191,27 @@ def heights_at(point, size):
     return sorted(round(z, 6) for x, y, z in flat if abs(x - point[0]) < 1e-3 and abs(y - point[1]) < 1e-3)
 
 
+# Round 126 (R4-3): a flat legend keeps one clearance, the windows take two,
+# the copper three and the drawn openings' parts four.
 window_faces = heights_at(WINDOW, 1.0)
-check("in the window: the mask window one clearance and the copper two above the body's face",
-      len(window_faces) >= 2 and near(window_faces[0], window_body[0] + H)
-      and near(window_faces[-1], window_body[0] + 2 * H), (window_faces, window_body[0], H))
+check("in the window: the mask window two clearances and the copper three above the body's face",
+      len(window_faces) >= 2 and near(window_faces[0], window_body[0] + 2 * H)
+      and near(window_faces[-1], window_body[0] + 3 * H), (window_faces, window_body[0], H))
 bottom_faces = heights_at(OPENING, 1.0)
-check("under the opened coverlay: the pad two clearances below the body's bottom",
-      bottom_faces and near(bottom_faces[0], opening_body[1] - 2 * H), (bottom_faces, opening_body[1], H))
+check("under the opened coverlay: the pad three clearances below the body's bottom",
+      bottom_faces and near(bottom_faces[0], opening_body[1] - 3 * H), (bottom_faces, opening_body[1], H))
 solid_faces = heights_at(SOLID_POINT, 1.0)
 check("on the stiffener: as before, on its face", len(solid_faces) >= 2
-      and near(solid_faces[-1], solid_body[0] + 2 * H), (solid_faces, solid_body[0]))
+      and near(solid_faces[-1], solid_body[0] + 3 * H), (solid_faces, solid_body[0]))
 drawn = heights_at((8.0, 4.0), 0.5)
-check("the drawn opening in the window: three clearances above the body under it",
-      drawn and near(drawn[-1], faces_of_body(8.0, 4.0)[0] + 3 * H), (drawn, faces_of_body(8.0, 4.0)[0]))
+check("the drawn opening in the window: four clearances above the body under it",
+      drawn and near(drawn[-1], faces_of_body(8.0, 4.0)[0] + 4 * H), (drawn, faces_of_body(8.0, 4.0)[0]))
 # One height per polygon, and over two levels the zone's face: it never cuts
 # into the body, where the window's floor would put half of it inside the
 # stiffener (flex3-a0: four polygons by their centroid, round 103).
 across = heights_at((8.0, 6.5), 0.5)
-check("one across the window's edge stays on its zone's face, three clearances up, above all of the body",
-      across and near(across[-1], s2_top + 3 * H), (across, s2_top))
+check("one across the window's edge stays on its zone's face, four clearances up, above all of the body",
+      across and near(across[-1], s2_top + 4 * H), (across, s2_top))
 check("and the log counts it", any("copper_top: 1 drawn-opening polygon(s) lie over more than one level" in m
                                    for m in logs), [m for m in logs if "copper_top" in m])
 # A through pin's centre lies over its drill, which the stiffener's own
@@ -221,16 +223,16 @@ drilled_faces = heights_at(DRILLED, 1.0)
 check("a through pin whose layers are holed to its drill: the centre alone would sink it 2.025 mm",
       near(stack.surface.at(*DRILLED)[0], s2_top - 2.025) and near(drilled_body[0], s2_top),
       (stack.surface.at(*DRILLED), drilled_body))
-check("asked round the drill, its window and pad lie on the stiffener, one and two clearances up",
-      len(drilled_faces) >= 4 and near(drilled_faces[-1], s2_top + 2 * H)
-      and near(drilled_faces[-2], s2_top + H), (drilled_faces, s2_top))
-check("and under the board, two clearances below its bottom",
-      drilled_faces and near(drilled_faces[0], s2_bottom - 2 * H), (drilled_faces, s2_bottom))
+check("asked round the drill, its window and pad lie on the stiffener, two and three clearances up",
+      len(drilled_faces) >= 4 and near(drilled_faces[-1], s2_top + 3 * H)
+      and near(drilled_faces[-2], s2_top + 2 * H), (drilled_faces, s2_top))
+check("and under the board, three clearances below its bottom",
+      drilled_faces and near(drilled_faces[0], s2_bottom - 3 * H), (drilled_faces, s2_bottom))
 # Half of the ring round a pin on the window's edge finds the window's floor,
 # half the stiffener: the copper is laid on the outermost, never inside it.
 edge_faces = heights_at(EDGE, 1.0)
 check("a through pin on the window's edge: its pad on the stiffener, not inside it",
-      edge_faces and near(edge_faces[-1], s2_top + 2 * H), (edge_faces, s2_top))
+      edge_faces and near(edge_faces[-1], s2_top + 3 * H), (edge_faces, s2_top))
 where = P._Zones(stack.zones, stack.stackups, stack.levels, stack.board_top_z, stack.board_bottom_z,
                  stack.surface)
 check("the pads' own lookup gives the surface, the zone's conductors beside it",

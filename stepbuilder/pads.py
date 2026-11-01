@@ -262,6 +262,18 @@ def pin_sides(pin: dict, padstack: dict, top: str, bottom: str) -> list[tuple[st
         span = {top, bottom}
     else:
         span = {start, end}
+        # A RANGE of the padstack's layers, not its two ends: a through pin in
+        # a flex zone reaches the zone's outer copper whether Allegro names
+        # the zone's layers or the padstack's whole span, and a blind TOP..
+        # INNER2 there reaches INNER1 as well. By the ends alone the first
+        # drew nothing and the second only its bottom (round 126, R4-6 of the
+        # 23.10.2026 review). On the exports on hand Allegro names the zone's
+        # layers - the demo's 41 through pins in INNER1/INNER2 zones span
+        # INNER1..INNER2 - and the range changes none of their 5339 pins.
+        order = [name for name, _ in pads]
+        if start in order and end in order:
+            i, j = sorted((order.index(start), order.index(end)))
+            span = set(order[i:j + 1])
     faces = []
     if top and top in span and top in by_layer:
         faces.append(("top", by_layer[top], _mask_for(masks, "top", mirrored)))
@@ -465,11 +477,20 @@ def figure_face(pad: dict) -> tuple[TopoDS_Face | None, str | None]:
     when there is none), a DONUT's inside diameter as a hole, and the offset
     settled. Returns (face, note)."""
     outline = pad.get("outline")
+    stand_in = None
     if not outline:
         bbox = pad.get("bbox")
         if not bbox:
             return None, "no outline and no bounding box"
         outline = _rect_contour(bbox)
+        # Exact for a rectangle or a square. Any other figure became its box
+        # without a word - a 1 mm CIRCLE 1.000 mm2 for 0.785 - when the
+        # exporter could not read its path (round 126, R4-8 of the 23.10.2026
+        # review; none of the 432 pads of the exports on hand lacks one).
+        figure = str(pad.get("figure") or "")
+        if figure not in ("RECTANGLE", "SQUARE"):
+            stand_in = (f"its {figure or 'figure'} outline did not come through the "
+                        f"export; its bounding box stands in for it")
 
     outer = _pad_wire(outline)
     inner = []
@@ -487,7 +508,10 @@ def figure_face(pad: dict) -> tuple[TopoDS_Face | None, str | None]:
         inner.append(build_contour([{"type": "circle", "x": (x0 + x1) / 2.0,
                                      "y": (y0 + y1) / 2.0, "radius": inside / 2.0}], 0.0))
     face = _face_from_wires(outer, inner)
-    return _settle_offset(face, pad)
+    face, note = _settle_offset(face, pad)
+    if stand_in:
+        note = stand_in if note is None else f"{stand_in}; {note}"
+    return face, note
 
 
 def pad_face(pad: dict, hole: list | None, mirrored: bool, face_up: bool = True,
@@ -684,6 +708,18 @@ def _contour_box(contour) -> tuple[float, float, float, float]:
             max(b[2] for b in boxes), max(b[3] for b in boxes))
 
 
+def _left_of(face, region) -> bool:
+    """Is anything of *face*, one drawn-opening polygon, left inside *region*
+    - asked by a Common of its own. The history of the group's Common cannot
+    say: build_silkscreen merges a group's flat faces before the compound
+    (_merge_coplanar), so a polygon overlapping another is no argument of that
+    Common, its history empty whatever is left of it. Asked so, Cadence's demo
+    said "nothing inside" of 14 polygons with 0.6 to 57 mm2 inside MAIN_PCB
+    and flex3-a0 of 30 (round 126, `diag_left_of.py`)."""
+    common = BRepAlgoAPI_Common(face, region)
+    return common.IsDone() and any(shape_area(f) > 1e-12 for f in _faces_of(common.Shape()))
+
+
 def _boxes_meet(a, b) -> bool:
     """Do two bounding boxes overlap or touch?"""
     return not (a[2] < b[0] or a[0] > b[2] or a[3] < b[1] or a[1] > b[3])
@@ -748,6 +784,8 @@ class _Boundary:
         self._outline_tried = False
         self._cutout_faces: dict[int, object] = {}
         self._cell_inside: dict[tuple[int, int], bool] = {}
+        self._cell_hole: dict[tuple[int, int], bool] = {}
+        self.cutout_boxes: dict[int, tuple] = {}            # contour index -> its box
         if not edges or not edges[0]:
             return
         self.outline = edges[0]
@@ -763,6 +801,12 @@ class _Boundary:
         boxes = [piece[-1] for _index, piece in self.pieces]
         self.x0, self.y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
         self.x1, self.y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+        for index, piece in self.pieces:
+            if index:
+                b = piece[-1]
+                a = self.cutout_boxes.get(index, b)
+                self.cutout_boxes[index] = (min(a[0], b[0]), min(a[1], b[1]),
+                                            max(a[2], b[2]), max(a[3], b[3]))
         span = max(self.x1 - self.x0, self.y1 - self.y0) or 1.0
         self.cell = span / self.CELLS
         self.margin = EDGE_MARGIN * span
@@ -827,7 +871,21 @@ class _Boundary:
                 inside = self._cell_inside[key] = self._inside_outline(x, y)
         if not inside:
             return False
-        return not any(self._in_cutout(index, x, y) for index in {i for i, _piece in here if i > 0})
+        edged = {i for i, _piece in here if i > 0}
+        if any(self._in_cutout(index, x, y) for index in edged):
+            return False
+        # A cutout no edge of which passes through this cell holds all of it
+        # or none of it, so that is asked once per cell. Only the cutouts
+        # with an edge here were asked, and a pin in the middle of a large
+        # cutout was on the board: its copper and opening drawn in the air,
+        # the log silent (round 126, R4-1 of the 23.10.2026 review).
+        hole = self._cell_hole.get(key)
+        if hole is None:
+            hole = self._cell_hole[key] = any(
+                self._in_cutout(index, x, y)
+                for index, (bx0, by0, bx1, by1) in self.cutout_boxes.items()
+                if index not in edged and bx0 <= x <= bx1 and by0 <= y <= by1)
+        return not hole
 
     def _inside_outline(self, x: float, y: float) -> bool:
         face = self.outline_face()
@@ -1146,8 +1204,9 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
     *group_for(side)* hands back the assembly label of `pads_top` /
     `pads_bot` (and `openings_top` / `openings_bot`), created on first use;
     *lift* is how far above the face the copper floats and *opening_lift*
-    how far the windows do - BELOW the copper (the caller passes one and
-    two flat-silkscreen clearances): two windows of neighbouring through
+    how far the windows do - BELOW the copper (the caller passes three and
+    two flat-silkscreen clearances, a flat legend having the first since
+    round 126): two windows of neighbouring through
     pins overlap each other's copper ring, and two faces at one height
     leave the viewer to pick, which is how a ring came out eaten on the demo
     board; a micron apart, the copper wins. *rgb01* the copper, *base01*
@@ -1165,11 +1224,17 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
     rows = pads.get("pins") or []
     where = _Zones(zones, stackups, levels, board_top_z, board_bottom_z, surface)
     shape_tool = document.shape_tool
-    # A library without a single mask pad is a format_version 10 file: it
-    # cannot say which pads are covered, so the copper is drawn whole, as it
-    # was, and the caller says so once. With mask data, no opening on a face
-    # means the pad is under the mask and draws nothing.
-    masks_known = has_mask_data(library)
+    # A format_version 10 file carries no mask pads: it cannot say which
+    # pads are covered, so the copper is drawn whole, as it was, and the
+    # caller says so once. From 11 on the exporter writes every padstack's
+    # openings, so a library with none is a board whose pads are all under
+    # the mask. Asked of the library alone, a v12 board with every via
+    # tented and no pin opened drew all its copper and advised a re-export
+    # (round 126, R4-5 of the 23.10.2026 review). With mask data, no opening
+    # on a face means the pad is under the mask and draws nothing.
+    version = data.get("format_version")
+    masks_known = (isinstance(version, int) and not isinstance(version, bool)
+                   and version >= 11) or has_mask_data(library)
     result.no_mask_data = not masks_known
 
     parts: dict[tuple, object] = {}       # (padstack, layer, mirrored, face[, "opening"]) -> _Figure, or why not
@@ -1541,8 +1606,12 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
             skipped += n_skipped
             if compound is not None:
                 pieces.append(compound)
-        clipped = 0
-        over = sum(1 for _p, _t, o in straddling if o)
+        # Per polygon, whether anything of it is left inside a masked zone.
+        # The count used to be of the polygons sent to the clip: flex-b2's
+        # log said "12 drawn-opening polygon(s) clipped to it" of polygons
+        # with 0.00000 mm2 inside the zone, and the model had none of them
+        # (round 126, R4n-12 of the 28.10.2026 review).
+        kept: dict[int, bool] = {}
         if straddling:
             # every masked zone any of them touches, each at its own face,
             # less the cutouts that meet it
@@ -1550,9 +1619,10 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                 group = [p for p, touches, _o in straddling if any(t[0] == name for t in touches)]
                 if not group:
                     continue
+                made: list = []
                 compound, n_built, n_skipped = build_silkscreen(
                     group, zf, 0.0, log=log, side=f"{tag}_{side} ({name})", flat=True,
-                    flat_offset=sign * abs(lift))
+                    flat_offset=sign * abs(lift), made=made)
                 skipped += n_skipped
                 if compound is None:
                     continue
@@ -1569,21 +1639,31 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                 faces = _faces_of(common.Shape()) if common.IsDone() else []
                 if faces:
                     pieces.append(_assemble(faces))
-                    clipped += len(group)
                 elif not common.IsDone():
                     log(f"warning: {tag}_{side}: {len(group)} drawn-opening polygon(s) could not be "
                         f"clipped to zone {name} and are left out")
-            built += len({id(p) for p, _t, _o in straddling})
-        if (dropped or straddling) and plain:
-            log(f"{tag}_{side}: {len(straddling)} drawn-opening polygon(s) reach past the board "
-                f"outline{' or over a cutout' if over else ''} and are clipped to it"
-                + (f", {dropped} lie outside it and are left out" if dropped else ""))
-        elif dropped or straddling:
-            log(f"{tag}_{side}: the mask is only on "
-                + ", ".join(name for name, *_r in masked)
-                + f" - {len(straddling)} drawn-opening polygon(s) clipped to it"
-                + (f" ({over} of them over a cutout)" if over else "")
-                + (f", {dropped} left out" if dropped else ""))
+                if common.IsDone():
+                    for polygon, face in made:
+                        kept[id(polygon)] = kept.get(id(polygon), False) or _left_of(face, region)
+        clipped = sum(1 for left in kept.values() if left)
+        emptied = sum(1 for left in kept.values() if not left)
+        over = sum(1 for p, _t, o in straddling if o and kept.get(id(p)))
+        built += clipped
+        if plain:
+            fates = [(clipped, f"reach past the board outline{' or over a cutout' if over else ''} "
+                               f"and are clipped to it"),
+                     (emptied, "reach it with nothing on the board and are left out"),
+                     (dropped, "lie outside it and are left out")]
+        else:
+            fates = [(clipped, "clipped to it" + (f" ({over} of them over a cutout)" if over else "")),
+                     (emptied, "reach it with nothing inside it and are left out"),
+                     (dropped, "lie away from it and are left out")]
+        said = [(n, what) for n, what in fates if n]
+        if said:
+            log(f"{tag}_{side}: "
+                + ("" if plain else "the mask is only on " + ", ".join(name for name, *_r in masked) + " - ")
+                + ", ".join(f"{n} drawn-opening polygon(s) {what}" if i == 0 else f"{n} {what}"
+                            for i, (n, what) in enumerate(said)))
         if crossing:
             log(f"{tag}_{side}: {crossing} drawn-opening polygon(s) lie over more than one level of the "
                 f"board - across the edge of a stiffener or a coverlay opening - and are built on their "

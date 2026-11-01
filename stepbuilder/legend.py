@@ -389,6 +389,7 @@ def build_silkscreen(
     side: str = "",
     flat: bool = False,
     flat_offset: float = 0.0,
+    made: list | None = None,
 ) -> tuple[TopoDS_Compound | None, int, int]:
     """Extrude one side's silkscreen polygons into a compound of thin solids.
 
@@ -422,6 +423,10 @@ def build_silkscreen(
     154%): a boolean union replaces analytic cylinders and planes with general
     surfaces, and after clipping the strokes barely overlap, so there is little
     interior geometry for it to remove. Not offered.
+
+    *made*, when given, gets (polygon, its shape) for each polygon built, in
+    order: what a caller that clips the compound needs to say which polygons
+    kept anything (pads.build_exposed, round 126).
     """
     builder = BRep_Builder()
     compound = TopoDS_Compound()
@@ -452,6 +457,8 @@ def build_silkscreen(
                 face if flat
                 else BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, thickness)).Shape()
             )
+            if made is not None:
+                made.append((polygon, shapes[-1]))
             built += 1
         except (StepBuilderError, RuntimeError, KeyError, TypeError, IndexError) as exc:
             skipped += 1

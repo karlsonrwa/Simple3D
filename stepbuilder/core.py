@@ -796,13 +796,16 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
     result = build_pads(
         data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
         board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
-        # Three heights, a flat-silkscreen clearance apart: the windows in
-        # the mask lowest, the copper above them, the drawn openings' parts
-        # above both - what overlaps is then decided by height, not by the
-        # viewer's draw order (two windows of neighbouring through pins
-        # overlap each other's copper ring).
-        fold=fold, lift=2.0 * abs(options.silk_flat_height),
-        opening_lift=abs(options.silk_flat_height), surface=stack.surface, document=document,
+        # Four heights, a flat-silkscreen clearance apart: a flat legend on
+        # the first, the windows in the mask on the second, the copper on the
+        # third, the drawn openings' parts on the fourth - what overlaps is
+        # then decided by height, not by the viewer's draw order (two windows
+        # of neighbouring through pins overlap each other's copper ring). The
+        # windows shared the legend's step, and a legend line crossing one
+        # flickered in a viewer (round 126, R4-3 of the 23.10.2026 review);
+        # above it now, they cover it as a board house's clipping would.
+        fold=fold, lift=3.0 * abs(options.silk_flat_height),
+        opening_lift=2.0 * abs(options.silk_flat_height), surface=stack.surface, document=document,
         group_for=group_for, rgb01=(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0),
         srgb=options.srgb_color, json_stem=json_stem,
         copper=options.exposed_copper, openings=options.mask_openings,
@@ -860,10 +863,20 @@ def _build_pads(data: dict, stack: _Stack, fold, options: BuildOptions,
             "laminate they show; re-export from Allegro for a part number cut into the mask")
 
     def drawn(section: str) -> dict[str, list]:
+        # A mask left out of the MODEL is still in the design. Asked of the
+        # stack without it, every zone "carried no soldermask", and with *Do
+        # not include soldermask* the copper under the openings drawn on the
+        # mask layers went while the pads' copper stayed (round 126, R4n-13
+        # of the 28.10.2026 review). So the copper asks the stackups as
+        # exported which zones have a mask; the laminate an opening shows is
+        # a window in a mask the model no longer has, and stays out, as the
+        # padstacks' windows do. The heights are the model's either way.
+        asked = ((data.get("stackups") or stack.stackups)
+                 if options.ignore_soldermask and section == "exposed" else stack.stackups)
         built_sides = build_exposed(
-            data, stackups=stack.stackups, zones=stack.zones, levels=stack.levels,
+            data, stackups=asked, zones=stack.zones, levels=stack.levels,
             board_top_z=stack.board_top_z, board_bottom_z=stack.board_bottom_z,
-            lift=3.0 * abs(options.silk_flat_height), section=section, surface=stack.surface, log=log)
+            lift=4.0 * abs(options.silk_flat_height), section=section, surface=stack.surface, log=log)
         return {side: [piece] for side, piece in built_sides.items()}
 
     flat_parts: list[tuple[str, tuple, str, dict]] = []

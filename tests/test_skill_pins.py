@@ -275,8 +275,11 @@ print("\n[5b] s3dCollectExposed - the decisions of the copper sweep")
 # The behaviour is proved by the SKILL golden corpus (tools/skill_export.py
 # --check, circle-A0's 24 polygons of copper at 73.832 mm2), which needs
 # Allegro; what can run here is the pin on the statements that decide.
+# "text" since round 126 (R4-4 of the 23.10.2026 review): copper written as
+# text on ETCH was not swept, and an opening over it was bare laminate -
+# flex-b2's three letters at its corner, 1.054 mm2 (probe_etchtext_open.il).
 pin("s3dCollectExposed",
-    'filter = list( "noall" "lines" "clines" "shapes" "pins" "vias" )',
+    'filter = list( "noall" "lines" "clines" "shapes" "text" "pins" "vias" )',
     'when( errset( axlAddSelectAll() t ) found = axlGetSelSet() )',
     'one = s3dCopperPolys( o etch nil s_endCap )',
     'when( s3dBoxesMeet( cadr( entry )->bBox p->bBox )',

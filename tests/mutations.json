@@ -94,8 +94,8 @@
  {
   "id": "pads-mask-data-ignored",
   "file": "stepbuilder/pads.py",
-  "old": "    masks_known = has_mask_data(library)",
-  "new": "    masks_known = False",
+  "old": "                   and version >= 11) or has_mask_data(library)\n",
+  "new": "                   and False) or False\n",
   "suites": [
    "tests/test_pads.py"
   ],
@@ -411,22 +411,22 @@
  {
   "id": "copper-at-window-height",
   "file": "stepbuilder/core.py",
-  "old": "        fold=fold, lift=2.0 * abs(options.silk_flat_height),",
-  "new": "        fold=fold, lift=1.0 * abs(options.silk_flat_height),",
+  "old": "        fold=fold, lift=3.0 * abs(options.silk_flat_height),",
+  "new": "        fold=fold, lift=2.0 * abs(options.silk_flat_height),",
   "suites": [
    "tests/test_pads.py"
   ],
-  "why": "Two of the three heights collapse: copper and windows both at h, the coplanar overlap that ate the demo's rings in step2html. MEASURED: CAUGHT by test_pads.py [6], 1 assertion ('the windows sit one clearance above the face and the copper two' <- [-1.105, 0.001])."
+  "why": "Two of the three heights collapse: copper and windows both at h, the coplanar overlap that ate the demo's rings in step2html. MEASURED: CAUGHT by test_pads.py [6], 1 assertion ('the windows sit one clearance above the face and the copper two' <- [-1.105, 0.001]). Re-pointed in round 126, when the heights moved up a step for the flat legend."
  },
  {
   "id": "drawn-parts-at-copper-height",
   "file": "stepbuilder/core.py",
-  "old": "            lift=3.0 * abs(options.silk_flat_height), section=section, surface=stack.surface, log=log)",
-  "new": "            lift=2.0 * abs(options.silk_flat_height), section=section, surface=stack.surface, log=log)",
+  "old": "            lift=4.0 * abs(options.silk_flat_height), section=section, surface=stack.surface, log=log)",
+  "new": "            lift=3.0 * abs(options.silk_flat_height), section=section, surface=stack.surface, log=log)",
   "suites": [
    "tests/test_pads.py"
   ],
-  "why": "The third height collapses onto the second: the drawn openings' copper and laminate parts land coplanar with the pads. test_pads [6] reads the lift handed to build_exposed (round 89)."
+  "why": "The third height collapses onto the second: the drawn openings' copper and laminate parts land coplanar with the pads. test_pads [6] reads the lift handed to build_exposed (round 89). Re-pointed in round 126, when the heights moved up a step for the flat legend."
  },
  {
   "id": "pick-convention-first-wins",
@@ -478,8 +478,8 @@
  {
   "id": "skill-filter-no-lines",
   "file": "skill/s3d_pads.il",
-  "old": "            filter = list( \"noall\" \"lines\" \"clines\" \"shapes\" \"pins\" \"vias\" )",
-  "new": "            filter = list( \"noall\" \"clines\" \"shapes\" \"pins\" \"vias\" )",
+  "old": "            filter = list( \"noall\" \"lines\" \"clines\" \"shapes\" \"text\" \"pins\" \"vias\" )",
+  "new": "            filter = list( \"noall\" \"clines\" \"shapes\" \"text\" \"pins\" \"vias\" )",
   "suites": [
    "tests/test_pads.py",
    "tests/test_skill_pins.py",
@@ -3193,8 +3193,8 @@
  {
   "id": "pads-not-given-surface",
   "file": "stepbuilder/core.py",
-  "old": "        opening_lift=abs(options.silk_flat_height), surface=stack.surface, document=document,\n",
-  "new": "        opening_lift=abs(options.silk_flat_height), document=document,\n",
+  "old": "        opening_lift=2.0 * abs(options.silk_flat_height), surface=stack.surface, document=document,\n",
+  "new": "        opening_lift=2.0 * abs(options.silk_flat_height), document=document,\n",
   "suites": [
    "tests/test_surface.py"
   ],
@@ -4814,7 +4814,7 @@
  {
   "id": "docs-mutation-count-stale",
   "file": "README.md",
-  "old": "(tests/mutations.json, 487 faults, applied",
+  "old": "(tests/mutations.json, 501 faults, applied",
   "new": "(tests/mutations.json, 999 faults, applied",
   "suites": [
    "tools/audit_docs.py"
@@ -5070,5 +5070,145 @@
    "tests/test_layers.py"
   ],
   "why": "the fused board comes out as two solids, which \"n <= 3\" let through on a board with no components (R3-11) (round 125, review 23.10.2026)"
+ },
+ {
+  "id": "pads-cutout-middle-not-asked",
+  "file": "stepbuilder/pads.py",
+  "old": "                if index not in edged and bx0 <= x <= bx1 and by0 <= y <= by1)\n",
+  "new": "                if False)\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a pin in the middle of a cutout larger than a grid cell is on the board: its copper and opening in the air, the log silent (R4-1) (round 126, review 23.10.2026)"
+ },
+ {
+  "id": "pads-masks-asked-of-the-library",
+  "file": "stepbuilder/pads.py",
+  "old": "    masks_known = (isinstance(version, int) and not isinstance(version, bool)\n                   and version >= 11) or has_mask_data(library)\n",
+  "new": "    masks_known = has_mask_data(library)\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a v12 board whose pads are all under the mask draws all its copper and advises a re-export (R4-5) (round 126, review 23.10.2026)"
+ },
+ {
+  "id": "pads-drawn-clip-counted-as-sent",
+  "file": "stepbuilder/pads.py",
+  "old": "                        kept[id(polygon)] = kept.get(id(polygon), False) or _left_of(face, region)\n",
+  "new": "                        kept[id(polygon)] = True\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the log counts the drawn openings sent to the clip as clipped, those with nothing left included (R4n-12) (round 126, review 28.10.2026)"
+ },
+ {
+  "id": "pads-drawn-emptied-unsaid",
+  "file": "stepbuilder/pads.py",
+  "old": "                     (emptied, \"reach it with nothing on the board and are left out\"),\n",
+  "new": "                     (0, \"reach it with nothing on the board and are left out\"),\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the drawn openings the clip leaves nothing of are not said (R4n-12) (round 126, review 28.10.2026)"
+ },
+ {
+  "id": "pads-box-standing-in-unsaid",
+  "file": "stepbuilder/pads.py",
+  "old": "        if figure not in (\"RECTANGLE\", \"SQUARE\"):\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a round pad whose outline did not come through is drawn as its box without a word (R4-8) (round 126, review 23.10.2026)"
+ },
+ {
+  "id": "pads-rectangle-box-noted",
+  "file": "stepbuilder/pads.py",
+  "old": "        if figure not in (\"RECTANGLE\", \"SQUARE\"):\n",
+  "new": "        if True:\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a rectangle, which its box draws exactly, is said to stand in for itself (R4-8) (round 126, review 23.10.2026)"
+ },
+ {
+  "id": "pads-span-read-by-its-ends",
+  "file": "stepbuilder/pads.py",
+  "old": "        if start in order and end in order:\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a through pin's span read by its two ends: in a flex zone the padstack's whole span draws nothing (R4-6) (round 126, review 23.10.2026)"
+ },
+ {
+  "id": "core-windows-on-the-legend-step",
+  "file": "stepbuilder/core.py",
+  "old": "        opening_lift=2.0 * abs(options.silk_flat_height), surface=stack.surface, document=document,\n",
+  "new": "        opening_lift=abs(options.silk_flat_height), surface=stack.surface, document=document,\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the windows share the flat legend's height, and a legend line over one flickers (R4-3) (round 126, review 23.10.2026)"
+ },
+ {
+  "id": "core-drawn-copper-asks-the-model-for-a-mask",
+  "file": "stepbuilder/core.py",
+  "old": "                 if options.ignore_soldermask and section == \"exposed\" else stack.stackups)\n",
+  "new": "                 if False else stack.stackups)\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "with Do not include soldermask the copper under drawn openings goes while the pads' copper stays (R4n-13) (round 126, review 28.10.2026)"
+ },
+ {
+  "id": "core-drawn-laminate-asks-the-design",
+  "file": "stepbuilder/core.py",
+  "old": "                 if options.ignore_soldermask and section == \"exposed\" else stack.stackups)\n",
+  "new": "                 if options.ignore_soldermask else stack.stackups)\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "with Do not include soldermask the laminate of drawn openings is built, a window in a mask the model does not have (R4n-13) (round 126, review 28.10.2026)"
+ },
+ {
+  "id": "pads-drawn-asked-of-the-merged-result",
+  "file": "stepbuilder/pads.py",
+  "old": "                        kept[id(polygon)] = kept.get(id(polygon), False) or _left_of(face, region)\n",
+  "new": "                        kept[id(polygon)] = kept.get(id(polygon), False) or any(face.IsSame(f) for f in faces)\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "each polygon's face is looked for in the group's clipped result, which build_silkscreen merged it into before the clip - Cadence's demo said \"nothing inside\" of 14 polygons with 0.6 to 57 mm2 inside MAIN_PCB, flex3-a0 of 30 (R4n-12) (round 126, review 28.10.2026)"
+ },
+ {
+  "id": "pads-drawn-touching-counted-as-clipped",
+  "file": "stepbuilder/pads.py",
+  "old": "    return common.IsDone() and any(shape_area(f) > 1e-12 for f in _faces_of(common.Shape()))\n",
+  "new": "    return common.IsDone()\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "a polygon that only touches the zone's edge is counted as clipped, the area left inside it never asked - flex-b2's 0.00000 mm2 (R4n-12) (round 126, review 28.10.2026)"
+ },
+ {
+  "id": "skill-filter-no-text",
+  "file": "skill/s3d_pads.il",
+  "old": "            filter = list( \"noall\" \"lines\" \"clines\" \"shapes\" \"text\" \"pins\" \"vias\" )",
+  "new": "            filter = list( \"noall\" \"lines\" \"clines\" \"shapes\" \"pins\" \"vias\" )",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "copper written as text on ETCH is not swept, and an opening over it is bare laminate - flex-b2's three letters, 1.054 mm2 (R4-4) (round 126, review 23.10.2026)"
+ },
+ {
+  "id": "pads-bottom-masks-not-read",
+  "file": "stepbuilder/pads.py",
+  "old": "        if sub.startswith(\"SOLDERMASK_\") and isinstance(pad, dict):\n",
+  "new": "        if sub.startswith(\"SOLDERMASK_TOP\") and isinstance(pad, dict):\n",
+  "suites": [
+   "tests/test_pads.py"
+  ],
+  "why": "the bottom side's mask pads are not read: no opening under a through pin or a via where Allegro has one (R4-10's oracle, test_pads [20]) (round 126, review 23.10.2026)"
  }
 ]

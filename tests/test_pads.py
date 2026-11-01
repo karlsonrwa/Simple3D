@@ -236,7 +236,9 @@ check("top faces look up, bottom faces look down",
       and P._normal_up(P.pad_face(RECT, None, True, False)[0]) is False)
 face, note = P.pad_face({"figure": "FLASH", "bbox": [[-1, -1], [1, 1]], "offset": [0, 0], "inside": 0, "outline": None},
                         None, False, True)
-check("no outline: the bounding box stands in", face is not None and abs(area(face) - 4.0) < 1e-9, note)
+check("no outline: the bounding box stands in, and the note says so (round 126, R4-8)",
+      face is not None and abs(area(face) - 4.0) < 1e-9
+      and note == "its FLASH outline did not come through the export; its bounding box stands in for it", note)
 
 print("\n[2b] the mask opening: what shows is copper AND opening")
 # Per figure, one boolean: a solder-mask-defined pad shows the opening, a
@@ -557,11 +559,12 @@ check("and on the board where none fills, none is counted",
       res_b.openings_filled == 0 and not any("filled by their copper" in m for m in logs_b),
       (res_b.openings_filled, [m for m in logs_b if "Mask openings" in m]))
 
-# Three heights, a flat-silkscreen clearance apart: the windows lowest, the
-# copper one step up - so where the windows of two neighbouring through pins
-# overlap each other's copper ring, the copper is on top by construction and
-# not by the viewer's draw order (rings came out eaten on the demo board in
-# step2html when both sat at one height). Measured through the placements.
+# Heights a flat-silkscreen clearance apart: the windows on the second step
+# (a flat legend has the first, [18]), the copper one step up - so where the
+# windows of two neighbouring through pins overlap each other's copper ring,
+# the copper is on top by construction and not by the viewer's draw order
+# (rings came out eaten on the demo board in step2html when both sat at one
+# height). Measured through the placements.
 from stepbuilder.defaults import DEFAULT_FLAT_HEIGHT as H
 placed_z = []
 drawn_lifts = []
@@ -575,16 +578,17 @@ finally:
     P._placement = _orig_placement
     core.build_exposed = _orig_exposed
 top_face, bottom_face = 0.0, -1.104            # z_datum top: the mask's top face at 0, the stack 1.104 down
-check("the windows sit one clearance above the face and the copper two, on both sides",
-      sorted(set(z for z in placed_z if z > 0)) == [round(top_face + H, 6), round(top_face + 2 * H, 6)]
-      and sorted(set(z for z in placed_z if z < 0)) == [round(bottom_face - 2 * H, 6), round(bottom_face - H, 6)],
+check("the windows sit two clearances above the face and the copper three, on both sides",
+      sorted(set(z for z in placed_z if z > 0)) == [round(top_face + 2 * H, 6), round(top_face + 3 * H, 6)]
+      and sorted(set(z for z in placed_z if z < 0)) == [round(bottom_face - 3 * H, 6), round(bottom_face - 2 * H, 6)],
       sorted(set(placed_z)))
-# The third height does not go through _placement: the drawn openings' parts
+# The top height does not go through _placement: the drawn openings' parts
 # are built flat like a legend, lifted by what _build_pads hands build_exposed.
-# Collapsing 3h onto 2h - the copper part coplanar with the pads - passed the
-# check above (review of 2026-09-17), so the lift is read where it is given.
-check("and the drawn openings' copper and laminate stand a third step up, above the copper",
-      len(drawn_lifts) >= 2 and all(abs(lift - 3 * H) < 1e-12 for lift in drawn_lifts), drawn_lifts)
+# Collapsing it onto the pads' step - the copper part coplanar with the pads -
+# passed the check above (review of 2026-09-17), so the lift is read where it
+# is given.
+check("and the drawn openings' copper and laminate stand a fourth step up, above the copper",
+      len(drawn_lifts) >= 2 and all(abs(lift - 4 * H) < 1e-12 for lift in drawn_lifts), drawn_lifts)
 
 
 # The line above reads the lift build_exposed was GIVEN, which is an argument
@@ -679,7 +683,7 @@ check("both pins keep their copper, only the one on the masked zone gets a windo
               "on that side (F2)" in m for m in logs_rf),
       (res_rf.pads_placed, res_rf.openings_placed, [m for m in logs_rf if "opening" in m]))
 check("the drawn opening on the flex is left out, the one across the boundary clipped, the log says so",
-      any("bare_top: the mask is only on S2 - 1 drawn-opening polygon(s) clipped to it, 1 left out" in m for m in logs_rf)
+      any("bare_top: the mask is only on S2 - 1 drawn-opening polygon(s) clipped to it, 1 lie away from it and are left out" in m for m in logs_rf)
       and any("Bare laminate in drawn openings, top: 2 polygon(s)" in m for m in logs_rf),
       [m for m in logs_rf if "bare_top" in m or "Bare" in m])
 out_rf = P.build_exposed(rf, stackups=rf["stackups"], zones=rf["zones"],
@@ -1028,10 +1032,22 @@ check("and the board of [5], every pin of which is clear of the edge, builds exa
       and "_clipped" not in text and not any("clipped" in m for m in logs),
       (res.pads_placed, res.pads_clipped, [m for m in logs if "clipped" in m]))
 
-# A file with no outline clips nothing and places every pad as it did.
-no_edge = json.loads(json.dumps(edge_board))
-no_edge["pcb"]["edges"] = []
+# A file with no outline: the edge is not read and nothing is clipped. Such
+# a file never reaches the pads in a build - the body refuses it first - so
+# the edge is asked alone; the board built here and never used went (round
+# 126, R4-10 of the 23.10.2026 review).
 check("no outline: the edge is not read, nothing is clipped", not P._Boundary([]).ok and not P._Boundary([[]]).ok)
+for edges, why in (([], "pcb.edges is empty"), ([[]], "Board outline: Contour contains no primitives")):
+    no_edge = json.loads(json.dumps(edge_board))
+    no_edge["pcb"]["edges"] = edges
+    jf.write_text(json.dumps(no_edge))
+    try:
+        build("no_edge", exposed_copper=True)
+        refused = None
+    except core.StepBuilderError as exc:
+        refused = str(exc)
+    check(f"and a build of one is refused before any pad: {why}", refused == why, refused)
+jf.write_text(json.dumps(board))
 
 # The drawn openings' parts are clipped to the cutouts the same way: a
 # 2 x 2 opening drawn over the hole at (5, 5) loses it.
@@ -1058,7 +1074,7 @@ comp_rc, built_rc, _ = P.build_exposed(rf_cut, stackups=rf_cut["stackups"], zone
                                        section="bare", log=logs_rc.append)["top"]
 check("on a zoned board a cutout inside a masked zone is taken out of the drawn opening over it",
       built_rc == 2 and comp_rc is not None and abs(P.shape_area(comp_rc) - (6.76 - math.pi * 0.25)) < 1e-3
-      and any("2 drawn-opening polygon(s) clipped to it (1 of them over a cutout), 1 left out" in m
+      and any("2 drawn-opening polygon(s) clipped to it (1 of them over a cutout), 1 lie away from it and are left out" in m
               for m in logs_rc),
       (built_rc, comp_rc is not None and P.shape_area(comp_rc), logs_rc))
 
@@ -1201,6 +1217,260 @@ check("without a surface the first zone holding the point still answers",
       asked(bare_where.mask_at, *OPEN_AT, "top") == (False, {"ST"}),
       asked(bare_where.mask_at, *OPEN_AT, "top"))
 jf.write_text(json.dumps(board))
+
+print("\n[13] a pin in the middle of a large cutout is off the board, its opening too (round 126)")
+# R4-1 of the 23.10.2026 review: on_board asked only the cutouts with an edge
+# in the pin's grid cell, so a pin in the middle of a cutout far larger than
+# a cell was on the board - its copper and opening drawn in the air, the log
+# silent. The board of [5] with a 6 x 4 mm cutout and two pins in it.
+holed = json.loads(json.dumps(board))
+holed["pcb"]["edges"].append(rect(8.0, 3.0, 14.0, 7.0))
+holed["pads"]["pins"] += [[10.0, 5.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],
+                          [12.0, 5.0, 0.0, False, "THRU", "ETCH/TOP", "ETCH/BOTTOM"]]
+jf.write_text(json.dumps(holed))
+res_h, logs_h, _text_h = build("holed", exposed_copper=True, mask_openings=True)
+jf.write_text(json.dumps(board))
+check("its three pads are off the board, the others placed as on the board of [5]",
+      res_h.pads_off_board == 3 and res_h.pads_placed == res_b.pads_placed,
+      (res_h.pads_off_board, res_h.pads_placed, res_b.pads_placed))
+check("and so are their three openings",
+      res_h.openings_off_board == 3 and res_h.openings_placed == res_b.openings_placed,
+      (res_h.openings_off_board, res_h.openings_placed, res_b.openings_placed))
+check("the log says so", any("3 pad(s) lie off the board and draw nothing" in m for m in logs_h)
+      and any("3 opening(s) lie off the board and draw nothing" in m for m in logs_h),
+      [m for m in logs_h if "off the board" in m])
+
+print("\n[14] a format_version 12 board whose pads are all under the mask draws none (round 126)")
+# R4-5 of the 23.10.2026 review: "masks known" was asked of the library, so a
+# v12 board with every via tented and no pin opened drew all its copper and
+# advised a re-export. The library of the v10 case in [5], every mask pad
+# taken out, now as the exporter of version 12 writes it.
+covered = json.loads(json.dumps(v10))
+covered["format_version"] = 12
+jf.write_text(json.dumps(covered))
+res_c, logs_c, _text_c = build("covered_v12", exposed_copper=True)
+jf.write_text(json.dumps(board))
+check("not a pad is drawn: the vias tented, the pins under the mask",
+      res_c.pads_placed == 0, (res_c.pads_placed, [m for m in logs_c if "pad" in m]))
+check("and nothing is said of format_version 10 or of exporting again",
+      not any("carries no mask openings" in m or "format_version 10" in m for m in logs_c),
+      [m for m in logs_c if "format_version" in m])
+
+print("\n[15] the log counts the drawn openings the clip leaves something of (round 126)")
+# R4n-12 of the 28.10.2026 review: the count was of the polygons sent to the
+# clip - flex-b2's log said "12 ... clipped to it" of polygons with nothing
+# inside the zone, and the model had none of them. Two more on the board of
+# [5]: one half on it, one outside touching its edge.
+edgy = json.loads(json.dumps(board))
+edgy["pads"]["exposed"]["top"] += [
+    {"layer": "PACKAGE GEOMETRY/SOLDERMASK_TOP", "area": 2.0,
+     "vertices": [[19, 4, 0], [21, 4, 0], [21, 5, 0], [19, 5, 0]]},
+    {"layer": "PACKAGE GEOMETRY/SOLDERMASK_TOP", "area": 2.0,
+     "vertices": [[20, 6, 0], [22, 6, 0], [22, 7, 0], [20, 7, 0]]}]
+logs_g = []
+comp_g, built_g, _ = P.build_exposed(edgy, stackups=edgy["stackups"], zones=[], levels={},
+                                     board_top_z=0.0, board_bottom_z=-1.104, lift=0.004,
+                                     section="exposed", log=logs_g.append)["top"]
+check("the one half on the board is clipped, the one with nothing on it said apart",
+      built_g == 2 and any("copper_top: 1 drawn-opening polygon(s) reach past the board outline and are "
+                           "clipped to it, 1 reach it with nothing on the board and are left out" in m for m in logs_g),
+      (built_g, logs_g))
+check("and what is built is the inside one and the half: 6 + 1 mm2",
+      comp_g is not None and abs(P.shape_area(comp_g) - 7.0) < 1e-6, comp_g is not None and P.shape_area(comp_g))
+# The same count when the polygons overlap: build_silkscreen merges a group's
+# flat faces before the clip, so a polygon that overlaps another is no
+# argument of the Common, its history empty whatever is left of it. Asked so,
+# Cadence's demo said "nothing inside" of 14 polygons with 0.6 to 57 mm2
+# inside MAIN_PCB and flex3-a0 of 30 (round 126, diag_left_of.py).
+lapped = json.loads(json.dumps(board))
+lapped["pads"]["exposed"]["top"] += [
+    {"layer": "PACKAGE GEOMETRY/SOLDERMASK_TOP", "area": 2.0,
+     "vertices": [[19, 2, 0], [21, 2, 0], [21, 3, 0], [19, 3, 0]]},
+    {"layer": "PACKAGE GEOMETRY/SOLDERMASK_TOP", "area": 2.0,
+     "vertices": [[19.5, 2.5, 0], [21.5, 2.5, 0], [21.5, 3.5, 0], [19.5, 3.5, 0]]}]
+logs_l = []
+comp_l, built_l, _ = P.build_exposed(lapped, stackups=lapped["stackups"], zones=[], levels={},
+                                     board_top_z=0.0, board_bottom_z=-1.104, lift=0.004,
+                                     section="exposed", log=logs_l.append)["top"]
+check("two overlapping across the edge, merged before the clip: both clipped, neither said empty",
+      built_l == 3 and any("copper_top: 2 drawn-opening polygon(s) reach past the board outline and are "
+                           "clipped to it" in m for m in logs_l)
+      and not any("nothing on the board" in m for m in logs_l), (built_l, logs_l))
+check("and what is built is the inside one and their union on the board: 6 + 1.25 mm2",
+      comp_l is not None and abs(P.shape_area(comp_l) - 7.25) < 1e-6, comp_l is not None and P.shape_area(comp_l))
+
+
+
+def _square(x0, y0, x1, y1):
+    return P._face_from_wires(P.build_contour(rect(x0, y0, x1, y1), 0.0), [])
+
+
+region = _square(0, 0, 2, 2)
+check("the rule asked alone: half in the region kept, touching its edge or away from it not",
+      P._left_of(_square(1, 0, 3, 1), region) and not P._left_of(_square(2, 0, 3, 1), region)
+      and not P._left_of(_square(5, 5, 6, 6), region))
+
+print("\n[16] a pad whose outline did not come through is said to be its box (round 126)")
+# R4-8 of the 23.10.2026 review: a figure with no outline became its bounding
+# box without a word - a 1 mm CIRCLE 1.000 mm2 for 0.785.
+lost = {"figure": "CIRCLE", "bbox": [[-0.5, -0.5], [0.5, 0.5]], "offset": [0, 0], "inside": 0, "outline": None}
+face_l, note_l = P.pad_face(lost, None, False, True)
+check("a CIRCLE without its path is drawn as its box and said to be",
+      face_l is not None and abs(area(face_l) - 1.0) < 1e-9
+      and note_l == "its CIRCLE outline did not come through the export; its bounding box stands in for it",
+      (face_l is not None and area(face_l), note_l))
+face_q, note_q = P.pad_face(dict(lost, figure="RECTANGLE"), None, False, True)
+check("a RECTANGLE's box is the figure itself: nothing to say", face_q is not None and note_q is None, note_q)
+lost_disc = json.loads(json.dumps(board))
+lost_disc["pads"]["padstacks"]["VIA"]["pads"]["ETCH/TOP"]["outline"] = None
+jf.write_text(json.dumps(lost_disc))
+_res_ld, logs_ld, _text_ld = build("lost_outline", exposed_copper=True)
+jf.write_text(json.dumps(board))
+check("and the build's log names the padstack",
+      any("VIA" in m and "its CIRCLE outline did not come through the export" in m for m in logs_ld),
+      [m for m in logs_ld if "VIA" in m or "outline" in m])
+
+print("\n[17] a through pin's span is a range of its padstack's layers (round 126)")
+# R4-6 of the 23.10.2026 review: the span was read by its two ends, so a
+# through pin in a flex zone whose span Allegro gave as the padstack's whole
+# TOP..BOTTOM drew nothing, and a blind TOP..INNER2 there only its bottom.
+thru4 = {"usage": "Through", "drill": circle(0.4),
+         "pads": {"ETCH/TOP": TOPPAD, "ETCH/INNER1": DISC, "ETCH/INNER2": DISC, "ETCH/BOTTOM": BOTPAD,
+                  "PIN/SOLDERMASK_TOP": TOPMASK, "PIN/SOLDERMASK_BOTTOM": BOTMASK}}
+
+
+def faces_on(start, end, top, bottom):
+    return sorted(side for side, _pad, _mask in P.pin_sides(
+        {"mirrored": False, "start": start, "end": end}, thru4, top, bottom))
+
+
+check("the padstack's whole span in a flex zone: both of the zone's faces, its INNER pads",
+      faces_on("ETCH/TOP", "ETCH/BOTTOM", "INNER1", "INNER2") == ["bottom", "top"]
+      and [p for _s, p, _m in P.pin_sides({"mirrored": False, "start": "ETCH/TOP", "end": "ETCH/BOTTOM"},
+                                          thru4, "INNER1", "INNER2")] == [DISC, DISC],
+      faces_on("ETCH/TOP", "ETCH/BOTTOM", "INNER1", "INNER2"))
+check("a blind TOP..INNER2 there reaches INNER1 too",
+      faces_on("ETCH/TOP", "ETCH/INNER2", "INNER1", "INNER2") == ["bottom", "top"],
+      faces_on("ETCH/TOP", "ETCH/INNER2", "INNER1", "INNER2"))
+check("written bottom first, the same range",
+      faces_on("ETCH/BOTTOM", "ETCH/TOP", "INNER1", "INNER2") == ["bottom", "top"])
+check("the zone's own span, as Allegro gives it on the boards on hand, as before",
+      faces_on("ETCH/INNER1", "ETCH/INNER2", "INNER1", "INNER2") == ["bottom", "top"])
+check("a blind TOP..INNER1 in the rigid zone reaches its top only",
+      faces_on("ETCH/TOP", "ETCH/INNER1", "TOP", "BOTTOM") == ["top"],
+      faces_on("ETCH/TOP", "ETCH/INNER1", "TOP", "BOTTOM"))
+
+print("\n[18] a flat legend, the windows, the copper, the drawn openings' parts: four heights (round 126)")
+# R4-3 of the 23.10.2026 review: the windows shared the flat legend's step,
+# and a legend line crossing one flickered in a viewer. The board of [5] with
+# a legend stroke through the through pin's window, built flat.
+inked = json.loads(json.dumps(board))
+inked["silkscreen"] = {"top": [{"layer": "PACKAGE GEOMETRY/SILKSCREEN_TOP", "area": 0.2,
+                                "vertices": [[4.5, 4.0, 0], [4.7, 4.0, 0], [4.7, 5.0, 0], [4.5, 5.0, 0]]}],
+                       "bottom": []}
+legend_z, placed18, drawn18 = [], [], []
+_orig_silk = core.build_silkscreen
+
+
+def _silk_seen(*a, **kw):
+    out = _orig_silk(*a, **kw)
+    if out[0] is not None:
+        legend_z.append(zrange(out[0]))
+    return out
+
+
+core.build_silkscreen = _silk_seen
+P._placement = lambda x, y, z, rotation, fold: (placed18.append(round(z, 6)), _orig_placement(x, y, z, rotation, fold))[1]
+core.build_exposed = lambda *a, **kw: (drawn18.append(kw.get("lift")), _orig_exposed(*a, **kw))[1]
+jf.write_text(json.dumps(inked))
+try:
+    build("inked_heights", exposed_copper=True, mask_openings=True, silk_flat=True)
+finally:
+    core.build_silkscreen = _orig_silk
+    P._placement = _orig_placement
+    core.build_exposed = _orig_exposed
+    jf.write_text(json.dumps(board))
+steps = sorted({round(z0, 6) for z0, _z1 in legend_z} | {z for z in placed18 if z > 0}
+               | {round(top_face + lift, 6) for lift in drawn18})
+check("on the top: the legend at h, the windows at 2h, the copper at 3h, the drawn openings' parts at 4h",
+      len(legend_z) == 1 and abs(legend_z[0][0] - (top_face + H)) < 1e-9 and abs(legend_z[0][1] - (top_face + H)) < 1e-9
+      and steps == [round(top_face + k * H, 6) for k in (1, 2, 3, 4)],
+      (legend_z, steps))
+
+print("\n[19] without the soldermask in the model the copper under drawn openings is still drawn (round 126)")
+# R4n-13 of the 28.10.2026 review: with "Do not include soldermask" the zones
+# were asked of the stack without its mask, every one "carried no
+# soldermask", and the copper under drawn openings went while the pads'
+# copper stayed. The mask is still in the design: the copper is drawn; the
+# windows in a mask the model no longer has are not, as the padstacks' are not.
+res_n, logs_n, text_n = build("no_mask_model", exposed_copper=True, mask_openings=True, ignore_soldermask=True)
+check("the copper under the drawn opening is drawn, and the pads as with the mask",
+      "copper_top_no_mask_model" in text_n and res_n.pads_placed == res_b.pads_placed,
+      (res_n.pads_placed, res_b.pads_placed, [m for m in logs_n if "copper_top" in m]))
+check("the windows are not: the model has no mask to open",
+      res_n.openings_placed == 0 and "bare_bot_no_mask_model" not in text_n,
+      (res_n.openings_placed, [m for m in logs_n if "bare_" in m or "Mask openings" in m]))
+
+print("\n[20] against Allegro: the copper and the mask openings of a v12 board's pins and vias (round 126)")
+# R4-10 of the 23.10.2026 review: [4] compares the copper of a sample with no
+# mask pad in it, and nothing compared an opening with Allegro's own. Cadence's
+# demo exported with format_version 12: 86 pins and vias - every padstack with
+# a mask pad, each placement kind of it twice at most - and the polygons
+# Allegro reported for their copper and their mask pads on both sides
+# (tools/probes/probe_pads_masks.il). Measured when the fixture was made:
+# boxes within 0.5 um, half the board's 1 um grid (the rounding round 113
+# found in the legend), areas within a shift of the boundary by that much.
+mx = json.loads((ROOT / "tests/fixtures/pads_masks.json").read_text(encoding="utf-8"))
+mx_where = P._Zones(mx["zones"], align_stackups(mx["stackups"], lambda m: None),
+                    {str(z["name"]): (0.0, 0.0) for z in mx["zones"]}, 0.0, 0.0)
+GRID = 1e-3
+
+
+def allegros(shape, oracle) -> bool:
+    """Box within a grid step of Allegro's, area within its boundary moved by one."""
+    if not oracle["n"] or not oracle["box"]:
+        return False
+    got, want = P._tight_box(shape), oracle["box"]
+    margin = 2.0 * ((want[2] - want[0]) + (want[3] - want[1])) * GRID
+    return (max(abs(a - b) for a, b in zip(got, want)) <= GRID
+            and abs(P.shape_area(shape) - oracle["area"]) <= margin)
+
+
+copper_ok = windows_ok = 0
+bad20 = []
+for entry in mx["pins"]:
+    row, oracle = entry["row"], entry["oracle"]
+    x, y, rot, mir, name = float(row[0]), float(row[1]), float(row[2]), bool(row[3]), row[4]
+    (top, bottom), _ = mx_where.at(x, y)
+    for side, pd, mask in P.pin_sides({"mirrored": mir, "start": row[5], "end": row[6]},
+                                      mx["padstacks"][name], top, bottom):
+        tag = "TOP" if side == "top" else "BOTTOM"
+        face, _ = P.pad_face(pd, None, mir, side == "top")
+        placed = BRepBuilderAPI_Transform(face, P._placement(x, y, 0.0, rot, None), True).Shape()
+        if allegros(placed, oracle["ETCH_" + tag]):
+            copper_ok += 1
+        else:
+            bad20.append(f"{name} {side} copper: {P._tight_box(placed)} vs {oracle['ETCH_' + tag]}")
+        held = oracle["MASK_" + tag]
+        if mask is None:
+            if held["n"]:
+                bad20.append(f"{name} {side}: no opening built, Allegro has {held['area']} mm2")
+            continue
+        window, _ = P.opening_face(mask, None, mir, side == "top")
+        placed_w = BRepBuilderAPI_Transform(window, P._placement(x, y, 0.0, rot, None), True).Shape()
+        if allegros(placed_w, held):
+            windows_ok += 1
+        else:
+            bad20.append(f"{name} {side} opening: {P._tight_box(placed_w)} {P.shape_area(placed_w):.6f} vs {held}")
+check(f"every opening is Allegro's mask pad, box and area ({windows_ok} openings)",
+      not [b for b in bad20 if "opening" in b] and windows_ok > 0, bad20[:4])
+check(f"and the copper is Allegro's pad ({copper_ok} pads)",
+      not [b for b in bad20 if "copper" in b] and copper_ok > 0, bad20[:4])
+kinds20 = {(bool(e["row"][3]), round(float(e["row"][2])) % 90 != 0 or round(float(e["row"][2])) % 360 != 0,
+            len(e["row"]) > 7 and e["row"][7] == "via") for e in mx["pins"]}
+check("the sample has mirrored pins, turned ones, vias and through pins",
+      any(m for m, _r, _v in kinds20) and any(r for _m, r, _v in kinds20) and any(v for _m, _r, v in kinds20)
+      and any(mx["padstacks"][e["row"][4]]["drill"] for e in mx["pins"]), sorted(kinds20))
 
 print()
 print("RESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")

@@ -274,7 +274,8 @@ for stated in check_counts:
 # table, or added, now turns this red until the docs say so too.
 n_rows = len(json.loads((ROOT / "tests/mutations.json").read_text(encoding="utf-8")))
 for doc, text, pattern, floor in (
-        ("README.md", readme, r"tests/mutations\.json, (\d+) (?:faults|поломок)", 2),
+        # the Russian noun follows the number: 501 поломка, 502 поломки, 500 поломок
+        ("README.md", readme, r"tests/mutations\.json, (\d+) (?:faults|поломк[аи]|поломок)", 2),
         ("ARCHITECTURE.md", arch, r"the (\d+) deliberate faults", 1),
         ("ARCHITECTURE.md", arch, r"`tests/mutations\.json` \((\d+) rows", 1)):
     found = re.findall(pattern, text)

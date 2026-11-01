@@ -215,13 +215,13 @@ Most controls say what they do. These are the ones worth knowing about:
 | **Z = 0 at** | Which face is the datum. Parts sit on the **soldermask** of their side, because real pads carry solder that lifts the part to mask level. |
 | **Board edge color** | Only *Solid* has one uniformly colored body for a rim to contrast with, so this greys out in the other two stitchings rather than being silently ignored. |
 | **Body stitching** | How the body is put together, **on any board** — an ordinary one has no zones, so its outline becomes one implicit zone on its single stackup. *Solid* — one body, smallest. *Solid colored layers* — one body whose layer interfaces survive, so the rim shows the stack (~4.7× larger). *Not stitched* — every layer of every zone its own part, for taking the board apart by eye. The last two need the stackup layers: an intermediate written by an older version says so in the log and falls back to one solid. |
-| **Do not include soldermask** | Leaves the mask out and closes the stack up toward the core by exactly what was removed, each side independently. The board really does get thinner — check the total. |
+| **Do not include soldermask** | Leaves the mask out and closes the stack up toward the core by exactly what was removed, each side independently. The board really does get thinner — check the total. With *Exposed copper* the copper is drawn as without it: the pads by their padstacks' openings, the copper under the openings drawn on the mask layers by those openings. The *Mask openings* are left out, there being no mask in the model to open. |
 | **Silkscreen: Top / Bottom** | Both off skips the legend entirely and makes a noticeably smaller file. |
 | **Make surface** | The legend as surfaces rather than thin solids: about a quarter of its file size. The ink then has no thickness and cannot be used in boolean work. |
 | **Silkscreen layers** | A tick per layer *found in this JSON*, with its polygon count. Untick and press Generate again — no re-export needed. |
 | **Legend from: drawn layers / AUTOSILK** | Beside *All* / *None*. The drawn silkscreen layers (the default), or Allegro's AUTOSILK copy of them — one or the other, never both; a side with no AUTOSILK keeps its drawn layers. The rows a choice leaves out are greyed. See *Silkscreen*. |
 | **Fold flex bends** | Fold along the bend areas. Off exports the board flat. Does nothing on a board without them. |
-| **Exposed copper (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces two microns above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Only what the mask opening exposes is drawn: a solder-mask-defined pad shows its opening's shape, a pad with no opening shows nothing, an untented via its ring, a tented one nothing. Openings drawn on the `SOLDERMASK` layers add the copper under them, one flat part per side. A pad on the board's edge or over a cutout is clipped to the board. Needs a JSON written with `format_version` 12 (11 has no vias and nothing under drawn openings, 10 draws the copper whole, an older one draws none; the log says which). The colour is the *Copper* swatch's, live in any stitching while this is ticked. See *Exposed copper*. |
+| **Exposed copper (as surfaces)** | The copper of every pin's pad on the two outer faces, as copper-coloured surfaces three microns above the mask — so the model reads as a board with its pads, not a plain slab. Nothing is cut into the board: no boolean, and the board stays one solid. One shared face per pad figure, instanced per pin, so a pad costs a placement in the file rather than a body. Only what the mask opening exposes is drawn: a solder-mask-defined pad shows its opening's shape, a pad with no opening shows nothing, an untented via its ring, a tented one nothing. Openings drawn on the `SOLDERMASK` layers add the copper under them, one flat part per side. A pad on the board's edge or over a cutout is clipped to the board. Needs a JSON written with `format_version` 12 (11 has no vias and nothing under drawn openings, 10 draws the copper whole, an older one draws none; the log says which). The colour is the *Copper* swatch's, live in any stitching while this is ticked. See *Exposed copper*. |
 | **Mask openings (as surfaces)** | The solder-mask openings as surfaces in the dielectric's colour (`base` in *layerColors*): every pin's and via's opening from its padstack, instanced like the pads, and every opening drawn on the `SOLDERMASK` layers — a line, a shape or rectangle, a text. With *Exposed copper* on, what the copper leaves of each opening: the ring around a copper-defined pad, the laminate a label cut into the mask shows; on its own, the openings whole. Windows on the board's edge or over a cutout are clipped to the board as the pads are. Needs a JSON written with `format_version` 11 for the padstacks' openings, 12 for the drawn ones. The colour is the *Base* swatch's, live in any stitching while this is ticked. See *Exposed copper*. |
 | **Compact STEP** | Drops parametric surface curves — roughly half the file, identical geometry. |
 | **Build the full-board file too** | With a folder queued, whether the batch also builds `<board>.json` — the whole board, variants ignored (`settings.exportFullBoard` is what writes it). A file you point at directly is always built: choosing it is choice enough. |
@@ -649,10 +649,12 @@ solid if you mean to do boolean work on the ink.
 Off by default; tick **Exposed copper (as surfaces)** for a model that reads as a
 board with its pads rather than as a green slab. The copper of every pin's pad
 is drawn on the two outer faces as a surface in the copper colour of
-`layerColors`, two `silkscreenFlatHeight`s above the board's face under the pad
+`layerColors`, three `silkscreenFlatHeight`s above the board's face under the pad
 — the mask, or what lies under a stiffener or a coverlay opened around the
-pad — the way a flat legend sits on it, one step higher (the *Mask openings*
-take the first step, so where a window overlaps a neighbouring pad's copper the
+pad — the way a flat legend sits on it, two steps higher (a flat legend takes
+the first step and the *Mask openings* the second: a legend line over a window,
+a design-rule violation in Allegro, goes under it as a board house's clipping
+would cut it away, and where a window overlaps a neighbouring pad's copper the
 copper is on top).
 That is the whole construction: **nothing is cut into the board.** A window per pad cut through the mask and a body per pad set into it
 would be a boolean over thousands of prisms — minutes of solver time on a dense
@@ -711,7 +713,8 @@ boards six tent every via; circle-A0 leaves 2 of its 23 open (padstack
 cutout — a mouse-bite hole standing on the edge, a slot the outline runs
 through — is clipped to the board: that placement becomes a face of its own,
 `pad_<padstack>_<layer>_clipped`, with what lies off the board cut away; a pin
-lying off the board altogether draws nothing; the log counts both. The rest
+lying off the board altogether, outside the outline or inside a cutout, draws
+nothing; the log counts both. The rest
 stay instances of the shared figure, and the decision costs nothing where it
 does not apply: every placement is first asked whether its bounding circle can
 reach the outline or a cutout at all — exact distances to the segments and
@@ -732,7 +735,7 @@ shape, a row of fingers, a test area, a pour, a part number cut into the mask.
 The exporter computes that copper **in Allegro**: each opening becomes
 polygons (a line opening is the line widened with round caps and a text its
 strokes, as the legend does it), the copper on that side's outer layer — pins
-and vias by their pads, shapes and lines whole — is swept once for the whole
+and vias by their pads, shapes, lines and texts whole — is swept once for the whole
 side with Allegro's select-all (never its interactive box find, which in a live
 session once left a 66 mm² pour out of the file), each object converted once
 and matched to the openings by bounding box, and `axlPolyOperation` keeps what
@@ -1030,9 +1033,7 @@ and vias' pads through their padstack openings and the copper under openings
 drawn on the `SOLDERMASK` layers; a pin whose span reaches no outer face of its
 zone (a part mounted on an inner layer of a rigid zone) draws nothing and is
 counted in the log, and a trace entering a pad's opening is not drawn inside
-it — with *Mask openings* on, its place in the ring is laminate. A
-legend printed over a pad — a design-rule violation in Allegro — lands in
-the same plane as a flat legend and may flicker there. **Not measured on any
+it — with *Mask openings* on, its place in the ring is laminate. **Not measured on any
 board yet:** a mirrored pin on a padstack whose drill is offset from the pad.
 The pad's hole is mirrored with the pad, the board's hole (the cutout) is
 not; no board on hand has such a padstack, so which of the two Allegro means
@@ -1098,7 +1099,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 487 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar three that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 501 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1321,13 +1322,13 @@ load("d:/Projects/OrCAD/Scripts/Simple3D/simple3d.il")
 | **Z = 0 at** | Какая грань — база отсчёта. Детали стоят на **паяльной маске** своей стороны: реальные площадки несут припой, который поднимает деталь до уровня маски. |
 | **Board edge color** | Своё тело одного цвета, с которым может контрастировать торец, есть только у *Solid*, поэтому в двух других сшивках элемент гаснет, а не молча игнорируется. |
 | **Body stitching** | Как собрано тело, **на любой плате**: у обычной зон нет, поэтому её контур становится одной неявной зоной на единственном стекапе. *Solid* — одно тело, самое компактное. *Solid colored layers* — одно тело, но границы слоёв сохранены, и торец показывает стек (примерно в 4.7 раза больше). *Not stitched* — каждый слой каждой зоны отдельной деталью, чтобы разобрать плату глазами. Двум последним нужны слои стека: интермедиат от старой версии их не несёт — лог об этом скажет и соберёт одно тело. |
-| **Do not include soldermask** | Убирает маску и смыкает стек к ядру ровно на снятую толщину, каждую сторону отдельно. Плата действительно становится тоньше — проверьте итог. |
+| **Do not include soldermask** | Убирает маску и смыкает стек к ядру ровно на снятую толщину, каждую сторону отдельно. Плата действительно становится тоньше — проверьте итог. С *Exposed copper* медь рисуется так же, как без этой галки: площадки по вскрытиям своих падстеков, медь под нарисованными на слоях маски вскрытиями по этим вскрытиям. *Mask openings* не рисуются: маски в модели нет, вскрывать нечего. |
 | **Silkscreen: Top / Bottom** | Обе выключены — шелкография не строится вовсе, и файл заметно меньше. |
 | **Make surface** | Легенда поверхностями, а не тонкими телами: примерно четверть её объёма в файле. Толщины у краски тогда нет, и в булевых операциях она не участвует. |
 | **Silkscreen layers** | Галочка на каждый слой, *найденный в этом JSON*, с числом полигонов. Снимите и нажмите Generate снова — повторный экспорт не нужен. |
 | **Legend from: drawn layers / AUTOSILK** | Рядом с *All* и *None*. Нарисованные слои шелкографии (по умолчанию) или их копия AUTOSILK, сделанная Allegro: одно из двух, не оба. Сторона без AUTOSILK остаётся с нарисованными слоями. Строки, которые выбор не берёт, становятся серыми. См. *Шелкография*. |
 | **Fold flex bends** | Сгибать по областям сгиба. Выключено — плата экспортируется плоской. На плате без сгибов ничего не меняет. |
-| **Exposed copper (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на два микрона над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего, незакрытое переходное отверстие — своё кольцо, закрытое — ничего. Вскрытия, нарисованные на слоях `SOLDERMASK`, добавляют медь под собой — одна плоская деталь на сторону. Площадка на кромке платы или над вырезом обрезается по плате. Нужен JSON с `format_version` 12 (11 не несёт переходных отверстий и меди под нарисованными вскрытиями, 10 рисует медь целиком, более старый — ничего; лог говорит, что именно). Цвет — квадратика *Copper*, живого при любой сшивке, пока отмечена эта галка. См. *Открытая медь*. |
+| **Exposed copper (as surfaces)** | Медь площадок всех выводов на двух наружных гранях — поверхности цвета меди на три микрона над маской, чтобы модель читалась как плата с площадками, а не как гладкая пластина. В плату ничего не вырезается: булевых операций нет, тело остаётся одним. Одна общая грань на фигуру площадки, вхождение на каждый вывод — площадка стоит в файле как размещение, а не как тело. Рисуется только то, что открыто маской: mask-defined площадка показывает форму своего вскрытия, площадка без вскрытия не показывает ничего, незакрытое переходное отверстие — своё кольцо, закрытое — ничего. Вскрытия, нарисованные на слоях `SOLDERMASK`, добавляют медь под собой — одна плоская деталь на сторону. Площадка на кромке платы или над вырезом обрезается по плате. Нужен JSON с `format_version` 12 (11 не несёт переходных отверстий и меди под нарисованными вскрытиями, 10 рисует медь целиком, более старый — ничего; лог говорит, что именно). Цвет — квадратика *Copper*, живого при любой сшивке, пока отмечена эта галка. См. *Открытая медь*. |
 | **Mask openings (as surfaces)** | Вскрытия паяльной маски поверхностями цвета диэлектрика (`base` из *layerColors*): вскрытие каждого вывода и переходного отверстия из его падстека, вхождениями как площадки, и каждое вскрытие, нарисованное на слоях `SOLDERMASK` — линия, фигура или прямоугольник, текст. Вместе с *Exposed copper* — то, что от вскрытия оставляет медь: кольцо вокруг copper-defined площадки, текстолит, который показывает прорезанная в маске надпись; сами по себе — вскрытия целиком. Окна на кромке платы или над вырезом обрезаются по плате, как площадки. Нужен JSON с `format_version` 11 для вскрытий падстеков, 12 для нарисованных. Цвет — квадратика *Base*, живого при любой сшивке, пока отмечена эта галка. См. *Открытая медь*. |
 | **Compact STEP** | Убирает параметрические кривые на поверхностях — примерно вдвое меньший файл при той же геометрии. |
 | **Build the full-board file too** | Когда в очереди папка — собирать ли вместе с вариантами `<плата>.json`, всю плату без учёта вариантов (пишет его `settings.exportFullBoard`). Файл, выбранный напрямую, собирается всегда: выбор и есть выбор. |
@@ -1760,11 +1761,12 @@ Allegro 25.1 не даёт ни одного многоугольника для
 По умолчанию выключено; поставьте **Exposed copper (as surfaces)**, чтобы модель
 читалась как плата с площадками, а не как зелёная пластина. Медь площадки
 каждого вывода рисуется на двух наружных гранях поверхностью цвета меди из
-`layerColors`, на два `silkscreenFlatHeight` над гранью платы под площадкой
+`layerColors`, на три `silkscreenFlatHeight` над гранью платы под площадкой
 (над маской, а где вокруг площадки вскрыт стиффенер или покровный слой — над
-тем, что под ним) — как плоская легенда, на ступеньку выше (первую ступеньку
-занимают *Mask openings*, и там, где окно ложится на медь соседней площадки,
-медь сверху). В этом вся
+тем, что под ним) — как плоская легенда, на две ступеньки выше. Первую
+ступеньку занимает плоская легенда, вторую *Mask openings*: линия легенды
+поверх окна (в Allegro это нарушение правил) уходит под него, как её срезал бы
+завод, а там, где окно ложится на медь соседней площадки, медь сверху. В этом вся
 конструкция: **в плату ничего не вырезается.** Окно на каждую площадку сквозь маску и тело в нём — это булева
 операция над тысячами призм: минуты решателя на плотной плате и реальный шанс
 пустого результата ради картинки, которая не отличит площадку заподлицо от
@@ -1823,7 +1825,8 @@ Allegro 25.1 не даёт ни одного многоугольника для
 вырезом — отверстие mouse-bite на самой кромке, паз, через который проходит
 контур, — обрезается по плате: такое размещение становится отдельной гранью
 `pad_<падстек>_<слой>_clipped`, без того, что лежит вне платы; вывод, целиком
-стоящий вне платы, не рисуется; лог считает и то и другое. Остальные остаются
+стоящий вне платы (за контуром или внутри выреза), не рисуется; лог считает и
+то и другое. Остальные остаются
 вхождениями общей фигуры, и там, где обрезка не нужна, решение ничего не
 стоит: у каждого размещения сначала спрашивается, может ли его описанная
 окружность вообще дотянуться до контура или выреза — точные расстояния до
@@ -1844,7 +1847,7 @@ Allegro 25.1 не даёт ни одного многоугольника для
 **в Allegro**: каждое вскрытие становится полигонами (вскрытие-линия — линия,
 раздутая до ширины со скруглёнными концами, текст — его штрихи, как в
 легенде), медь наружного слоя этой стороны — выводы и отверстия своими
-площадками, фигуры и линии целиком — обходится один раз на всю сторону штатным
+площадками, фигуры, линии и тексты целиком — обходится один раз на всю сторону штатным
 select-all Allegro (не интерактивным поиском по рамке, который в живой сессии
 однажды потерял заливку в 66 мм²), каждый объект преобразуется один раз и
 сопоставляется со вскрытиями по габариту, а `axlPolyOperation` оставляет то,
@@ -2144,9 +2147,7 @@ Allegro построена при `k = 0`. На плате с запасом р�
 слоях `SOLDERMASK`; вывод, чей диапазон слоёв не достигает наружной грани своей
 зоны (деталь на внутреннем слое жёсткой зоны), не рисуется и считается в логе,
 а дорожка, входящая во вскрытие площадки, внутри него не рисуется — с
-*Mask openings* её место в кольце занимает текстолит. Легенда
-поверх площадки — в Allegro это нарушение правил — попадает в одну плоскость с
-плоской легендой и может там мерцать. **Ни на одной плате пока не измерено:**
+*Mask openings* её место в кольце занимает текстолит. **Ни на одной плате пока не измерено:**
 зеркальный вывод на падстеке, у которого сверло смещено относительно
 площадки. Отверстие в площадке зеркалится вместе с ней, отверстие в плате
 (вырез) — нет; такого падстека нет ни на одной плате под рукой, и что из двух
@@ -2212,7 +2213,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 487 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме трёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 501 поломка, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

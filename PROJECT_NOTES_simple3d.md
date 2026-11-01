@@ -3521,6 +3521,56 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-01 (round 126) — the pads findings (R4-1, R4-3, R4-4, R4-5, R4-6, R4-8, R4-10, R4n-12, R4n-13, R4n-15, R4n-16)
+
+Batch 4 of the owner's «Пройдись дальше сам по всем оставшимся находкам»; the
+record is `docs/records/pads-batch-2026-11-01.md`, scratch in
+`build/fix-2026-10-31/r126/`.
+
+- R4-1: `_Boundary.on_board` asked only the cutouts with an edge in the pin's
+  grid cell; a pin in the middle of a cutout larger than a cell was on the
+  board. Now every cutout whose box holds the point is asked, once per cell
+  (a cutout with no edge in the cell holds all of it or none).
+- R4-5: masks known from format_version 11 on, not only when the library has
+  a mask pad - a v12 board with every via tented and no pin opened drew all
+  its copper and said "format_version 10".
+- R4n-12: `build_exposed` asks per polygon what Common left of it
+  (`build_silkscreen(made=)` hands back each polygon's face, `pads._left_of`
+  reads the history and, where it is empty, the result itself - one of
+  flex-b2's laminate frames was neither deleted nor modified and absent from
+  the result); flex-b2's copper says 0 clipped, the 12 with nothing inside
+  SOLDERMASK1 apart - the review's 0.00000 mm2.
+- R4-8: a figure other than a rectangle or a square standing in as its box
+  is noted.
+- R4-6: a through padstack's span is a range of its layers; measured first,
+  it changes none of the 5339 pins of the exports on hand.
+- R4-3: four heights, a flat legend h, windows 2h, copper 3h, drawn parts 4h.
+- R4n-13: the copper under drawn openings asks the stackups as exported
+  which zones have a mask (Do not include soldermask dropped them first).
+- R4-4, R4n-15, R4n-16 (SKILL, proved by probes in Allegro): "text" in the
+  copper sweep's filter; a warning when the via selection fails; a warning
+  for a pad figure of more than one path (none on the nine boards: 604 pads,
+  seven SHAPE, one path each).
+- R4-10: the board built for no outline and never used went (a build of one
+  is refused before the pads), and the openings have an oracle at last:
+  `tools/probes/probe_pads_masks.il`, `tests/fixtures/pads_masks.json`,
+  test_pads [20].
+
+- Found by the 4090 (01.11.2026) and fixed before the commit: test_surface
+  still pinned the old heights (8 FAIL, 15 rows unproven on its red copy);
+  and the first per-polygon count asked the group's Common for each
+  polygon's history, though build_silkscreen merges a group's flat faces
+  before the clip - Cadence's demo said "nothing inside" of 14 polygons with
+  0.6 to 57 mm2 inside MAIN_PCB, flex3-a0 of 30 (`diag_left_of.py`). Now a
+  Common of each polygon's own face; test_pads [15] has two overlapping
+  across the edge (red on the first version: 1 built of 3).
+- On the 4090: the 233 rows the changes select caught 233 of 233 (rows 487
+  -> 501), test_mutations ALL PASS, run_all 32/34 (the two window suites of
+  session 0). The pads and openings counted the same as HEAD's on the eight
+  review exports, with and without the soldermask; the drawn-opening lines
+  differ where meant (flex-b2's copper "12 ... with nothing inside it", the
+  demo's and flex3-a0's counts as HEAD's).
+
 ## Update 2026-11-01 (round 125) — the STEP builder refuses by name what it cannot build (R3-4, R3-8, R3-9, R3-10, R3-11, R3-12; R3-6 and R3-7 parked)
 
 The STEP-builder batch of the owner's «Пройдись дальше сам по всем оставшимся
