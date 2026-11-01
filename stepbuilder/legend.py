@@ -30,6 +30,7 @@ from OCP.gp import gp_Pnt, gp_Vec
 from .contour import WIRE_TOLERANCE, _face_from_wires, _open_wire_detail, build_contour, contour_points, point_in_polygon
 from .errors import StepBuilderError
 from .reporting import LogFn, _noop_log
+from .zones import in_nested, nested_polygons
 
 
 # --------------------------------------------------------------------------- #
@@ -626,7 +627,8 @@ def clip_silk_to_zones(polygons: list, stackups: dict | None, zones: list | None
         contour = contour_points(zone.get("contour") or [])
         if not contour:
             continue
-        (printed if flag.get(side) else bare).append((str(zone["name"]), contour))
+        # with the zones nested in it, which answer for their own area
+        (printed if flag.get(side) else bare).append((str(zone["name"]), contour, nested_polygons(zone)))
 
     if not bare:
         return polygons                    # every zone is printed: nothing to do
@@ -638,11 +640,12 @@ def clip_silk_to_zones(polygons: list, stackups: dict | None, zones: list | None
             kept.append(polygon)
             continue
         # On a printed zone wins: a glyph that straddles a boundary belongs to
-        # the side of it that has a legend.
-        if any(point_in_polygon(point, c) for _, c in printed):
+        # the side of it that has a legend. Inside a zone nested in another,
+        # the nested zone's stack says (round 127).
+        if any(point_in_polygon(point, c) and not in_nested(point, h) for _, c, h in printed):
             kept.append(polygon)
             continue
-        home = next((n for n, c in bare if point_in_polygon(point, c)), None)
+        home = next((n for n, c, h in bare if point_in_polygon(point, c) and not in_nested(point, h)), None)
         if home is None:
             kept.append(polygon)           # on no zone at all - leave it be
             continue

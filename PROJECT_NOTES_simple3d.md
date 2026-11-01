@@ -453,7 +453,8 @@ drops silk exclusions absent from the current JSON (R6-3); `%` in any JSON body
 string reaches `fprintf` as the format (R1-1, from the code and Cadence's fprintf
 page, not run in Allegro). Against this memo: the data's zones DO overlap
 (flex-b2 53.6 mm², flex2-a0 21.1 and 18.6 mm²), though "Nested zones: there is
-no such thing" below says they cannot. R6-1, R6-2 and R6-3 are fixed in round
+no such thing" below says they cannot (they nest, an Allegro feature since
+22.1 QIR2: round 127). R6-1, R6-2 and R6-3 are fixed in round
 95 at the owner's word; everything else is open, and the owner decides the
 next fixes and a second round.
 
@@ -3521,6 +3522,57 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-01 (round 127) — a zone drawn inside another (R3-6, R3-7)
+
+Unparked the same day: the owner sent Cadence's BoardSurfers blog
+(18.04.2023) and a forum article (28.02.2024) - Allegro nests stackup zones
+since 22.1 QIR2 - and the 24.1 migration guide installed here says so too
+(Database Format); the rigid-flex book's "cannot be nested" is out of date.
+Done at his «Да, сейчас»; the record is `docs/records/nested-zones-2026-11-01.md`,
+scratch in `build/fix-2026-10-31/r127/`.
+
+- Measured first (`zone_pairs.py`, `nested_material.py`, the eight review
+  exports): three nested pairs, the inner zone wholly inside (0.000000 mm2
+  out) - flex-b2 SOLDERMASK1 in STIFFENER2, flex2-a0 LDI in STIFF_TOP_500 and
+  LDI2 in STIFF_TOP_500_2; STIFF_TOP_500_2 and FLEX only touch (1e-6 mm2).
+  Round 125's "the inner stacks are supersets of the outer ones" was wrong as
+  to the layers (SOLDERMASK1 has a mask where STIFFENER2 has stiffener,
+  adhesive and coverlay); what holds is the material: the outer stack has none
+  inside the inner zone beyond the inner's, so both fused there are the inner
+  alone (16.326, 4.5885, 17.0801 mm3).
+- `stepbuilder/zones.py`: `nest` (once, in `_prepare_stackups`, with a log
+  line; inside to NEST_SHARE = 1e-6 of the zone's own area, the smaller of
+  two), `own_face` (the contour less the nested zones, separate Cut tools),
+  `in_nested` (inside, not on the edge). Every consumer asks a zone's own
+  region: `_layer_region` (so the body, Not stitched, Solid colored layers,
+  `layer_holds_material`), `_zone_solid`, `Surface._in_zone` and `_faces`,
+  `pads._Zones.holds` (`at`, `mask_at`), the drawn openings' homes and clip
+  region, `clip_silk_to_zones`, the fold's `_stack_at`, `crooked_parts`,
+  `_note_bends_over_empty_layers`. Zones that cross still both count.
+- `tests/test_nested.py`, 27 checks, 21 red on HEAD. Rows 501 -> 519: 17 of the
+  nesting, one for the audit, which now reads "31 набор тестов" (the 31st
+  suite); three rows re-pointed at rewritten lines, three count rows at 31.
+- The 4090 (18:09-18:27): test_nested, test_zones, test_surface, test_silk,
+  test_layers, test_modes, test_bend green, test_mutations ALL PASS, the audit
+  no findings; **test_pads 5 FAIL - my miss again, the suite not run before
+  the job**: its [12] (R4-11, round 108) put a stiffener zone ST *inside* the
+  masked S2 and expected S2's mask at the pin, which is the union's answer;
+  flex-b2 is the other way round (the masked SOLDERMASK1 inside STIFFENER2).
+  [12] now makes ST cross S2's edge, so two zones hold the pin without nesting
+  and the face decides, as the round-108 rows ask. Rows: 169 of 245 caught,
+  76 unproven on test_pads' red baseline, none survived; the 76 rerun on the
+  fixed tree (18:30) caught 76 of 76 - 245 of 245 - and run_all 33/35 (the
+  two window suites of session 0). The final bytes hash-checked on the
+  mirror, test_surface, test_pads, test_nested, the audit, test_mutations and
+  python_names green on them. The eight review
+  exports against HEAD, Solid and Not stitched with copper and openings: the
+  Solid body equal on all eight (flex-b2 407.680738 mm3, flex2-a0 184.757809);
+  Not stitched -11.027127 mm3 on flex-b2 and -20.111064 on flex2-a0, now the
+  Solid body to 8e-6 mm3; pads, windows and solids counted as HEAD's; the log
+  adds the nesting lines and gives flex2-a0's four bottom legend glyphs to
+  LDI and LDI2 where it gave them to the zones around them; no time lost
+  (flex-b2 7.2 -> 5.9 s, the demo 81.3 both).
+
 ## Update 2026-11-01 (round 126) — the pads findings (R4-1, R4-3, R4-4, R4-5, R4-6, R4-8, R4-10, R4n-12, R4n-13, R4n-15, R4n-16)
 
 Batch 4 of the owner's «Пройдись дальше сам по всем оставшимся находкам»; the
@@ -3633,7 +3685,9 @@ The STEP-builder batch of the owner's «Пройдись дальше сам п�
   (->holes and axlPolyFromDB agree) - the nesting is in Allegro's database,
   not an export loss: SOLDERMASK1 inside STIFFENER2 (flex-b2), LDI inside
   STIFF_TOP_500 and LDI2 inside STIFF_TOP_500_2 (flex2-a0). Which zone a
-  point belongs to there is a modelling decision on his boards.
+  point belongs to there is a modelling decision on his boards. (Unparked the
+  same day, round 127: nested zones are an Allegro feature since 22.1 QIR2,
+  the page's "nested" is out of date, and the meaning is Cadence's.)
 
 Rows 463 -> 487 (22 + 2): `rows125.py`, `rows125b.py`; one old row
 (board-zone-solid-extruded-upwards) re-pointed at the rewritten prism line.
@@ -12217,6 +12271,13 @@ takes the same decision on `pcb.thickness`, since there the mask is two numbers
 rather than two layers.
 
 ### Nested zones: there is no such thing — CORRECTION
+
+**This correction was itself wrong (round 127, 01.11.2026).** Allegro nests
+stackup zones since release 22.1 QIR2 (Cadence's migration guide for 24.1,
+Database Format; Cadence's BoardSurfers blog of 18.04.2023): the page quoted
+below is out of date in its "nested" half, and the owner's boards nest three
+zones whose outer zone has no hole (round 125's probe). The premise it
+"corrected" was the right one; see round 127 for what the build does now.
 
 Recorded here earlier as "Allegro supports it, this does not", deferred. **That
 premise was wrong.** From `Creating_Multi-Stackup_Zones_in_the_Design_Drawing`:

@@ -306,18 +306,20 @@ def crooked_parts(strips: list, zones: list[dict], levels: dict) -> list[Crooked
 
     *levels*: zone name -> (top z, bottom z), as plan_from_json has them. A
     zone without a level or a contour is not judged. The strip's own stack is
-    the one most of its area lies on.
+    the one most of its area lies on. A zone is its own region, less the
+    zones nested in it (round 127).
     """
-    from ..contour import build_contour
-    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+    from ..errors import StepBuilderError
+    from ..zones import own_face
 
     faces = {}
     for zone in zones:
         name = str(zone.get("name"))
         if name in levels and zone.get("contour"):
-            maker = BRepBuilderAPI_MakeFace(build_contour(zone["contour"], 0.0), True)
-            if maker.IsDone():
-                faces[name] = maker.Face()
+            try:
+                faces[name] = own_face(zone["contour"], zone.get("nested"), 0.0)
+            except (StepBuilderError, RuntimeError):
+                continue
 
     found: dict[tuple[str, str], Crooked] = {}
     for strip in strips:

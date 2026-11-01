@@ -143,8 +143,11 @@ for name, point, body_faces in (("in the window", WINDOW, window_body), ("over t
 check("a point no zone holds has no surface", stack.surface.at(-5.0, -5.0) is None,
       stack.surface.at(-5.0, -5.0))
 
-# Zones overlap on real boards (flex-b2 53.6 mm2): a point in two zones has
-# the body of both under it, and the higher of their faces is the top.
+# Two zones that cross - Allegro trims them, but a file could carry them, and
+# zones touch at a seam - both hold a point there: it has the body of both
+# under it, and the higher of their faces is the top. (The owner's boards nest
+# their zones instead - flex-b2 SOLDERMASK1 inside STIFFENER2 - where the zone
+# inside holds its area alone since round 127: tests/test_nested.py.)
 overlap = json.loads(jf.read_text(encoding="utf-8"))
 overlap["zones"][1]["contour"] = rect(0, 10.0, 41, 26.5)          # F2 now reaches 1.38 mm into S2
 overlap_stack = core._prepare_stackups(overlap, BuildOptions(), lambda m: None)

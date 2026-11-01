@@ -891,20 +891,23 @@ def plan_from_json(data: dict, board_top_z: float, board_bottom_z: float,
     # tail through a visibly wrong arc.
     stack_at = None
     if zones and levels:
+        from ..zones import in_nested, nested_polygons
+
         polys = []
         for zone in zones:
             name = str(zone["name"])
             if name in levels:
-                polys.append((name, contour_points(zone.get("contour")), levels[name]))
-        thinnest = min((lv for _, _, lv in polys), key=lambda lv: lv[0] - lv[1],
+                polys.append((name, contour_points(zone.get("contour")), levels[name], nested_polygons(zone)))
+        thinnest = min((lv for _, _, lv, _h in polys), key=lambda lv: lv[0] - lv[1],
                        default=(board_top_z, board_bottom_z))
 
         # Bound to the name below rather than defined as `stack_at` directly:
         # shadowing the None above reads as a redefinition to every linter, and
-        # the reader has to check which one wins.
+        # the reader has to check which one wins. A point inside a zone nested
+        # in another is that zone's (round 127).
         def _stack_at(x: float, y: float, _polys=polys, _thin=thinnest):
-            for _, poly, level in _polys:
-                if poly and point_in_polygon((x, y), poly):
+            for _, poly, level, holes in _polys:
+                if poly and point_in_polygon((x, y), poly) and not in_nested((x, y), holes):
                     return level
             return _thin
 

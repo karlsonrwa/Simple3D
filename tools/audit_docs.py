@@ -247,7 +247,7 @@ arch = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
 # least once; fewer matches is a finding, like the other "ran on nothing" checks.
 for doc, text, floor in (("README.md", readme, 2), ("ARCHITECTURE.md", arch, 1)):
     stated_counts = re.findall(
-        r"(\d+) (test suites|suites|наборов тестов|набора тестов)", text)
+        r"(\d+) (test suites|suites|наборов тестов|набора тестов|набор тестов)", text)
     if len(stated_counts) < floor:
         note("suite count", f"{doc} states the suite count {len(stated_counts)} time(s), "
              f"{floor} expected - the check ran on less than it should")

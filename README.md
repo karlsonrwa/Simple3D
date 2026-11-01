@@ -785,11 +785,12 @@ the checkbox draws the openings whole: the mask's windows on a board without
 its copper.
 
 **Only where there is a mask.** A window is drawn only on a zone whose stackup
-carries a soldermask layer on that side. Where zones overlap, the zone whose
-layers make the board's face at the pin on that side decides: flex-b2's
-connector stands both in a stiffener zone and in a masked one, the stiffener is
-opened over its pins, and the face there is the mask. The log names the zone
-that decided when a window is left out. A flex or stiffener zone has coverlay
+carries a soldermask layer on that side. The zone whose layers make the
+board's face at the pin on that side decides, and a zone drawn inside another
+is the board there on its own: flex-b2's connector stands in SOLDERMASK1,
+drawn inside the stiffener zone STIFFENER2, and the face there is
+SOLDERMASK1's mask. The log names the zone that decided when a window is left
+out. A flex or stiffener zone has coverlay
 and adhesive there and no soldermask, so a pin on it gets no window (its copper
 is still drawn), a drawn opening lying on it is left out, and one that runs
 across a zone boundary — Cadence's demo draws its outline as strokes on the
@@ -841,6 +842,22 @@ nothing, and the log names it beside the zone's thickness. A bend is the one
 exception: it is still curled about its zone's whole stack, as it always was,
 and the log names a bend whose stack counts such a layer (Cadence's demo board:
 STIFFNER_INNER1 holds nothing in its flex zones).
+
+**A zone drawn inside another holds its own area.** Allegro nests stackup
+zones since release 22.1 QIR2 (Cadence's migration guide for 24.1; its
+rigid-flex book still says zones cannot be nested, which is out of date): a
+second zone drawn inside one, for an area that needs another soldermask,
+plating or a window in a stiffener, is that area's stackup, and the zone around
+it holds the rest. The build takes it that way everywhere - the body, *Not
+stitched*, the surface parts and pads stand on, the mask windows, the drawn
+openings, the legend, the stack a bend is curled about - and the log names each
+zone that lies inside another. Allegro does not let zones cross (it trims a new
+zone to an old one's boundary); a file that had them would still count both
+where they overlap. Until round 127 every zone holding a point counted there:
+the stitched body of the owner's boards came out the same, because the outer
+stack's material inside SOLDERMASK1, LDI and LDI2 lies within theirs, but *Not
+stitched* held those areas twice, and a thin zone inside a thick one would have
+been built thick.
 
 **A part's height is decided at one point, its origin.** That is the owner's
 decision (28.10.2026): how high a part sits is the responsibility of whoever
@@ -1084,6 +1101,7 @@ stepbuilder/
   stackup.py     the stackup arithmetic: z from thickness, masks out, stackups on one datum, zone faces
   board.py       the board body: outline, zones, layers, cutouts, the rim faces
   surface.py     the board's two outer faces at a point: where a part stands and a pad, its mask window and a drawn opening lie
+  zones.py       a zone drawn inside another: found once, its area taken out of the zone around it, the same answer for every point
   legend.py      the silkscreen legend, and the arc convention settled by the board's own areas
   pads.py        the copper pads: which face a pin reaches, its figure as one shared face, placed per pin
   models.py      component models: the folder index, one read per model, the placement transform
@@ -1099,7 +1117,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 30 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 501 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 31 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 519 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, and one that runs the export command into folders it is given), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1897,11 +1915,11 @@ select-all Allegro (не интерактивным поиском по рамк
 рисует вскрытия целиком: окна маски на плате без её меди.
 
 **Только там, где маска есть.** Окно рисуется только в зоне, чей стек несёт
-слой паяльной маски с этой стороны. Где зоны перекрываются, решает зона, чьи
-слои образуют грань платы у вывода с этой стороны: разъём flex-b2 стоит и в
-зоне стиффенера, и в зоне с маской, стиффенер над его выводами вскрыт, и грань
-там даёт маска. Если окно не нарисовано, лог называет зону, которая так
-решила. У зоны флекса или стиффенера там
+слой паяльной маски с этой стороны. Решает зона, чьи слои образуют грань
+платы у вывода с этой стороны, а зона, нарисованная внутри другой, одна и есть
+плата на своей площади: разъём flex-b2 стоит в зоне SOLDERMASK1, нарисованной
+внутри зоны стиффенера STIFFENER2, и грань там даёт маска SOLDERMASK1. Если
+окно не нарисовано, лог называет зону, которая так решила. У зоны флекса или стиффенера там
 коверлей и клей, а маски нет, поэтому вывод на ней окна не получает (его
 медь рисуется по-прежнему), нарисованное вскрытие, лежащее на ней,
 пропускается, а пересекающее границу зон — демо-плата Cadence рисует свой
@@ -1953,6 +1971,23 @@ Rigid-flex — это несколько **зон**, у каждой свой с
 по-прежнему заворачивается вокруг всего стека своей зоны, а лог называет
 сгиб, чей стек считает такой слой (демо-плата Cadence: у STIFFNER_INNER1 в
 зонах флекса материала нет).
+
+**Зона, нарисованная внутри другой, держит свою площадь.** Allegro умеет
+вкладывать зоны стека начиная с релиза 22.1 QIR2 (так сказано в руководстве
+Cadence по переходу на 24.1; книга Cadence по rigid-flex до сих пор пишет, что
+вкладывать зоны нельзя, и в этом она устарела). Вторая зона внутри первой
+рисуется для участка, которому нужна другая паяльная маска, другое покрытие
+или окно в стиффенере: на этом участке действует её стек, а охватывающая зона
+держит остальное. Сборка везде понимает это так: тело платы, *Not stitched*,
+поверхность, на которой стоят детали и площадки, окна маски, нарисованные
+вскрытия, шелкография, стек, вокруг которого заворачивается сгиб. Лог называет
+каждую зону, лежащую внутри другой. Пересекать зоны Allegro не даёт (новую
+зону он обрезает по границе старой); если такие зоны всё же придут в файле,
+на общей площади будут учтены обе. До раунда 127 в точке учитывалась каждая
+зона, которая её накрывает. Сплошное тело плат владельца от этого не менялось:
+материал внешнего стека внутри SOLDERMASK1, LDI и LDI2 лежит в пределах их
+собственного. Но *Not stitched* держал эти участки дважды, а тонкая зона
+внутри толстой построилась бы толстой.
 
 **Высоту детали решает одна точка, её начало.** Это решение владельца
 (28.10.2026): за то, на какой высоте стоит деталь, отвечает тот, кто рисовал
@@ -2198,6 +2233,7 @@ stepbuilder/
   stackup.py     арифметика стека: z из толщин, маски долой, стеки на одном уровне, грани зон
   board.py       тело платы: контур, зоны, слои, вырезы, грани торца
   surface.py     две наружные грани платы в точке: где стоит деталь и лежат площадка, её окно маски и нарисованное вскрытие
+  zones.py       зона, нарисованная внутри другой: находится один раз, её площадь вычитается из охватывающей, ответ для любой точки один
   legend.py      шелкография, и соглашение о дугах, установленное по площадям самой платы
   pads.py        медь площадок: какой грани достигает вывод, его фигура одной общей гранью, вхождение на каждый вывод
   models.py      модели компонентов: индекс папок, одно чтение на модель, преобразование установки
@@ -2213,7 +2249,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 30 наборов тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 501 поломка, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 31 набор тестов, два золотых корпуса (STEP и экспорт SKILL — второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 519 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, и ещё одного, который запускает команду экспорта в данные ему папки), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

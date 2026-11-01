@@ -1139,9 +1139,14 @@ print("[12] where zones overlap, the zone that makes the board's face decides th
 # mask; its stiffener and adhesive opened over the pins) and in SOLDERMASK1 (a
 # mask on both sides), the board's faces there are SOLDERMASK1's mask - and its
 # 42 windows were not drawn, the log blaming STIFFENER2; flex2-a0's LDI under
-# STIFF_TOP_500 lost 33 bottom windows so. Here zone ST comes first in the file,
-# on S2's stack without its two masks, inside S2 (masked); both have their
-# stiffener and its adhesive opened round (8, 5), as flex-b2's, and a pin there.
+# STIFF_TOP_500 lost 33 bottom windows so. (Those two lie INSIDE the zone
+# around them: since round 127 a nested zone alone is the board on its area,
+# tests/test_nested.py.) Here zone ST comes first in the file, on S2's stack
+# without its two masks, and crosses S2's edge at x = 16 - drawn inside S2 it
+# would be nested and answer alone there. Allegro trims zones that cross, but
+# two zones touch at a seam and a file could carry them: where two zones hold a
+# point, the face decides. Both have their stiffener and its adhesive opened
+# round (8, 5), as flex-b2's, and a pin there.
 ov = json.loads((ROOT / "tests/fixtures/rigidflex.json").read_text())
 ov.update({"format_version": 12, "name": "overlap", "components": {}})
 OPEN_AT = (8.0, 5.0)
@@ -1156,7 +1161,7 @@ for layer in nomask["layers"]:
     if layer["name"] in ("STIFFENER_TOP2", "ADHESIVE_TOP2"):
         layer["shapes"] = [{"outline": rect(4, 2, 12, 8), "voids": [circle(1.5, *OPEN_AT)]}]
 ov["stackups"]["NOMASK"] = nomask
-ov["zones"] = [{"name": "ST", "stackup": "NOMASK", "contour": rect(4, 2, 12, 8)}] + ov["zones"]
+ov["zones"] = [{"name": "ST", "stackup": "NOMASK", "contour": rect(4, 2, 20, 8)}] + ov["zones"]
 ov["pads"] = {"padstacks": {"SMD": smd},
               "pins": [[OPEN_AT[0], OPEN_AT[1], 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"],   # ST and S2
                        [20.0, 20.0, 0.0, False, "SMD", "ETCH/TOP", "ETCH/TOP"]],             # F2 alone

@@ -490,7 +490,7 @@
  {
   "id": "readme-count-23",
   "file": "README.md",
-  "old": "30 test suites",
+  "old": "31 test suites",
   "new": "23 test suites",
   "suites": [
    "tools/audit_docs.py"
@@ -500,7 +500,7 @@
  {
   "id": "readme-count-unstated",
   "file": "README.md",
-  "old": "30 test suites",
+  "old": "31 test suites",
   "new": "thirty test suites",
   "suites": [
    "tools/audit_docs.py"
@@ -1231,8 +1231,8 @@
  {
   "id": "silk-clip-side-ignored",
   "file": "stepbuilder/legend.py",
-  "old": "        (printed if flag.get(side) else bare).append((str(zone[\"name\"]), contour))",
-  "new": "        (printed if flag.get(\"top\") else bare).append((str(zone[\"name\"]), contour))",
+  "old": "        (printed if flag.get(side) else bare).append((str(zone[\"name\"]), contour, nested_polygons(zone)))",
+  "new": "        (printed if flag.get(\"top\") else bare).append((str(zone[\"name\"]), contour, nested_polygons(zone)))",
   "suites": [
    "tests/test_silk.py"
   ],
@@ -1622,8 +1622,8 @@
  {
   "id": "pads-boundary-vertex-not-at-home",
   "file": "stepbuilder/pads.py",
-  "old": "                homes.add(next((name for name, poly, _c, _b, _z in masked\n                                if point_in_polygon(v, poly) or point_on_polygon(v, poly)), None))",
-  "new": "                homes.add(next((name for name, poly, _c, _b, _z in masked\n                                if point_in_polygon(v, poly)), None))",
+  "old": "                homes.add(next((name for name, poly, _c, _b, _z in masked\n                                if (point_in_polygon(v, poly) or point_on_polygon(v, poly))",
+  "new": "                homes.add(next((name for name, poly, _c, _b, _z in masked\n                                if (point_in_polygon(v, poly))",
   "suites": [
    "tests/test_pads.py"
   ],
@@ -2539,8 +2539,8 @@
  {
   "id": "exposed-region-without-cutouts",
   "file": "stepbuilder/pads.py",
-  "old": "                    region = board_face(contour, [c for c, cbox in cutouts if _boxes_meet(cbox, zone_box)],",
-  "new": "                    region = board_face(contour, [],",
+  "old": "                    region = board_face(contour, [c for c, cbox in cutouts if _boxes_meet(cbox, zone_box)]",
+  "new": "                    region = board_face(contour, []",
   "suites": [
    "tests/test_pads.py"
   ],
@@ -4794,8 +4794,8 @@
  {
   "id": "docs-check-count-in-words",
   "file": "ARCHITECTURE.md",
-  "old": "| the 4 checks + 30 suites as subprocesses |",
-  "new": "| the four checks + 30 suites as subprocesses |",
+  "old": "| the 4 checks + 31 suites as subprocesses |",
+  "new": "| the four checks + 31 suites as subprocesses |",
   "suites": [
    "tools/audit_docs.py"
   ],
@@ -4814,7 +4814,7 @@
  {
   "id": "docs-mutation-count-stale",
   "file": "README.md",
-  "old": "(tests/mutations.json, 501 faults, applied",
+  "old": "(tests/mutations.json, 519 faults, applied",
   "new": "(tests/mutations.json, 999 faults, applied",
   "suites": [
    "tools/audit_docs.py"
@@ -5210,5 +5210,185 @@
    "tests/test_pads.py"
   ],
   "why": "the bottom side's mask pads are not read: no opening under a through pin or a via where Allegro has one (R4-10's oracle, test_pads [20]) (round 126, review 23.10.2026)"
+ },
+ {
+  "id": "zones-never-nested",
+  "file": "stepbuilder/core.py",
+  "old": "        zones = nest(zones, log)\n",
+  "new": "        zones = zones\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "the zones are never nested: every zone holding a point counts there, the body takes both stacks in a nested zone and Not stitched holds its area twice (flex-b2 +2.70 %, flex2-a0 +10.9 %) (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "zones-any-overlap-is-inside",
+  "file": "stepbuilder/zones.py",
+  "old": "            if common.IsDone() and areas[j] - _area(common.Shape()) <= NEST_SHARE * areas[j]:\n",
+  "new": "            if common.IsDone() and _area(common.Shape()) > 0.0:\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a zone that only shares some area with another - half of it outside the other's corner - is taken as nested in it and cut out of it (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "zones-outer-given-to-the-inner",
+  "file": "stepbuilder/zones.py",
+  "old": "                inside.setdefault(i, []).append(j)\n",
+  "new": "                inside.setdefault(j, []).append(i)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "the zone around is handed to the nested one as nested in it: the nested zone is cut away to nothing and the zone around keeps the whole area (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "zones-own-face-keeps-the-nested",
+  "file": "stepbuilder/zones.py",
+  "old": "    if not nested:\n        return face\n",
+  "new": "    if True:\n        return face\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a zone's own region is its whole contour: the zones nested in it are never taken out (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "board-layers-built-over-nested-zones",
+  "file": "stepbuilder/board.py",
+  "old": "            region = _layer_region(layer, zone[\"contour\"], top, log, zone.get(\"nested\"))\n",
+  "new": "            region = _layer_region(layer, zone[\"contour\"], top, log)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "every layer of a zone is built over the zones nested in it as well: the body takes both stacks there, a thin zone inside a thick one is built thick (R3-7) and Not stitched holds it twice (R3-6) (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "board-zone-prism-over-nested-zones",
+  "file": "stepbuilder/board.py",
+  "old": "        if zone.get(\"nested\"):\n            face = own_face(zone[\"contour\"], zone[\"nested\"], top_z)\n",
+  "new": "        if False:\n            face = own_face(zone[\"contour\"], zone[\"nested\"], top_z)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a file without stackup layers: each zone's prism covers the zones nested in it (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "core-empty-layers-asked-over-nested-zones",
+  "file": "stepbuilder/core.py",
+  "old": "                                                                        zone.get(\"nested\"))]\n",
+  "new": "                                                                        None)]\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "whether a layer holds material in its zone is asked over the zones nested in it too: a stiffener drawn only inside a nested zone counts for the zone around it, its levels and the datum (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "surface-point-in-the-zone-around-it",
+  "file": "stepbuilder/surface.py",
+  "old": "            region = own_face(self.zones[zone_index][2], self.nested[zone_index], 0.0)\n",
+  "new": "            region = own_face(self.zones[zone_index][2], None, 0.0)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a point inside a nested zone is in the zone around it as well: the surface there is both stacks', a part, a pad and a window stand on the outer stack's face (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "pads-zone-lookup-ignores-nested",
+  "file": "stepbuilder/pads.py",
+  "old": "        return point_in_polygon(point, polygon) and not in_nested(point, self.holes.get(name, ()))\n",
+  "new": "        return point_in_polygon(point, polygon)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "the pads' own lookup - a build without a surface - answers the zone around a nested one for a point inside it: its faces and its mask (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "pads-drawn-vertex-home-ignores-nested",
+  "file": "stepbuilder/pads.py",
+  "old": "                                and not in_nested(v, where.holes.get(name, ()))), None))\n",
+  "new": "                                ), None))\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a drawn opening inside a nested zone without a mask is at home in the masked zone around it and built whole at its face (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "pads-drawn-clip-over-nested-zones",
+  "file": "stepbuilder/pads.py",
+  "old": "                                        + nested, region_z)\n",
+  "new": "                                        , region_z)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a drawn opening reaching into a nested zone is clipped to the whole zone around it, the nested zone left in (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "legend-printed-zone-holds-its-nested",
+  "file": "stepbuilder/legend.py",
+  "old": "        if any(point_in_polygon(point, c) and not in_nested(point, h) for _, c, h in printed):\n",
+  "new": "        if any(point_in_polygon(point, c) for _, c, h in printed):\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a legend glyph inside a nested zone without silkscreen is printed, its printed zone around it answering for it (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "legend-bare-zone-holds-its-nested",
+  "file": "stepbuilder/legend.py",
+  "old": "        home = next((n for n, c, h in bare if point_in_polygon(point, c) and not in_nested(point, h)), None)\n",
+  "new": "        home = next((n for n, c, h in bare if point_in_polygon(point, c)), None)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a glyph left out inside a nested zone is counted to the zone around it in the log (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "bend-stack-asked-of-the-zone-around",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "                if poly and point_in_polygon((x, y), poly) and not in_nested((x, y), holes):\n",
+  "new": "                if poly and point_in_polygon((x, y), poly):\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a bend whose middle lies in a nested zone is curled about the stack of the zone around it (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "bend-crooked-zone-over-nested-zones",
+  "file": "stepbuilder/bend/crooked.py",
+  "old": "                faces[name] = own_face(zone[\"contour\"], zone.get(\"nested\"), 0.0)\n",
+  "new": "                faces[name] = own_face(zone[\"contour\"], None, 0.0)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a bend's strip is measured with each zone over the zones nested in it: the zone around a nested one is taken for the strip's own stack and the nested one named as of another stack (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "core-bend-note-asks-the-zone-around",
+  "file": "stepbuilder/core.py",
+  "old": "                     if poly and point_in_polygon((px, py), poly) and not in_nested((px, py), holes)), None)\n",
+  "new": "                     if poly and point_in_polygon((px, py), poly)), None)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a bend whose middle lies in a nested zone is noted for the empty layers of the zone around it (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "zones-nested-edge-taken-from-the-outer",
+  "file": "stepbuilder/zones.py",
+  "old": "    return any(point_in_polygon(point, poly) and not point_on_polygon(point, poly) for poly in polygons)\n",
+  "new": "    return any(point_in_polygon(point, poly) or point_on_polygon(point, poly) for poly in polygons)\n",
+  "suites": [
+   "tests/test_nested.py"
+  ],
+  "why": "a point on a nested zone's edge is in the nested zone only: a drawn opening drawn up to it from the zone around is clipped instead of built whole (round 127, R3-6/R3-7, review 23.10.2026)"
+ },
+ {
+  "id": "audit-suite-count-singular-unread",
+  "file": "tools/audit_docs.py",
+  "old": "|набора тестов|набор тестов)\", text)",
+  "new": "|набора тестов)\", text)",
+  "suites": [
+   "tools/audit_docs.py"
+  ],
+  "why": "the Russian count in the singular - 31 набор тестов - is not read, and README states the suite count once where it states it once per language (round 127, the 31st suite)"
  }
 ]

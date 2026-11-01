@@ -11,6 +11,26 @@ to use the tool.
 
 ---
 
+- **2026-11-01** — **A zone drawn inside another holds its own area** (review
+  findings R3-6 and R3-7, round 127). Allegro nests stackup zones since release
+  22.1 QIR2: a zone drawn inside another is the stackup of that area, and the
+  zone around it holds the rest. The body, *Not stitched*, the surface parts
+  and pads stand on, the mask windows, the drawn openings, the legend and the
+  stack a bend is curled about all take it so, and the log names each zone that
+  lies inside another. On flex-b2 and flex2-a0 *Not stitched* no longer holds
+  the nested areas twice: 11.027 and 20.111 mm3 less, the same as the stitched
+  body, which did not change on any of the eight boards. A thin zone inside a
+  thick one is built thin. /
+  **Зона внутри другой держит свою площадь** (находки R3-6 и R3-7, раунд 127).
+  Allegro умеет вкладывать зоны стека начиная с релиза 22.1 QIR2: зона,
+  нарисованная внутри другой, задаёт стек своего участка, а охватывающая
+  держит остальное. Так теперь считают тело, *Not stitched*, поверхность под
+  деталями и площадками, окна маски, нарисованные вскрытия, шелкография и стек
+  сгиба, а лог называет каждую зону, лежащую внутри другой. На flex-b2 и
+  flex2-a0 *Not stitched* больше не держит вложенные участки дважды: на 11,027
+  и 20,111 мм³ меньше, ровно как сплошное тело, которое ни на одной из восьми
+  плат не изменилось. Тонкая зона внутри толстой строится тонкой.
+
 - **2026-11-01** — **The pads and openings the review found wrong** (review
   findings R4-1, R4-3, R4-4, R4-5, R4-6, R4-8, R4n-12, R4n-13, R4n-15, R4n-16, round
   126). A pin in the middle of a large cutout is off the board, its copper and

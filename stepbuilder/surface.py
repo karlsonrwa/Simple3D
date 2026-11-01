@@ -6,10 +6,13 @@ the layers that have material there. A positive layer (stiffener, adhesive)
 is its drawn shapes, a negative one (coverlay, mask) the zone less its
 openings, a layer without shapes the whole zone - `board._layer_region`, the
 same function the body is built from. So the top of the board at (x, y) is
-the top of the highest layer with material there, in any zone whose contour
-holds the point (the zones of a real board overlap: flex-b2 53.6 mm2), and the
-bottom likewise; the board's cutouts are not taken out, so a pin over its own
-drill hole is given the face around the hole.
+the top of the highest layer with material there, in any zone whose own
+region holds the point, and the bottom likewise; the board's cutouts are not
+taken out, so a pin over its own drill hole is given the face around the
+hole. A zone's own region is its contour less the zones nested in it
+(zones.py, round 127): inside flex-b2's SOLDERMASK1 the board is
+SOLDERMASK1's stack, not STIFFENER2's as well. Zones that cross - which
+Allegro does not draw - both count where they do.
 
 Measured before this round (the 23.10.2026 review, R3-1 and R4-2): every
 height was the zone's whole stack. X1 on flex2-a0 stood 0.575 mm above the
@@ -39,12 +42,14 @@ class Surface:
                  log: LogFn = _noop_log) -> None:
         self.log = log
         self.zones = []
+        self.nested = []                # per zone kept, the contours nested in it
         for zone in zones or []:
             stackup = (stackups or {}).get(str(zone.get("stackup")))
             contour = zone.get("contour") or []
             polygon = contour_points(contour)
             if not stackup or not polygon:
                 continue
+            self.nested.append(zone.get("nested"))
             layers = []
             for layer in stackup.get("layers") or []:
                 top = float(layer["z_top"]) + shift
@@ -56,7 +61,7 @@ class Surface:
             self.zones.append((str(zone.get("name")), polygon, contour, layers,
                                (min(xs) - BOX_GAP, min(ys) - BOX_GAP, max(xs) + BOX_GAP, max(ys) + BOX_GAP)))
         self._regions: dict[tuple[int, int], list] = {}
-        self._zone_faces: dict[int, object] = {}
+        self._zone_faces: dict[int, list] = {}
         # A pin's point is asked for its heights and again for its mask.
         self._found: dict[tuple[float, float], list] = {}
 
@@ -76,7 +81,7 @@ class Surface:
             from .board import _layer_region
 
             _name, _polygon, contour, layers, _box = self.zones[zone_index]
-            region = _layer_region(layers[layer_index][0], contour, 0.0, self.log)
+            region = _layer_region(layers[layer_index][0], contour, 0.0, self.log, self.nested[zone_index])
             faces = []
             if region is not None:
                 exp = TopExp_Explorer(region, TopAbs_FACE)
@@ -91,13 +96,22 @@ class Surface:
 
     def _in_zone(self, zone_index: int, x: float, y: float) -> bool:
         """Is the point on the zone's own face - its contour as the body
-        builds it, arcs and all, not a polygon sampled from it?"""
+        builds it, arcs and all, not a polygon sampled from it, less the
+        zones nested in it?"""
         if zone_index not in self._zone_faces:
-            from .contour import _face_from_wires, build_contour
+            from OCP.TopAbs import TopAbs_FACE
+            from OCP.TopExp import TopExp_Explorer
+            from OCP.TopoDS import TopoDS
 
-            self._zone_faces[zone_index] = _face_from_wires(
-                build_contour(self.zones[zone_index][2], 0.0), [])
-        return _on_face(self._zone_faces[zone_index], x, y)
+            from .zones import own_face
+
+            region = own_face(self.zones[zone_index][2], self.nested[zone_index], 0.0)
+            faces, exp = [], TopExp_Explorer(region, TopAbs_FACE)
+            while exp.More():                  # a cut hands back a compound
+                faces.append(TopoDS.Face_s(exp.Current()))
+                exp.Next()
+            self._zone_faces[zone_index] = faces
+        return any(_on_face(face, x, y) for face in self._zone_faces[zone_index])
 
     def _holds(self, zone_index: int, layer_index: int, x: float, y: float) -> bool:
         layer = self.zones[zone_index][3][layer_index][0]

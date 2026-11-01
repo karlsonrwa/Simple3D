@@ -81,6 +81,8 @@ from .intermediate import (  # noqa: F401 - re-exported
     is_simple3d_json, output_stem, resolve_jobs, resolve_json_jobs,
     silkscreen_layers,
 )
+# A zone drawn inside another (round 127): found once here, asked everywhere.
+from .zones import in_nested, nest, nested_polygons
 
 # --------------------------------------------------------------------------- #
 # assembly
@@ -315,6 +317,10 @@ def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
 
     fold_levels, empty_layers = None, {}
     if zones:
+        # A zone inside another holds its own area; the one around it holds
+        # the rest (round 127, R3-6 and R3-7 of the 23.10.2026 review). Every
+        # stage below is handed these zones, so all of them ask the same.
+        zones = nest(zones, log)
         if stackups:
             # format_version 6: every layer carries its own extent, so the
             # board is built layer by layer rather than as one prism per zone.
@@ -327,7 +333,8 @@ def _prepare_stackups(data: dict, options: BuildOptions, log: LogFn) -> _Stack:
                 layers = (stackups.get(str(zone["stackup"])) or {}).get("layers") or []
                 empty_layers[str(zone["name"])] = [
                     lay for lay in layers
-                    if zone.get("contour") and not layer_holds_material(lay, zone["contour"])]
+                    if zone.get("contour") and not layer_holds_material(lay, zone["contour"],
+                                                                        zone.get("nested"))]
             levels, board_top_z, board_bottom_z, shift = stackup_levels(
                 stackups, zones, z_datum,
                 holds=lambda zone, lay: not any(lay is e for e in empty_layers[str(zone["name"])]))
@@ -441,13 +448,16 @@ def _plan_fold(data: dict, stack: _Stack, options: BuildOptions, log: LogFn):
 def _note_bends_over_empty_layers(plan, stack: _Stack, log: LogFn) -> None:
     """A note per bend whose zone's whole stack, which it is curled about,
     counts layers that hold no material there - zone found as the plan's own
-    stack_at finds it, the first in the file holding the bend line's middle."""
+    stack_at finds it, the first in the file whose own region holds the bend
+    line's middle (a zone nested in another holds it there, round 127)."""
     if not stack.zones or not stack.fold_levels or not stack.empty_layers:
         return
-    polys = [(str(z["name"]), contour_points(z.get("contour"))) for z in stack.zones if z.get("contour")]
+    polys = [(str(z["name"]), contour_points(z.get("contour")), nested_polygons(z))
+             for z in stack.zones if z.get("contour")]
     for bend in plan.bends:
         px, py = bend.midpoint
-        name = next((n for n, poly in polys if poly and point_in_polygon((px, py), poly)), None)
+        name = next((n for n, poly, holes in polys
+                     if poly and point_in_polygon((px, py), poly) and not in_nested((px, py), holes)), None)
         if name not in stack.empty_layers or name not in stack.levels:
             continue
         whole, held = stack.fold_levels[name], stack.levels[name]

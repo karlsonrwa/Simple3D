@@ -101,6 +101,7 @@ from .contour import (WIRE_TOLERANCE, _face_from_wires, _open_wire_detail, build
 from .errors import StepBuilderError
 from .reporting import LogFn, _noop_log
 from .stackup import _is_conductor, _is_soldermask, board_stackup
+from .zones import in_nested, nested_polygons, own_face
 
 # A pad's declared bounding box (of the figure, about its own centre) shifted
 # by the declared offset has to land this close (design units) to the box of
@@ -1095,7 +1096,8 @@ def _drill_ring(x: float, y: float, padstack: dict | None) -> list[tuple[float, 
 
 class _Zones:
     """Which zone a point is in, and that zone's outer conductors, faces and
-    soldermask sides."""
+    soldermask sides. A point inside a zone nested in another is in the
+    nested one (zones.py, round 127)."""
 
     def __init__(self, zones, stackups, levels, board_top_z, board_bottom_z, surface=None):
         # The faces a point lies on come from *surface* - the layers with
@@ -1103,6 +1105,10 @@ class _Zones:
         # that put flex-b2's connector pads up to 2.033 mm in the air over the
         # stiffener's holes (round 103, finding R4-2).
         self.surface = surface
+        # zone name -> the zones nested in it: as polygons for a point, as
+        # contours for the face a drawn opening is clipped to
+        self.holes = {str(z.get("name")): nested_polygons(z) for z in zones or [] if z.get("nested")}
+        self.nested = {str(z.get("name")): list(z["nested"]) for z in zones or [] if z.get("nested")}
         self.entries = []
         for zone in zones or []:
             name = str(zone.get("name"))
@@ -1125,10 +1131,15 @@ class _Zones:
                         (board_top_z, board_bottom_z))
         self.default_masks = mask_sides(chosen[1]) if chosen else (True, True)
 
+    def holds(self, name: str, polygon: list, point: tuple[float, float]) -> bool:
+        """Is *point* in zone *name*'s own region: in its polygon and not
+        inside a zone nested in it?"""
+        return point_in_polygon(point, polygon) and not in_nested(point, self.holes.get(name, ()))
+
     def at(self, x: float, y: float):
         """((top name, bottom name), (top z, bottom z)) for a point."""
-        for _, polygon, conductors, faces, *_rest in self.entries:
-            if point_in_polygon((x, y), polygon):
+        for name, polygon, conductors, faces, *_rest in self.entries:
+            if self.holds(name, polygon, (x, y)):
                 return conductors, self.faces_at(x, y, faces)
         return self.default[0], self.faces_at(x, y, self.default[1])
 
@@ -1182,7 +1193,7 @@ class _Zones:
             if names:
                 return any(self.zone_masks.get(name, (True, True))[i] for name in names), names
         for name, polygon, _conductors, _faces, masks, *_rest in self.entries:
-            if point_in_polygon((x, y), polygon):
+            if self.holds(name, polygon, (x, y)):
                 return masks[i], {name}
         return self.default_masks[i], set()
 
@@ -1391,7 +1402,8 @@ def build_pads(data: dict, *, stackups, zones, levels, board_top_z, board_bottom
             # Only where the pin's zone HAS a mask on that side: a pin on a
             # flex or stiffener zone sits under coverlay, and its padstack's
             # mask pad is a window in nothing. Where zones overlap, the zone
-            # that makes the board's face there (_Zones.mask_at, round 108).
+            # that makes the board's face there (_Zones.mask_at, round 108);
+            # inside a zone nested in another, that zone alone (round 127).
             if openings and mask is not None:
                 has_mask, asked = where.mask_at(x, y, face_side, padstack)
                 if not has_mask:
@@ -1576,10 +1588,13 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
             over_cutout = any(_boxes_meet(box, cbox) for _c, cbox in cutouts)
             # A vertex ON the boundary is at home there: an opening drawn up
             # to the board's edge is whole, not clipped to the edge it touches.
+            # Inside a zone nested in a masked one it is not at home in that
+            # one: the nested zone's stack is the board there (round 127).
             homes = set()
             for v in verts:
                 homes.add(next((name for name, poly, _c, _b, _z in masked
-                                if point_in_polygon(v, poly) or point_on_polygon(v, poly)), None))
+                                if (point_in_polygon(v, poly) or point_on_polygon(v, poly))
+                                and not in_nested(v, where.holes.get(name, ()))), None))
             if len(homes) == 1 and None not in homes and not over_cutout:
                 z = next(zf for name, _p, _c, _b, zf in masked if name in homes)
                 # On the board's surface under it when the whole polygon has
@@ -1628,13 +1643,15 @@ def build_exposed(data: dict, *, stackups, zones, levels, board_top_z, board_bot
                     continue
                 region_z = zf + sign * abs(lift)
                 zone_box = _contour_box(contour)
+                # the zone's own region: less its cutouts and the zones nested in it
+                nested = where.nested.get(name, [])
                 try:
-                    region = board_face(contour, [c for c, cbox in cutouts if _boxes_meet(cbox, zone_box)],
-                                        region_z)
+                    region = board_face(contour, [c for c, cbox in cutouts if _boxes_meet(cbox, zone_box)]
+                                        + nested, region_z)
                 except (StepBuilderError, RuntimeError, KeyError, TypeError, ValueError) as exc:
                     log(f"warning: {tag}_{side}: the cutouts could not be taken out of {name} ({exc}); "
                         f"its drawn openings are clipped to it without them")
-                    region = _face_from_wires(build_contour(contour, region_z), [])
+                    region = own_face(contour, nested, region_z)
                 common = BRepAlgoAPI_Common(compound, region)
                 faces = _faces_of(common.Shape()) if common.IsDone() else []
                 if faces:

@@ -7,8 +7,9 @@ every layer of every zone built between the faces `stackup.stackup_levels`
 computed, fused into one (`_stackup_board`) or kept apart for inspection
 (`make_board_layer_parts`, then `fuse_keeping_faces` for the layer-coloured
 build); a format_version 5 file with zones but no layers is one prism per
-zone (`_zone_solid`). `_layer_region` is where a drawn layer shape becomes
-material or an opening; `board_cutouts` is where a repeated cutout is
+zone (`_zone_solid`); each zone in its own region, its contour less the
+zones nested in it (`zones.own_face`). `_layer_region` is where a drawn layer
+shape becomes material or an opening; `board_cutouts` is where a repeated cutout is
 dropped before it can erase the whole board; `has_solid` is the test a
 boolean's IsDone() does not give, and `_board_face` the one MakeFace's does
 not: an outline, cutout or zone that crosses itself or encloses nothing is
@@ -37,6 +38,7 @@ from OCP.gp import gp_Vec
 from .contour import _face_from_wires, build_contour
 from .errors import StepBuilderError
 from .reporting import LogFn, _noop_log
+from .zones import own_face
 
 # A face of the board body with less area than this encloses nothing: 1 um2.
 # The smallest real one on the boards on hand is a 0.5 mm round cutout,
@@ -116,8 +118,12 @@ def _shape_face(shape: dict, z: float):
     return _face_from_wires(outer, inner)
 
 
-def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
+def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn,
+                  nested: list | None = None):
     """The material of one layer inside one zone, as a face or compound.
+
+    Inside the zone's OWN region: its contour less the zones *nested* in it,
+    whose own stacks hold there (zones.py, round 127).
 
     Three cases:
 
@@ -147,7 +153,7 @@ def _layer_region(layer: dict, zone_contour: list, z: float, log: LogFn):
     ADHESIVE_TOP shape covers most of the board and belongs to three zones at
     once, each at its own height.
     """
-    zone_face = _face_from_wires(build_contour(zone_contour, z), [])
+    zone_face = own_face(zone_contour, nested, z)
     shapes = layer.get("shapes")
     if not shapes:
         return zone_face
@@ -259,7 +265,7 @@ def layer_solids(stackups: dict, zones: list[dict], shift: float,
             if height <= 0:
                 continue
             top = float(layer["z_top"]) + shift
-            region = _layer_region(layer, zone["contour"], top, log)
+            region = _layer_region(layer, zone["contour"], top, log, zone.get("nested"))
             if region is None:
                 continue
             solid = BRepPrimAPI_MakePrism(region, gp_Vec(0, 0, -height)).Shape()
@@ -328,19 +334,20 @@ def make_board_layer_parts(pcb: dict, stackups: dict, zones: list[dict],
     return parts
 
 
-def layer_holds_material(layer: dict, zone_contour: list) -> bool:
-    """Has *layer* any material inside the zone? A layer without shapes always
-    does; otherwise its region (`_layer_region`) must have a face - a positive
-    stiffener whose shapes miss the zone, or a coverlay whose openings cover
-    all of it, has none. What a zone's faces and the datum are measured from
-    (stackup.stackup_levels, round 110). The region's own warnings are left
-    to the body's build, which asks again."""
+def layer_holds_material(layer: dict, zone_contour: list, nested: list | None = None) -> bool:
+    """Has *layer* any material inside the zone - in its own region, less the
+    zones *nested* in it? A layer without shapes always does; otherwise its
+    region (`_layer_region`) must have a face - a positive stiffener whose
+    shapes miss the zone, or lie only in a zone nested in it, or a coverlay
+    whose openings cover all of it, has none. What a zone's faces and the
+    datum are measured from (stackup.stackup_levels, round 110). The region's
+    own warnings are left to the body's build, which asks again."""
     if not layer.get("shapes"):
         return True
     from OCP.TopAbs import TopAbs_FACE
     from OCP.TopExp import TopExp_Explorer
 
-    region = _layer_region(layer, zone_contour, 0.0, _noop_log)
+    region = _layer_region(layer, zone_contour, 0.0, _noop_log, nested)
     return region is not None and not region.IsNull() and TopExp_Explorer(region, TopAbs_FACE).More()
 
 
@@ -612,7 +619,8 @@ def _zone_solid(zones: list[dict], levels: dict, log: LogFn) -> TopoDS_Shape:
     each other and overlap slightly at their shared edges (measured: 0.14 mm on
     the test board), so a compound would carry doubled geometry along every
     seam. Four zones make this cheap - unlike the silkscreen legend, where
-    fusing thousands of prisms was measured and rejected.
+    fusing thousands of prisms was measured and rejected. A zone's prism is
+    its own region's: the zones nested in it are cut out (zones.py).
     """
     solids = []
     for zone in zones:
@@ -623,6 +631,8 @@ def _zone_solid(zones: list[dict], levels: dict, log: LogFn) -> TopoDS_Shape:
             log(f"warning: zone {name} has no thickness, skipped")
             continue
         face = _board_face(zone["contour"], top_z, f"Zone {name} outline")
+        if zone.get("nested"):
+            face = own_face(zone["contour"], zone["nested"], top_z)
         solids.append(BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, -height)).Shape())
 
     if not solids:
