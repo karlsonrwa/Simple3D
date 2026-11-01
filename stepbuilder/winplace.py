@@ -24,9 +24,12 @@ MIN_VISIBLE_WIDTH = 120
 MIN_VISIBLE_HEIGHT = 40
 
 # What Windows draws round the client area a geometry's size describes: the
-# title bar and border above it, the border below. Measured 01.11.2026 at
-# 100% scaling with Tk 8.6 (build/fix-2026-10-31/r130/frame_measure.py): a
-# 908x600 client in a 926x647 frame, 38 px above the client and 9 below.
+# title bar and border above it, the border below. Measured 01.11.2026 on the
+# development machine - Windows 11 at 125% (120 dpi), Python 3.14 with Tk 9.0,
+# a per-monitor DPI-aware process, so physical pixels
+# (build/fix-2026-10-31/r130/frame_measure.py): a 908x600 client in a 926x647
+# frame, 38 px above the client and 9 below. Another scaling or theme draws
+# another frame; none was measured.
 FRAME_ALLOWANCE = 48
 
 # A window this close to the screen's own size is maximized in all but name,
