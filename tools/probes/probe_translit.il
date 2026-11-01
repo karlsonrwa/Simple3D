@@ -6,7 +6,10 @@
 ;  s3dCmdExpands, since round 118 the variant parser gdsysGetVariantInfo
 ;  on the files of tests/fixtures/variants, and since round 120 the names
 ;  the variants' files get and which of them share one (the last asks the
-;  real file system, in build/probe-names, removed after) - RUN in a real Allegro, by the
+;  real file system, in build/probe-names, removed after), and since round
+;  129 the launcher's paths and its check's reading of a log (simple3d.il,
+;  which this loads from the same tree, and the logs of
+;  tests/fixtures/preflight) - RUN in a real Allegro, by the
 ;  real interpreter, over a fixed list of cases, so that the copies can be
 ;  compared against the original's own answers instead of against a reading
 ;  of its source.
@@ -26,7 +29,7 @@
 ;
 ;    python tools/run_probe.py --with-exporter tools/probes/probe_translit.il \
 ;           s3dProbeTranslit input/Cadence_Demo.brd
-;  REQUIRES: makeVariant3dIntermediates.il
+;  REQUIRES: makeVariant3dIntermediates.il, and simple3d.il, which it loads
 ;=====================================================================
 
 ; The file s3dVariantFilePath is pointed at while gdsysGetVariantInfo is
@@ -148,7 +151,7 @@ procedure( s3dProbeTranslitLayer( t_name t_func )
 
 
 procedure( s3dProbeTranslit()
-    let( ( saved pin padstack a b )
+    let( ( saved pin padstack a b root dir res paths )
 
         s3dProbeTranslitSay( "\n===== s3dLayerIsNegative =====" )
         ; The list the procedure reads is a global; put back what was there.
@@ -364,6 +367,66 @@ procedure( s3dProbeTranslit()
 
         s3dProbeTranslitSay( "\n===== s3dVariantFileClashes =====" )
         s3dProbeTranslitClashes()
+
+        ; Round 129 (R2n-14, R2n-15, R2n-17, R2n-18 of the 28.10.2026 review):
+        ; the launcher's paths and its check's reading of a log, and the
+        ; exporter's own slashes and folder walk. The launcher's live in
+        ; simple3d.il, loaded here from the tree the exporter came from -
+        ; errset: its last lines put a menu item in, which a session with no
+        ; window may refuse. The texts are tools/skill_answers.py's.
+        root = s3dExporterFolderOf( S3D_ExporterLoadedFrom )
+        s3dProbeTranslitSay( sprintf( nil "simple3d.il loaded: %L"
+                                      errset( load( strcat( root "/simple3d.il" ) ) t ) ) )
+        paths = list( "D:\\a\\b" "D:/a/b/" "D:\\a\\b\\" "D:\\" "D:/" "/" "\\\\server\\share\\x"
+                      "//server/share/x" "//server/share/" "a\\\\b" "" "pcb" "D:/a/rev/pcb" "/pcb"
+                      "D:/pcb" "//server" "\\\\server\\share\\rev\\pcb" )
+        foreach( proc list( "s3dSlashes" "s3dLeafOf" "s3dFolderOf" "s3dExporterSlashes" )
+            s3dProbeTranslitSay( sprintf( nil "\n===== %s =====" proc ) )
+            foreach( p paths
+                s3dProbeTranslitCase( proc sprintf( nil "text=%s" p )
+                                      apply( stringToSymbol( proc ) list( p ) ) )
+            )
+            unless( proc == "s3dExporterSlashes"
+                s3dProbeTranslitCase( proc "text=nil" apply( stringToSymbol( proc ) list( nil ) ) )
+            )
+        )
+
+        s3dProbeTranslitSay( "\n===== s3dDirsToMake =====" )
+        foreach( p list( "D:/a/b" "D:\\a\\b" "//server/share/a/b" "\\\\server\\share\\a" "a/b" "/a/b"
+                         "D:\\a\\\\b" "//server/share" "D:" "" )
+            s3dProbeTranslitCase( "s3dDirsToMake" sprintf( nil "text=%s" p ) s3dDirsToMake( p ) )
+        )
+
+        s3dProbeTranslitSay( "\n===== s3dLineText =====" )
+        foreach( c list( list( "S3D_OK LF" "S3D_OK\n" ) list( "S3D_OK CRLF" "S3D_OK\r\n" )
+                         list( "S3D_OK" "S3D_OK" ) list( "S3D_OK space LF" "S3D_OK \n" )
+                         list( "LF" "\n" ) list( "empty" "" ) list( "a CR CR LF" "a\r\r\n" )
+                         list( "nil" nil ) )
+            s3dProbeTranslitCase( "s3dLineText" car( c ) s3dLineText( cadr( c ) ) )
+        )
+
+        s3dProbeTranslitSay( "\n===== s3dIsPathName =====" )
+        foreach( p list( "pythonw" "pythonw.exe" "C:/Python314/pythonw.exe" "C:pythonw.exe"
+                         "tools\\python" "" )
+            s3dProbeTranslitCase( "s3dIsPathName" sprintf( nil "text=%s" p ) s3dIsPathName( p ) )
+        )
+        s3dProbeTranslitCase( "s3dIsPathName" "text=nil" s3dIsPathName( nil ) )
+
+        s3dProbeTranslitSay( "\n===== s3dPreflightRead =====" )
+        dir = strcat( root "/tests/fixtures/preflight" )
+        foreach( name sort( getDirFiles( dir ) 'alphalessp )
+            when( rexMatchp( "\\.log$" name )
+                res = s3dPreflightRead( strcat( dir "/" name ) )
+                s3dProbeTranslitCase( "s3dPreflightRead" name
+                                      list( nth( 0 res ) nth( 1 res ) nth( 2 res ) ) )
+            )
+        )
+
+        s3dProbeTranslitSay( "\n===== s3dPreflightDialog =====" )
+        foreach( c list( 'missing 'python 'silent )
+            s3dProbeTranslitCase( "s3dPreflightDialog" sprintf( nil "case=%L" c )
+                                  s3dPreflightDialog( c "C:/x/pythonw.exe" ) )
+        )
 
         s3dProbeTranslitSay( "\n===== END =====" )
         t

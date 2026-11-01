@@ -1,11 +1,24 @@
 ;=====================================================================
 ;  s3d_userprop_test.il  -  HAND TEST, run from the Allegro console.
 ;
-;  *** THIS IS THE ONE FILE IN THE PROJECT THAT WRITES TO THE DESIGN. ***
-;  Everything else - the exporter, the launcher, every probe under
-;  tools/probes - only reads. This one creates a property dictionary entry
-;  and attaches a property to an object, so read the usage below before
-;  running it, and run it on a board you can afford to close without saving.
+;  *** THIS FILE WRITES TO THE OPEN DESIGN. ***
+;  It creates a property dictionary entry and attaches a property to an
+;  object, so read the usage below before running it, and run it on a board
+;  you can afford to close without saving.
+;
+;  It is not the only code here that writes, which this header used to say
+;  (R2-11 of the 23.10.2026 review): simple3d.il's s3dEnsureAlwaysProp
+;  defines ALWAYS_STEP_EXPORT in the open design's dictionary, at load and
+;  before every export, unless allegro.defineAlwaysExportProp is false; the
+;  exporter turns layers visible to select what it reads, then sets the
+;  visibility back; and the probes under tools/probes that draw or change
+;  anything do it in the runner's scratch copy of a board. The rest reads.
+;
+;  Like s3dEnsureAlwaysProp, s3dPropAdd and s3dPropRemove write only into a
+;  saved board - s3dRealDesign, from simple3d.il, so load that first. Allegro
+;  started without a board opens an empty design "unnamed" whose file is
+;  nowhere on disk (measured in round 129).
+;  REQUIRES: simple3d.il
 ;
 ;  It answers one question before any export code is changed: can a
 ;  user-defined property be created and attached to a symbol (or its
@@ -183,6 +196,22 @@ procedure( s3dPropHasHere( o_dbid )
     )
 )
 
+; A saved board to write into, the test s3dEnsureAlwaysProp asks before it
+; writes (round 129, R2-11 of the 23.10.2026 review): s3dRealDesign, the
+; drawing's file on disk. Said aloud - this is a hand test, and whoever runs it
+; is waiting for an answer.
+procedure( s3dPropRealDesign()
+    cond(
+        ( !getd( 's3dRealDesign )
+            printf( "Simple 3D test: s3dRealDesign is not loaded - load simple3d.il first; nothing written.\n" )
+            nil )
+        ( !s3dRealDesign()
+            printf( "Simple 3D test: the open design is not a saved board (%L) - nothing written.\n"
+                    axlGetDrawingName() )
+            nil )
+        ( t  t ) )
+)
+
 ; Define the property if the dictionary does not have it, then attach it.
 ;
 ; The dictionary entry is created with object list t - every object type that
@@ -190,7 +219,7 @@ procedure( s3dPropHasHere( o_dbid )
 ; cannot fail on a spelling this Allegro does not use.
 procedure( s3dPropAdd( t_refdes @optional ( s_level 'symbol ) )
     let( ( sym dbid made result )
-        sym = s3dPropFindSym( t_refdes )
+        sym = when( s3dPropRealDesign() s3dPropFindSym( t_refdes ) )
         when( sym
             printf( "\n=== adding %s to %s (%L) ===\n" S3D_TestProp t_refdes s_level )
 
@@ -239,7 +268,7 @@ procedure( s3dPropAdd( t_refdes @optional ( s_level 'symbol ) )
 ; and axlDBDeletePropDictEntry is a separate decision.
 procedure( s3dPropRemove( t_refdes @optional ( s_level 'symbol ) )
     let( ( sym dbid result )
-        sym = s3dPropFindSym( t_refdes )
+        sym = when( s3dPropRealDesign() s3dPropFindSym( t_refdes ) )
         when( sym
             dbid = s3dPropTarget( sym s_level )
             when( dbid

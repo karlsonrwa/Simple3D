@@ -1,0 +1,4 @@
+S3D_PY C:\Python314\pythonw.exe 3.14.7
+C:\x\y.py:3: DeprecationWarning: old
+  import imp
+S3D_OK

@@ -48,7 +48,11 @@ Step 1 starts from the board's own path, the folder holding the open `.brd`
 (the one `Variants.lst` is read from too), not from Allegro's working
 directory: *File → Open* with *Change directory* unticked leaves that in
 whatever project was open before, and until round 115 the JSON and the STEP of
-the new board went there.
+the new board went there. A board on a network share, opened as
+`\\server\share\…`, is treated the same way since round 129: until then its
+`cad` folder was never found, the export wrote beside the board, and each
+export left a chain of empty folders `server\share\…` inside the board's own
+folder.
 
 The two halves talk through that JSON because neither can do the other's job:
 SKILL reads the Allegro database but cannot build B-rep, OpenCASCADE builds
@@ -141,6 +145,15 @@ with, `pythonw` (or `python` when `pythonw` is `""`), and prints the one that
 actually answered, path and version, so the console says which one you got.
 Pin both names, to one install: the window runs `pythonw`, and a bare
 `pythonw` beside a pinned `python` is still whatever PATH finds first.
+
+Before it starts anything, the check looks for that interpreter the way
+Windows would: a full path as that file, with or without `.exe`, a bare name
+in the folders on PATH. When there is none it says so, in the console and in
+a dialog, and starts nothing. Until round 129 the name went to Windows, whose
+answer to a program it cannot find is a message box of its own: Allegro
+stood still until it was closed, and a session with no desktop hung. Success
+is a line of its own that reads `S3D_OK`; until then a folder with that word
+in its name, in the install path, read as success when the import failed.
 
 **3. The files.** Clone or unpack the repository; its root already is the layout
 the tool expects — the two `.il` files, `simple3d_config.json` and the
@@ -419,9 +432,11 @@ variant**, named `<design>_<variant>`, and the window builds every one of them.
 refused rather than exported quietly. A variant that **installs nothing** —
 every part set to *not installed* in the schematic, so Capture writes no base
 list at all — is exported as the **bare board**: the outline, the silkscreen
-and the symbols that have no refdes, with a warning in the console saying so
-(a stub `"dummy"` file left from another project looks the same, and the
-warning is for that case). The ordinary case prints its coverage: `variant
+and the symbols that have no refdes, with a warning saying so for each such
+variant, in the console and in the window's log (a stub `"dummy"` file left
+from another project looks the same, and the warning is for that case too;
+until round 129 an empty variant beside variants that install parts went
+unnamed). The ordinary case prints its coverage: `variant
 list covers 47 of 51 placed component(s)`. A refdes the list names that is
 **not placed** on the board is reported per variant — `variant BOM lists 4
 component(s) that are not on this board: VT1, VT2, VT3, VT4` — in the console
@@ -1130,7 +1145,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 31 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 538 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, one that runs the export command into folders it is given, and three that change the copy otherwise - its design units, a drill offset, a device's STEP mapping - two of them exporting it), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 31 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 568 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, one that runs the export command into folders it is given, and four that change the copy or the disk otherwise - its design units, a drill offset, a device's STEP mapping, folders on a UNC path and a property the hand test adds and takes off - two of them exporting it), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -1185,7 +1200,10 @@ File → Export → Simple 3D          (simple3d.il, внутри Allegro)
 `.brd` (из неё же читается `Variants.lst`), а не от рабочей папки Allegro.
 *File → Open* со снятой галочкой *Change directory* оставляет рабочую папку в
 проекте, который был открыт раньше, и до раунда 115 JSON и STEP новой платы
-уходили туда.
+уходили туда. Плата на сетевом ресурсе, открытая как `\\server\share\…`,
+с раунда 129 обрабатывается так же. До того её папка `cad` не находилась,
+экспорт писал рядом с платой, а каждый экспорт оставлял в папке платы
+цепочку пустых папок `server\share\…`.
 
 Половины общаются через этот JSON, потому что ни одна не умеет работу другой:
 SKILL читает базу Allegro, но не строит B-rep; OpenCASCADE строит STEP, но
@@ -1278,6 +1296,15 @@ Chocolatey, причём в системный PATH, который идёт *р
 именно достался. Закрепляйте оба имени, и оба на одну установку: окно
 запускает `pythonw`, а голое `pythonw` рядом с закреплённым `python`
 по-прежнему значит то, что PATH найдёт первым.
+
+Прежде чем что-либо запускать, проверка ищет этот интерпретатор так же, как
+Windows: полный путь как файл, с `.exe` или без, голое имя в папках из PATH.
+Если его нет, она так и говорит, в консоли и в окне, и ничего не запускает.
+До раунда 129 имя уходило Windows, а на программу, которую он не находит,
+Windows отвечает своим окном-сообщением: Allegro стоял, пока окно не
+закроют, а сеанс без рабочего стола зависал. Успехом считается отдельная
+строка `S3D_OK`. До того успехом засчитывался и упавший импорт, если в пути
+установки была папка с этим словом в имени.
 
 **3. Файлы.** Склонируйте или распакуйте репозиторий; его корень уже устроен
 так, как надо — оба `.il`, `simple3d_config.json` и пакет `stepbuilder\` в
@@ -1559,8 +1586,10 @@ Allegro, — и больше нигде; если файла там нет, ко
 экспортируется молча. Вариант, в котором **ничего не установлено** — в схеме
 все детали помечены *not installed*, и Capture не пишет базовый список
 вовсе, — экспортируется как **голая плата**: контур, шелкография и символы
-без обозначения, с предупреждением в консоли (заглушка `"dummy"` от другого
-проекта выглядит так же, предупреждение как раз про неё). В обычном случае
+без обозначения, с предупреждением для каждого такого варианта, в консоли и в
+журнале окна (заглушка `"dummy"` от другого проекта выглядит так же, и
+предупреждение и про неё тоже; до раунда 129 пустой вариант рядом с
+непустыми не назывался вовсе). В обычном случае
 печатается покрытие: `variant list covers 47 of 51 placed component(s)`.
 Обозначение из списка, которого **нет на плате**, называется по каждому
 варианту — `variant BOM lists 4 component(s) that are not on this board:
@@ -2276,7 +2305,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 31 набор тестов, два золотых корпуса (STEP и экспорт SKILL, второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 538 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, одного, который запускает команду экспорта в данные ему папки, и трёх, меняющих копию иначе: её единицы, смещение сверла, привязку модели STEP к компоненту; два из них её выгружают), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 31 набор тестов, два золотых корпуса (STEP и экспорт SKILL, второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 568 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, одного, который запускает команду экспорта в данные ему папки, и четырёх, меняющих копию или диск иначе: её единицы, смещение сверла, привязку модели STEP к компоненту, папки на UNC-пути и свойство, которое ручной тест ставит и снимает; два из них её выгружают), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

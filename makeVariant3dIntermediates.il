@@ -40,6 +40,9 @@ errset( S3D_ExporterLoadedFrom = get_filename( piport ) )
 
 ; The folder part of a path, scanning for the last separator - the same rule
 ; as s3dFolderOf in simple3d.il, which is not loaded yet when this runs.
+; Back-slashes become slashes one by one (s3dExporterSlashes): parseString,
+; which this used, drops the leading "\\" of a UNC path with the empty pieces
+; and gave \\server\share\Simple3D back as server/share/Simple3D (round 129).
 procedure( s3dExporterFolderOf( t_path )
     let( ( ( cut 0 ) c )
         unless( stringp( t_path )  t_path = "" )
@@ -48,10 +51,24 @@ procedure( s3dExporterFolderOf( t_path )
             when( (c == "/") || (c == "\\")  cut = i )
         )
         if( cut > 1 then
-            buildString( parseString( substring( t_path 1 cut - 1 ) "\\" ) "/" )
+            s3dExporterSlashes( substring( t_path 1 cut - 1 ) )
         else
             ""
         )
+    )
+)
+
+; simple3d.il's s3dSlashes, for the same reason as above: each back-slash a
+; slash, a trailing separator gone but a root's ("/", "D:/").
+procedure( s3dExporterSlashes( t_path )
+    let( ( out n )
+        out = pcreReplace( pcreCompile( "\\\\" ) t_path "/" 0 )
+        n = strlen( out )
+        while( (n > 1) && (substring( out n 1 ) == "/")
+               && !((n == 3) && (substring( out 2 1 ) == ":"))
+            n = n - 1
+        )
+        if( n > 0 then substring( out 1 n ) else out )
     )
 )
 
@@ -66,7 +83,7 @@ procedure( s3dLoadExporter()
             value = nil
             errset( value = axlGetVariable( "SIMPLE3D_DIR" ) )
             when( stringp( value ) && (value != "")
-                dir = buildString( parseString( value "\\" ) "/" )
+                dir = s3dExporterSlashes( value )
             )
         )
         if( dir == "" then

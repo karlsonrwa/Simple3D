@@ -350,6 +350,27 @@ procedure( s3dSymbolsToExport( g_variantSymbolList t_variant @optional ( g_state
             )
         )
 
+        ; A variant that installs nothing is the bare board, and is named as
+        ; one, per variant (round 129, R2n-16 of the 28.10.2026 review).
+        ; s3dVariantFit says so when the whole file installs nothing; when its
+        ; other variants do, the console said only "covers 4 of 48" and "42
+        ; component(s) not installed in variant BOM", the variant's file had
+        ; no warning, and a variant emptied by mistake looked like any other
+        ; (measured on variants_test-b0 with a V1 and an empty BOM).
+        when( g_variantSymbolList && t_variant
+            n = 0
+            foreach( key installed  n = n + 1 )
+            when( n == 0
+                message = sprintf( nil "variant %s installs no components - its file holds the bare board: the outline, the silkscreen and the symbols that have no refdes"
+                                   t_variant )
+                s3dWarn( strcat( "Simple 3D: " message ) )
+                when( g_state
+                    g_state['warnings] = cons( message g_state['warnings] )
+                )
+            )
+            n = 0
+        )
+
         ; The variant names components the board does not have. The list
         ; comes from the schematic and the board from Allegro, and a refdes
         ; in one and not the other is a revision mismatch worth a line - the

@@ -58,13 +58,19 @@ def body(name):
     return m.group(0)
 
 
+sys.path.insert(0, str(ROOT / "tools"))
+from skill_lex import strip_comments, strip_line_comment  # noqa: E402
+
+
 def normalise(text):
     """Comments out, runs of whitespace to one space - so that reindenting a
     procedure or rewording a comment does not fail this suite, and changing
-    what it computes does."""
+    what it computes does. The comments by the lexer, which keeps a ';' inside
+    a literal: until round 129 each line was cut at its first ';', the cut
+    test_emit's strcat guard was rid of in round 128."""
     out = []
     for line in text.splitlines():
-        line = re.sub(r";.*$", "", line)
+        line = strip_line_comment(line)
         line = " ".join(line.split())
         if line:
             out.append(line)
@@ -950,7 +956,7 @@ check("and the unit is asked before the stackups, the outline or a file - the fi
       < normalise(body("makeVariant3dIntermediates") or "").find("s3dBoardThickness()"),
       "axlDBGetDesignUnits after s3dBoardThickness")
 check("and the menu command no longer says the no-model line itself: it would be said twice",
-      "have no 3D model, not exported" not in re.sub(r";[^\n]*", "", (ROOT / "simple3d.il").read_text(encoding="utf-8")))
+      "have no 3D model, not exported" not in strip_comments((ROOT / "simple3d.il").read_text(encoding="utf-8")))
 
 # R1-5 and R1-7, in the placement writer: a part in no zone named once per
 # export; the model from s3dStepMapping, a part bound to two models named.
@@ -958,14 +964,15 @@ pin("symbolReturn3DElements",
     "when( stepFileName && !zoneName && g_state['hasZones] && tablep( g_state['noZone] ) && !g_state['noZone][refDes]",
     "g_state['noZone][refDes] = t",
     'mappingData = s3dStepMapping( sym )',
-    "errset( deviceData = axlStepGet( nil nil sym->component->compdef ) )",
+    # the device asked about only when there is one ([5i], round 129)
+    "when( s3dDeviceOf( sym ) errset( deviceData = axlStepGet( nil nil s3dDeviceOf( sym ) ) ) )",
     "&& (deviceData->step_name != mappingData->step_name)")
 # R1-7: the footprint's binding, else the device's - measured in Allegro
 # (tools/probes/probe_stepget.il): with the device's alone the instance form
 # answered nil, the part left out as having no model.
 pin("s3dStepMapping",
     'errset( m = axlStepGet( nil nil o_sym ) )',
-    'unless( m && m->step_name m = nil errset( m = axlStepGet( nil nil o_sym->component->compdef ) ) )')
+    'unless( m && m->step_name m = nil def = s3dDeviceOf( o_sym ) when( def errset( m = axlStepGet( nil nil def ) ) ) )')
 for caller in ("s3dCheckMfrPn", "s3dHasStepModel"):
     check(f"{caller} asks s3dStepMapping, not the instance alone",
           "s3dStepMapping( " in normalise(body(caller) or "")
@@ -994,6 +1001,45 @@ for proc in ("s3dBoardThickness", "s3dLayerThk", "s3dCollectRigidFlexShapes", "s
 check("s3dContourJson: a fault part way along the segments is named, with the outline's box",
       "errset( box = o_dbid->bBox )" in normalise(body("s3dContourJson") or ""),
       normalise(body("s3dContourJson") or "")[:200])
+
+print("\n[5i] the launch batch, in the exporter and the hand test (round 129)")
+# R2n-17 of the 28.10.2026 review: s3dMakeDirs' walk keeps a UNC path's "//"
+# and makes neither its server nor its share; [7] holds the copy to Allegro's
+# own answers on local and UNC paths in both slashes.
+pin("s3dDirsToMake",
+    'norm = pcreReplace( pcreCompile( "\\\\\\\\" ) t_path "/" 0 )',
+    'unc = (strlen( norm ) > 2) && (substring( norm 1 2 ) == "//")',
+    '( unc strcat( "//" seg ) )',
+    "|| (unc && (n <= 2))",
+    "out = cons( acc out )")
+# Round 128's own fault, found in round 129: axlStepGet of nil is a warning
+# Allegro prints, which errset does not hold back, and round 128 asked it about
+# every symbol with no device - 48 "(axlStepGet): Invalid database id argument
+# - nil" on the nine boards on hand, where round 127's exports had none
+# (build/fix-2026-10-31/r129/export_cmp129.py, every console line compared).
+pin("s3dDeviceOf", "errset( def = o_sym->component->compdef )")
+check("axlStepGet is never asked of a symbol's device without asking whether it has one",
+      not re.search(r"axlStepGet\( nil nil [\w>-]*component->compdef \)", normalise(IL)),
+      re.findall(r"axlStepGet\( nil nil [^)]*\)", normalise(IL)))
+# R2-11 of the 23.10.2026 review: the hand test writes only into a saved
+# board, as s3dEnsureAlwaysProp does, and its header no longer says it is the
+# one file that writes - s3dEnsureAlwaysProp defines a property in every
+# design it opens. Measured in Allegro 25.1 (probe_launch.il's
+# s3dProbeUserProp): with no board the editor opens an empty "unnamed" whose
+# file is nowhere on disk; HEAD's s3dPropAdd found no symbol there and wrote
+# nothing, and with the check it says why.
+tool_src = (ROOT / "tools" / "s3d_userprop_test.il").read_text(encoding="utf-8")
+tool_code = normalise(tool_src)
+for proc in ("s3dPropAdd", "s3dPropRemove"):
+    at = tool_code.find(f"procedure( {proc}(")
+    check(f"{proc} looks for its symbol only in a saved board",
+          at >= 0 and tool_code[at:].split("procedure(")[1].count(
+              "sym = when( s3dPropRealDesign() s3dPropFindSym( t_refdes ) )") == 1,
+          tool_code[at:at + 200])
+check("s3dPropRealDesign asks s3dRealDesign, and says so when it is not loaded",
+      "( !getd( 's3dRealDesign )" in tool_code and "( !s3dRealDesign()" in tool_code)
+check("the hand test no longer calls itself the one file that writes",
+      "THE ONE FILE" not in tool_src and "s3dEnsureAlwaysProp" in tool_src[:tool_src.find("procedure(")])
 
 print("\n[6] every copy is pinned, and pins something that exists")
 
@@ -1142,6 +1188,26 @@ def ask_copy(procedure, inputs):
         else:
             variants = inputs["variants"]
         return T.variant_file_clashes(str(CLASH_DIR), "brd", variants) or None
+    # round 129: the launcher's paths and its check's log (simple3d.il), the
+    # exporter loader's slashes and s3dMakeDirs' walk; each asked by its case
+    # name's text, nil for SKILL's nil
+    if procedure in ("s3dSlashes", "s3dExporterSlashes"):
+        return T.s3d_slashes(inputs["text"])
+    if procedure == "s3dLeafOf":
+        return T.s3d_leaf_of(inputs["text"])
+    if procedure == "s3dFolderOf":
+        return T.s3d_folder_of(inputs["text"])
+    if procedure == "s3dDirsToMake":
+        return T.s3d_dirs_to_make(inputs["text"]) or None
+    if procedure == "s3dLineText":
+        return T.s3d_line_text(inputs["text"])
+    if procedure == "s3dIsPathName":
+        return T.s3d_is_path_name(inputs["text"])
+    if procedure == "s3dPreflightRead":
+        ok, spoke, which = T.s3d_preflight_read((ROOT / inputs["file"]).read_bytes())
+        return [ok, spoke, which]
+    if procedure == "s3dPreflightDialog":
+        return T.s3d_preflight_dialog(inputs["case"], inputs["exe"])
     raise AssertionError(f"no copy wired up for {procedure}")
 
 
@@ -1169,6 +1235,12 @@ for case in ANSWERS["cases"]:
     by_proc.setdefault(case["procedure"], []).append(case)
 check("and covers every procedure pinned above",
       set(by_proc) >= (MUST_PIN - {"rotateXY"}), sorted(set(by_proc)))
+# Round 129: the launcher's procedures, pinned by test_launch_cmd and
+# test_variant_path from their own sources, answered here by Allegro.
+LAUNCHER_COPIES = {"s3dSlashes", "s3dExporterSlashes", "s3dLeafOf", "s3dFolderOf", "s3dDirsToMake",
+                   "s3dLineText", "s3dIsPathName", "s3dPreflightRead", "s3dPreflightDialog"}
+check("and the launcher's copies of round 129", set(by_proc) >= LAUNCHER_COPIES,
+      sorted(LAUNCHER_COPIES - set(by_proc)))
 
 for procedure in sorted(by_proc):
     wrong = []

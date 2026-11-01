@@ -1,3 +1,6 @@
 # Variants.lst cases for the parser oracle (round 118): their bytes are the case,
 # CRLF or LF as written - never converted.
 tests/fixtures/variants/*.lst -text
+# The pre-flight check's logs (round 129), likewise: a CRLF, a lone LF or no
+# line end at the end is what a case is about.
+tests/fixtures/preflight/*.log -text

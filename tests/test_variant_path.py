@@ -20,6 +20,8 @@ separators, a name with no folder at all.
 """
 import re, shutil, sys
 
+sys.path.insert(0, str(ROOT / "tools"))
+from skill_lex import strip_comments  # noqa: E402 - a ';' in a literal is no comment (round 128)
 from skill_transliterations import (Tconc, VariantFileError, alternate_line, exported,
                                     is_refdes_token, not_placed, parse_variants,
                                     s3d_design_folder, s3d_variant_file_path, tconc,
@@ -64,7 +66,7 @@ print("\n[3] the UNC case parseString would have broken")
 src = exporter_source()
 unc = r"\\server\share\boards\flex2-a0.brd"
 folder = re.search(r"^procedure\( s3dDesignFolder\(.*?(?=^procedure\()", src, re.S | re.M)
-folder_code = "\n".join(line.split(";")[0] for line in (folder.group(0) if folder else "").splitlines())
+folder_code = strip_comments(folder.group(0) if folder else "")
 check("s3dDesignFolder cuts the path by scanning it, with no parseString in it",
       folder is not None and "parseString(" not in folder_code and "substring( full i 1 )" in folder_code,
       folder_code[:240])
@@ -769,6 +771,57 @@ for tag, keys in (("fv99", {"format_version": 99}), ("kicad", {"format": "kicad"
     check(f"and the CLI given {tag}.json alone exits 1, naming the file and why",
           rc == 1 and f"error ({tag}.json):" in err.getvalue()
           and not list((gate / f"cli_{tag}").glob("*.step")), (rc, err.getvalue()[-300:]))
+
+print("\n[18] a variant that installs nothing is named, per variant; a UNC folder is made "
+      "(round 129, review 28.10.2026 R2n-16, R2n-17)")
+# R2n-16: s3dVariantFit names a FILE that installs nothing. When the file's
+# other variants install parts, the console said only "covers 4 of 48" and
+# "42 component(s) not installed in variant BOM", and the BOM's own file had no
+# warning - measured on variants_test-b0 with a V1 and an empty BOM in
+# Capture's shape (round 129). s3dSymbolsToExport names each such variant now,
+# in the console and in the variant's file, which the window's log repeats.
+code = strip_comments(src)
+sym = " ".join(code[code.index("procedure( s3dSymbolsToExport("):].split("\nprocedure( ")[0].split())
+count_at = sym.find("when( g_variantSymbolList && t_variant n = 0 foreach( key installed n = n + 1 )")
+check("s3dSymbolsToExport counts what a variant of a table installs", count_at >= 0, sym[:200])
+check("...and names one that installs nothing, in the console and in its file",
+      re.search(r'^when\( g_variantSymbolList && t_variant n = 0 foreach\( key installed n = n \+ 1 \) '
+                r'when\( n == 0 message = sprintf\( nil "variant %s installs no components[^"]*" t_variant \) '
+                r'''s3dWarn\( strcat\( "Simple 3D: " message \) \) when\( g_state g_state\['warnings\] = '''
+                r'''cons\( message g_state\['warnings\] \) \) \)''', sym[count_at:]) if count_at >= 0 else None,
+      sym[count_at:count_at + 420])
+# R2n-17: s3dMakeDirs walked its path with parseString, which drops the "//"
+# of a UNC path: every export of a board opened from //server/share/... made a
+# RELATIVE chain server/share/... in Allegro's working directory - the board's
+# own folder there, 15 levels for //localhost/D$/Projects/... - and a UNC
+# folder that did not exist yet was never made (measured in Allegro 25.1). The
+# walk is s3dDirsToMake now, held to Allegro's answers in test_skill_pins [7].
+ucode = strip_comments((ROOT / "skill" / "s3d_util.il").read_text(encoding="utf-8"))
+
+
+def proc_body(text, name):
+    at = text.find(f"procedure( {name}(")
+    return " ".join(text[at:].split("\nprocedure( ")[0].split()) if at >= 0 else ""
+
+
+walk = proc_body(ucode, "s3dDirsToMake")
+for statement in ('norm = pcreReplace( pcreCompile( "\\\\\\\\" ) t_path "/" 0 )',
+                  'unc = (strlen( norm ) > 2) && (substring( norm 1 2 ) == "//")',
+                  '( unc strcat( "//" seg ) )', "|| (unc && (n <= 2))"):
+    check(f"s3dDirsToMake: {statement}", walk.count(statement) == 1, walk[:200])
+make = proc_body(ucode, "s3dMakeDirs")
+check("s3dMakeDirs makes what s3dDirsToMake names, and walks nothing itself",
+      "foreach( dir s3dDirsToMake( t_path ) unless( isDir( dir ) errset( createDir( dir ) ) ) )" in make
+      and "parseString" not in make, make)
+from skill_transliterations import s3d_dirs_to_make  # noqa: E402
+check("a UNC path's server and share are not made, nor turned into a relative folder",
+      s3d_dirs_to_make("//srv/share/a/b") == ["//srv/share/a", "//srv/share/a/b"]
+      and s3d_dirs_to_make("\\\\srv\\share\\a") == ["//srv/share/a"], s3d_dirs_to_make("//srv/share/a/b"))
+check("a drive is not made, and a local path is walked as before",
+      s3d_dirs_to_make("D:\\a\\b") == ["D:/a", "D:/a/b"], s3d_dirs_to_make("D:\\a\\b"))
+loader = strip_comments((ROOT / "makeVariant3dIntermediates.il").read_text(encoding="utf-8"))
+check("the exporter's loader turns its slashes without parseString, so a UNC install folder stays one",
+      "parseString" not in loader and loader.count("s3dExporterSlashes(") == 3, loader.count("s3dExporterSlashes("))
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

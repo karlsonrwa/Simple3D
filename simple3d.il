@@ -170,9 +170,38 @@ procedure( s3dLoadSettings()
 
 ; Normalise back-slashes to forward slashes (SKILL and the shell both accept
 ; forward slashes on Windows, and it avoids escaping headaches).
+;
+; Each back-slash becomes a slash, and a trailing separator goes (a folder is
+; joined to a name with "/"), but not a root's ("/", "D:/"). Nothing else
+; changes. Until round 129 this was parseString on "\\", which drops the
+; empty pieces - so the two leading separators of a UNC path went with them,
+; and \\server\share\rev\pcb came back as the RELATIVE server/share/rev/pcb
+; (measured in Allegro 25.1, R2n-17 of the 28.10.2026 review).
 procedure( s3dSlashes( t_path )
-    when( t_path
-        buildString( parseString( t_path "\\" ) "/" )
+    let( ( out n )
+        when( stringp( t_path )
+            out = pcreReplace( pcreCompile( "\\\\" ) t_path "/" 0 )
+            n = strlen( out )
+            while( (n > 1) && (substring( out n 1 ) == "/")
+                   && !((n == 3) && (substring( out 2 1 ) == ":"))
+                n = n - 1
+            )
+            if( n > 0 then substring( out 1 n ) else out )
+        )
+    )
+)
+
+; The last part of a path - the file or folder it names - by SCANNING for the
+; last separator, as s3dFolderOf does and for the same reason. The whole
+; string when it has none.
+procedure( s3dLeafOf( t_path )
+    let( ( ( cut 0 ) c )
+        unless( stringp( t_path )  t_path = "" )
+        for( i 1 strlen( t_path )
+            c = substring( t_path i 1 )
+            when( (c == "/") || (c == "\\")  cut = i )
+        )
+        if( cut < strlen( t_path ) then substring( t_path cut + 1 ) else "" )
     )
 )
 
@@ -273,20 +302,25 @@ s3dLoadSettings()
 ; prevent.
 ; NOTE: if/else, not an early return - return() is legal only inside a prog,
 ; and this is a let. (The same trap s3dExportCommand's own note describes.)
+;
+; The leaf and its parent are found by SCANNING for the last separator
+; (s3dLeafOf, s3dFolderOf), not with parseString. That drops the "//" of a UNC
+; path: a board opened as //server/share/.../rev/pcb asked for the RELATIVE
+; server/share/.../rev/cad, never found it, and wrote beside itself (round
+; 129, R2n-17 of the 28.10.2026 review; measured in Allegro 25.1 on
+; //localhost/D$/..., where isDir answers a UNC folder as any other).
 procedure( s3dResolveCadDir( t_designDir )
-    let( ( parts n leaf parent cad )
+    let( ( leaf parent cad )
         if( !stringp( t_designDir ) then
             s3dWarn( "Simple 3D: could not read the design's folder - neither the board's own path (axlGetDrawingName) nor getWorkingDir() answered. See s3dDesignDir() in simple3d.il." )
             nil
         else
             t_designDir = s3dSlashes( t_designDir )
-            parts = parseString( t_designDir "/" )
-            n = length( parts )
-            leaf = if( n >= 1 then nth( n - 1 parts ) else nil )
+            leaf = s3dLeafOf( t_designDir )
+            parent = s3dFolderOf( t_designDir )
 
-            if( leaf && (upperCase( leaf ) == "PCB") then
+            if( (upperCase( leaf ) == "PCB") && (parent != "") then
                 ; …/rev/pcb -> candidate …/rev/cad
-                parent = buildString( s3dHeadList( parts n - 1 ) "/" )
                 cad = strcat( parent "/cad" )
                 if( isDir( cad ) then
                     ; sibling cad exists -> use it (author's standard layout)
@@ -305,23 +339,6 @@ procedure( s3dResolveCadDir( t_designDir )
                 t_designDir
             )
         )
-    )
-)
-
-; s3dHeadList( lst n ) -> first n elements of lst (helper; SKILL has no builtin).
-;
-; PREFIXED, like everything else this project defines. SKILL has one global
-; namespace and these files are loaded into a session alongside whatever else
-; the user runs, so a helper called "headList" is a name collision waiting to
-; happen - and the winner is decided by load order, silently.
-procedure( s3dHeadList( lst x_n )
-    let( ( out ( i 0 ) )
-        out = tconc( nil nil )
-        foreach( e lst
-            when( i < x_n  tconc( out e ) )
-            i = i + 1
-        )
-        cdr( car( out ) )
     )
 )
 
@@ -744,6 +761,133 @@ procedure( s3dWindowPython()
     if( (S3D_PythonW != "") then S3D_PythonW else S3D_Python )
 )
 
+; The file Windows would run for the program t_exe names, found as cmd looks
+; for it before start runs it: a name with a folder or a drive in it as that
+; file, a bare name in the working directory and then in every PATH folder -
+; each as written and with each PATHEXT ending, since start runs
+; C:/Python314/pythonw as well as pythonw.exe. nil when it is in none.
+;
+; Asked BEFORE start, because start's own answer to a program it cannot find
+; is a message box of Windows', titled with the name, that waits for someone
+; to close it - and system() waits for start. Measured in round 129 on a
+; desktop of its own, a pinned path that does not exist and a bare name on no
+; PATH alike: no log, cmd still waiting 15 s later. On a desktop that stops
+; Allegro until the box is closed; in a session with no desktop the export
+; hangs (R2n-18 of the 28.10.2026 review: 40 s, then taken down). Lenient on
+; purpose - quotes round a PATH folder are dropped, every PATHEXT ending is
+; tried - because a program found here that Windows would not run is no
+; worse off than before, and a working one refused would be.
+procedure( s3dProgramFile( t_exe )
+    let( ( extVar exts pathVar dirs folder candidate ( hit nil ) )
+        unless( stringp( t_exe )  t_exe = "" )
+        extVar = getShellEnvVar( "PATHEXT" )
+        unless( stringp( extVar ) && (extVar != "")  extVar = ".COM;.EXE;.BAT;.CMD" )
+        exts = cons( "" parseString( extVar ";" ) )
+        if( s3dIsPathName( t_exe ) then
+            dirs = list( "" )
+        else
+            pathVar = getShellEnvVar( "PATH" )
+            dirs = cons( getWorkingDir() parseString( if( stringp( pathVar ) then pathVar else "" ) ";" ) )
+        )
+        when( t_exe != ""
+            foreach( dir dirs
+                folder = if( stringp( dir ) then s3dSlashes( pcreReplace( pcreCompile( "\"" ) dir "" 0 ) ) else "" )
+                foreach( ext exts
+                    unless( hit
+                        candidate = strcat( if( folder != "" then strcat( folder "/" ) else "" ) t_exe ext )
+                        when( isFile( candidate )  hit = candidate )
+                    )
+                )
+            )
+        )
+        hit
+    )
+)
+
+; Does t_name name a file by its path (a folder or a drive in it), or is it a
+; bare name for cmd to look up? (s3dProgramFile, and the failed check's words.)
+procedure( s3dIsPathName( t_name )
+    let( ( ( path nil ) c )
+        when( stringp( t_name )
+            for( i 1 strlen( t_name )
+                c = substring( t_name i 1 )
+                when( (c == "/") || (c == "\\") || (c == ":")  path = t )
+            )
+        )
+        path
+    )
+)
+
+; A line as gets hands it back, without its line end. gets keeps the "\n"
+; and Allegro 25.1 gives no "\r" before it, though Python wrote CRLF into the
+; redirected log (measured, round 129); either goes, so a comparison with the
+; line's text does not depend on that.
+procedure( s3dLineText( t_line )
+    let( ( n )
+        n = if( stringp( t_line ) then strlen( t_line ) else 0 )
+        while( (n > 0) && ((substring( t_line n 1 ) == "\n") || (substring( t_line n 1 ) == "\r"))
+            n = n - 1
+        )
+        if( n > 0 then substring( t_line 1 n ) else "" )
+    )
+)
+
+; What the check's log says: list( ok pySpoke whichPy out ).
+;
+; ok - a line that reads S3D_OK and nothing else. Until round 129 any line
+; with the word in it was success, and a traceback names each file by its
+; path: an install folder "S3D_OK inst plain" whose core.py failed to import
+; put the word on the traceback's File line, Allegro 25.1 read that log as
+; success, and the window was started under pythonw to die on the same
+; ImportError, saying nothing (R2n-14 of the 28.10.2026 review). The same
+; rule for whichPy, the interpreter's own line: it begins with S3D_PY.
+; pySpoke - who spoke decides what may be printed. Python's own failures are
+; ASCII and safe to echo; Windows' "cannot find the file" is localised AND
+; written in the OEM codepage (866 on a Russian Windows), which the Allegro
+; console renders as mojibake. Two plain substrings rather than one
+; alternation: rexMatchp's regex dialect is not worth betting a diagnosis on.
+; out - the whole log, as read.
+procedure( s3dPreflightRead( t_logFile )
+    let( ( port line text ( ok nil ) ( pySpoke nil ) ( whichPy "" ) ( out "" ) )
+        port = infile( t_logFile )
+        when( port
+            while( gets( line port )
+                out = strcat( out line )
+                text = s3dLineText( line )
+                when( text == "S3D_OK"  ok = t )
+                ; Which interpreter answered. Printed before the imports, so
+                ; it is there on the failing run too - and that is the run
+                ; where it matters, because "python" is a name and PATH
+                ; decides what it means today.
+                when( (strlen( text ) > 7) && (substring( text 1 7 ) == "S3D_PY ")  whichPy = text )
+                when( rexMatchp( "Traceback" line )  pySpoke = t )
+                when( rexMatchp( "Error" line )      pySpoke = t )
+            )
+            close( port )
+        )
+        list( ok pySpoke whichPy out )
+    )
+)
+
+; The words of the failed check's dialog, by what the check found: 'missing
+; (no program to start), 'python (Python answered with an error), 'silent
+; (something ran and said nothing the check could read). Until round 129 every
+; failure said "Python ran, but could not import what it needs", also when
+; Windows had found nothing to run - where installing packages is no answer
+; (R2n-15 of the 28.10.2026 review).
+procedure( s3dPreflightDialog( s_case t_exe )
+    strcat(
+        "Simple 3D: the JSON was exported, but the 3D window could not start.\n\n"
+        cond(
+            ( (s_case == 'missing)
+                sprintf( nil "Windows finds no program %s to run.\n" t_exe ) )
+            ( (s_case == 'python)
+                "Python ran, but could not import what it needs (cadquery-ocp / tkinter).\n" )
+            ( t
+                sprintf( nil "%s started, but said nothing the check could read.\n" t_exe ) ) )
+        "The full message, and how to fix it, are in the Allegro console." )
+)
+
 ; Check that the Python side can actually start, BEFORE launching it detached.
 ;
 ; Why this exists: the GUI is started with "start" (detached) and normally with
@@ -768,6 +912,12 @@ procedure( s3dWindowPython()
 ;
 ; Success is signalled by a sentinel the check prints, not by an empty log: some
 ; installs emit deprecation warnings on stderr even when the import succeeds.
+; It is a LINE that reads S3D_OK and nothing else (s3dPreflightRead): a word
+; anywhere in a line is forged by any path that holds it (round 129).
+;
+; Before any of it, the interpreter is looked for (s3dProgramFile): a program
+; Windows cannot find gets a message box from start that stops everything
+; until it is closed, and nothing is started then (round 129).
 ;
 ; THE SENTINEL IS SPLIT IN THE SOURCE - print('S3D' '_OK') - AND THAT IS NOT A
 ; TYPO. From Python 3.13 the interpreter keeps the text of a -c command and
@@ -803,7 +953,7 @@ procedure( s3dPreflight( t_workDir )
     ; prog locals must be bare symbols - the (var value) init form is let-only
     ; syntax and prog rejects it with "local vars must be symbol". Hence the
     ; explicit assignments below.
-    prog( ( exe logFile port line ok pySpoke out whichPy )
+    prog( ( exe logFile verdict ok pySpoke out whichPy failure )
         ok      = nil
         pySpoke = nil
         out     = ""
@@ -811,39 +961,30 @@ procedure( s3dPreflight( t_workDir )
         exe = s3dWindowPython()
         logFile = strcat( t_workDir "/_simple3d_preflight.txt" )
 
-        ; Importing stepbuilder.core pulls in OCP, the heavy dependency that is
-        ; usually the missing one; tkinter is what the GUI itself needs. The
-        ; sentinels are split literals on purpose - see the note above.
-        errset( system( strcat(
-            "cmd /c start /B /WAIT \"\" /D \"" S3D_ScriptDir "\" \"" exe
-            "\" -u -c \"import sys; print('S3D' '_PY', sys.executable, sys.version.split()[0]); "
-            "import stepbuilder.core, tkinter; print('S3D' '_OK')\" > \""
-            logFile "\" 2>&1" ) ) )
+        ; Nothing to start: said as such, and start is never asked - its
+        ; answer would be a message box waiting to be closed (s3dProgramFile).
+        failure = if( s3dProgramFile( exe ) then nil else 'missing )
 
-        port = infile( logFile )
-        when( port
-            while( gets( line port )
-                out = strcat( out line )
-                when( rexMatchp( "S3D_OK" line )  ok = t )
-                ; Which interpreter answered. Printed before the imports, so it
-                ; is there on the failing run too - and that is the run where it
-                ; matters, because "python" is a name and PATH decides what it
-                ; means today.
-                when( rexMatchp( "S3D_PY " line )  whichPy = line )
-                ; Who spoke decides what may be printed. Python's own failures
-                ; are ASCII and safe to echo; Windows' "cannot find the file" is
-                ; localised AND written in the OEM codepage (866 on a Russian
-                ; Windows), which the Allegro console renders as mojibake. Two
-                ; plain substrings rather than one alternation: rexMatchp's
-                ; regex dialect is not worth betting a diagnosis on.
-                when( rexMatchp( "Traceback" line )  pySpoke = t )
-                when( rexMatchp( "Error" line )      pySpoke = t )
-            )
-            close( port )
+        unless( failure
+            ; Importing stepbuilder.core pulls in OCP, the heavy dependency that
+            ; is usually the missing one; tkinter is what the GUI itself needs.
+            ; The sentinels are split literals on purpose - see the note above.
+            errset( system( strcat(
+                "cmd /c start /B /WAIT \"\" /D \"" S3D_ScriptDir "\" \"" exe
+                "\" -u -c \"import sys; print('S3D' '_PY', sys.executable, sys.version.split()[0]); "
+                "import stepbuilder.core, tkinter; print('S3D' '_OK')\" > \""
+                logFile "\" 2>&1" ) ) )
+
+            verdict = s3dPreflightRead( logFile )
+            errset( deleteFile( logFile ) )
+            ok      = nth( 0 verdict )
+            pySpoke = nth( 1 verdict )
+            whichPy = nth( 2 verdict )
+            out     = nth( 3 verdict )
+
+            when( ok  return( t ) )
+            failure = if( pySpoke then 'python else 'silent )
         )
-        errset( deleteFile( logFile ) )
-
-        when( ok  return( t ) )
 
         ; Not OK. Lead with the good news so the user does not go hunting in the
         ; wrong place: the export itself worked, only the viewer failed to start.
@@ -851,12 +992,23 @@ procedure( s3dPreflight( t_workDir )
         printf( "===== Simple 3D: the JSON was written, but Python did not start =====\n" )
         printf( "The intermediate JSON(s) ARE in:\n    %s\n" t_workDir )
         printf( "Nothing is wrong with the board or the export.\n\n" )
-        ; Two cases, and only the first one prints the captured text - it is the
+        ; Three cases, and only 'python prints the captured text - it is the
         ; one where Python itself answered, in ASCII. Anything else (an empty
         ; log, or Windows' own localised complaint in the OEM codepage) is
         ; reported in our own words instead of echoed as mojibake.
         cond(
-            ( pySpoke
+            ( (failure == 'missing)
+                printf( "Windows finds no program to run as\n    %s\n" exe )
+                printf( "%s\n"
+                        if( s3dIsPathName( exe ) then
+                            "There is no such file, with or without .exe."
+                        else
+                            "That name is in none of the folders on PATH, nor in the working directory." ) )
+                printf( "Nothing was started: Windows answers a program it cannot find\n" )
+                printf( "with a message box of its own that would have held Allegro until\n" )
+                printf( "it was closed.\n" )
+            )
+            ( (failure == 'python)
                 printf( "Python (%s) failed this check:\n" exe )
                 printf( "    import stepbuilder.core, tkinter\n" )
                 printf( "It is the interpreter the 3D window runs under (\"pythonw\",\n" )
@@ -872,9 +1024,9 @@ procedure( s3dPreflight( t_workDir )
                 printf( "It reported:\n%s\n" out )
             )
             ( t
-                printf( "Windows could not run the interpreter at all:\n    %s\n\n" exe )
-                printf( "That name is not on PATH and is not a valid full path -\n" )
-                printf( "or it died before it could say anything.\n" )
+                printf( "Windows started\n    %s\n" exe )
+                printf( "but it printed nothing the check could read - it is not a\n" )
+                printf( "working Python, or it died before it could say anything.\n" )
             )
         )
         printf( "\nCheck, in this order:\n" )
@@ -902,11 +1054,9 @@ procedure( s3dPreflight( t_workDir )
         ; clue. A blocking confirmer is what axlUIConfirm is for; errset because
         ; a courtesy dialog must never be able to fail the report itself, and
         ; Allegro's own "noconfirm" variable turns it into an immediate return
-        ; for anyone running unattended.
-        errset( axlUIConfirm( strcat(
-            "Simple 3D: the JSON was exported, but the 3D window could not start.\n\n"
-            "Python ran, but could not import what it needs (cadquery-ocp / tkinter).\n"
-            "The full message, and how to fix it, are in the Allegro console." ) 'error ) )
+        ; for anyone running unattended. Its words follow the case
+        ; (s3dPreflightDialog, round 129).
+        errset( axlUIConfirm( s3dPreflightDialog( failure exe ) 'error ) )
         return( nil )
     )
 )

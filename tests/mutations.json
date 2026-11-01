@@ -1943,8 +1943,8 @@
  {
   "id": "skill-preflight-no-dialog",
   "file": "simple3d.il",
-  "old": "        errset( axlUIConfirm( strcat(",
-  "new": "        errset( printf( strcat(",
+  "old": "        errset( axlUIConfirm( s3dPreflightDialog( failure exe ) 'error ) )\n",
+  "new": "        nil\n",
   "suites": [
    "tests/test_launch_cmd.py",
    "tools/skill_checks.py"
@@ -4814,7 +4814,7 @@
  {
   "id": "docs-mutation-count-stale",
   "file": "README.md",
-  "old": "(tests/mutations.json, 538 faults, applied",
+  "old": "(tests/mutations.json, 568 faults, applied",
   "new": "(tests/mutations.json, 999 faults, applied",
   "suites": [
    "tools/audit_docs.py"
@@ -5474,7 +5474,7 @@
  {
   "id": "skill-step-device-binding-unasked",
   "file": "skill/s3d_props.il",
-  "old": "            errset( m = axlStepGet( nil nil o_sym->component->compdef ) )\n",
+  "old": "            when( def  errset( m = axlStepGet( nil nil def ) ) )\n",
   "new": "            t\n",
   "suites": [
    "tests/test_skill_pins.py"
@@ -5580,5 +5580,307 @@
    "tests/test_emit.py"
   ],
   "why": "a value glued between a key's opening quote and a closing one in strcat - the form the line test of [4] did not see (R1n-12) (round 128, review 28.10.2026)"
+ },
+ {
+  "id": "preflight-sentinel-anywhere-in-a-line",
+  "file": "simple3d.il",
+  "old": "                when( text == \"S3D_OK\"  ok = t )\n",
+  "new": "                when( rexMatchp( \"S3D_OK\" line )  ok = t )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "success read from any line holding S3D_OK, as round 128 had it: a failed import from an install folder \"S3D_OK inst plain\" passed the check in Allegro, and the window died under pythonw saying nothing (R2n-14) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "preflight-sentinel-a-prefix",
+  "file": "simple3d.il",
+  "old": "                when( text == \"S3D_OK\"  ok = t )\n",
+  "new": "                when( (strlen( text ) >= 6) && (substring( text 1 6 ) == \"S3D_OK\")  ok = t )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "a line that only BEGINS with S3D_OK taken for success (R2n-14) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "preflight-line-end-kept",
+  "file": "simple3d.il",
+  "old": "        while( (n > 0) && ((substring( t_line n 1 ) == \"\\n\") || (substring( t_line n 1 ) == \"\\r\"))\n",
+  "new": "        while( (n > 0) && (substring( t_line n 1 ) == \"\\n\")\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "s3dLineText keeps a line's \\r: a log read with CR left in it would never read S3D_OK (R2n-14) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "preflight-whichpy-anywhere",
+  "file": "simple3d.il",
+  "old": "                when( (strlen( text ) > 7) && (substring( text 1 7 ) == \"S3D_PY \")  whichPy = text )\n",
+  "new": "                when( rexMatchp( \"S3D_PY \" line )  whichPy = text )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "the interpreter's line taken from any line holding S3D_PY: a traceback's path names another (R2n-14) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "preflight-log-not-read",
+  "file": "simple3d.il",
+  "old": "            verdict = s3dPreflightRead( logFile )\n",
+  "new": "            verdict = list( t nil \"\" \"\" )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "the check's log never read: every check passes (R2n-14) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "preflight-program-not-looked-for",
+  "file": "simple3d.il",
+  "old": "        failure = if( s3dProgramFile( exe ) then nil else 'missing )\n",
+  "new": "        failure = nil\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "start asked to run a program it cannot find: Windows' message box waits for someone to close it, Allegro stops, an unattended session hangs (R2n-18) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "program-file-no-path-search",
+  "file": "simple3d.il",
+  "old": "            dirs = cons( getWorkingDir() parseString( if( stringp( pathVar ) then pathVar else \"\" ) \";\" ) )\n",
+  "new": "            dirs = list( getWorkingDir() )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "a bare name looked for in the working directory only: \"pythonw\" on PATH refused as missing (R2n-18) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "program-file-no-pathext",
+  "file": "simple3d.il",
+  "old": "        exts = cons( \"\" parseString( extVar \";\" ) )\n",
+  "new": "        exts = list( \"\" )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "no PATHEXT ending tried: \"pythonw\" and C:/Python314/pythonw, which start runs, refused (R2n-18) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "program-file-path-along-path",
+  "file": "simple3d.il",
+  "old": "        if( s3dIsPathName( t_exe ) then\n",
+  "new": "        if( nil then\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "a full path looked for along PATH as if it were a name (R2n-18) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "is-path-name-no-drive",
+  "file": "simple3d.il",
+  "old": "                when( (c == \"/\") || (c == \"\\\\\") || (c == \":\")  path = t )\n",
+  "new": "                when( (c == \"/\") || (c == \"\\\\\")  path = t )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "C:pythonw.exe taken for a bare name and looked for along PATH (R2n-18) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "program-file-quotes-kept",
+  "file": "simple3d.il",
+  "old": "                folder = if( stringp( dir ) then s3dSlashes( pcreReplace( pcreCompile( \"\\\"\" ) dir \"\" 0 ) ) else \"\" )\n",
+  "new": "                folder = if( stringp( dir ) then s3dSlashes( dir ) else \"\" )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "a PATH folder written in quotes never searched (R2n-18) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "preflight-dialog-always-python",
+  "file": "simple3d.il",
+  "old": "        errset( axlUIConfirm( s3dPreflightDialog( failure exe ) 'error ) )\n",
+  "new": "        errset( axlUIConfirm( s3dPreflightDialog( 'python exe ) 'error ) )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "every failed check's dialog says Python could not import its packages, also when Windows found no program to run (R2n-15) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "preflight-dialog-missing-as-silent",
+  "file": "simple3d.il",
+  "old": "            ( (s_case == 'missing)\n",
+  "new": "            ( nil\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "Windows found nothing to run, and the dialog says the program started and said nothing (R2n-15) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "preflight-failure-not-by-case",
+  "file": "simple3d.il",
+  "old": "            failure = if( pySpoke then 'python else 'silent )\n",
+  "new": "            failure = 'python\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "a program that ran and said nothing reported as Python's failed import (R2n-15) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "slashes-by-parse-string",
+  "file": "simple3d.il",
+  "old": "            out = pcreReplace( pcreCompile( \"\\\\\\\\\" ) t_path \"/\" 0 )\n",
+  "new": "            out = buildString( parseString( t_path \"\\\\\" ) \"/\" )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "s3dSlashes by parseString again: \\\\server\\share\\rev\\pcb comes back as the relative server/share/rev/pcb (R2n-17) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "slashes-trailing-kept",
+  "file": "simple3d.il",
+  "old": "            while( (n > 1) && (substring( out n 1 ) == \"/\")\n",
+  "new": "            while( nil && (substring( out n 1 ) == \"/\")\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "a trailing separator kept: a folder joined to a name gets two slashes (R2n-17) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "cad-leaf-by-parse-string",
+  "file": "simple3d.il",
+  "old": "            leaf = s3dLeafOf( t_designDir )\n            parent = s3dFolderOf( t_designDir )\n",
+  "new": "            leaf = car( last( parseString( t_designDir \"/\" ) ) )\n            parent = buildString( reverse( cdr( reverse( parseString( t_designDir \"/\" ) ) ) ) \"/\" )\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "the folder and its parent split with parseString again: a board on //server/share asks for a relative cad folder and writes beside itself (R2n-17) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "cad-without-a-parent",
+  "file": "simple3d.il",
+  "old": "            if( (upperCase( leaf ) == \"PCB\") && (parent != \"\") then\n",
+  "new": "            if( (upperCase( leaf ) == \"PCB\") then\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "a folder called pcb with no parent asks for /cad, the root's (R2n-17) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "leaf-of-is-the-whole-path",
+  "file": "simple3d.il",
+  "old": "        if( cut < strlen( t_path ) then substring( t_path cut + 1 ) else \"\" )\n",
+  "new": "        t_path\n",
+  "suites": [
+   "tests/test_launch_cmd.py"
+  ],
+  "why": "s3dLeafOf hands back the whole path: no folder is ever pcb (R2n-17) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "dirs-to-make-unc-server-made",
+  "file": "skill/s3d_util.il",
+  "old": "                    || (unc && (n <= 2))\n",
+  "new": "                    || (unc && (n <= 0))\n",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py"
+  ],
+  "why": "a UNC path's server and share asked to be made, as folders (R2n-17) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "dirs-to-make-unc-collapsed",
+  "file": "skill/s3d_util.il",
+  "old": "                ( unc                              strcat( \"//\" seg ) )\n",
+  "new": "                ( unc                              seg )\n",
+  "suites": [
+   "tests/test_variant_path.py",
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the walk loses the \"//\": every export of a board on //server/share made a relative chain server/share/... in the board's own folder, 15 levels for //localhost/D$/Projects/... (R2n-17) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "exporter-slashes-by-parse-string",
+  "file": "makeVariant3dIntermediates.il",
+  "old": "        out = pcreReplace( pcreCompile( \"\\\\\\\\\" ) t_path \"/\" 0 )\n",
+  "new": "        out = buildString( parseString( t_path \"\\\\\" ) \"/\" )\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "the exporter's loader drops the \"\\\\\\\\\" of a UNC install folder and loads its parts from a relative one (R2n-17) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "variant-installing-nothing-unnamed",
+  "file": "skill/s3d_variants.il",
+  "old": "            when( n == 0\n                message = sprintf( nil \"variant %s installs no components",
+  "new": "            when( nil\n                message = sprintf( nil \"variant %s installs no components",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "a variant that installs nothing, beside variants that install parts, written as the bare board without a word: \"covers 4 of 48\" was all the console said (R2n-16) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "variant-installing-nothing-console-only",
+  "file": "skill/s3d_variants.il",
+  "old": "                s3dWarn( strcat( \"Simple 3D: \" message ) )\n                when( g_state\n                    g_state['warnings] = cons( message g_state['warnings] )\n                )\n",
+  "new": "                s3dWarn( strcat( \"Simple 3D: \" message ) )\n",
+  "suites": [
+   "tests/test_variant_path.py"
+  ],
+  "why": "the bare-board variant named in the console only: its file, and the window's log, say nothing (R2n-16) (round 129, review 28.10.2026)"
+ },
+ {
+  "id": "step-mapping-device-unguarded",
+  "file": "skill/s3d_props.il",
+  "old": "            when( def  errset( m = axlStepGet( nil nil def ) ) )\n",
+  "new": "            errset( m = axlStepGet( nil nil o_sym->component->compdef ) )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "axlStepGet asked about the device of a symbol that has none: Allegro prints \"(axlStepGet): Invalid database id argument - nil\", 48 times on the nine boards (round 128's fault, found in round 129)"
+ },
+ {
+  "id": "placement-device-unguarded",
+  "file": "skill/s3d_export.il",
+  "old": "            when( s3dDeviceOf( sym )\n                errset( deviceData = axlStepGet( nil nil s3dDeviceOf( sym ) ) )\n            )\n",
+  "new": "            errset( deviceData = axlStepGet( nil nil sym->component->compdef ) )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the placement writer asks the device of every symbol, one with none included: the same warning per such symbol (round 128's fault, found in round 129)"
+ },
+ {
+  "id": "userprop-add-anywhere",
+  "file": "tools/s3d_userprop_test.il",
+  "old": "    let( ( sym dbid made result )\n        sym = when( s3dPropRealDesign() s3dPropFindSym( t_refdes ) )\n",
+  "new": "    let( ( sym dbid made result )\n        sym = s3dPropFindSym( t_refdes )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the hand test adds its property to a design that is no saved board (R2-11) (round 129, review 23.10.2026)"
+ },
+ {
+  "id": "userprop-remove-anywhere",
+  "file": "tools/s3d_userprop_test.il",
+  "old": "    let( ( sym dbid result )\n        sym = when( s3dPropRealDesign() s3dPropFindSym( t_refdes ) )\n",
+  "new": "    let( ( sym dbid result )\n        sym = s3dPropFindSym( t_refdes )\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the hand test removes its property from a design that is no saved board (R2-11) (round 129, review 23.10.2026)"
+ },
+ {
+  "id": "userprop-real-design-not-asked",
+  "file": "tools/s3d_userprop_test.il",
+  "old": "        ( !s3dRealDesign()\n",
+  "new": "        ( nil\n",
+  "suites": [
+   "tests/test_skill_pins.py"
+  ],
+  "why": "the hand test's check never asks s3dRealDesign: Allegro's empty \"unnamed\" design passes it (R2-11) (round 129, review 23.10.2026)"
+ },
+ {
+  "id": "skill-checks-helper-requires-ignored",
+  "file": "tools/skill_checks.py",
+  "old": "            for f2 in FILES + HELPERS:\n",
+  "new": "            for f2 in FILES:\n",
+  "suites": [
+   "tools/skill_checks.py"
+  ],
+  "why": "a probe's REQUIRES of a tools/ helper ignored: probe_launch.il's calls into the hand test s3d_userprop_test.il read as undefined, and the check red on a clean tree (round 129)"
  }
 ]

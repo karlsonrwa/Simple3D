@@ -51,26 +51,49 @@ procedure( s3dErr( t_message )
 ; s3dMakeDirs( t_path ) -> create every missing level of a directory path.
 ; createDir makes only one level at a time; a path like ".../A1/cad" where an
 ; intermediate level is missing needs each segment created in turn.
-; LIMITATION: UNC paths (//server/share/...) are not handled - parseString
-; collapses the leading slashes, so the first segment would be created as a
-; relative folder. Local drive paths (d:/...) only.
+;
+; A UNC path's first two parts, //server/share, are no folders to make, and
+; the walk starts below them. Until round 129 the path was split with
+; parseString, which collapses the leading slashes - the LIMITATION this note
+; used to own up to - so every export of a board opened from
+; //server/share/... made a RELATIVE chain server/share/... in Allegro's
+; working directory, which is then the board's own folder: 15 levels for
+; //localhost/D$/Projects/... (measured in Allegro 25.1, R2n-17 of the
+; 28.10.2026 review). A path that begins with one "/" keeps it too. The walk
+; is s3dDirsToMake, so that it can be asked on its own (test_skill_pins [7]).
 procedure( s3dMakeDirs( t_path )
-    let( ( norm parts acc seg )
-        ; normalise slashes; parseString drops empty tokens so "d:/a//b" is safe
-        norm = buildString( parseString( t_path "\\" ) "/" )
+    foreach( dir s3dDirsToMake( t_path )
+        unless( isDir( dir )  errset( createDir( dir ) ) )
+    )
+    isDir( t_path )
+)
+
+; s3dDirsToMake( t_path ) -> every level s3dMakeDirs asks isDir about and
+; creates when missing, in order: not a bare drive, not a UNC path's server
+; and share.
+procedure( s3dDirsToMake( t_path )
+    let( ( norm unc parts acc ( n 0 ) ( out nil ) )
+        ; back-slashes to slashes, nothing collapsed: the leading "//" stays
+        norm = pcreReplace( pcreCompile( "\\\\" ) t_path "/" 0 )
+        unc = (strlen( norm ) > 2) && (substring( norm 1 2 ) == "//")
+        ; parseString drops empty pieces, so "d:/a//b" is safe
         parts = parseString( norm "/" )
-        acc = ""
+        acc = nil
         foreach( seg parts
-            acc = if( acc == "" then seg else strcat( acc "/" seg ) )
-            ; skip the bare drive letter "d:" (creating it is meaningless).
-            ; A drive token is exactly 2 chars ending in ":".
-            unless( (strlen( acc ) == 2) && (substring( acc 2 1 ) == ":")
-                unless( isDir( acc )
-                    errset( createDir( acc ) )
-                )
+            n = n + 1
+            acc = cond(
+                ( acc                              strcat( acc "/" seg ) )
+                ( unc                              strcat( "//" seg ) )
+                ( (substring( norm 1 1 ) == "/")   strcat( "/" seg ) )
+                ( t                                seg ) )
+            ; Not made: a bare drive "d:" (a drive token is exactly 2 chars
+            ; ending in ":"), and a UNC path's server and share.
+            unless( ((n == 1) && (strlen( acc ) == 2) && (substring( acc 2 1 ) == ":"))
+                    || (unc && (n <= 2))
+                out = cons( acc out )
             )
         )
-        isDir( t_path )
+        reverse( out )
     )
 )
 

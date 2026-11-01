@@ -126,7 +126,7 @@ def launch_cmd(exe=None):
     return f'cmd /c start "" /D "{SCRIPT_DIR}" "{exe}" {TAIL}'
 
 
-def preflight_cmd(exe=None, imports="probepkg, tkinter"):
+def preflight_cmd(exe=None, imports="probepkg, tkinter", script_dir=None):
     """s3dPreflight: synchronous (/B /WAIT), output captured to a file, run
     with the interpreter the window will run under.
 
@@ -138,7 +138,7 @@ def preflight_cmd(exe=None, imports="probepkg, tkinter"):
     text cannot contain it.
     """
     exe = exe or window_python(PY, PYW)
-    return (f'cmd /c start /B /WAIT "" /D "{SCRIPT_DIR}" "{exe}" -u '
+    return (f'cmd /c start /B /WAIT "" /D "{script_dir or SCRIPT_DIR}" "{exe}" -u '
             f'-c "import sys; print(\'S3D\' \'_PY\', sys.executable, '
             f'sys.version.split()[0]); '
             f'import {imports}; print(\'S3D\' \'_OK\')" > "{LOGF}" 2>&1')
@@ -236,10 +236,17 @@ print("\n[5] simple3d.il still uses the shape this suite proves")
 il = (ROOT / "simple3d.il").read_text(encoding="utf-8")
 
 
+sys.path.insert(0, str(ROOT / "tools"))
+from skill_lex import strip_comments  # noqa: E402
+
+
 def uncommented(text):
-    """SKILL with its comments off - a word in a comment is not a call."""
-    return "\n".join(line.split(";")[0] if not line.lstrip().startswith(";") else ""
-                     for line in text.splitlines())
+    """SKILL with its comments off - a word in a comment is not a call. By the
+    lexer, which keeps a ';' inside a literal: until round 129 this cut each
+    line at its first ';', and s3dPreflight's command line holds two inside
+    its -c string ("import sys; print(...)"), so every check of that body read
+    it cut short - the cut test_emit's strcat guard was rid of in round 128."""
+    return strip_comments(text)
 
 check('s3dLaunch uses  start "" /D', 'start \\"\\" /D' in il)
 check('s3dPreflight uses  start /B /WAIT "" /D', 'start /B /WAIT \\"\\" /D' in il)
@@ -256,6 +263,35 @@ check("the success sentinel is a SPLIT literal in the -c command",
       "s3dPreflight's sentinel can be forged by its own traceback echo")
 check("the check reports which interpreter answered",
       "sys.executable" in il and "S3D_PY " in il)
+# Round 129 (R2n-14 of the 28.10.2026 review): success is a LINE that reads
+# S3D_OK. A word anywhere in a line is forged by any path that holds it - a
+# traceback names each file by its path - and Allegro 25.1 read a failed import
+# from an install folder "S3D_OK inst plain" as success. The reading lives in
+# s3dPreflightRead, whose copy test_skill_pins [7] holds to Allegro's own
+# answers on tests/fixtures/preflight; here the source, and the case itself.
+import skill_transliterations as T  # noqa: E402
+code = uncommented(il)
+check("no line of the code takes S3D_OK anywhere in a line for success",
+      'rexMatchp( "S3D_OK"' not in code, [l.strip() for l in code.splitlines() if 'rexMatchp( "S3D_OK"' in l])
+check("s3dPreflight reads its log with s3dPreflightRead, once",
+      " ".join(code[code.index("procedure( s3dPreflight("):].split()).count(
+          "verdict = s3dPreflightRead( logFile )") == 1)
+read_body = " ".join(code[code.index("procedure( s3dPreflightRead("):].split("\nprocedure( ")[0].split()) \
+    if "procedure( s3dPreflightRead(" in code else ""
+for statement in ('text = s3dLineText( line )', 'when( text == "S3D_OK" ok = t )',
+                  'when( (strlen( text ) > 7) && (substring( text 1 7 ) == "S3D_PY ") whichPy = text )'):
+    check(f"s3dPreflightRead: {statement}", read_body.count(statement) == 1, read_body[:200])
+BAD_DIR = WORK / "S3D_OK inst plain"
+BAD_DIR.mkdir(exist_ok=True)
+(BAD_DIR / "failing_standin.py").write_text("raise ImportError(\"No module named 'OCP'\")\n", encoding="utf-8")
+run_preflight(preflight_cmd(imports="failing_standin, tkinter", script_dir=BAD_DIR))
+raw = LOGF.read_bytes() if LOGF.exists() else b""
+held = [l for l in raw.decode("utf-8", "replace").splitlines() if "S3D_OK" in l]
+check("an import failing in a folder whose name holds S3D_OK puts the word on a traceback line",
+      held and all("failing_standin" in l or "S3D_OK inst plain" in l for l in held), held)
+check("...which the check's reading does not take for success",
+      T.s3d_preflight_read(raw)[0] is None and T.s3d_preflight_read(raw)[1] is True,
+      T.s3d_preflight_read(raw))
 # The CALL, not the word: the comment three lines above the call explains what
 # axlUIConfirm is for, so a grep over the whole file passes with the call gone.
 # And in s3dPreflight's own body: since round 116 the refusal of a path cmd
@@ -276,17 +312,39 @@ print("\n[6] where the export writes: the pcb -> cad folder rule")
 # every export of a pcb-only layout into a folder that was never created;
 # dropping the leaf test sends every export into a sibling of wherever the
 # board happens to be.
-cad = il[il.index("procedure( s3dResolveCadDir("):]
+cad = uncommented(il)[uncommented(il).index("procedure( s3dResolveCadDir("):]
 cad = cad[:cad.index("\nprocedure( ", 1)]
 flat = " ".join(cad.split())
-for statement in ('parts = parseString( t_designDir "/" )',
-                  'leaf = if( n >= 1 then nth( n - 1 parts ) else nil )',
-                  'if( leaf && (upperCase( leaf ) == "PCB") then',
-                  'parent = buildString( s3dHeadList( parts n - 1 ) "/" )',
+# Since round 129 (R2n-17 of the 28.10.2026 review) the leaf and its parent
+# are found by scanning, not by parseString, which drops the "//" of a UNC
+# path: a board opened as //server/share/.../rev/pcb asked for the RELATIVE
+# server/share/.../rev/cad and wrote beside itself, though the cad folder was
+# there (measured in Allegro 25.1 on //localhost/D$/...).
+for statement in ('leaf = s3dLeafOf( t_designDir )',
+                  'parent = s3dFolderOf( t_designDir )',
+                  'if( (upperCase( leaf ) == "PCB") && (parent != "") then',
                   'cad = strcat( parent "/cad" )',
                   'if( isDir( cad ) then'):
     check(f"s3dResolveCadDir: {statement}", flat.count(" ".join(statement.split())) == 1,
           flat.count(" ".join(statement.split())))
+check("s3dResolveCadDir splits nothing with parseString", "parseString" not in flat, flat[:200])
+slashes = " ".join(uncommented(il)[uncommented(il).index("procedure( s3dSlashes("):].split(
+    "\nprocedure( ")[0].split())
+check("s3dSlashes makes each back-slash a slash, with no parseString to drop a UNC path's \"//\"",
+      'out = pcreReplace( pcreCompile( "\\\\\\\\" ) t_path "/" 0 )' in slashes and "parseString" not in slashes,
+      slashes[:200])
+# The rule, run: the copy (test_skill_pins [7] holds s3dSlashes, s3dLeafOf
+# and s3dFolderOf to Allegro's own answers) with the folders that exist named.
+HAVE = {"D:/p/rev/cad", "//srv/share/p/rev/cad"}
+for design, want in (("D:/p/rev/pcb", "D:/p/rev/cad"), ("D:\\p\\rev\\pcb", "D:/p/rev/cad"),
+                     ("D:/p/rev/pcb/", "D:/p/rev/cad"), ("D:/q/rev/pcb", "D:/q/rev/pcb"),
+                     ("D:/p/rev/board", "D:/p/rev/board"), ("pcb", "pcb"),
+                     ("//srv/share/p/rev/pcb", "//srv/share/p/rev/cad"),
+                     ("\\\\srv\\share\\p\\rev\\pcb", "//srv/share/p/rev/cad"),
+                     ("//srv/share/q/rev/pcb", "//srv/share/q/rev/pcb")):
+    got = T.s3d_resolve_cad_dir(design, HAVE.__contains__)
+    check(f"{design!r} writes to {want!r}", got == want, got)
+check("an unreadable folder is said, not parsed", T.s3d_resolve_cad_dir(None, HAVE.__contains__) is None)
 # Derived: the folder NAMES are read out of the source rather than restated
 # here, and both branches that fall back must hand back the design's own
 # folder - never the candidate that does not exist.
@@ -427,6 +485,92 @@ check("and stops there, saying so, when it names one",
       command[unsafe_at:unsafe_at + 400])
 check("and the refusal says so in a blocking dialog too, as the failed check does",
       "errset( axlUIConfirm( strcat(" in body("s3dSayCmdUnsafe"), body("s3dSayCmdUnsafe")[:200])
+
+print("\n[10] the interpreter is looked for before start is asked "
+      "(round 129, review 28.10.2026 R2n-18)")
+# start's answer to a program it cannot find is a message box of Windows',
+# titled with the name, that waits for someone to close it - and system()
+# waits for start. Measured in round 129 on a desktop of its own
+# (build/fix-2026-10-31/r129/launch_cases.py): a pinned path that does not
+# exist and a bare name on no PATH alike left no log and a cmd still waiting
+# 15 s later; on the 4090, with no desktop, the review's run hung 40 s. So no
+# missing program is started here either: the rule is run on its copy, which
+# finds what cmd would find.
+pre = body("s3dPreflight")
+looked, started = pre.find("failure = if( s3dProgramFile( exe ) then nil else 'missing )"), pre.find("errset( system(")
+check("s3dPreflight looks for the interpreter, then starts it only when it was found",
+      0 <= looked < started and pre[looked:started].count("unless( failure") == 1, (looked, started))
+prog = body("s3dProgramFile")
+for statement in ('exts = cons( "" parseString( extVar ";" ) )', "if( s3dIsPathName( t_exe ) then",
+                  'dirs = cons( getWorkingDir() parseString(', "when( isFile( candidate ) hit = candidate )"):
+    check(f"s3dProgramFile: {statement}", prog.count(statement) == 1, prog[:200])
+here = Path(PY)
+on_path = f'"{here.parent}";{WORK / "nowhere"}'
+cases = [
+    (str(here), "this interpreter, by its full path"),
+    (str(here)[:-4] if str(here).lower().endswith(".exe") else str(here), "...and without its .exe (PATHEXT)"),
+    (str(WORK / "no such folder" / here.name), None),
+    (here.stem, "its bare name, its folder on PATH - the quotes round it dropped"),
+    ("s3d_no_such_python", None),
+    ("", None),
+]
+for exe, found in cases:
+    got = T.s3d_program_file(exe, pathext=os.environ.get("PATHEXT"), path=on_path, cwd=str(WORK),
+                             is_file=os.path.isfile)
+    check(f"{exe!r}: {found or 'nothing to start'}", (got is not None) == (found is not None), got)
+
+print("\n[11] the dialog says what the check found (round 129, review 28.10.2026 R2n-15)")
+# Until round 129 every failure said "Python ran, but could not import what it
+# needs", also when Windows found nothing to run - where installing packages
+# is no answer. test_skill_pins [7] holds the copy to Allegro's own words.
+check("after start, the case is Python's when Python spoke, and silent otherwise",
+      pre.count("failure = if( pySpoke then 'python else 'silent )") == 1, pre[started:started + 400])
+check("s3dPreflight's dialog takes its words from s3dPreflightDialog, by case",
+      pre.count("errset( axlUIConfirm( s3dPreflightDialog( failure exe ) 'error ) )") == 1
+      and "Python ran, but could not import" not in pre, pre[-300:])
+words = {case: T.s3d_preflight_dialog(case, "C:/x/pythonw.exe") for case in ("missing", "python", "silent")}
+check("'missing names the program and offers no packages",
+      "C:/x/pythonw.exe" in words["missing"] and "import" not in words["missing"], words["missing"])
+check("'python says the import failed", "could not import" in words["python"], words["python"])
+check("'silent names the program and does not blame the packages",
+      "C:/x/pythonw.exe" in words["silent"] and "import" not in words["silent"], words["silent"])
+check("the three are three different texts", len(set(words.values())) == 3)
+
+print("\n[12] the originals of the copies test_skill_pins [7] holds to Allegro (round 129)")
+# [7] says each copy answers as Allegro answered when the fixture was
+# recorded; these say the source still computes what it computed then. Without
+# them a change to a body no other check reads - s3dLineText's line end, the
+# trailing separator s3dSlashes takes off - passes every suite.
+
+
+def pin_launcher(name, *statements):
+    text = body(name)
+    for statement in statements:
+        want = " ".join(statement.split())
+        check(f"{name}: {want[:90]}", text.count(want) == 1, f"found {text.count(want)} times")
+
+
+pin_launcher("s3dSlashes",
+             'while( (n > 1) && (substring( out n 1 ) == "/") && !((n == 3) && (substring( out 2 1 ) == ":")) '
+             'n = n - 1 )',
+             "if( n > 0 then substring( out 1 n ) else out )")
+pin_launcher("s3dLeafOf",
+             'when( (c == "/") || (c == "\\\\") cut = i )',
+             'if( cut < strlen( t_path ) then substring( t_path cut + 1 ) else "" )')
+pin_launcher("s3dLineText",
+             'while( (n > 0) && ((substring( t_line n 1 ) == "\\n") || (substring( t_line n 1 ) == "\\r")) '
+             'n = n - 1 )',
+             'if( n > 0 then substring( t_line 1 n ) else "" )')
+pin_launcher("s3dIsPathName", 'when( (c == "/") || (c == "\\\\") || (c == ":") path = t )')
+pin_launcher("s3dPreflightRead",
+             'when( rexMatchp( "Traceback" line ) pySpoke = t )', 'when( rexMatchp( "Error" line ) pySpoke = t )')
+pin_launcher("s3dPreflightDialog",
+             "( (s_case == 'missing) sprintf( nil \"Windows finds no program %s to run.\\n\" t_exe ) )",
+             "( (s_case == 'python) \"Python ran, but could not import what it needs (cadquery-ocp / tkinter).\\n\" )",
+             "( t sprintf( nil \"%s started, but said nothing the check could read.\\n\" t_exe ) )")
+pin_launcher("s3dProgramFile",
+             'folder = if( stringp( dir ) then s3dSlashes( pcreReplace( pcreCompile( "\\"" ) dir "" 0 ) ) else "" )',
+             'candidate = strcat( if( folder != "" then strcat( folder "/" ) else "" ) t_exe ext )')
 
 print("\nRESULT:", "ALL PASS" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(0 if not fails else 1)

@@ -158,6 +158,35 @@ CASES["s3dVariantFileClashes"] = {
     "left behind": {"left": True},
 }
 
+# Round 129 (R2n-14, R2n-15, R2n-17, R2n-18 of the 28.10.2026 review): the
+# launcher's paths (simple3d.il's s3dSlashes, s3dLeafOf, s3dFolderOf; the
+# exporter loader's s3dExporterSlashes; s3dMakeDirs' walk, s3dDirsToMake) on
+# local and UNC paths in both slashes, and its check's reading of a log
+# (s3dLineText, s3dIsPathName, s3dPreflightRead on tests/fixtures/preflight,
+# s3dPreflightDialog). A path's case name is its text; a line's is a name,
+# since a line end in a case name would end the probe's line.
+PATH_TEXTS = ("D:\\a\\b", "D:/a/b/", "D:\\a\\b\\", "D:\\", "D:/", "/", "\\\\server\\share\\x",
+              "//server/share/x", "//server/share/", "a\\\\b", "", "pcb", "D:/a/rev/pcb", "/pcb",
+              "D:/pcb", "//server", "\\\\server\\share\\rev\\pcb")
+for _proc in ("s3dSlashes", "s3dLeafOf", "s3dFolderOf"):
+    CASES[_proc] = {f"text={t}": {"text": t} for t in PATH_TEXTS}
+    CASES[_proc]["text=nil"] = {"text": None}
+CASES["s3dExporterSlashes"] = {f"text={t}": {"text": t} for t in PATH_TEXTS}
+CASES["s3dDirsToMake"] = {f"text={t}": {"text": t} for t in (
+    "D:/a/b", "D:\\a\\b", "//server/share/a/b", "\\\\server\\share\\a", "a/b", "/a/b", "D:\\a\\\\b",
+    "//server/share", "D:", "")}
+LINE_TEXTS = (("S3D_OK LF", "S3D_OK\n"), ("S3D_OK CRLF", "S3D_OK\r\n"), ("S3D_OK", "S3D_OK"),
+              ("S3D_OK space LF", "S3D_OK \n"), ("LF", "\n"), ("empty", ""), ("a CR CR LF", "a\r\r\n"),
+              ("nil", None))
+CASES["s3dLineText"] = {name: {"text": text} for name, text in LINE_TEXTS}
+CASES["s3dIsPathName"] = {f"text={t}": {"text": t} for t in (
+    "pythonw", "pythonw.exe", "C:/Python314/pythonw.exe", "C:pythonw.exe", "tools\\python", "")}
+CASES["s3dIsPathName"]["text=nil"] = {"text": None}
+PREFLIGHT_LOGS = sorted((ROOT / "tests" / "fixtures" / "preflight").glob("*.log"))
+CASES["s3dPreflightRead"] = {f.name: {"file": f"tests/fixtures/preflight/{f.name}"} for f in PREFLIGHT_LOGS}
+CASES["s3dPreflightDialog"] = {f"case={c}": {"case": c, "exe": "C:/x/pythonw.exe"}
+                               for c in ("missing", "python", "silent")}
+
 # Cases the probe prints for its own sake, not for the copies to answer.
 IGNORE = {("s3dJsonQuote", "control 0x08 (escape \\b) byte"),
           ("s3dJsonQuote", "control 0x0c (escape \\f) byte")}

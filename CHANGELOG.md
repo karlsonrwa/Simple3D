@@ -11,6 +11,42 @@ to use the tool.
 
 ---
 
+- **2026-11-01** — **The window's check stops nothing it cannot start, and a
+  board on a network share writes to its own cad folder** (review findings
+  R2n-14, R2n-15, R2n-16, R2n-17, R2n-18 and R2-11, round 129). The Python
+  check looks for its interpreter before it starts anything, the way Windows
+  would; a pinned path that does not exist, or a name on no PATH, is named in
+  the console and in a dialog. Until now Windows answered it with a message box
+  of its own, and Allegro stood still until it was closed. The check's success
+  is a line that reads `S3D_OK`: a failed import used to pass when the install
+  folder had that word in its name. The dialog says what the check found, not
+  "could not import" every time. A board opened as `\\server\share\…\rev\pcb`
+  writes to its `rev\cad`; it used to write beside the board and leave a chain
+  of empty folders `server\share\…` in the board's folder at every export, and
+  a new folder on a share was never made. A variant that installs nothing is
+  named per variant, in the console and in the window's log. The hand test of
+  properties writes only into a saved board. Round 128's export printed
+  `(axlStepGet): Invalid database id argument - nil` once per symbol with no
+  device, 48 times on the nine boards on hand; it no longer does. /
+  **Проверка окна не запускает то, что не может запустить, а плата на сетевом
+  ресурсе пишет в свою папку cad** (находки R2n-14, R2n-15, R2n-16, R2n-17,
+  R2n-18 и R2-11, раунд 129). Проверка Python ищет свой интерпретатор до
+  того, как что-либо запустить, так же, как это делает Windows.
+  Закреплённый путь, которого нет, или имя, которого нет ни в одной папке из
+  PATH, называется в консоли и в окне. Раньше Windows отвечал на это своим
+  окном-сообщением, и Allegro стоял, пока его не закроют. Успех проверки
+  теперь отдельная строка `S3D_OK`: упавший импорт проходил, если в имени
+  папки установки было это слово. Окно говорит, что именно нашла проверка, а
+  не каждый раз «не удалось импортировать». Плата, открытая как
+  `\\server\share\…\rev\pcb`, пишет в свою `rev\cad`. Раньше экспорт писал
+  рядом с платой, при каждом запуске оставлял в её папке цепочку пустых папок
+  `server\share\…`, а новую папку на сетевом ресурсе не создавал вовсе.
+  Вариант, в котором ничего не установлено, называется для каждого такого
+  варианта, в консоли и в журнале окна. Ручной тест свойств пишет только в
+  сохранённую плату. Экспорт раунда 128 печатал
+  `(axlStepGet): Invalid database id argument - nil` на каждый символ без
+  компонента, 48 раз на девяти платах; больше не печатает.
+
 - **2026-11-01** — **The exporter says what it used to pass over** (review
   findings R1-3, R1-4, R1-5, R1-6, R1-7, R1-8, R1n-10, R1n-11, R1n-12, R1n-13
   and R1n-15, round 128). A design in any unit but millimetres is refused

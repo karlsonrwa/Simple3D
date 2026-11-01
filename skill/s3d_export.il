@@ -102,8 +102,12 @@ procedure( symbolReturn3DElements( g_symbol g_state )
             mappingData = s3dStepMapping( sym )
             ; Two bindings naming different models: the footprint's is taken,
             ; and the part is named once per export.
+            ; Asked only of a symbol that has a device: axlStepGet of nil
+            ; prints a warning errset does not hold back (s3dDeviceOf).
             deviceData = nil
-            errset( deviceData = axlStepGet( nil nil sym->component->compdef ) )
+            when( s3dDeviceOf( sym )
+                errset( deviceData = axlStepGet( nil nil s3dDeviceOf( sym ) ) )
+            )
             when( mappingData && deviceData && deviceData->step_name
                   && (deviceData->step_name != mappingData->step_name)
                   && tablep( g_state['twoModels] ) && !g_state['twoModels][refDes]

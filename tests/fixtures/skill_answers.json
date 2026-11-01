@@ -1979,6 +1979,965 @@
     "left": true
    },
    "answer": null
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=D:\\a\\b",
+   "inputs": {
+    "text": "D:\\a\\b"
+   },
+   "answer": "D:/a/b"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=D:/a/b/",
+   "inputs": {
+    "text": "D:/a/b/"
+   },
+   "answer": "D:/a/b"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=D:\\a\\b\\",
+   "inputs": {
+    "text": "D:\\a\\b\\"
+   },
+   "answer": "D:/a/b"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=D:\\",
+   "inputs": {
+    "text": "D:\\"
+   },
+   "answer": "D:/"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=D:/",
+   "inputs": {
+    "text": "D:/"
+   },
+   "answer": "D:/"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=/",
+   "inputs": {
+    "text": "/"
+   },
+   "answer": "/"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=\\\\server\\share\\x",
+   "inputs": {
+    "text": "\\\\server\\share\\x"
+   },
+   "answer": "//server/share/x"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=//server/share/x",
+   "inputs": {
+    "text": "//server/share/x"
+   },
+   "answer": "//server/share/x"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=//server/share/",
+   "inputs": {
+    "text": "//server/share/"
+   },
+   "answer": "//server/share"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=a\\\\b",
+   "inputs": {
+    "text": "a\\\\b"
+   },
+   "answer": "a//b"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=",
+   "inputs": {
+    "text": ""
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=pcb",
+   "inputs": {
+    "text": "pcb"
+   },
+   "answer": "pcb"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=D:/a/rev/pcb",
+   "inputs": {
+    "text": "D:/a/rev/pcb"
+   },
+   "answer": "D:/a/rev/pcb"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=/pcb",
+   "inputs": {
+    "text": "/pcb"
+   },
+   "answer": "/pcb"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=D:/pcb",
+   "inputs": {
+    "text": "D:/pcb"
+   },
+   "answer": "D:/pcb"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=//server",
+   "inputs": {
+    "text": "//server"
+   },
+   "answer": "//server"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=\\\\server\\share\\rev\\pcb",
+   "inputs": {
+    "text": "\\\\server\\share\\rev\\pcb"
+   },
+   "answer": "//server/share/rev/pcb"
+  },
+  {
+   "procedure": "s3dSlashes",
+   "case": "text=nil",
+   "inputs": {
+    "text": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=D:\\a\\b",
+   "inputs": {
+    "text": "D:\\a\\b"
+   },
+   "answer": "b"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=D:/a/b/",
+   "inputs": {
+    "text": "D:/a/b/"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=D:\\a\\b\\",
+   "inputs": {
+    "text": "D:\\a\\b\\"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=D:\\",
+   "inputs": {
+    "text": "D:\\"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=D:/",
+   "inputs": {
+    "text": "D:/"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=/",
+   "inputs": {
+    "text": "/"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=\\\\server\\share\\x",
+   "inputs": {
+    "text": "\\\\server\\share\\x"
+   },
+   "answer": "x"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=//server/share/x",
+   "inputs": {
+    "text": "//server/share/x"
+   },
+   "answer": "x"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=//server/share/",
+   "inputs": {
+    "text": "//server/share/"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=a\\\\b",
+   "inputs": {
+    "text": "a\\\\b"
+   },
+   "answer": "b"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=",
+   "inputs": {
+    "text": ""
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=pcb",
+   "inputs": {
+    "text": "pcb"
+   },
+   "answer": "pcb"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=D:/a/rev/pcb",
+   "inputs": {
+    "text": "D:/a/rev/pcb"
+   },
+   "answer": "pcb"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=/pcb",
+   "inputs": {
+    "text": "/pcb"
+   },
+   "answer": "pcb"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=D:/pcb",
+   "inputs": {
+    "text": "D:/pcb"
+   },
+   "answer": "pcb"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=//server",
+   "inputs": {
+    "text": "//server"
+   },
+   "answer": "server"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=\\\\server\\share\\rev\\pcb",
+   "inputs": {
+    "text": "\\\\server\\share\\rev\\pcb"
+   },
+   "answer": "pcb"
+  },
+  {
+   "procedure": "s3dLeafOf",
+   "case": "text=nil",
+   "inputs": {
+    "text": null
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=D:\\a\\b",
+   "inputs": {
+    "text": "D:\\a\\b"
+   },
+   "answer": "D:/a"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=D:/a/b/",
+   "inputs": {
+    "text": "D:/a/b/"
+   },
+   "answer": "D:/a/b"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=D:\\a\\b\\",
+   "inputs": {
+    "text": "D:\\a\\b\\"
+   },
+   "answer": "D:/a/b"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=D:\\",
+   "inputs": {
+    "text": "D:\\"
+   },
+   "answer": "D:"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=D:/",
+   "inputs": {
+    "text": "D:/"
+   },
+   "answer": "D:"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=/",
+   "inputs": {
+    "text": "/"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=\\\\server\\share\\x",
+   "inputs": {
+    "text": "\\\\server\\share\\x"
+   },
+   "answer": "//server/share"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=//server/share/x",
+   "inputs": {
+    "text": "//server/share/x"
+   },
+   "answer": "//server/share"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=//server/share/",
+   "inputs": {
+    "text": "//server/share/"
+   },
+   "answer": "//server/share"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=a\\\\b",
+   "inputs": {
+    "text": "a\\\\b"
+   },
+   "answer": "a"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=",
+   "inputs": {
+    "text": ""
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=pcb",
+   "inputs": {
+    "text": "pcb"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=D:/a/rev/pcb",
+   "inputs": {
+    "text": "D:/a/rev/pcb"
+   },
+   "answer": "D:/a/rev"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=/pcb",
+   "inputs": {
+    "text": "/pcb"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=D:/pcb",
+   "inputs": {
+    "text": "D:/pcb"
+   },
+   "answer": "D:"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=//server",
+   "inputs": {
+    "text": "//server"
+   },
+   "answer": "/"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=\\\\server\\share\\rev\\pcb",
+   "inputs": {
+    "text": "\\\\server\\share\\rev\\pcb"
+   },
+   "answer": "//server/share/rev"
+  },
+  {
+   "procedure": "s3dFolderOf",
+   "case": "text=nil",
+   "inputs": {
+    "text": null
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=D:\\a\\b",
+   "inputs": {
+    "text": "D:\\a\\b"
+   },
+   "answer": "D:/a/b"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=D:/a/b/",
+   "inputs": {
+    "text": "D:/a/b/"
+   },
+   "answer": "D:/a/b"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=D:\\a\\b\\",
+   "inputs": {
+    "text": "D:\\a\\b\\"
+   },
+   "answer": "D:/a/b"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=D:\\",
+   "inputs": {
+    "text": "D:\\"
+   },
+   "answer": "D:/"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=D:/",
+   "inputs": {
+    "text": "D:/"
+   },
+   "answer": "D:/"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=/",
+   "inputs": {
+    "text": "/"
+   },
+   "answer": "/"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=\\\\server\\share\\x",
+   "inputs": {
+    "text": "\\\\server\\share\\x"
+   },
+   "answer": "//server/share/x"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=//server/share/x",
+   "inputs": {
+    "text": "//server/share/x"
+   },
+   "answer": "//server/share/x"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=//server/share/",
+   "inputs": {
+    "text": "//server/share/"
+   },
+   "answer": "//server/share"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=a\\\\b",
+   "inputs": {
+    "text": "a\\\\b"
+   },
+   "answer": "a//b"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=",
+   "inputs": {
+    "text": ""
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=pcb",
+   "inputs": {
+    "text": "pcb"
+   },
+   "answer": "pcb"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=D:/a/rev/pcb",
+   "inputs": {
+    "text": "D:/a/rev/pcb"
+   },
+   "answer": "D:/a/rev/pcb"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=/pcb",
+   "inputs": {
+    "text": "/pcb"
+   },
+   "answer": "/pcb"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=D:/pcb",
+   "inputs": {
+    "text": "D:/pcb"
+   },
+   "answer": "D:/pcb"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=//server",
+   "inputs": {
+    "text": "//server"
+   },
+   "answer": "//server"
+  },
+  {
+   "procedure": "s3dExporterSlashes",
+   "case": "text=\\\\server\\share\\rev\\pcb",
+   "inputs": {
+    "text": "\\\\server\\share\\rev\\pcb"
+   },
+   "answer": "//server/share/rev/pcb"
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=D:/a/b",
+   "inputs": {
+    "text": "D:/a/b"
+   },
+   "answer": [
+    "D:/a",
+    "D:/a/b"
+   ]
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=D:\\a\\b",
+   "inputs": {
+    "text": "D:\\a\\b"
+   },
+   "answer": [
+    "D:/a",
+    "D:/a/b"
+   ]
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=//server/share/a/b",
+   "inputs": {
+    "text": "//server/share/a/b"
+   },
+   "answer": [
+    "//server/share/a",
+    "//server/share/a/b"
+   ]
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=\\\\server\\share\\a",
+   "inputs": {
+    "text": "\\\\server\\share\\a"
+   },
+   "answer": [
+    "//server/share/a"
+   ]
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=a/b",
+   "inputs": {
+    "text": "a/b"
+   },
+   "answer": [
+    "a",
+    "a/b"
+   ]
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=/a/b",
+   "inputs": {
+    "text": "/a/b"
+   },
+   "answer": [
+    "/a",
+    "/a/b"
+   ]
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=D:\\a\\\\b",
+   "inputs": {
+    "text": "D:\\a\\\\b"
+   },
+   "answer": [
+    "D:/a",
+    "D:/a/b"
+   ]
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=//server/share",
+   "inputs": {
+    "text": "//server/share"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=D:",
+   "inputs": {
+    "text": "D:"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dDirsToMake",
+   "case": "text=",
+   "inputs": {
+    "text": ""
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dLineText",
+   "case": "S3D_OK LF",
+   "inputs": {
+    "text": "S3D_OK\n"
+   },
+   "answer": "S3D_OK"
+  },
+  {
+   "procedure": "s3dLineText",
+   "case": "S3D_OK CRLF",
+   "inputs": {
+    "text": "S3D_OK\r\n"
+   },
+   "answer": "S3D_OK"
+  },
+  {
+   "procedure": "s3dLineText",
+   "case": "S3D_OK",
+   "inputs": {
+    "text": "S3D_OK"
+   },
+   "answer": "S3D_OK"
+  },
+  {
+   "procedure": "s3dLineText",
+   "case": "S3D_OK space LF",
+   "inputs": {
+    "text": "S3D_OK \n"
+   },
+   "answer": "S3D_OK "
+  },
+  {
+   "procedure": "s3dLineText",
+   "case": "LF",
+   "inputs": {
+    "text": "\n"
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dLineText",
+   "case": "empty",
+   "inputs": {
+    "text": ""
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dLineText",
+   "case": "a CR CR LF",
+   "inputs": {
+    "text": "a\r\r\n"
+   },
+   "answer": "a"
+  },
+  {
+   "procedure": "s3dLineText",
+   "case": "nil",
+   "inputs": {
+    "text": null
+   },
+   "answer": ""
+  },
+  {
+   "procedure": "s3dIsPathName",
+   "case": "text=pythonw",
+   "inputs": {
+    "text": "pythonw"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dIsPathName",
+   "case": "text=pythonw.exe",
+   "inputs": {
+    "text": "pythonw.exe"
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dIsPathName",
+   "case": "text=C:/Python314/pythonw.exe",
+   "inputs": {
+    "text": "C:/Python314/pythonw.exe"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dIsPathName",
+   "case": "text=C:pythonw.exe",
+   "inputs": {
+    "text": "C:pythonw.exe"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dIsPathName",
+   "case": "text=tools\\python",
+   "inputs": {
+    "text": "tools\\python"
+   },
+   "answer": true
+  },
+  {
+   "procedure": "s3dIsPathName",
+   "case": "text=",
+   "inputs": {
+    "text": ""
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dIsPathName",
+   "case": "text=nil",
+   "inputs": {
+    "text": null
+   },
+   "answer": null
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "empty.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/empty.log"
+   },
+   "answer": [
+    null,
+    null,
+    ""
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "error-without-a-traceback.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/error-without-a-traceback.log"
+   },
+   "answer": [
+    null,
+    null,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "good.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/good.log"
+   },
+   "answer": [
+    true,
+    null,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "import-fails-in-a-folder-named-s3d-ok.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/import-fails-in-a-folder-named-s3d-ok.log"
+   },
+   "answer": [
+    null,
+    true,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "ok-cr-cr-lf.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/ok-cr-cr-lf.log"
+   },
+   "answer": [
+    true,
+    null,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "ok-indented.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/ok-indented.log"
+   },
+   "answer": [
+    null,
+    null,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "ok-lf-only.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/ok-lf-only.log"
+   },
+   "answer": [
+    true,
+    null,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "ok-with-a-trailing-space.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/ok-with-a-trailing-space.log"
+   },
+   "answer": [
+    null,
+    null,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "ok-without-a-line-end.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/ok-without-a-line-end.log"
+   },
+   "answer": [
+    true,
+    null,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "okay-is-not-ok.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/okay-is-not-ok.log"
+   },
+   "answer": [
+    null,
+    null,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "py-word-in-a-traceback-path.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/py-word-in-a-traceback-path.log"
+   },
+   "answer": [
+    null,
+    true,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightRead",
+   "case": "warning-then-ok.log",
+   "inputs": {
+    "file": "tests/fixtures/preflight/warning-then-ok.log"
+   },
+   "answer": [
+    true,
+    null,
+    "S3D_PY C:\\Python314\\pythonw.exe 3.14.7"
+   ]
+  },
+  {
+   "procedure": "s3dPreflightDialog",
+   "case": "case=missing",
+   "inputs": {
+    "case": "missing",
+    "exe": "C:/x/pythonw.exe"
+   },
+   "answer": "Simple 3D: the JSON was exported, but the 3D window could not start.\n\nWindows finds no program C:/x/pythonw.exe to run.\nThe full message, and how to fix it, are in the Allegro console."
+  },
+  {
+   "procedure": "s3dPreflightDialog",
+   "case": "case=python",
+   "inputs": {
+    "case": "python",
+    "exe": "C:/x/pythonw.exe"
+   },
+   "answer": "Simple 3D: the JSON was exported, but the 3D window could not start.\n\nPython ran, but could not import what it needs (cadquery-ocp / tkinter).\nThe full message, and how to fix it, are in the Allegro console."
+  },
+  {
+   "procedure": "s3dPreflightDialog",
+   "case": "case=silent",
+   "inputs": {
+    "case": "silent",
+    "exe": "C:/x/pythonw.exe"
+   },
+   "answer": "Simple 3D: the JSON was exported, but the 3D window could not start.\n\nC:/x/pythonw.exe started, but said nothing the check could read.\nThe full message, and how to fix it, are in the Allegro console."
   }
  ]
 }

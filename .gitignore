@@ -57,6 +57,8 @@ cover/
 
 # Django stuff:
 *.log
+# ...but not the pre-flight check's logs the suites read (round 129)
+!tests/fixtures/preflight/*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal

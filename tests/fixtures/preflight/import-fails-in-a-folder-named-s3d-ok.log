@@ -1,0 +1,8 @@
+S3D_PY C:\Python314\pythonw.exe 3.14.7
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys; print('S3D' '_PY', sys.executable, sys.version.split()[0]); import stepbuilder.core, tkinter; print('S3D' '_OK')
+                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Projects\AI\Claude\Simple3D\build\fix-2026-10-31\r129\launch\S3D_OK inst plain\stepbuilder\core.py", line 1, in <module>
+    raise ImportError("No module named 'OCP'")
+ImportError: No module named 'OCP'

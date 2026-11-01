@@ -3522,6 +3522,56 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-01 (round 129) — the launch findings (R2n-14, R2n-15, R2n-16, R2n-17, R2n-18, R2-11)
+
+Batch 6 of the owner's «Пройдись дальше сам по всем оставшимся находкам»,
+done at his «Да, пакет 6»; the record is
+`docs/records/launch-batch-2026-11-01.md`, scratch in
+`build/fix-2026-10-31/r129/`.
+
+- How it was measured with nothing on the owner's desktop: the check's
+  command line by `launch_cases.py` (cmd on a desktop of its own, no console
+  window, BaroSim's `desktop_run.py`; the owner's desktop listed for any new
+  window), the SKILL by the new `tools/probes/probe_launch.il`, which never
+  calls `system()`, on a copy of circle-A0 opened as `//localhost/D$/...`.
+- Measured first: a failed import from a folder `S3D_OK inst plain` read as
+  success by round 128's rule in Allegro (R2n-14; `gets` gives no `\r`); a
+  pinned path that does not exist and a bare name on no PATH both get a
+  message box from `start` that waits, cmd still there 15 s later (R2n-18);
+  `C:/Python314/pythonw` runs; no App Paths key for python here; a board on a
+  UNC path wrote beside itself though `rev/cad` was there, and every export
+  made a relative chain `localhost/D$/...` 15 levels deep in the board's own
+  folder, Allegro's working directory then; a new UNC folder was never made
+  (R2n-17); an empty BOM beside a V1 left no warning anywhere (R2n-16); with
+  no board Allegro opens an empty "unnamed" not on disk, where HEAD's hand
+  test found no symbol and wrote nothing (R2-11).
+- Found on the way, my own: round 128 printed "(axlStepGet): Invalid database
+  id argument - nil" 48 times on the nine boards - `axlStepGet` asked about
+  the device of a symbol with none; that round's console check read only the
+  lines naming Simple 3D. `s3dDeviceOf` now; `export_cmp129.py` compares
+  every console line.
+- The fix: `s3dProgramFile` (cmd's search, PATHEXT, before `start`),
+  `s3dPreflightRead` (a line that reads S3D_OK), `s3dPreflightDialog` (by
+  case), `s3dSlashes`/`s3dLeafOf`/`s3dResolveCadDir` and the loader's
+  `s3dExporterSlashes` keep a UNC `//`, `s3dDirsToMake` behind
+  `s3dMakeDirs`, a per-variant bare-board warning, the hand test's
+  `s3dPropRealDesign` and a true header. Tests: test_launch_cmd [5] [6] [10]
+  [11] [12], test_variant_path [18], test_skill_pins [5i] and [7] (251
+  answers, 111 new, `tests/fixtures/preflight/` byte for byte by
+  `.gitattributes`, kept from `*.log` in `.gitignore`); three suites' comment
+  stripping moved to the lexer. Rows 538 -> 568.
+- After, in Allegro: every case as intended, no relative folder anywhere,
+  the nine boards' JSON identical to round 128's and their consoles less the
+  48 warnings and nothing else.
+- The 4090: job129a (21:32-21:34) red first on HEAD's code with the new tests
+  (31, 8 and 11 FAIL), then green but for `skill_checks.py` - the two probes
+  and the hand test called into `simple3d.il`, the exporter and the hand test
+  without a `; REQUIRES:` line, and a `tools/` helper could not be pooled at
+  all; 149 of 151 rows, 2 unproven on that red check, run_all 32/35. The lines
+  written and the helper pooled (a row of its own): job129b (21:36-21:38) 59 of
+  59 on `skill_checks.py` and the hand test, run_all 33/35 (the two window
+  suites of session 0).
+
 ## Update 2026-11-01 (round 128) — the SKILL core findings (R1-3, R1-4, R1-5, R1-6, R1-7, R1-8, R1n-10, R1n-11, R1n-12, R1n-13, R1n-15)
 
 Batch 5 of the owner's «Пройдись дальше сам по всем оставшимся находкам»,
@@ -3603,6 +3653,12 @@ done at his «Да, пакет 5»; the record is
   skill_checks, check_arity, python_names, the audit and test_mutations
   green, the four rows on s3d_geometry.il 4 of 4. run_all last ran in
   job128a (33/35).
+- **Found in round 129:** this round's exports printed
+  `W- *WARNING* (axlStepGet): Invalid database id argument - nil` 48 times on
+  the nine boards, where round 127's printed none - `axlStepGet` asked about
+  the device of a symbol that has none (`s3dStepMapping`, the placement
+  writer). The console comparison above read only the lines naming Simple 3D
+  and missed it. Fixed in round 129 (`s3dDeviceOf`).
 
 ## Update 2026-11-01 (round 127) — a zone drawn inside another (R3-6, R3-7)
 

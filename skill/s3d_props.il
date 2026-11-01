@@ -300,13 +300,30 @@ procedure( s3dHasStepModel( o_sym )
 ; 3D takes was not measured; the footprint's stays the one taken, as before,
 ; and symbolReturn3DElements names a part whose two bindings differ.
 procedure( s3dStepMapping( o_sym )
-    let( ( m )
+    let( ( m def )
         m = nil
         errset( m = axlStepGet( nil nil o_sym ) )
         unless( m && m->step_name
             m = nil
-            errset( m = axlStepGet( nil nil o_sym->component->compdef ) )
+            def = s3dDeviceOf( o_sym )
+            when( def  errset( m = axlStepGet( nil nil def ) ) )
         )
         when( m && m->step_name  m )
+    )
+)
+
+; The device (compdef) of a placed symbol; nil when it has none - a symbol
+; with no component: a mechanical part, a fiducial, a mounting hole. Asked
+; before axlStepGet, because axlStepGet of nil is no error but a warning
+; Allegro prints, which errset does not hold back. Round 128 asked it about
+; every such symbol, and its exports of the nine boards on hand said
+; "W- *WARNING* (axlStepGet): Invalid database id argument - nil" 48 times,
+; where round 127's said it not once (round 129; that round's console check
+; read only the lines that named Simple 3D).
+procedure( s3dDeviceOf( o_sym )
+    let( ( def )
+        def = nil
+        errset( def = o_sym->component->compdef )
+        def
     )
 )

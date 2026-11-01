@@ -591,3 +591,147 @@ def letters_and_digits(text):
     """s3dLettersAndDigits: upper case, A-Z and 0-9 only - SKILL's pcreReplace
     of [^A-Z0-9] after upperCase, which leaves no other letter."""
     return "".join(c for c in text.upper() if "A" <= c <= "Z" or "0" <= c <= "9")
+
+
+# mirrors simple3d.il: s3dSlashes; makeVariant3dIntermediates.il: s3dExporterSlashes
+def s3d_slashes(path):
+    """Each back-slash a slash, a trailing separator gone but a root's ("/",
+    "D:/"), nothing else changed - a UNC path keeps its "//" (round 129,
+    R2n-17). nil for anything but a string, as `when( stringp( t_path ) ...)`."""
+    if not isinstance(path, str):
+        return None
+    out = path.replace("\\", "/")
+    n = len(out)
+    while n > 1 and out[n - 1] == "/" and not (n == 3 and out[1] == ":"):
+        n -= 1
+    return out[:n] if n > 0 else out
+
+
+# mirrors simple3d.il: s3dLeafOf, s3dFolderOf
+def _last_separator(path):
+    """SKILL's cut: the 1-based place of the last / or \\, 0 for none."""
+    return max(path.rfind("/"), path.rfind("\\")) + 1
+
+
+def s3d_leaf_of(path):
+    path = path if isinstance(path, str) else ""
+    cut = _last_separator(path)
+    return path[cut:] if cut < len(path) else ""
+
+
+def s3d_folder_of(path):
+    path = path if isinstance(path, str) else ""
+    cut = _last_separator(path)
+    return s3d_slashes(path[:cut - 1]) if cut > 1 else ""
+
+
+# mirrors simple3d.il: s3dResolveCadDir  -- with isDir handed in
+def s3d_resolve_cad_dir(design_dir, is_dir):
+    """The folder the export writes to: the sibling "cad" of a folder called
+    "pcb" when it exists, the design's own folder otherwise; None when the
+    folder could not be read."""
+    if not isinstance(design_dir, str):
+        return None
+    folder = s3d_slashes(design_dir)
+    leaf, parent = s3d_leaf_of(folder), s3d_folder_of(folder)
+    if leaf.upper() == "PCB" and parent != "":
+        cad = parent + "/cad"
+        if is_dir(cad):
+            return cad
+    return folder
+
+
+# mirrors skill/s3d_util.il: s3dDirsToMake  -- the folders s3dMakeDirs makes, in order
+def s3d_dirs_to_make(path):
+    """Every level of *path* that s3dMakeDirs asks isDir about and creates
+    when missing: not a bare drive, not a UNC path's server and share
+    (round 129, R2n-17). parseString drops the empty pieces."""
+    norm = path.replace("\\", "/")
+    unc = len(norm) > 2 and norm[:2] == "//"
+    acc, out = None, []
+    for n, seg in enumerate([p for p in norm.split("/") if p], start=1):
+        if acc:
+            acc = acc + "/" + seg
+        elif unc:
+            acc = "//" + seg
+        elif norm[:1] == "/":
+            acc = "/" + seg
+        else:
+            acc = seg
+        if not ((n == 1 and len(acc) == 2 and acc[1] == ":") or (unc and n <= 2)):
+            out.append(acc)
+    return out
+
+
+# mirrors simple3d.il: s3dIsPathName, s3dProgramFile  -- with the environment and the file system handed in
+def s3d_is_path_name(name):
+    return True if isinstance(name, str) and any(c in "/\\:" for c in name) else None
+
+
+def s3d_program_file(exe, *, pathext, path, cwd, is_file):
+    """The file Windows would run for *exe*, found as cmd looks before start
+    runs it (round 129, R2n-18): a path as that file, a bare name in *cwd*
+    and then along *path*; each as written and with each PATHEXT ending.
+    None when there is none."""
+    exe = exe if isinstance(exe, str) else ""
+    exts = [""] + [e for e in (pathext or ".COM;.EXE;.BAT;.CMD").split(";") if e]
+    dirs = [""] if s3d_is_path_name(exe) else [cwd] + [d for d in (path or "").split(";") if d]
+    if exe == "":
+        return None
+    for folder in dirs:
+        folder = s3d_slashes(folder.replace('"', "")) if isinstance(folder, str) else ""
+        for ext in exts:
+            candidate = (folder + "/" if folder != "" else "") + exe + ext
+            if is_file(candidate):
+                return candidate
+    return None
+
+
+# mirrors simple3d.il: s3dLineText, s3dPreflightRead  -- the check's log, as gets reads it
+def s3d_line_text(line):
+    if not isinstance(line, str):
+        return ""
+    n = len(line)
+    while n > 0 and line[n - 1] in "\n\r":
+        n -= 1
+    return line[:n] if n > 0 else ""
+
+
+def skill_gets_lines(raw):
+    """The lines gets hands back from a file of these bytes: Allegro 25.1
+    reads text mode, a CRLF comes back "\\n" (measured, round 129), and every
+    line but an unterminated last one keeps its "\\n"."""
+    text = raw.decode("latin-1").replace("\r\n", "\n")
+    lines, start = [], 0
+    while start < len(text):
+        end = text.find("\n", start)
+        end = len(text) if end < 0 else end + 1
+        lines.append(text[start:end])
+        start = end
+    return lines
+
+
+def s3d_preflight_read(raw):
+    """(ok, pySpoke, whichPy) of the check's log: ok a line that reads S3D_OK
+    and nothing else (round 129, R2n-14), whichPy the line that begins with
+    S3D_PY, pySpoke a line holding Traceback or Error. SKILL's nil is None."""
+    ok = py_spoke = None
+    which = ""
+    for line in skill_gets_lines(raw):
+        text = s3d_line_text(line)
+        if text == "S3D_OK":
+            ok = True
+        if len(text) > 7 and text[:7] == "S3D_PY ":
+            which = text
+        if "Traceback" in line or "Error" in line:
+            py_spoke = True
+    return ok, py_spoke, which
+
+
+# mirrors simple3d.il: s3dPreflightDialog  -- the failed check's dialog, by case
+def s3d_preflight_dialog(case, exe):
+    middle = {"missing": f"Windows finds no program {exe} to run.\n",
+              "python": "Python ran, but could not import what it needs (cadquery-ocp / tkinter).\n"}
+    return ("Simple 3D: the JSON was exported, but the 3D window could not start.\n\n"
+            + middle.get(case, f"{exe} started, but said nothing the check could read.\n")
+            + "The full message, and how to fix it, are in the Allegro console.")

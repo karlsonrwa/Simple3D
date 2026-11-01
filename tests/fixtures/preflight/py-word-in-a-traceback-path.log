@@ -1,0 +1,5 @@
+S3D_PY C:\Python314\pythonw.exe 3.14.7
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "D:\S3D_PY tools\stepbuilder\core.py", line 1, in <module>
+ImportError: No module named 'OCP'

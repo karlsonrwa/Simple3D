@@ -45,8 +45,11 @@ FILES = [
 # files would let a probe's procedure satisfy a call in the exporter.
 PROBES = sorted(str(p) for p in (_ROOT / "tools" / "probes").glob("*.il"))
 # Standalone .il helpers directly under tools/ are loaded by hand in a live
-# Allegro session too, so they get the same treatment as the probes.
-PROBES += sorted(str(p) for p in (_ROOT / "tools").glob("*.il"))
+# Allegro session too, so they get the same treatment as the probes - and a
+# probe may name one in its REQUIRES line, as it names a shipped file (round
+# 129: probe_launch.il loads the hand test s3d_userprop_test.il).
+HELPERS = sorted(str(p) for p in (_ROOT / "tools").glob("*.il"))
+PROBES += HELPERS
 
 # project-shaped call prefixes we own and must have defined
 PROJECT_RE = re.compile(r"^(s3d|make|add|symbolReturn|gdsys|create3d|calculateBoard|boardGeometry)")
@@ -444,7 +447,7 @@ def main():
         required = set(re.findall(r"(?im)^\s*;\s*REQUIRES:\s*(.+?)\s*$", text))
         known = set(defs)
         for name in required:
-            for f2 in FILES:
+            for f2 in FILES + HELPERS:
                 # Naming the loader means the parts it loads.
                 if Path(f2).name in name or (
                         Path(f2).parent.name == "skill" and "makeVariant3dIntermediates.il" in name):
