@@ -3587,6 +3587,27 @@ record is `docs/records/harness-batch-2026-11-02.md`, scratch in
      the command.
   6. My own check text said a loose face moved a block's volume 7%; the row
      measured 6000 -> 5902.857 mm3, and the text says so now.
+  7. **After the commit: "each went on" passes the shared name in an
+     interactive session.** The session that gave step2html and GnssSim a
+     desktop per process (02.11.2026, step2html fa803b6, GnssSim cb7f0dd)
+     measured on the owner's PC: with one name for all, 8 of 8 processes
+     there open the ONE desktop; only session 0 refuses the second, because
+     the desktop's DACL there lacks the journal and switch rights GENERIC_ALL
+     asks for. test_harness [7] asked only that four stubs went on, so
+     `support-desktop-name-shared` was caught in session 0 and would pass in
+     the owner's session (read and reasoned, not run there). Now each stub
+     says which desktop its thread is on, and [7] asks for four different
+     ones, each one the helper named; a stub maps its window only on such a
+     desktop, judged by the name and not by the helper's answer, so a helper
+     that answers "" and moves nothing cannot put four windows on the user's
+     desktop. New row `support-desktop-never-set` (the desktop made, the
+     thread never moved onto it): rows 642 -> 643. job132j (17:02-17:07,
+     session 0 of the 4090): four stubs at once on four desktops; the 22 rows
+     test_harness holds and the count row caught 23 of 23; the shared name
+     fails both halves there (three stubs error 5, one name), the never-set
+     row the error-170 check and "no two the same" (`Default` four times);
+     run_all 35/37. The new half bites on its own only in an interactive
+     session, so only a run in the owner's session shows it.
 - On the 4090: job132f (12:41-12:58), the whole table on the tree as it then
   stood, 640 rows: caught 590, none survived, refused or hung; 830 s of wall
   for 6309 s of suite runs on 8 copies; not proved 50 - 38 held only by

@@ -230,18 +230,40 @@ if sys.platform == "win32":
     # And four GUI suites at once, as tools/mutate.py runs them, each get one,
     # each holding a window there while the others ask. Until round 132 they
     # shared one name, and a desktop one process made another could neither
-    # create nor open, error 5: of eight at once in session 0, one got it.
+    # create nor open, error 5: of eight at once in session 0, one got it. In
+    # an interactive session - the owner's - they all get the ONE desktop
+    # instead (8 of 8, step2html's probe on the owner's PC, 02.11.2026), and
+    # "each went on" passes the shared name there: so each stub says which
+    # desktop its thread is on, and no two may be the same. It maps its window
+    # only on a desktop the helper named, judged by that name and not by the
+    # helper's answer: a helper that answers "" and moves nothing would
+    # otherwise put four windows where the user works.
     together = stub("stub_desktop_shared.py",
-                    f"import sys, time\nsys.path.insert(0, {str(ROOT / 'tests')!r})\n"
+                    "import ctypes, sys, time\nfrom ctypes import wintypes\n"
+                    f"sys.path.insert(0, {str(ROOT / 'tests')!r})\n"
                     "from _support import windows_off_screen_or_stop\n"
-                    "windows_off_screen_or_stop()\nimport tkinter\nt = tkinter.Tk()\nt.update()\n"
-                    "print('went on, a window of its own', flush=True)\ntime.sleep(2)\nt.destroy()\n")
+                    "windows_off_screen_or_stop()\n"
+                    "u = ctypes.windll.user32\nu.GetThreadDesktop.restype = wintypes.HANDLE\n"
+                    "u.GetThreadDesktop.argtypes = [wintypes.DWORD]\n"
+                    "u.GetUserObjectInformationW.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, "
+                    "wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]\n"
+                    "name = ctypes.create_unicode_buffer(256)\n"
+                    "u.GetUserObjectInformationW(u.GetThreadDesktop(ctypes.windll.kernel32.GetCurrentThreadId()), "
+                    "2, name, ctypes.sizeof(name), ctypes.byref(wintypes.DWORD()))\n"
+                    "print('went on, on the desktop', name.value, flush=True)\n"
+                    "t = None\nif name.value.startswith('Simple3D-tests'):\n"
+                    "    import tkinter\n    t = tkinter.Tk()\n    t.update()\n"
+                    "time.sleep(2)\nif t is not None:\n    t.destroy()\n")
     four = [subprocess.Popen([PY, "-B", str(together)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              text=True, encoding="utf-8", errors="replace") for _ in range(4)]
     said = [p.communicate(timeout=120)[0] for p in four]
     went = [s for s in said if "went on" in s]
     check("four GUI suites at once each get a desktop of their own", len(went) == 4,
           [s.strip().splitlines()[-1:] for s in said if "went on" not in s])
+    on = [line.split("on the desktop ", 1)[1] for s in went for line in s.splitlines()
+          if line.startswith("went on, on the desktop ")]
+    check("and no two of them the same, none of them the user's",
+          len(set(on)) == len(on) == 4 and all(d.startswith("Simple3D-tests-") for d in on), on)
 else:
     check("not Windows: no user's desktop to keep them off", True)
 

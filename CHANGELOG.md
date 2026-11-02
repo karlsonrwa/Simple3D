@@ -29,9 +29,11 @@ to use the tool.
   suite now makes its desktop under a name of its own: with one name for all,
   of several suites started at once only the first got it (measured in
   session 0 of the 4090), and the rest, in the mutation tool's parallel
-  copies, opened their windows on the desktop they were started on. The name
-  check reports everything pyflakes finds but an unused import; a syntax error
-  used to pass. The mutation tool never applies a row that points outside the
+  copies, opened their windows on the desktop they were started on. It is now
+  also checked that no two of four suites started at once share a desktop: in
+  an interactive session they all get the one desktop, and the old check did
+  not notice. The name check reports everything pyflakes finds but an unused
+  import; a syntax error used to pass. The mutation tool never applies a row that points outside the
   tree, calls a red suite's row UNPROVEN rather than caught when it ran no
   baseline, empties a copy's outputs before every job, and runs every row when
   a file all suites share has changed. It also names each catch by the check
@@ -58,7 +60,10 @@ to use the tool.
   своим именем. При одном имени на всех из нескольких наборов, запущенных
   разом, стол получал только первый (измерено в сеансе 0 на 4090), а
   остальные в параллельных копиях инструмента мутаций открывали окна на том
-  столе, где их запустили. Проверка имён сообщает обо всём, что
+  столе, где их запустили. Теперь проверяется ещё и то, что у четырёх
+  наборов, запущенных разом, нет двух одинаковых столов: в интерактивном
+  сеансе все они получают один и тот же стол, и прежняя проверка этого не
+  замечала. Проверка имён сообщает обо всём, что
   находит pyflakes, кроме неиспользуемого импорта; синтаксическая ошибка раньше
   проходила. Инструмент мутаций не применяет строку, указывающую за пределы
   дерева; без базового прогона пишет о строке красного набора UNPROVEN, а не

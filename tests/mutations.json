@@ -4819,7 +4819,7 @@
  {
   "id": "docs-mutation-count-stale",
   "file": "README.md",
-  "old": "(tests/mutations.json, 642 faults, applied",
+  "old": "(tests/mutations.json, 643 faults, applied",
   "new": "(tests/mutations.json, 999 faults, applied",
   "suites": [
    "tools/audit_docs.py"
@@ -6613,7 +6613,17 @@
   "suites": [
    "tests/test_harness.py"
   ],
-  "why": "every GUI suite asks for one desktop name again: of several at once only the first gets it, the rest error 5 - in tools/mutate.py's parallel copies they stop, and every row on them reads caught by that (R7-9, round 132, review 23.10.2026)"
+  "why": "every GUI suite asks for one desktop name again: in session 0 of several at once only the first gets it, the rest error 5 - in tools/mutate.py's parallel copies they stop, and every row on them reads caught by that; in an interactive session, the owner's, they all share the one desktop, and only 'no two the same' sees it (R7-9, round 132, review 23.10.2026)"
+ },
+ {
+  "id": "support-desktop-never-set",
+  "file": "tests/_support.py",
+  "old": "    if not u32.SetThreadDesktop(desktop):\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "the desktop is made but the thread never moves onto it: the helper answers \"\" and every window a GUI suite opens lands on the user's desktop (R7-9, round 132, review 23.10.2026)"
  },
  {
   "id": "mutate-catch-names-any-fail-word",
