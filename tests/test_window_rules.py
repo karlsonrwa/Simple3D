@@ -2,13 +2,12 @@
 # tests/_support.py, so the suite runs from wherever the repository is checked
 # out and every suite fails the same way. Output goes to build/test-output/.
 from _support import ROOT, OUT, fails, check
-from _support import keep_windows_off_screen
+from _support import windows_off_screen_or_stop
 
 # Before the first Tk(): the window is built on a desktop of its own and never
 # shown on the user's (round 94).
-_OFF_SCREEN = keep_windows_off_screen()
-if _OFF_SCREEN:
-    print(f"note: the windows are shown on this desktop - {_OFF_SCREEN}")
+# And if they cannot be, the suite does not run (round 132, R7-9).
+_OFF_SCREEN = windows_off_screen_or_stop()
 
 """The window's rules that need no screen (round 130, the review's batch 7).
 

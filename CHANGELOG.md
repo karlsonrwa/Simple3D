@@ -11,6 +11,65 @@ to use the tool.
 
 ---
 
+- **2026-11-02** — **The test runner judges what a suite printed, and the
+  measuring helpers say when they cannot measure** (review findings R7-1 to
+  R7-7 and R7-9 to R7-17, round 132). For whoever runs the tests or works in
+  the tree; nothing the tool exports changed. `tests/run_all.py` judged a suite
+  by its exit code alone: one that printed FAIL and exited 0 passed, and so did
+  one that ran no check at all. Both now fail; a job past its time limit is
+  taken down and named, where a hung suite used to hang the whole run; and a
+  process a suite leaves running no longer holds the run up. `--quick` kept
+  six jobs that load OpenCASCADE, and a misspelt option ran everything; both
+  are fixed. The suites' bounding box was too wide on curved faces, by up to
+  5 mm on a cylinder of radius 5, and is now exact. A shape whose faces outside
+  a closed shell change its volume, and a STEP file that is missing or does not
+  read, are now reported as such: the first was measured with those faces, the
+  second crashed the suite. A GUI suite whose windows cannot be put on a
+  desktop of their own stops, instead of opening them on the user's, and each
+  suite now makes its desktop under a name of its own: with one name for all,
+  of several suites started at once only the first got it (measured in
+  session 0 of the 4090), and the rest, in the mutation tool's parallel
+  copies, opened their windows on the desktop they were started on. The name
+  check reports everything pyflakes finds but an unused import; a syntax error
+  used to pass. The mutation tool never applies a row that points outside the
+  tree, calls a red suite's row UNPROVEN rather than caught when it ran no
+  baseline, empties a copy's outputs before every job, and runs every row when
+  a file all suites share has changed. It also names each catch by the check
+  that bit and tells a suite which row is applied in its copy: until now every
+  row aimed at the tool itself read caught by the table check whose pattern
+  the row had just removed. A STEP file built in the tree, dated or
+  not, and any board file but the demo's stay out of git. /
+  **Запуск тестов судит по тому, что набор напечатал, а измерители говорят,
+  когда измерить не могут** (находки с R7-1 по R7-7 и с R7-9 по R7-17, раунд
+  132). Это для тех, кто гоняет тесты или работает в дереве; в том, что
+  экспортирует инструмент, ничего не изменилось. `tests/run_all.py` судил набор
+  только по коду выхода: набор, напечатавший FAIL и вышедший с нулём, проходил,
+  как и набор, не выполнивший ни одной проверки. Теперь оба валятся. Задание,
+  вышедшее за предел времени, снимается и называется (раньше зависший набор
+  вешал весь запуск), а процесс, оставленный набором, запуск больше не держит.
+  `--quick` оставлял шесть заданий, которые загружают OpenCASCADE, а ключ с
+  опечаткой запускал всё; исправлено и то и другое. Габарит в наборах был шире
+  настоящего на кривых гранях, у цилиндра радиусом 5 на 5 мм, теперь он точный.
+  Фигура, у которой грани вне замкнутой оболочки меняют объём, и файл STEP,
+  которого нет или который не читается, теперь так и называются: раньше объём
+  считался вместе с этими гранями, а нечитаемый файл ронял набор. GUI-набор,
+  чьи окна нельзя увести на отдельный рабочий стол, останавливается, а не
+  открывает их на столе пользователя, и каждый набор теперь создаёт стол под
+  своим именем. При одном имени на всех из нескольких наборов, запущенных
+  разом, стол получал только первый (измерено в сеансе 0 на 4090), а
+  остальные в параллельных копиях инструмента мутаций открывали окна на том
+  столе, где их запустили. Проверка имён сообщает обо всём, что
+  находит pyflakes, кроме неиспользуемого импорта; синтаксическая ошибка раньше
+  проходила. Инструмент мутаций не применяет строку, указывающую за пределы
+  дерева; без базового прогона пишет о строке красного набора UNPROVEN, а не
+  caught; очищает выходные файлы копии перед каждым заданием и прогоняет все
+  строки, когда изменился файл, общий для всех наборов. Ещё он называет у
+  пойманной строки сработавшую проверку и сообщает набору, какая строка
+  применена в его копии: до этого каждая строка, нацеленная на сам инструмент,
+  считалась пойманной табличной проверкой, чей шаблон эта строка только что
+  убрала. Файл STEP, собранный в
+  дереве, с датой или без, и любой файл платы, кроме демо, в git не попадают.
+
 - **2026-11-02** — **The fold says what it used to pass over** (review findings
   R5-2, R5-4, R5-5, R5-6 and R5-8, round 131). A flex rolled into a ring at
   `foldNeutral` 0, as README advises, holds some material in two places at

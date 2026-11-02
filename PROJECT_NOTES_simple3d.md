@@ -3522,6 +3522,82 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-02 (round 132) — the harness findings (R7-1 to R7-7, R7-9 to R7-17)
+
+Batch 9 of the owner's «Пройдись дальше сам по всем оставшимся находкам»,
+at his «Да, пакет 9». Only the tests, the tools and `.gitignore` changed;
+nothing under `stepbuilder/` or `skill/`, so nothing the tool exports. The
+record is `docs/records/harness-batch-2026-11-02.md`, scratch in
+`build/fix-2026-10-31/r132/`.
+
+- Measured first, HEAD 613aa14 (`measure132.py`, every job of HEAD's run_all
+  once in an instrumented copy, session 0 of the 4090, 11:54-11:56): six jobs
+  marked light load OCP (test_skill_pins 10 modules, test_launcher 34,
+  test_variant_path 39 and a `core.generate` build, test_settings 39,
+  test_gui 34, test_window_rules 34); 11 bbox calls, all in test_bend, move
+  when the triangulation is left out, by up to 0.7355 mm; one volume call
+  (test_bend.py:904) holds a face outside a closed shell, the two integrals
+  equal to six places; the jobs write nothing outside `build/` in a fresh
+  copy; pyflakes says 111 things, all "imported but unused". HEAD's
+  `.gitignore` (`red132g.py`): of 16 outputs, boards and scratch files 7 not
+  ignored, of 13 sources, fixtures and models 7 ignored.
+- The fix, by finding: run_all judges what a suite printed (a FAIL line, or
+  no PASS/FAIL line at all, fails it under exit 0), takes a job past its limit
+  down as HUNG, reads the output from files, fails a light job that loads OCP
+  and refuses an unknown option (R7-1 to R7-3); `_support.bbox` is
+  `AddOptimal_s`'s, `volume` refuses faces outside closed shells that move the
+  number, `read_step` names a missing or unreadable file, the turn probe tells
+  a refusal from a failure to ask (R7-4 to R7-7); a GUI suite with no desktop
+  of its own stops (R7-9); mutate.py refuses a row that leaves the tree, says
+  UNPROVEN without a baseline, empties a copy's `build/` before each job,
+  reads a suite's output from a file under a time limit, runs every row when
+  a shared file changed, and asks git only of a tree that is a repository of
+  its own (R7-10 to R7-14, R7-17); python_names keeps every pyflakes finding
+  but an unused import and reads pyflakes' exit code (R7-15); `.gitignore`
+  anchors the template's folders to the root and ignores every STEP and
+  board but the demo's (R7-16). New suite `tests/test_harness.py`;
+  test_mutations [2], [5], [6].
+- Found on the way, all fixed in the round, each caught by a run:
+  1. **A desktop one process made, another cannot have.** With the one name
+     every GUI suite asked for, of eight processes at once one got it and the
+     rest error 5 - OpenDesktopW too, with GENERIC_ALL or the nine desktop
+     rights (`desk132.py`); with a name per process 8 of 8, 32 of 32, 64 of 64.
+     So at HEAD every GUI suite but one in mutate.py's parallel copies fell
+     back to showing its windows where it stood (session 0 measured, the
+     owner's session not). After R7-9 they stopped instead, and the first
+     whole-table run read 32 of test_window_rules' 33 rows as caught by that
+     stop, 0.0 s each. `_support` names the desktop `Simple3D-tests-<pid>`;
+     test_harness [7] runs four GUI stubs at once.
+  2. **The sentinel was red in every copy.** test_mutations [5] opened with a
+     check that the tree is a git repository of its own; a copy is not. Now
+     the questions to git go to a scratch repository it makes.
+  3. **The sentinel caught every row aimed at mutate.py by its own table
+     check** - the row's pattern is gone in its copy by design. mutate.py now
+     tells a suite the applied row (MUTATING), and test_mutations leaves the
+     patterns on that row's file uncounted; and a catch is named by the
+     first line that BEGINS with FAIL (any line holding the word was taken,
+     and test_harness's passing checks are named after FAIL lines). Both
+     were AllegroBaseStructure's fixes of 29.09.2026, never brought here; I
+     did not read that note before writing the rows.
+  4. **A time bound both ways passed.** test_harness [2]'s child slept 8 s
+     under a 15 s bound, so a run_all on pipes would have passed too; now
+     20 s under 10 s.
+  5. **The docs audit reads every backticked `--flag` in README as the
+     exporter's.** README's paragraph on run_all names its options inside
+     the command.
+  6. My own check text said a loose face moved a block's volume 7%; the row
+     measured 6000 -> 5902.857 mm3, and the text says so now.
+- On the 4090: job132f (12:41-12:58), the whole table on the tree as it then
+  stood, 640 rows: caught 590, none survived, refused or hung; 830 s of wall
+  for 6309 s of suite runs on 8 copies; not proved 50 - 38 held only by
+  test_gui and test_geom (red in session 0, as always) and 12 held only by
+  the audit (red there by item 5). No row caught by the desktop guard's line;
+  every test_window_rules row by a check of its own. job132g (12:58-13:04):
+  the audit's 18 rows 18 of 18. job132h (13:05-13:10), the final tree: the
+  round's 31 rows 31 of 31, each by the check written for it; run_all 35/37
+  (the two window suites). Rows 611 -> 642. The 38 window rows wait for the
+  owner's session.
+
 ## Update 2026-11-02 (round 131) — the fold findings (R5-2, R5-4, R5-5, R5-6, R5-8)
 
 Batch 8 of the owner's «Пройдись дальше сам по всем оставшимся находкам»,
@@ -6505,7 +6581,9 @@ while a suite runs): `test_geom` put **16** StepBuilder windows on it per run
 windows - and a mutation run starts them four at a time.
 
 - `_support.keep_windows_off_screen()`: `CreateDesktopW("Simple3D-tests")`
-  (the first suite creates it, the rest open it) and `SetThreadDesktop` for
+  (the first suite creates it, the rest open it - round 132: not while the
+  first holds it, error 5 for create and open alike; one name per process
+  since) and `SetThreadDesktop` for
   the suite's main thread, before the first `Tk()`. The windows are still
   MAPPED - `test_geom` needs where a window really is, [7i] needs a click
   that arrives - on a desktop nobody looks at: no taskbar button, no focus

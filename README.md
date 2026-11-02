@@ -1177,8 +1177,18 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 32 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 611 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, one that runs the export command into folders it is given, and four that change the copy or the disk otherwise - its design units, a drill offset, a device's STEP mapping, folders on a UNC path and a property the hand test adds and takes off - two of them exporting it), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 33 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 642 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, one that runs the export command into folders it is given, and four that change the copy or the disk otherwise - its design units, a drill offset, a device's STEP mapping, folders on a UNC path and a property the hand test adds and takes off - two of them exporting it), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
+
+`python tests/run_all.py` runs the checks and every suite, each in a process of
+its own with a time limit of 20 minutes (`python tests/run_all.py --timeout S`
+sets another), and judges a suite by what it printed as well as by its exit
+code: a FAIL line, or no check at all, fails it even when it exits 0.
+`python tests/run_all.py --quick` leaves out every job that loads OpenCASCADE;
+an option it does not know stops it. What a build leaves in the tree stays out
+of git: a STEP file, dated or not, or one still being written, a board file,
+and `cad/` and `pcb/` at the top of the tree - the demo board and the models
+under `demo/step_files` aside.
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
 when. `PROJECT_NOTES_simple3d.md` is the development memo — how each decision
@@ -2370,8 +2380,18 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 32 набора тестов, два золотых корпуса (STEP и экспорт SKILL, второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 611 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, одного, который запускает команду экспорта в данные ему папки, и четырёх, меняющих копию или диск иначе: её единицы, смещение сверла, привязку модели STEP к компоненту, папки на UNC-пути и свойство, которое ручной тест ставит и снимает; два из них её выгружают), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 33 набора тестов, два золотых корпуса (STEP и экспорт SKILL, второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 642 поломки, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, одного, который запускает команду экспорта в данные ему папки, и четырёх, меняющих копию или диск иначе: её единицы, смещение сверла, привязку модели STEP к компоненту, папки на UNC-пути и свойство, которое ручной тест ставит и снимает; два из них её выгружают), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
+
+`python tests/run_all.py` запускает проверки и все наборы, каждый в своём
+процессе и с пределом в 20 минут (другой задаёт
+`python tests/run_all.py --timeout S`), и судит набор не только по коду
+выхода, но и по тому, что он напечатал: строка FAIL или ни одной проверки
+валят набор, даже если он вышел с нулём. `python tests/run_all.py --quick`
+пропускает всё, что загружает OpenCASCADE; незнакомый ключ останавливает
+запуск. То, что сборка оставляет в дереве, в git не попадает: файл STEP с
+датой или без, недописанный файл STEP, файл платы, папки `cad/` и `pcb/` в
+корне дерева. Исключения: демо-плата и модели в `demo/step_files`.
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.
 `PROJECT_NOTES_simple3d.md` — рабочая записка разработки: как принималось каждое

@@ -62,7 +62,7 @@ _OWN_DESKTOP = None
 
 def keep_windows_off_screen() -> str:
     """Put every window THIS thread creates from now on on a desktop of its
-    own - "Simple3D-tests", in the same session - that nobody looks at.
+    own - "Simple3D-tests-<pid>", in the same session - that nobody looks at.
 
     The GUI suites need windows that are really MAPPED: a withdrawn one
     reports the size it asked for rather than where it is, and drops a
@@ -77,8 +77,8 @@ def keep_windows_off_screen() -> str:
 
     Must run before the thread creates its first window - Tk's, at the first
     Tk() - which is why a suite calls it right after importing this module.
-    Returns "" once done, or why it could not be; the windows are then
-    simply shown as before.
+    Returns "" once done, or why it could not be; a GUI suite then stops
+    (windows_off_screen_or_stop, round 132) rather than show them.
     """
     global _OWN_DESKTOP
     if sys.platform != "win32":
@@ -95,15 +95,37 @@ def keep_windows_off_screen() -> str:
     u32.SetThreadDesktop.restype = wintypes.BOOL
     u32.SetThreadDesktop.argtypes = [wintypes.HANDLE]
     GENERIC_ALL = 0x10000000
-    # Created by the first suite, opened by every later one: CreateDesktopW
-    # hands back the existing desktop of that name.
-    desktop = u32.CreateDesktopW("Simple3D-tests", None, None, 0, GENERIC_ALL, None)
+    # A name of the process's own. A desktop one process made, another cannot
+    # have while the first holds it: CreateDesktopW and OpenDesktopW of that
+    # name both fail with error 5 - eight processes at once in session 0 of
+    # the 4090, one got it; with a name each, eight of eight (round 132,
+    # build/fix-2026-10-31/r132/desk132.py). Until then the name was shared,
+    # and of the GUI suites tools/mutate.py runs at once in its copies all
+    # but one showed their windows where they stood. It goes with the process.
+    import os
+    desktop = u32.CreateDesktopW(f"Simple3D-tests-{os.getpid()}", None, None, 0, GENERIC_ALL, None)
     if not desktop:
         return f"CreateDesktopW failed with error {ctypes.GetLastError()}"
     if not u32.SetThreadDesktop(desktop):
         return f"SetThreadDesktop failed with error {ctypes.GetLastError()}"
     _OWN_DESKTOP = desktop
     return ""
+
+
+def windows_off_screen_or_stop() -> str:
+    """keep_windows_off_screen, and on Windows a suite that cannot have it
+    does not run: it prints a FAIL line saying why and exits 1. A thread
+    that already has a window or a hook - any import that made one - gets
+    "SetThreadDesktop failed with error 170", and until round 132 the GUI
+    suites then printed a note and opened their dozen windows on the user's
+    desktop (review 23.10.2026, R7-9). Off Windows the reason comes back and
+    the suite goes on: there is no user's desktop to keep them off."""
+    why = keep_windows_off_screen()
+    if why and sys.platform == "win32":
+        check(f"the windows cannot be kept off the user's desktop ({why}), so this suite "
+              f"does not run", False)
+        sys.exit(1)
+    return why
 
 
 # ---- a turn at the Windows session, for a suite that writes the clipboard -- #
@@ -187,9 +209,13 @@ class SessionTurn:
 
 
 # What another process answers when it asks for the turn: exit 0 it got the
-# turn (and gave it straight back), 3 it did not within the wait. Anything
-# else is the probe itself failing, and a check must not read that as either.
-TURN_TAKEN, TURN_REFUSED = 0, 3
+# turn (and gave it straight back), 3 it did not within the wait, 4 the probe
+# could not ask at all - the name held by an object that is no mutex, or the
+# wait failing. Until round 132 every failure to ask came back as 3: with the
+# name taken by an event, CreateMutexW gave NULL, the wait WAIT_FAILED, and
+# "a turn another process is refused" passed on a probe that never asked
+# (review 23.10.2026, R7-7).
+TURN_TAKEN, TURN_REFUSED, TURN_UNASKED = 0, 3, 4
 _TURN_PROBE = """\
 import ctypes, sys
 k = ctypes.windll.kernel32
@@ -199,23 +225,27 @@ k.WaitForSingleObject.restype = ctypes.c_uint
 k.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint]
 k.ReleaseMutex.argtypes = [ctypes.c_void_p]
 h = k.CreateMutexW(None, 0, sys.argv[1])
+if not h:
+    sys.exit(4)
 got = k.WaitForSingleObject(h, int(sys.argv[2]))
 if got in (0, 0x80):
     k.ReleaseMutex(h)
-sys.exit(0 if got in (0, 0x80) else 3)
+    sys.exit(0)
+sys.exit(3 if got == 0x102 else 4)
 """
 
 
-def session_turn_elsewhere(wait_ms: int) -> int:
+def session_turn_elsewhere(wait_ms: int, name: str | None = None) -> int:
     """Ask for the session turn from ANOTHER process, waiting up to *wait_ms*:
-    TURN_TAKEN, TURN_REFUSED, or the probe's own exit code when it broke.
+    TURN_TAKEN, TURN_REFUSED, TURN_UNASKED, or the probe's own exit code when
+    it broke. *name* is SessionTurn.NAME unless a test asks of another.
 
     The proof that SessionTurn excludes anything at all: while this process
     holds the turn, another one must be refused. A second thread would not
     do - it proves a lock, not that the lock reaches past the process."""
     import subprocess
 
-    done = subprocess.run([sys.executable, "-c", _TURN_PROBE, SessionTurn.NAME, str(wait_ms)],
+    done = subprocess.run([sys.executable, "-c", _TURN_PROBE, name or SessionTurn.NAME, str(wait_ms)],
                           capture_output=True, timeout=wait_ms / 1000.0 + 60)
     return done.returncode
 
@@ -699,38 +729,77 @@ def clipboard_text_elsewhere(seconds: float = 10.0) -> tuple:
 
 # ---- measuring a STEP file, the way the suites and tools/golden.py do ---- #
 
+class StepUnreadable(Exception):
+    """A STEP file a suite wanted to measure is missing or does not read.
+    Until round 132 read_step went on to TransferRoots regardless, and OCCT
+    died of an access violation there - on a missing file and on a garbled
+    one alike - so the suite ended without a FAIL line and the reason
+    unnamed (review 23.10.2026, R7-6)."""
+
+
 def read_step(path):
-    """Every root of the file as one shape (STEPControl_Reader.OneShape)."""
+    """Every root of the file as one shape (STEPControl_Reader.OneShape);
+    StepUnreadable when there is no such file or the reader refuses it."""
+    from OCP.IFSelect import IFSelect_ReturnStatus
     from OCP.STEPControl import STEPControl_Reader
+    if not Path(path).is_file():
+        raise StepUnreadable(f"no STEP file at {path}")
     reader = STEPControl_Reader()
-    reader.ReadFile(str(path))
-    reader.TransferRoots()
+    status = reader.ReadFile(str(path))
+    if status != IFSelect_ReturnStatus.IFSelect_RetDone:
+        raise StepUnreadable(f"{path} does not read as STEP ({status})")
+    if reader.TransferRoots() == 0:
+        raise StepUnreadable(f"{path} reads, but holds no shape to transfer")
     return reader.OneShape()
 
 
-def volume(shape) -> float:
-    """Volume through the ITERATIVE integrator.
+class VolumeAmbiguous(Exception):
+    """A shape holds faces outside closed shells, and they move its volume."""
 
-    The plain BRepGProp.VolumeProperties_s(shape, props) measures a solid with
-    B-spline walls - which is what a wrapped bend has - about 1.5% light, and
-    every number in the fold suite would be measuring that instead of the
-    geometry. On planar and cylindrical solids the two agree to 1e-8 (measured
-    on the C++ regression board in round 70), so one integrator serves all.
+
+def volume(shape) -> float:
+    """Volume through the ITERATIVE integrator, of a shape whose faces all
+    belong to closed shells; VolumeAmbiguous otherwise.
+
+    The plain BRepGProp.VolumeProperties_s(shape, props) measured a solid with
+    B-spline walls - the wraps of round 70 - about 1.5% light, and every number
+    in the fold suite would have been measuring that instead of the geometry.
+    On planar and cylindrical solids the two agree to 1e-8 (measured on the
+    C++ regression board in round 70), so one integrator serves all.
+
+    A face outside a closed shell is integrated too, and moves the number: a
+    10 x 10 face beside a 6000 mm3 block gave 5571 to 8429 by where it stood,
+    a cube with a face missing 0.8 - with count_solids and free_edges none the
+    wiser (review 23.10.2026, R7-5). So the integral over closed shells only is
+    taken beside it, and a difference is refused. Measured over every call of
+    every suite in round 132: one differs at all, by less than a millionth.
     """
     from OCP.BRepGProp import BRepGProp
     from OCP.GProp import GProp_GProps
-    props = GProp_GProps()
+    props, closed = GProp_GProps(), GProp_GProps()
     BRepGProp.VolumeProperties_s(shape, props, 1.0e-6, False, False)
-    return props.Mass()
+    BRepGProp.VolumeProperties_s(shape, closed, 1.0e-6, True, False)
+    whole = props.Mass()
+    if abs(whole - closed.Mass()) > 1.0e-6 * max(1.0, abs(whole)):
+        raise VolumeAmbiguous(f"faces outside closed shells change the volume: {whole:.6f} with "
+                              f"them, {closed.Mass():.6f} without")
+    return whole
 
 
 def bbox(shape) -> tuple[float, float, float, float, float, float]:
-    """(xmin, ymin, zmin, xmax, ymax, zmax), using the triangulation where there is one."""
+    """(xmin, ymin, zmin, xmax, ymax, zmax), exactly: BRepBndLib.AddOptimal,
+    from the geometry, no triangulation, no tolerance added.
+
+    Until round 132 this was Add with the triangulation, which bounds a
+    B-spline face by its control polygon: a NURBS cylinder of radius 5 came
+    out 5 mm too wide, a torus 0.99 mm (review 23.10.2026, R7-4). Measured
+    over every call of every suite that round: eleven, all in test_bend,
+    read 0.3 to 0.74 mm wide of the true box."""
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
     from stepbuilder._occt import box_limits
     box = Bnd_Box()
-    BRepBndLib.Add_s(shape, box, True)
+    BRepBndLib.AddOptimal_s(shape, box, False, False)
     return box_limits(box)
 
 

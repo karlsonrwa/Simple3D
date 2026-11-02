@@ -7,20 +7,23 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+# These generic folders are the ROOT's only (round 132, review 23.10.2026
+# R7-16): unanchored, lib/ hid stepbuilder/lib/ and skill/lib/, parts/
+# stepbuilder/parts/, target/ tests/fixtures/target/, build/ docs/build/.
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
+/share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -57,8 +60,9 @@ cover/
 
 # Django stuff:
 *.log
-# ...but not the pre-flight check's logs the suites read (round 129)
-!tests/fixtures/preflight/*.log
+# ...but not a fixture: the pre-flight check's logs the suites read (round
+# 129), and any log a suite reads as its input (round 132, R7-16)
+!tests/fixtures/**/*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -75,7 +79,7 @@ docs/_build/
 
 # PyBuilder
 .pybuilder/
-target/
+/target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -140,11 +144,11 @@ celerybeat.pid
 .env
 .envrc
 .venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+/env/
+/venv/
+/ENV/
+/env.bak/
+/venv.bak/
 
 # Spyder project settings
 .spyderproject
@@ -233,8 +237,19 @@ _simple3d_preflight.txt
 simple3d_config.json.tmp
 
 # Exported output. The demo's checked-in inputs (demo.brd, demo.json, the
-# reference .stp) stay tracked; generated assemblies do not.
-*_simple_*.step
+# reference .stp) stay tracked; generated assemblies do not - dated or not,
+# and not the part a write in progress leaves (round 132, R7-16: an
+# undated <board>.step built into the tree was one `git add -A` from the
+# public remote).
+*.step
+*.step.part
+!demo/step_files/*.step
+# A board anywhere in the tree is somebody's design, but the demo's; and
+# the cad/ and pcb/ folders of a board worked on here are its data.
+*.brd
+!/demo/demo.brd
+/cad/
+/pcb/
 
 # Intermediates from a board that would not build, dropped here to be looked
 # at. They are real designs - keep them out of a public repository. The demo

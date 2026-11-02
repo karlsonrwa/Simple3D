@@ -98,7 +98,36 @@ Traps this harness handles, each of which has cost a real run:
    confirm a new row on one copy (--workers 1) when its catch looks foreign.
    The windows the GUI suites map are the session's too: they are put on a
    desktop of their own (tests/_support.keep_windows_off_screen), so four
-   copies at once neither show on the user's desktop nor take its focus.
+   copies at once neither show on the user's desktop nor take its focus -
+   one desktop per process since round 132: with one name for all, a second
+   process could neither create nor open it while the first held it (error
+   5; of eight at once in session 0 one had it), and the rest showed their
+   windows where they stood.
+10. A ROW WHOSE PATH LEAVES THE TREE - absolute, through '..'.  `copy / path`
+   is then the working tree's file, and it was the one mutated (review
+   23.10.2026, R7-10).  Refused before anything runs, and again per job.
+11. NO BASELINE.  With --no-baseline a red suite cannot be told from a suite
+   that was red already: the row is UNPROVEN, never caught (R7-11).
+12. THE PREVIOUS JOB'S OUTPUT.  A copy serves job after job, and a suite that
+   reads a file it should just have written read the last job's instead: the
+   copy's build/ is emptied before every job (R7-12).
+13. A GRANDCHILD THAT HOLDS THE PIPE.  A suite's output goes to a file, not a
+   pipe: a process the suite started, outliving it, kept the pipe open and
+   the read after the kill waited for it without end (R7-13).
+14. A CATCH THAT IS NOT ONE.  Any red reads caught - a guard that stops a
+   suite for its environment too.  Round 132: the GUI suites' desktop guard
+   failed in the copies running at once, and 32 of test_window_rules' 33
+   rows read caught in 0.0 s by the guard's own FAIL line.  Read what caught
+   a row: the detail is the first line that BEGINS with FAIL (until round
+   132 any line holding the word, and test_harness's passing checks are
+   named after FAIL lines).
+15. A ROW AIMED AT THIS HARNESS.  A row that breaks tools/mutate.py has
+   test_mutations for its suite, and in its copy that row IS applied: its
+   pattern is gone and it looks left behind, so the sentinel's own table
+   checks failed on every such row - "caught" by a line that says nothing
+   of the rule (round 132, as AllegroBaseStructure's on 29.09.2026).  The
+   suite is told the row's id (MUTATING) and leaves the patterns on that
+   row's file uncounted, so only the stand-ins written for the rule bite.
 ----------------------------------------------------------------------------
 """
 from __future__ import annotations
@@ -177,23 +206,60 @@ def kill_tree(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
-def run_suite(copy: Path, suite: str, limit: float = 1200.0) -> tuple:
+def run_suite(copy: Path, suite: str, limit: float = 1200.0, mutating: str = "") -> tuple:
     """(exit code, seconds, output) of one suite run inside `copy`; the exit
-    code is HUNG when the suite did not finish within `limit` seconds."""
+    code is HUNG when the suite did not finish within `limit` seconds.
+    `mutating` is the id of the row applied in the copy, handed to the
+    suite as MUTATING (trap 15).
+
+    The output goes to a file beside the copy, not to a pipe (round 132): a
+    pipe stays open while anything the suite started still holds it, and
+    the read after a kill had no time limit, so a grandchild that outlived
+    its suite - taskkill /T does not find one whose parent is gone - hung
+    the whole run with nothing named (review 23.10.2026, R7-13). A file is
+    read once the suite itself has ended, whoever else still has it open."""
     script = copy / suite
     if not script.exists():
         return 2, 0.0, f"no such suite: {suite}"
+    log = copy.parent / f"{copy.name}.out"
     started = time.monotonic()
-    proc = subprocess.Popen([PY, "-B", str(script)], stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, cwd=str(copy), env=ENV,
-                            encoding="utf-8", errors="replace")
+    with open(log, "w", encoding="utf-8", errors="replace") as sink:
+        proc = subprocess.Popen([PY, "-B", str(script)], stdout=sink, stderr=subprocess.STDOUT,
+                                cwd=str(copy), env=dict(ENV, MUTATING=mutating) if mutating else ENV)
+        try:
+            proc.wait(timeout=limit)
+            code = proc.returncode
+        except subprocess.TimeoutExpired:
+            kill_tree(proc)
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                pass
+            code = HUNG
+    out = log.read_text(encoding="utf-8", errors="replace")
+    return code, time.monotonic() - started, out
+
+
+def escapes(root: Path, rel: str) -> bool:
+    """Whether a row's path leaves the tree: absolute, through '..', or
+    resolving outside `root`. Such a row was applied to the WORKING tree -
+    `copy / "/abs"` is the absolute path itself - and a run killed then left
+    the mutation there, the one accident the copies exist to rule out
+    (review 23.10.2026, R7-10, round 132)."""
+    path = Path(rel)
+    if path.is_absolute() or path.drive or ".." in path.parts:
+        return True
     try:
-        out, _ = proc.communicate(timeout=limit)
-    except subprocess.TimeoutExpired:
-        kill_tree(proc)
-        out, _ = proc.communicate()
-        return HUNG, time.monotonic() - started, out or ""
-    return proc.returncode, time.monotonic() - started, out or ""
+        (root / path).resolve().relative_to(root.resolve())
+    except ValueError:
+        return True
+    return False
+
+
+def outside(root: Path, spec: list) -> list:
+    """The ids of rows whose file or suite leaves the tree (escapes)."""
+    return [m["id"] for m in spec
+            if escapes(root, m["file"]) or any(escapes(root, s) for s in m["suites"])]
 
 
 def left_behind(root: Path, spec: list) -> list:
@@ -216,6 +282,8 @@ def mutate_once(copy: Path, m: dict, base: dict, limits: dict) -> tuple:
     "REFUSED", "HUNG" or "UNPROVEN".  Raises RuntimeError if the restore did
     not reproduce the original bytes - the copy is then unfit for further jobs.
     """
+    if outside(copy, [m]):
+        return "REFUSED", m["id"], 0.0, "a path of the row leaves the tree (R7-10)"
     path = copy / m["file"]
     if not path.exists():
         return "REFUSED", m["id"], 0.0, f"no such file: {m['file']}"
@@ -227,24 +295,35 @@ def mutate_once(copy: Path, m: dict, base: dict, limits: dict) -> tuple:
     mutated = text.replace(m["old"], m["new"])
     if crlf:
         mutated = mutated.replace("\n", "\r\n")
-    spent, caught, hung, unasked, fails = 0.0, [], [], [], ""
+    spent, caught, hung, unasked, unbased, fails = 0.0, [], [], [], [], ""
     try:
         path.write_bytes(mutated.encode("utf-8"))
         for suite in m["suites"]:
             if base.get(suite):
                 unasked.append(suite)            # already red on the clean tree (trap 8)
                 continue
-            code, seconds, out = run_suite(copy, suite, limits.get(suite, 1200.0))
+            code, seconds, out = run_suite(copy, suite, limits.get(suite, 1200.0), m["id"])
             spent += seconds
             if code is HUNG:
                 hung.append(suite)
+                continue
+            if code and base.get(suite, 0) is None:
+                # No baseline (--no-baseline): a red suite cannot be told from
+                # one that was red already, so it proves nothing; until round
+                # 132 it read "caught" (review 23.10.2026, R7-11).
+                unbased.append(suite)
                 continue
             if code:
                 caught.append(suite)
                 # The first FAIL line names the assertion that bit; a suite
                 # that died on a SystemExit has no FAIL line and its reason
-                # is the last thing it printed - show that, not "exit 1".
-                lines = [l.strip() for l in out.splitlines() if "FAIL" in l]
+                # is the last thing it printed - show that, not "exit 1". A
+                # line that BEGINS with FAIL first: until round 132 any line
+                # holding the word was taken, and test_harness's passing
+                # checks are named after FAIL lines, so its catches all
+                # showed "PASS  a suite that prints FAIL ...".
+                lines = [l.strip() for l in out.splitlines() if l.lstrip().startswith("FAIL")]
+                lines = lines or [l.strip() for l in out.splitlines() if "FAIL" in l]
                 last = [l.strip() for l in out.splitlines() if l.strip()]
                 fails = (lines[0] if lines else
                          f"exit {code}: {last[-1]}" if last else f"exit {code}")[:110]
@@ -262,6 +341,10 @@ def mutate_once(copy: Path, m: dict, base: dict, limits: dict) -> tuple:
         return "caught", m["id"], spent, f"{caught[0]}: {fails}"
     if hung:
         return "HUNG", m["id"], spent, f"{hung[0]} never finished - not a verdict"
+    if unbased:
+        return "UNPROVEN", m["id"], spent, (
+            f"{', '.join(unbased)} went red with no baseline run to say it was green "
+            f"before - not a verdict")
     if unasked:
         return "UNPROVEN", m["id"], spent, (
             f"{', '.join(unasked)} already red on the clean copy, not asked - not a verdict"
@@ -278,10 +361,41 @@ def git(root: Path, *args: str) -> str:
     return done.stdout
 
 
+def own_repository(root: Path) -> str:
+    """"" when `root` is the top of a git work tree of its own, else why not.
+
+    A copy has no .git, and one under build/ of a checkout is inside that
+    checkout: git then answered for the enclosing repository - its changes,
+    its committed table - and with no repository at all it died with its
+    help text and no FAIL line (review 23.10.2026, R7-17, round 132)."""
+    done = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if done.returncode != 0:
+        return f"{root} is in no git repository"
+    top = Path(done.stdout.strip()).resolve()
+    if top != root.resolve():
+        return f"{root} has no .git of its own - git answers for {top}"
+    return ""
+
+
 def changed_paths(root: Path, rev: str) -> set:
     edited = git(root, "diff", "--name-only", rev).splitlines()
     untracked = git(root, "ls-files", "--others", "--exclude-standard").splitlines()
     return {p.strip() for p in edited + untracked if p.strip()}
+
+
+# What every suite runs through, or what judges them: a change to one of
+# these can disarm any check or any verdict, so it selects every row. Until
+# round 132 --changed knew only a row's file, its suites and the row itself,
+# and an edit of check() or of this harness answered "no mutation matches"
+# with exit 0 (review 23.10.2026, R7-14).
+SHARED = ("tests/_support.py", "tests/_crash.py", "tests/skill_transliterations.py",
+          "tools/skill_lex.py", "tools/mutate.py", "stepbuilder/_occt.py")
+
+
+def shared_changed(changed: set) -> list:
+    """The shared files among `changed` (SHARED)."""
+    return sorted(p for p in changed if p in SHARED)
 
 
 def spec_at(root: Path, spec_path: Path, rev: str) -> list:
@@ -302,11 +416,31 @@ def spec_at(root: Path, spec_path: Path, rev: str) -> list:
 
 
 def select_changed(spec: list, changed: set, previous: list) -> list:
-    """Rows whose file or any suite changed, or which are new/edited since REV."""
+    """Rows whose file or any suite changed, or which are new/edited since REV;
+    every row when a shared file changed (SHARED)."""
+    if shared_changed(changed):
+        return list(spec)
     before = {json.dumps(m, sort_keys=True) for m in previous}
     return [m for m in spec
             if m["file"] in changed or any(s in changed for s in m["suites"])
             or json.dumps(m, sort_keys=True) not in before]
+
+
+def fresh_outputs(copy: Path, root: Path, data: tuple = ()) -> None:
+    """Empty the copy's build/ - everything its suites wrote - before a job,
+    and give back the --data files that live there.
+
+    A suite that reads what it wrote without deleting it first read the
+    previous job's file: in a copy just used by the baseline, a mutation
+    that skipped writing the STEP file left test_mech reading the baseline's
+    and the row read SURVIVED, while a fresh copy caught it (review
+    23.10.2026, R7-12, round 132). Measured the same round: run in a fresh
+    copy, the suites write nothing outside build/."""
+    shutil.rmtree(copy / "build", ignore_errors=True)
+    for rel in (*DATA, *data):
+        if Path(rel).parts[:1] == ("build",) and (root / rel).is_file():
+            (copy / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(root / rel, copy / rel)
 
 
 def select(spec: list, pieces: list) -> list:
@@ -337,7 +471,9 @@ def parse(argv: list) -> argparse.Namespace:
                         "(default: 3 x its baseline + 120, or 1200 without one)")
     p.add_argument("--list", action="store_true", help="print the selection, run nothing")
     p.add_argument("--keep", action="store_true", help="leave the copies behind")
-    p.add_argument("--no-baseline", action="store_true")
+    p.add_argument("--no-baseline", action="store_true",
+                   help="skip the clean run: a suite that goes red then proves nothing "
+                        "and the row is UNPROVEN; only a survivor is a verdict")
     return p.parse_args(argv)
 
 
@@ -349,10 +485,16 @@ def main(argv: list) -> int:
     data = tuple(args.data)
     muts = select(spec, args.ids)
     if args.changed is not None:
+        why = own_repository(root)
+        if why:
+            print(f"--changed cannot be answered here: {why}")
+            return 2
         changed = changed_paths(root, args.changed)
         muts = select_changed(muts, changed, spec_at(root, spec_path, args.changed))
+        shared = shared_changed(changed)
         print(f"{len(changed)} paths differ from {args.changed}; {len(muts)} of "
-              f"{len(spec)} mutations touch them or are new")
+              f"{len(spec)} mutations touch them or are new"
+              + (f" - every row, since {', '.join(shared)} changed" if shared else ""))
     if not muts:
         print("no mutation matches")
         return 0 if args.changed is not None else 2
@@ -364,6 +506,10 @@ def main(argv: list) -> int:
     invisible = [m["id"] for m in muts if m["old"] in m["new"]]
     if invisible:
         print("REFUSED - the replacement keeps the original text (trap 3):", *invisible)
+        return 2
+    leaving = outside(root, muts)
+    if leaving:
+        print("REFUSED - a file or suite of the row leaves the tree (R7-10):", *leaving)
         return 2
     dirty = left_behind(root, spec)
     if dirty:
@@ -396,6 +542,7 @@ def main(argv: list) -> int:
     def with_copy(job, *rest):
         copy = free.get()
         try:
+            fresh_outputs(copy, root, data)
             return job(copy, *rest)
         except RuntimeError:
             shutil.rmtree(copy, ignore_errors=True)   # unfit: a fresh copy instead
@@ -405,7 +552,8 @@ def main(argv: list) -> int:
             free.put(copy)
 
     suites = sorted({s for m in muts for s in m["suites"]})
-    base = {s: 0 for s in suites}
+    # None: not run, so not known to be green (--no-baseline, R7-11)
+    base = {s: (None if args.no_baseline else 0) for s in suites}
     times = {s: 0.0 for s in suites}
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:

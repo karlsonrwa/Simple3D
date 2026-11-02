@@ -7,14 +7,13 @@ from _support import put_clipboard_text, clipboard_text_elsewhere, clipboard_seq
 from _support import put_back_clipboard_text, hold_clipboard_open, clipboard_open_elsewhere
 from _support import ClipboardBusy, clipboard_owned_here, clipboard_shown
 from _support import ClipboardPromise, read_clipboard_in_background
-from _support import keep_windows_off_screen
+from _support import windows_off_screen_or_stop
 
 # The windows of this suite on a desktop of their own, not the user's: four
 # came up on it per run, [7i]'s mapped one among them (round 94). Before the
 # first Tk(), or it is too late.
-_OFF_SCREEN = keep_windows_off_screen()
-if _OFF_SCREEN:
-    print(f"note: the windows are shown on this desktop - {_OFF_SCREEN}")
+# And if they cannot be, the suite does not run (round 132, R7-9).
+_OFF_SCREEN = windows_off_screen_or_stop()
 
 """Real GUI tests: Tk runs headless on Windows, so the widgets can be exercised.
 

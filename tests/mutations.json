@@ -491,7 +491,7 @@
  {
   "id": "readme-count-23",
   "file": "README.md",
-  "old": "32 test suites",
+  "old": "33 test suites",
   "new": "23 test suites",
   "suites": [
    "tools/audit_docs.py"
@@ -501,8 +501,8 @@
  {
   "id": "readme-count-unstated",
   "file": "README.md",
-  "old": "32 test suites",
-  "new": "thirty-two test suites",
+  "old": "33 test suites",
+  "new": "thirty-three test suites",
   "suites": [
    "tools/audit_docs.py"
   ],
@@ -4799,8 +4799,8 @@
  {
   "id": "docs-check-count-in-words",
   "file": "ARCHITECTURE.md",
-  "old": "| the 4 checks + 32 suites as subprocesses |",
-  "new": "| the four checks + 32 suites as subprocesses |",
+  "old": "| the 4 checks + 33 suites as subprocesses |",
+  "new": "| the four checks + 33 suites as subprocesses |",
   "suites": [
    "tools/audit_docs.py"
   ],
@@ -4819,7 +4819,7 @@
  {
   "id": "docs-mutation-count-stale",
   "file": "README.md",
-  "old": "(tests/mutations.json, 611 faults, applied",
+  "old": "(tests/mutations.json, 642 faults, applied",
   "new": "(tests/mutations.json, 999 faults, applied",
   "suites": [
    "tools/audit_docs.py"
@@ -6324,5 +6324,315 @@
    "tests/test_bend.py"
   ],
   "why": "the line about shared material does not say the neutral factor the board was folded at, the one number the user can change (R5-2) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "run-all-exit-code-only",
+  "file": "tests/run_all.py",
+  "old": "    if kind == \"suite\":\n        lines = [line for line in out.splitlines() if CHECK_LINE.match(line)]\n",
+  "new": "    if False:\n        lines = [line for line in out.splitlines() if CHECK_LINE.match(line)]\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "run_all reads the exit code alone again: a suite that prints FAIL and exits 0 passes, and so does one that runs no check (R7-1) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "run-all-fail-line-ignored",
+  "file": "tests/run_all.py",
+  "old": "        if any(line.lstrip().startswith(\"FAIL\") for line in lines):\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "a FAIL line under exit 0 is passed over (R7-1) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "run-all-no-check-passes",
+  "file": "tests/run_all.py",
+  "old": "        if not lines:\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "a suite that printed no PASS or FAIL line at all passes (R7-1) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "run-all-no-time-limit",
+  "file": "tests/run_all.py",
+  "old": "                proc.wait(timeout=limit)\n",
+  "new": "                proc.wait()\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "a job is waited for without end: a hung suite hangs run_all, named by nothing (R7-2) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "run-all-light-loads-ocp-unsaid",
+  "file": "tests/run_all.py",
+  "old": "    if not heavy and any(OCP_IMPORT.match(line) for line in err.splitlines()):\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "a job marked light that loads OCP passes, and --quick builds geometry it promised to skip (R7-3) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "run-all-unknown-flag-taken",
+  "file": "tests/run_all.py",
+  "old": "    return p.parse_args(argv)\n",
+  "new": "    return p.parse_known_args(argv)[0]\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "an unknown flag is dropped: --quik runs everything without a word (R7-3) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "run-all-variant-path-light",
+  "file": "tests/run_all.py",
+  "old": "    (\"where Variants.lst is looked for\",        TESTS / \"test_variant_path.py\", True, \"suite\"),\n",
+  "new": "    (\"where Variants.lst is looked for\",        TESTS / \"test_variant_path.py\", False, \"suite\"),\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "test_variant_path marked light again, though it builds a board through core.generate (R7-3) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "support-bbox-by-triangulation",
+  "file": "tests/_support.py",
+  "old": "    BRepBndLib.AddOptimal_s(shape, box, False, False)\n",
+  "new": "    BRepBndLib.Add_s(shape, box, True)\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "bbox by the triangulation again: a NURBS cylinder of radius 5 comes out 5 mm too wide (R7-4) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "support-volume-counts-open-faces",
+  "file": "tests/_support.py",
+  "old": "    if abs(whole - closed.Mass()) > 1.0e-6 * max(1.0, abs(whole)):\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "volume integrates faces outside closed shells and says nothing: a loose face beside a 6000 mm3 block makes it read 5902.857 (R7-5) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "support-read-step-status-unread",
+  "file": "tests/_support.py",
+  "old": "    if status != IFSelect_ReturnStatus.IFSelect_RetDone:\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "read_step goes on after the reader refused the file, and OCCT dies of an access violation, the suite with it (R7-6) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "support-turn-probe-unasked-reads-refused",
+  "file": "tests/_support.py",
+  "old": "if not h:\n    sys.exit(4)\n",
+  "new": "if not h:\n    sys.exit(3)\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "a probe that could not even open the turn answers TURN_REFUSED: 'a turn another process is refused' passes on a probe that never asked (R7-7) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "support-gui-suite-goes-on",
+  "file": "tests/_support.py",
+  "old": "    if why and sys.platform == \"win32\":\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "a GUI suite whose windows cannot go to a desktop of their own goes on, onto the user's (R7-9) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "names-five-kinds-only",
+  "file": "tools/python_names.py",
+  "old": "    findings = [line for line in lines if line.strip() and not any(h in line for h in HARMLESS)]\n",
+  "new": "    findings = [line for line in lines if any(d in line for d in (\"undefined name\", \"referenced before assignment\", \"redefinition of unused\", \"undefined local\", \"is assigned to but never used\"))]\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "only five kinds of pyflakes finding kept again: a syntax error and an assert of a tuple pass (R7-15) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "names-root-ignored",
+  "file": "tools/python_names.py",
+  "old": "    root = Path(p.parse_args(argv).root).resolve()\n",
+  "new": "    root = ROOT\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "--root is ignored: the check runs on this tree whatever it is asked (R7-15) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "ignore-lib-anywhere",
+  "file": ".gitignore",
+  "old": "/lib/\n",
+  "new": "lib/\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "lib/ unanchored again: stepbuilder/lib/ and skill/lib/ never reach git (R7-16) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "ignore-only-dated-step",
+  "file": ".gitignore",
+  "old": "*.step\n*.step.part\n",
+  "new": "*_simple_*.step\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "only a dated STEP output is ignored: an undated <board>.step is one git add -A from the public remote (R7-16) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "ignore-boards-let-through",
+  "file": ".gitignore",
+  "old": "*.brd\n!/demo/demo.brd\n",
+  "new": "!/demo/demo.brd\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "a board outside input/ and failed/ is not ignored (R7-16) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "ignore-fixture-logs",
+  "file": ".gitignore",
+  "old": "!tests/fixtures/**/*.log\n",
+  "new": "!tests/fixtures/preflight/*.log\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "a fixture log outside preflight/ is ignored and never reaches git (R7-16) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "mutate-row-leaving-tree-applied",
+  "file": "tools/mutate.py",
+  "old": "    if outside(copy, [m]):\n        return \"REFUSED\", m[\"id\"], 0.0, \"a path of the row leaves the tree (R7-10)\"\n",
+  "new": "    if False:\n        return \"REFUSED\", m[\"id\"], 0.0, \"a path of the row leaves the tree (R7-10)\"\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "a row whose file is absolute is applied: the working tree's file is mutated, the copy left whole (R7-10) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "mutate-no-baseline-caught",
+  "file": "tools/mutate.py",
+  "old": "            if code and base.get(suite, 0) is None:\n",
+  "new": "            if False:\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "with no baseline a red suite reads caught again (R7-11) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "mutate-no-baseline-reads-green",
+  "file": "tools/mutate.py",
+  "old": "    base = {s: (None if args.no_baseline else 0) for s in suites}\n",
+  "new": "    base = {s: 0 for s in suites}\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "--no-baseline takes every suite for green: each red one's rows read caught (R7-11) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "mutate-copy-outputs-kept",
+  "file": "tools/mutate.py",
+  "old": "            fresh_outputs(copy, root, data)\n",
+  "new": "            pass\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "a copy's build/ survives from job to job: a mutant that skips writing its output reads the baseline's and survives (R7-12) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "mutate-shared-files-select-nothing",
+  "file": "tools/mutate.py",
+  "old": "    if shared_changed(changed):\n        return list(spec)\n",
+  "new": "    if False:\n        return list(spec)\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "an edit of check() or of the harness selects no row: --changed answers \"no mutation matches\" (R7-14) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "mutate-any-repository-answers",
+  "file": "tools/mutate.py",
+  "old": "    if top != root.resolve():\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "a tree with no .git of its own is answered for by the checkout around it (R7-17) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "run-all-output-through-pipes",
+  "file": "tests/run_all.py",
+  "old": "            proc = subprocess.Popen(argv, stdout=out, stderr=err, cwd=str(ROOT), env=ENV)\n            try:\n                proc.wait(timeout=limit)\n                code = proc.returncode\n",
+  "new": "            proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=str(ROOT), env=ENV)\n            try:\n                got = proc.communicate(timeout=limit)\n                out.write(got[0].decode(\"utf-8\", \"replace\"))\n                err.write(got[1].decode(\"utf-8\", \"replace\"))\n                code = proc.returncode\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "a job's output read through pipes again: a child the job left running holds them, and the job is judged only when that child ends (R7-2) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "mutate-no-time-limit",
+  "file": "tools/mutate.py",
+  "old": "            proc.wait(timeout=limit)\n",
+  "new": "            proc.wait()\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "a suite is waited for without end: one that hangs holds the whole run, named by nothing (R7-13) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "mutate-output-through-a-pipe",
+  "file": "tools/mutate.py",
+  "old": "        proc = subprocess.Popen([PY, \"-B\", str(script)], stdout=sink, stderr=subprocess.STDOUT,\n                                cwd=str(copy), env=dict(ENV, MUTATING=mutating) if mutating else ENV)\n        try:\n            proc.wait(timeout=limit)\n",
+  "new": "        proc = subprocess.Popen([PY, \"-B\", str(script)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,\n                                cwd=str(copy), env=dict(ENV, MUTATING=mutating) if mutating else ENV)\n        try:\n            sink.write(proc.communicate(timeout=limit)[0].decode(\"utf-8\", \"replace\"))\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "a suite's output read through a pipe again: a grandchild that outlived the suite holds it, and the run waits for the grandchild (R7-13) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "support-read-step-missing-file-unasked",
+  "file": "tests/_support.py",
+  "old": "    if not Path(path).is_file():\n",
+  "new": "    if False:\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "read_step hands a missing file to the reader: it says only that the file does not read as STEP (R7-6) (round 132, review 23.10.2026)"
+ },
+ {
+  "id": "support-desktop-name-shared",
+  "file": "tests/_support.py",
+  "old": "    desktop = u32.CreateDesktopW(f\"Simple3D-tests-{os.getpid()}\", None, None, 0, GENERIC_ALL, None)\n",
+  "new": "    desktop = u32.CreateDesktopW(\"Simple3D-tests\", None, None, 0, GENERIC_ALL, None)\n",
+  "suites": [
+   "tests/test_harness.py"
+  ],
+  "why": "every GUI suite asks for one desktop name again: of several at once only the first gets it, the rest error 5 - in tools/mutate.py's parallel copies they stop, and every row on them reads caught by that (R7-9, round 132, review 23.10.2026)"
+ },
+ {
+  "id": "mutate-catch-names-any-fail-word",
+  "file": "tools/mutate.py",
+  "old": "                lines = [l.strip() for l in out.splitlines() if l.lstrip().startswith(\"FAIL\")]\n                lines = lines or [l.strip() for l in out.splitlines() if \"FAIL\" in l]\n",
+  "new": "                lines = [l.strip() for l in out.splitlines() if \"FAIL\" in l]\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "a catch names the first line holding the word FAIL again: test_harness's passing checks are named after FAIL lines, and every row it caught showed one of them (round 132)"
+ },
+ {
+  "id": "mutate-row-id-not-told",
+  "file": "tools/mutate.py",
+  "old": "            code, seconds, out = run_suite(copy, suite, limits.get(suite, 1200.0), m[\"id\"])\n",
+  "new": "            code, seconds, out = run_suite(copy, suite, limits.get(suite, 1200.0))\n",
+  "suites": [
+   "tests/test_mutations.py"
+  ],
+  "why": "a suite is not told which row is applied in its copy: the sentinel counts that row's own pattern, gone by design, and every row aimed at mutate.py reads caught by it (round 132, trap 15)"
  }
 ]
