@@ -1085,6 +1085,14 @@ def _place_components(inter: Intermediate, stack: _Stack, fold, options: BuildOp
                 log(f"warning: {ref_des} stands in bend area {in_bend} - it is "
                     f"placed on the curve, but a component there is a design "
                     f"rule violation, not a modelling choice")
+            # An origin past the outline moves with the nearest piece; until
+            # round 131 it stayed flat at its old place, unsaid (R5-4).
+            near = fold.nearest_piece(x, y)
+            if near is not None:
+                log(f"warning: {ref_des}'s origin {x:.3f}, {y:.3f} lies outside "
+                    f"the board outline, {near[2]:.3f} mm from it - it moves "
+                    f"with the nearest piece of the board ({near[1]}); check "
+                    f"that it belongs there")
             trsf = fold.transform_at(x, y) * trsf
 
         # Place the shared part DIRECTLY under symbols_top / symbols_bot, as an

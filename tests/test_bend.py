@@ -86,6 +86,35 @@ check("a flat bend is dropped, with a word about it",
 check("no bends key at all -> nothing, silently",
       bends_from_json({}, logs.append) == [])
 
+# The inner side is TOP or BOTTOM, in any case, and nothing else. A bend that
+# does not say which is still folded, the default way, and the log names it:
+# until round 131 a record without INNER_SIDE, one spelling the field another
+# way and one with a value of neither kind all folded upwards with nothing said
+# (review 23.10.2026, R5-8). The property is undocumented - the 25.1 docs name
+# neither INNER_SIDE nor BEND_SIDE - so the other spelling is not read either.
+SIDELESS = "TYPE=CircularBend, INNER_ANGLE=90.0, INNER_RADIUS=1.0 MILLIMETERS"
+logs = []
+read = {b.name: b for b in bends_from_json({"bends": [
+    dict(ENTRY, name="NOSIDE", info=SIDELESS),
+    dict(ENTRY, name="OTHERNAME", info=SIDELESS + ", BEND_SIDE=BOTTOM"),
+    dict(ENTRY, name="ODDVALUE", info=SIDELESS + ", INNER_SIDE=Xyz"),
+    dict(ENTRY, name="LOWER", info=SIDELESS + ", INNER_SIDE=bottom"),
+    ENTRY]}, logs.append)}
+said = [m for m in logs if "INNER_SIDE" in m]
+check("a bend that does not say its inner side is still folded, the top face inside",
+      sorted(read) == ["BEND1", "LOWER", "NOSIDE", "ODDVALUE", "OTHERNAME"]
+      and all(read[n].inner_side == "top" for n in ("NOSIDE", "OTHERNAME", "ODDVALUE")),
+      {n: b.inner_side for n, b in read.items()})
+check("and the log names each such bend and why, once",
+      len(said) == 3
+      and any(m.startswith("warning: bend NOSIDE: no INNER_SIDE") for m in said)
+      and any(m.startswith("warning: bend OTHERNAME: no INNER_SIDE") for m in said)
+      and any(m.startswith("warning: bend ODDVALUE: INNER_SIDE='Xyz', neither TOP nor BOTTOM")
+              for m in said), said)
+check("a side in another case is read, and a bend that says its side is not named",
+      read["LOWER"].inner_side == "bottom" and read["BEND1"].inner_side == "top"
+      and not any("LOWER" in m or "BEND1" in m for m in said), said)
+
 # --------------------------------------------------------------------------- #
 print("\n[3] one 90 degree bend, worked out by hand")
 
@@ -594,9 +623,72 @@ _, _, rz0, _, _, rz1 = bbox(ring_solid)
 # face, plus the stack, and nothing hangs below the flat board
 check("and the loop stands a diameter and a stack above the board",
       near(rz1, 2 * ring_r + T, 0.01) and near(rz0, -T, 1e-6), (rz0, rz1))
-check("the ring keeps its material",
-      abs(volume(ring_solid) - 10 * 40 * T) / (10 * 40 * T) < 0.01,
-      (volume(ring_solid), 10 * 40 * T))
+# What the ring holds, by README's rule and not by the flat board (review
+# 23.10.2026, R5-6, round 131). A bend consumes angle x (R + k T) of flat
+# material and lays down the annulus angle x T x (R + T/2), so at k = 0 each
+# of the two pi bends adds pi x T^2 x W / 2. Until round 131 this line checked
+# the FUSED ring against the flat board to 1%, which it met only because the
+# fuse swallows the material the two loops share (R5-2): a ring that kept
+# README's volume and did not pass through itself would have failed it.
+from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
+from OCP.TopAbs import TopAbs_ShapeEnum as _ShapeEnum
+from OCP.TopExp import TopExp_Explorer as _Explorer
+
+
+def solids_of(shape):
+    out, found = [], _Explorer(shape, _ShapeEnum.TopAbs_SOLID)
+    while found.More():
+        out.append(found.Current())
+        found.Next()
+    return out
+
+
+ring_rule = 10 * 40 * T + 2 * math.pi * T * T * 10 / 2
+ring_pieces = solids_of(ring_zero.apply(ring_board, fuse=False, note=False))
+ring_apart = sum(volume(p) for p in ring_pieces)
+check("the ring's pieces hold what README's rule says: the flat board plus "
+      "pi x T^2 x W / 2 per bend",
+      near(ring_apart, ring_rule, 1e-4 * ring_rule), (ring_apart, ring_rule))
+# The oracle the fold does not use: every pair of pieces cut against each
+# other. The plan measures the same material as what the pieces hold one by
+# one less what their union holds.
+ring_pairs = sum(volume(BRepAlgoAPI_Common(ring_pieces[i], ring_pieces[j]).Shape())
+                 for i in range(len(ring_pieces)) for j in range(i + 1, len(ring_pieces)))
+check("at k = 0 the loops run into the pieces beside them - what every pair of "
+      "pieces shares - and the plan says how much",
+      len(ring_zero.overlap) == 1 and ring_pairs > 1.0
+      and near(ring_zero.overlap[0], ring_pairs, 1e-3 * ring_pairs)
+      and near(ring_zero.overlap[0], ring_apart - volume(ring_solid), 1e-3 * ring_pairs),
+      (ring_zero.overlap, ring_pairs, ring_apart - volume(ring_solid)))
+check("and the summary says so, at the neutral factor the ring was built with",
+      any("in two places at once at foldNeutral 0," in line for line in ring_zero.summary()),
+      ring_zero.summary())
+ring_half.apply(ring_board)
+check("at k = 0.5 the one bend that folds shares nothing with its neighbours, "
+      "and nothing is said",
+      ring_half.overlap == []
+      and not any("two places at once" in line for line in ring_half.summary()),
+      (ring_half.overlap, ring_half.summary()))
+# The allowance, by the rule's own numbers: the volumes are stood in for, so
+# what is asked is the decision and not the integrator. Measured on the four
+# flex boards: where nothing overlaps, at most 2.3e-05 mm3; the real overlaps
+# 0.074 mm3 and up (round 131).
+from stepbuilder.bend import apply as _apply
+_sizes = {"a": 1.0, "b": 1.0, "noise": 2.0 - 1.0e-5, "shared": 2.0 - 0.01,
+          "big a": 500.0, "big b": 500.0, "big": 1000.0 - 0.05}
+_real_volume = _apply._volume
+_apply._volume = _sizes.__getitem__
+try:
+    said_noise = _apply._shared_volume(["a", "b"], "noise")
+    said_big = _apply._shared_volume(["big a", "big b"], "big")
+    said_shared = _apply._shared_volume(["a", "b"], "shared")
+finally:
+    _apply._volume = _real_volume
+check("1e-5 mm3 between two pieces and their union is the integrator's noise, "
+      "and so is 0.05 mm3 on a 1000 mm3 shape, under a ten-thousandth of it",
+      said_noise is None and said_big is None, (said_noise, said_big))
+check("while 0.01 mm3 shared by two pieces of 1 mm3 is said, to the digit",
+      said_shared is not None and near(said_shared, 0.01, 1e-12), said_shared)
 
 print("\n[7c1] a board drawn far from the origin still gets its bends")
 
@@ -1056,6 +1148,42 @@ check("the region names read sensibly",
       plan.region_at(5, 5) == "held" and "B1" in plan.region_at(20, 5),
       (plan.region_at(5, 5), plan.region_at(20, 5)))
 
+# A part whose origin lies past the outline - beside the tail, or past its
+# end - moves with the piece nearest to it (review 23.10.2026, R5-4, round
+# 131). Until then transform_at gave it no transform at all, and it stayed
+# flat where it was while the tail beside it stood up.
+# Past a corner the nearest point is the corner itself, not a point on the
+# line of an edge beyond the board.
+for (x, y), (qx, qy) in (((35.0, 10.5), (35.0, 10.0)), ((40.3, 5.0), (40.0, 5.0)),
+                         ((41.0, 11.0), (40.0, 10.0))):
+    found = plan.nearest_piece(x, y)
+    placed = gp_Pnt(x, y, 0.0).Transformed(plan.transform_at(x, y))
+    want = fold90(x, 0.0)
+    check(f"a point past the outline at {x}, {y} moves with the tail beside it, "
+          f"and the plan says which piece and how far",
+          found is not None and near(found[0][0], qx) and near(found[0][1], qy)
+          and found[1] == "panel after B1" and near(found[2], math.hypot(x - qx, y - qy))
+          and near(placed.X(), want[0], 1e-6) and near(placed.Y(), y, 1e-6)
+          and near(placed.Z(), want[1], 1e-6),
+          (found, (placed.X(), placed.Y(), placed.Z()), want))
+check("and a point on the board has no nearest piece to be told of",
+      plan.nearest_piece(5.0, 5.0) is None and plan.nearest_piece(35.0, 10.0) is None
+      and plan.nearest_piece(20.0, 5.0) is None)
+
+# The bend area is the strip the bend curls, not the band its line draws
+# across the whole board: on a U-shaped board bent across its left arm, a part
+# on the right arm level with the bend was told it stood in the bend area -
+# and a pin there, through the same call (review 23.10.2026, R5-5, round 131).
+U = [(0, 0), (30, 0), (30, 30), (20, 30), (20, 10), (10, 10), (10, 30), (0, 30)]
+u_plan = plan_fold([Bend(name="C", start=(0.0, 20.0), end=(10.0, 20.0), angle=90.0,
+                         radius=1.0, inner_side="top")], U, 0.0, -T, anchor=(0.0, 0.0))
+check("on a U-shaped board bent across its left arm, a point in that arm's strip "
+      "is in the bend area", u_plan.in_bend_area(5.0, 20.0) == "C",
+      u_plan.in_bend_area(5.0, 20.0))
+check("and one on the right arm, level with it, is not",
+      u_plan.in_bend_area(25.0, 20.0) is None and u_plan.region_at(25.0, 20.0) == "held",
+      (u_plan.in_bend_area(25.0, 20.0), u_plan.region_at(25.0, 20.0)))
+
 # a folded point put back into the flat frame lands where it started
 back = plan.flat_frame(gp_Pnt(p_moved.X(), p_moved.Y(), p_moved.Z()))
 flat_again = p_moved.Transformed(back)
@@ -1205,6 +1333,11 @@ demo["format_version"] = 7
 # fold the right-hand 40 mm of the 160 x 80 board up through 90 degrees, and
 # put a second capacitor out on the tail so a component has to travel with it
 demo["C2"] = dict(demo["C1"], x=140.0, y=38.0)
+# and a third whose origin lies half a millimetre past the tail's long edge,
+# as a connector overhanging an arm does: it moves with the tail beside it and
+# the log names it (review 23.10.2026, R5-4, round 131 - until then it stayed
+# flat at its old place, unsaid)
+demo["C3"] = dict(demo["C1"], x=150.0, y=80.5)
 demo["bends"] = [{
     "name": "BEND1",
     "line": {"start": [120.0, 0.0], "end": [120.0, 80.0]},
@@ -1258,6 +1391,15 @@ check("the capacitor on the tail is where the fold puts it",
 check("the capacitor on the held part has not moved",
       any(abs(c[0] - 78.5) < 0.6 and abs(c[2] - 5.0) < 0.6 for c in centres),
       centres)
+cap3_z = 1.0 + (150.0 - (120.0 + dev_demo / 2))
+check("the one whose origin is past the tail's edge stands up with the tail",
+      any(abs(c[0] - cap_x) < 0.6 and abs(c[1] - 80.5) < 0.6
+          and abs(c[2] - cap3_z) < 0.6 for c in centres),
+      (centres, (cap_x, 80.5, cap3_z)))
+check("and the log names it, the piece it moved with and how far off it is",
+      any(m.startswith("warning: C3's origin 150.000, 80.500 lies outside the board "
+                       "outline, 0.500 mm from it") and "(panel after BEND1)" in m
+          for m in logs), [m for m in logs if "C3" in m])
 
 flat_shape, flat_logs = build("flat", fold_bends=False)
 _, _, _, fx1, _, fz1 = bbox(flat_shape)
@@ -1761,9 +1903,14 @@ wedge = BRepAlgoAPI_Cut(
     BRepPrimAPI_MakeBox(gp_Pnt(0, 0, -T), 40.0, 10.0, T).Shape(),
     BRepPrimAPI_MakePrism(wedge_face, gp_Vec(0, 0, 1.0)).Shape()).Shape()
 logs = []
-folded_wedge = plan_fold([bend], outline, 0.0, -T).apply(wedge, log=logs.append)
+wedge_plan = plan_fold([bend], outline, 0.0, -T)
+folded_wedge = wedge_plan.apply(wedge, log=logs.append)
 check("a slanted cut sends the bend back to the facets",
       any("faceted" in m for m in logs), logs)
+# Its slices overlap their neighbours on purpose (_walk), so a faceted shape
+# is not asked what its pieces share - every one would say so (round 131).
+check("and a faceted shape is not asked what its pieces share",
+      wedge_plan.overlap == [], wedge_plan.overlap)
 check("and the message says which step refused",
       any("prism" in m for m in logs), logs)
 check("it still folds and keeps its material",

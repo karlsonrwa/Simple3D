@@ -123,6 +123,29 @@ DRAWN_AREA_TOL_REL = 0.1
 # rotated slices interpenetrate instead of touching along a line.
 SLICE_OVERLAP_MIN = 0.02
 
+# apply._shared_volume: how much more the folded pieces of one shape may hold
+# one by one than their union before the fold is said to put material in two
+# places at once - an absolute floor in mm3 and a fraction of the union,
+# whichever is larger. The integrator's own noise is what they absorb.
+# Measured 02.11.2026 (round 131) on the four flex boards, foldNeutral 0.5 and
+# 0, the three body modes - 384 layer folds: where nothing overlaps the
+# difference is at most 2.3e-05 mm3, 1.3e-06 of its layer; the seven FLEX
+# layers of flex3-a0 at 0, the one real overlap, share 0.074 to 0.131 mm3
+# each, 1.0 to 1.25% of the layer, the same as cutting their pieces against
+# each other pair by pair. The allowance is 43 (absolute) and 77 (relative)
+# times that noise, and 74 and 100 times under the overlap.
+OVERLAP_WARN_ABS = 1.0e-3
+OVERLAP_WARN_REL = 1.0e-4
+
+# apply._shared_volume: the iterative integrator's tolerance, the one the test
+# suites measure with (tests/_support.volume). A precaution, not a correction:
+# on the bends built today - revolved, or planes and cylinders trimmed by a
+# fitted curve when wrapped - the plain integrator agrees with it to 1e-9 of
+# the layer (measured 02.11.2026 on test_bend's notched strip and on every
+# folded layer of flex3-a0), so no test tells the two apart. It costs 0.1 to
+# 0.4 s a build on the four flex boards.
+OVERLAP_VOLUME_EPS = 1.0e-6
+
 # _map_strip: how a curved flat edge is sampled before it is fitted as a 2-D
 # spline on the cylinder - the probe that estimates its length, then one
 # point per SAMPLE_STEP mm, never fewer than SAMPLE_MIN nor more than

@@ -11,6 +11,33 @@ to use the tool.
 
 ---
 
+- **2026-11-02** — **The fold says what it used to pass over** (review findings
+  R5-2, R5-4, R5-5, R5-6 and R5-8, round 131). A flex rolled into a ring at
+  `foldNeutral` 0, as README advises, holds some material in two places at
+  once; the log now says how much once the board is built - 0.647 mm³ over the
+  seven FLEX layers of flex3-a0 - where it used to say nothing. A component
+  whose origin lies outside the outline, a connector overhanging the end of an
+  arm, moves with the piece of the board nearest to it and is named; it used to
+  stay flat at its old place while the arm folded away. "Stands in bend area"
+  and the pads drawn in a bend area are judged by the strip the bend curls, not
+  by the band its line draws across the whole board: on Cadence's demo board
+  every one of the 1045 pads the log named lay on a flat panel. A bend whose
+  inner side cannot be read is named in the log; it used to fold upwards
+  unsaid. On the boards on hand the models built are the same as before. /
+  **Сгиб говорит о том, что раньше пропускал** (находки R5-2, R5-4, R5-5, R5-6
+  и R5-8, раунд 131). Флекс, свёрнутый в кольцо при `foldNeutral` 0, как
+  советует README, держит часть материала в двух местах сразу. Теперь лог
+  после сборки платы называет этот объём (у flex3-a0 0,647 мм³ на семи слоях
+  FLEX), раньше он молчал. Компонент, чья точка привязки лежит за контуром
+  (например, разъём, свисающий с конца плеча), едет вместе с ближайшим куском
+  платы, и лог его называет; раньше он оставался плоским на старом месте, пока
+  плечо поднималось. «Stands in bend area» и площадки в области сгиба теперь
+  определяются по той полосе, которую сгиб сворачивает, а не по полосе, которую
+  его линия проводит через всю плату: на демо-плате Cadence все 1045 площадок,
+  которые называл лог, лежали на плоских панелях. Сгиб, у которого не прочесть
+  внутреннюю сторону, называется в логе; раньше он молча гнулся вверх. На
+  платах, которые есть под рукой, модели получаются прежними.
+
 - **2026-11-01** — **The window: launch flags for one run, no cut-short STEP
   after a cancel, and a place on a screen that shows it** (review findings
   R6-4, R6-6, R6-7, R6-11, R6-12, R6-14, R6-15, R6n-5 and R6n-6, round 130).

@@ -100,6 +100,11 @@ class Bend:
     order: int | None = None          # Allegro's bending sequence number
     width: float | None = None        # bend area, measured across the line
     info: str = ""                    # the raw property, kept for diagnosis
+    # Why inner_side is the default and not what the bend said: no INNER_SIDE
+    # at all, or a value that is neither TOP nor BOTTOM. None when it was read.
+    # bends_from_json says so; until round 131 such a bend folded the default
+    # way with nothing in the log (review 23.10.2026, R5-8).
+    side_unread: str | None = None
 
     @property
     def midpoint(self) -> tuple[float, float]:
@@ -119,12 +124,21 @@ class Bend:
         return (dy / n, -dx / n)
 
 
+# The two values INNER_SIDE takes: every bend of the boards on hand says one
+# or the other (19 bends in the golden corpus, 8 BOTTOM and 11 TOP).
+_SIDES = {"TOP": "top", "BOTTOM": "bottom"}
+
+
 def bend_from_dict(entry: dict) -> Bend | None:
     """One JSON bend entry -> Bend, or None when it cannot be read.
 
-    The exporter emits the parsed fields AND the raw property string. The parsed
-    fields win; the raw string is re-parsed only for what is missing, so a newer
-    Allegro that adds a field can be picked up here without a re-export.
+    The exporter writes a bend's name, line, inner radius and width, and the
+    raw property string as `info` (s3d_bends.il); the angle, the inner side
+    and the order are read out of that string here. A field the entry
+    carries itself wins over the string - an intermediate written by hand or
+    by another tool - so the string is read only for what is missing. (Until
+    round 131 this said the exporter wrote the parsed fields too; it never
+    has - review 23.10.2026, R5-9.)
     """
     if not isinstance(entry, dict):
         return None
@@ -144,7 +158,8 @@ def bend_from_dict(entry: dict) -> Bend | None:
     radius = entry.get("inner_radius")
     if radius is None:
         radius = info_length(fields.get("INNER_RADIUS") or fields.get("RADIUS"))
-    side = entry.get("inner_side") or fields.get("INNER_SIDE") or "TOP"
+    side = entry.get("inner_side") or fields.get("INNER_SIDE")
+    inner_side = _SIDES.get(str(side).strip().upper()) if side is not None else None
     order = entry.get("order")
     if order is None:
         order = info_number(fields.get("ORDER"))
@@ -158,10 +173,13 @@ def bend_from_dict(entry: dict) -> Bend | None:
         end=(float(end[0]), float(end[1])),
         angle=abs(float(angle)),
         radius=abs(float(radius)),
-        inner_side="bottom" if str(side).strip().upper().startswith("B") else "top",
+        inner_side=inner_side or "top",
         order=int(order) if order is not None else None,
         width=float(entry["width"]) if isinstance(entry.get("width"), (int, float)) else None,
         info=info,
+        side_unread=None if inner_side else (
+            "no INNER_SIDE" if side is None
+            else f"INNER_SIDE={str(side).strip()!r}, neither TOP nor BOTTOM"),
     )
 
 
@@ -183,5 +201,13 @@ def bends_from_json(data: dict, log: LogFn = _noop_log) -> list[Bend]:
         if bend.length <= EPS:
             log(f"warning: bend {bend.name} has a zero-length bend line, skipped")
             continue
+        if bend.side_unread:
+            # The property is undocumented (see parse_bend_info), so another
+            # Allegro version may name the field otherwise; the bend is still
+            # folded, the default way, and the log says it was not read.
+            log(f"warning: bend {bend.name}: {bend.side_unread} in its "
+                f"parameters, so it is folded with its top face on the inside "
+                f"of the curve - the default, which may be the wrong way; "
+                f"check the bend's inner side in Allegro (\"{bend.info}\")")
         bends.append(bend)
     return bends

@@ -16,7 +16,8 @@ from dataclasses import dataclass, field
 from OCP.TopoDS import TopoDS_Shape
 from OCP.gp import gp_Pnt, gp_Trsf
 
-from ..contour import clip_halfplane, contour_points, point_in_polygon, point_on_polygon, polygon_area
+from ..contour import (clip_halfplane, contour_points, nearest_on_polygon, point_in_polygon,
+                       point_on_polygon, polygon_area)
 from .apply import apply_plan
 from .constants import CLAIM_GRID, CUTTER_MARGIN, DEFAULT_ANCHOR, DEFAULT_NEUTRAL_FACTOR, DEFAULT_SLICE_ANGLE, DOUBLE_CLAIM_WARN, DRAWN_AREA_TOL_ABS, DRAWN_AREA_TOL_REL, EPS, FLAT_FRAME_MARGIN, LogFn, SEAM_TOL, SEAM_WARN, SLICE_OVERLAP_MIN, _noop_log
 from .cut import _slab
@@ -48,6 +49,11 @@ class FoldPlan:
     # zones of another stack inside a bend's strip - crooked bends, built as
     # drawn and named in the summary (crooked.crooked_parts, round 101)
     crooked: list = field(default_factory=list)
+    # mm3 the folded pieces of a shape share, one entry per shape that
+    # shares any (apply._shared_volume); the summary says so (round 131, R5-2)
+    overlap: list = field(default_factory=list)
+    # the neutral factor the plan was built at, for that line
+    neutral_factor: float | None = None
 
     def __bool__(self) -> bool:
         return bool(self.bends) and any(r.moved for r in self.regions)
@@ -60,11 +66,49 @@ class FoldPlan:
         A component in a bend area is a design-rule violation ("Avoid placing
         vias within a bend area", and packages likewise), but if one is there it
         gets the transform of the slice it stands on rather than being dropped.
+
+        A point outside every piece - a part whose origin lies past the
+        outline, a connector overhanging the end of an arm - moves with the
+        piece nearest to it (nearest_piece), as its pins do. Until round 131 it
+        got no transform at all and stayed flat where it was while the arm
+        beside it folded away (review 23.10.2026, R5-4); the build names such
+        a part (core._place_components).
         """
         for region in self.regions:
             if region.holds(x, y):
                 return region.trsf
+        near = self.nearest_piece(x, y)
+        if near is not None:
+            for region in self.regions:
+                if region.holds(*near[0]):
+                    return region.trsf
         return gp_Trsf()
+
+    def nearest_piece(self, x: float, y: float
+                      ) -> tuple[tuple[float, float], str, float] | None:
+        """For a flat point outside every piece: the nearest point of the
+        board, the label of the piece there and the distance to it. None
+        when a piece holds the point, or there are no pieces.
+
+        Measured to the pieces' outlines, edges included - _piece_at's
+        nearest vertex is enough to choose the held piece, not to say which
+        arm a point beside a long edge belongs to. A slice carries its whole
+        strip's outline, so the label is of the region that holds the point
+        found, which is the slice it falls in.
+        """
+        if any(region.holds(x, y) for region in self.regions):
+            return None
+        best = None
+        for region in self.regions:
+            for ring in region.polys or ([region.poly] if region.poly is not None else []):
+                found = nearest_on_polygon((x, y), ring)
+                if found is not None and (best is None or found[1] < best[1]):
+                    best = found
+        if best is None:
+            return None
+        point, distance = best
+        label = next((r.label for r in self.regions if r.holds(*point)), "?")
+        return point, label, distance
 
     def region_at(self, x: float, y: float) -> str:
         for region in self.regions:
@@ -114,11 +158,18 @@ class FoldPlan:
         return None
 
     def in_bend_area(self, x: float, y: float) -> str | None:
-        """The bend whose strip covers (x, y), if any."""
-        for bend, (nx, ny), (px, py), half in self.chain:
-            w = nx * (x - px) + ny * (y - py)
-            if -half <= w <= half:
-                return bend.name
+        """The bend whose strip holds (x, y), if any.
+
+        The strip itself - the piece of the board the bend curls - and not
+        the band its line draws across the whole board: on a board whose arms
+        leave in several directions that band crosses arms the bend never
+        touches, and until round 131 a part or a pin there was said to stand
+        in the bend area (review 23.10.2026, R5-5). A bend that is not folded
+        has no strip and is not asked.
+        """
+        for strip in self.strips:
+            if strip.holds(x, y):
+                return strip.bend.name
         return None
 
     # -- folding geometry ---------------------------------------------------- #
@@ -140,9 +191,22 @@ class FoldPlan:
 
         And first, one line per crooked bend - a zone of another stack inside
         its strip - whether or not it built evenly: since every piece wraps,
-        that same bend builds one way and said nothing (round 101).
+        that same bend builds one way and said nothing (round 101). Then one
+        line when the fold put material in two places at once (round 131,
+        R5-2) - a shape built with facets is not asked, its slices overlap
+        by design.
         """
         lines = [f"  {part.line()}" for part in self.crooked]
+        if self.overlap:
+            k = (f" at foldNeutral {self.neutral_factor:g}"
+                 if self.neutral_factor is not None else "")
+            lines.append(
+                f"  the fold puts {sum(self.overlap):.4f} mm3 of material in two "
+                f"places at once{k}, in {len(self.overlap)} of the shapes folded: "
+                f"the outer surface of a bend runs into the piece beside it, as "
+                f"a flex rolled into a ring does at foldNeutral 0 (README, The K "
+                f"factor). The model holds that material once, and a collision "
+                f"check sees the flex pass through itself.")
         for bend in self.bends:
             ways = {how: count for (name, how), count in self.tally.items()
                     if name == bend.name}
@@ -551,7 +615,8 @@ def plan_fold(bends: list[Bend], outline: list[tuple[float, float]],
         it the flattened polygon is cut instead, which chords every arc.
     """
     plan = FoldPlan(slice_angle=slice_angle,
-                    flat_top=board_top_z, flat_bottom=board_bottom_z)
+                    flat_top=board_top_z, flat_bottom=board_bottom_z,
+                    neutral_factor=neutral_factor)
     if not bends:
         return plan
 

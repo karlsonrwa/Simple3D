@@ -2403,12 +2403,12 @@
  {
   "id": "bend-area-ten-times-wide",
   "file": "stepbuilder/bend/plan.py",
-  "old": "            if -half <= w <= half:",
-  "new": "            if -half * 10.0 <= w <= half * 10.0:",
+  "old": "            if strip.holds(x, y):\n                return strip.bend.name\n",
+  "new": "            if abs(strip.normal[0] * x + strip.normal[1] * y - (strip.lo + strip.hi) / 2) <= 5.0 * (strip.hi - strip.lo):\n                return strip.bend.name\n",
   "suites": [
    "tests/test_bend.py"
   ],
-  "why": "in_bend_area calls a point ten strip-widths away from the bend line a part standing in the bend area. MEASURED: caught by tests/test_bend.py, FAIL  a part one and a half half-widths from the line is not in the bend area  <- (0.9424777960769379, 'B1')"
+  "why": "in_bend_area calls a point ten strip-widths away from the bend line a part standing in the bend area. Re-pointed in round 131 at the strip the bend curls (review 23.10.2026, R5-5)."
  },
  {
   "id": "bend-seam-far-edge-untransformed",
@@ -4819,7 +4819,7 @@
  {
   "id": "docs-mutation-count-stale",
   "file": "README.md",
-  "old": "(tests/mutations.json, 597 faults, applied",
+  "old": "(tests/mutations.json, 611 faults, applied",
   "new": "(tests/mutations.json, 999 faults, applied",
   "suites": [
    "tools/audit_docs.py"
@@ -6184,5 +6184,145 @@
    "tests/test_window_rules.py"
   ],
   "why": "the drain reads a queue a cancel has dropped: the window's timer raises every tick (R6-12) (round 130, review 23.10.2026)"
+ },
+ {
+  "id": "bend-side-any-b-is-bottom",
+  "file": "stepbuilder/bend/info.py",
+  "old": "    inner_side = _SIDES.get(str(side).strip().upper()) if side is not None else None\n",
+  "new": "    inner_side = (\"bottom\" if str(side).strip().upper().startswith(\"B\") else \"top\") if side is not None else None\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "INNER_SIDE read by its first letter again: Xyz folds upwards as if it had been read, and nothing is said (R5-8) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "bend-side-case-sensitive",
+  "file": "stepbuilder/bend/info.py",
+  "old": "    inner_side = _SIDES.get(str(side).strip().upper()) if side is not None else None\n",
+  "new": "    inner_side = _SIDES.get(str(side).strip()) if side is not None else None\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "INNER_SIDE=bottom is no side: the bend folds upwards and the log blames a value it could have read (R5-8) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "bend-side-unread-unsaid",
+  "file": "stepbuilder/bend/info.py",
+  "old": "        if bend.side_unread:\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a bend whose inner side was not read folds the default way with nothing in the log, as before round 131 (R5-8) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "bend-side-missing-not-noted",
+  "file": "stepbuilder/bend/info.py",
+  "old": "            \"no INNER_SIDE\" if side is None\n",
+  "new": "            None if side is None\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a bend with no INNER_SIDE at all - or the field spelled BEND_SIDE - is taken for one that said TOP (R5-8) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "fold-bend-area-infinite-band",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        for strip in self.strips:\n            if strip.holds(x, y):\n                return strip.bend.name\n        return None\n",
+  "new": "        for bend, (nx, ny), (px, py), half in self.chain:\n            w = nx * (x - px) + ny * (y - py)\n            if -half <= w <= half:\n                return bend.name\n        return None\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the bend area is the band the bend line draws across the whole board again: a part on another arm, level with the bend, is said to stand in it (R5-5) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "fold-outside-point-stays-flat",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        near = self.nearest_piece(x, y)\n        if near is not None:\n            for region in self.regions:\n                if region.holds(*near[0]):\n                    return region.trsf\n        return gp_Trsf()\n",
+  "new": "        return gp_Trsf()\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a point outside every piece gets no transform, as before round 131: a part past the tail's edge stays flat where it was while the tail stands up (R5-4) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "fold-nearest-by-vertex",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "                found = nearest_on_polygon((x, y), ring)\n",
+  "new": "                found = min((((vx, vy), math.hypot(vx - x, vy - y)) for vx, vy in ring),\n                            key=lambda f: f[1], default=None)\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the nearest piece by its nearest vertex, as _piece_at chooses the held piece: beside a long edge the point found is a corner far along it, and the distance said is wrong (R5-4) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "fold-outside-part-unsaid",
+  "file": "stepbuilder/core.py",
+  "old": "            if near is not None:\n                log(f\"warning: {ref_des}'s origin {x:.3f}, {y:.3f} lies outside \"\n",
+  "new": "            if False:\n                log(f\"warning: {ref_des}'s origin {x:.3f}, {y:.3f} lies outside \"\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a part whose origin lies past the outline is moved with the nearest piece without a word (R5-4) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "nearest-on-polygon-unclamped",
+  "file": "stepbuilder/contour.py",
+  "old": "        t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)\n        qx, qy = x0 + t * dx, y0 + t * dy\n",
+  "new": "        qx, qy = x0 + t * dx, y0 + t * dy\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the nearest point taken on the line of an edge, past its end: beyond a corner it is off the board, no piece holds it, and the point stays flat (R5-4) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "fold-overlap-not-measured",
+  "file": "stepbuilder/bend/apply.py",
+  "old": "    if not faceted:\n        shared = _shared_volume(pieces, fused)\n",
+  "new": "    if False:\n        shared = _shared_volume(pieces, fused)\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "what the folded pieces share is never measured, as before round 131: material in two places at once goes unsaid - the review measured 0.647 mm3 on flex3-a0's ring at foldNeutral 0 (R5-2) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "fold-overlap-asks-facets",
+  "file": "stepbuilder/bend/apply.py",
+  "old": "    if not faceted:\n        shared = _shared_volume(pieces, fused)\n",
+  "new": "    if True:\n        shared = _shared_volume(pieces, fused)\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "a faceted shape is asked too: its slices overlap by design, and every faceted bend is said to put material in two places (R5-2) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "fold-overlap-threshold-zero",
+  "file": "stepbuilder/bend/apply.py",
+  "old": "    if shared <= max(OVERLAP_WARN_ABS, OVERLAP_WARN_REL * abs(whole)):\n",
+  "new": "    if shared <= 0.0:\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "no allowance for the integrator's noise: a shape whose pieces share nothing is said to (R5-2) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "fold-overlap-unsaid",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "        if self.overlap:\n",
+  "new": "        if False:\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the shared material is measured and never said: the build's warnings stay silent about it (R5-2) (round 131, review 23.10.2026)"
+ },
+ {
+  "id": "fold-overlap-without-k",
+  "file": "stepbuilder/bend/plan.py",
+  "old": "                    flat_top=board_top_z, flat_bottom=board_bottom_z,\n                    neutral_factor=neutral_factor)\n",
+  "new": "                    flat_top=board_top_z, flat_bottom=board_bottom_z)\n",
+  "suites": [
+   "tests/test_bend.py"
+  ],
+  "why": "the line about shared material does not say the neutral factor the board was folded at, the one number the user can change (R5-2) (round 131, review 23.10.2026)"
  }
 ]

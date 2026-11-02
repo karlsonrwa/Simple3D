@@ -13,12 +13,14 @@ from __future__ import annotations
 from OCP.BRep import BRep_Builder
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+from OCP.BRepGProp import BRepGProp
+from OCP.GProp import GProp_GProps
 from OCP.TopAbs import TopAbs_ShapeEnum
 from .._occt import TopTools_ListOfShape
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator, TopoDS_Shape
 
-from .constants import LogFn, _noop_log
+from .constants import LogFn, OVERLAP_VOLUME_EPS, OVERLAP_WARN_ABS, OVERLAP_WARN_REL, _noop_log
 from .cut import _cut_to_region
 from .regions import _bbox, _is_empty
 from .strip_revolve import _revolve_strip
@@ -84,6 +86,9 @@ def apply_plan(plan, shape: TopoDS_Shape, fuse: bool = True,
             return compound
 
     pieces: list[TopoDS_Shape] = []
+    # Faceted slices overlap their neighbours on purpose (_walk), so a shape
+    # built with them is not asked what its pieces share (_shared_volume).
+    faceted = False
     for region in plan.regions:
         if region.kind != "panel":
             continue
@@ -112,6 +117,7 @@ def apply_plan(plan, shape: TopoDS_Shape, fuse: bool = True,
             if note:
                 plan._note_build(strip.bend.name, "faceted", log,
                                  why[0] if why else "")
+            faceted = True
             for region in strip.facets:
                 piece = _cut_to_region(shape, region.bounds, box, region)
                 if piece is None:
@@ -152,7 +158,40 @@ def apply_plan(plan, shape: TopoDS_Shape, fuse: bool = True,
         for piece in pieces:
             builder.Add(compound, piece)
         return compound
+    if not faceted:
+        shared = _shared_volume(pieces, fused)
+        if shared is not None:
+            plan.overlap.append(shared)
     return fused
+
+
+def _shared_volume(pieces: list[TopoDS_Shape], fused: TopoDS_Shape) -> float | None:
+    """The material the fold put in one place twice, in mm3 - what the
+    pieces hold one by one less what their union holds - or None when that
+    is the integrator's noise (OVERLAP_WARN_ABS / OVERLAP_WARN_REL).
+
+    Pieces that only meet at their seams share nothing. A flex rolled into a
+    ring at foldNeutral 0 does share: each bend consumes only the flat
+    material of its inner arc, and the outer surface of the loop runs into
+    the piece beside it before it clears it. The review measured 0.647 mm3
+    over the seven FLEX layers of flex3-a0, taken in by the fuse without a
+    word, each layer about 1% short of README's volume rule (23.10.2026,
+    R5-2, round 131). One volume per piece and one of the union, after the
+    fuse that is made anyway, where asking every pair would be a boolean
+    each.
+    """
+    whole = _volume(fused)
+    apart = sum(_volume(piece) for piece in pieces)
+    shared = apart - whole
+    if shared <= max(OVERLAP_WARN_ABS, OVERLAP_WARN_REL * abs(whole)):
+        return None
+    return shared
+
+
+def _volume(shape: TopoDS_Shape) -> float:
+    props = GProp_GProps()
+    BRepGProp.VolumeProperties_s(shape, props, OVERLAP_VOLUME_EPS, False, False)
+    return props.Mass()
 
 
 def _fuse_all(pieces: list[TopoDS_Shape], log: LogFn) -> TopoDS_Shape:

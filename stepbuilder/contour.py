@@ -266,6 +266,31 @@ def point_on_polygon(point: tuple[float, float],
     return False
 
 
+def nearest_on_polygon(point: tuple[float, float],
+                       polygon: list[tuple[float, float]]
+                       ) -> tuple[tuple[float, float], float] | None:
+    """The point of the polygon's boundary nearest to *point*, and how far it
+    is; None for a polygon with no vertices. The same projection
+    point_on_polygon makes, so the point it gives back is on the boundary by
+    that test too - the fold asks which piece holds it (FoldPlan.transform_at,
+    round 131)."""
+    x, y = point
+    n = len(polygon)
+    best = None
+    for i in range(n):
+        x0, y0 = polygon[i]
+        x1, y1 = polygon[(i + 1) % n]
+        dx, dy = x1 - x0, y1 - y0
+        length = dx * dx + dy * dy
+        t = 0.0 if length <= 0.0 else ((x - x0) * dx + (y - y0) * dy) / length
+        t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+        qx, qy = x0 + t * dx, y0 + t * dy
+        d = math.hypot(x - qx, y - qy)
+        if best is None or d < best[1]:
+            best = ((qx, qy), d)
+    return best
+
+
 def point_in_polygon(point: tuple[float, float],
                      polygon: list[tuple[float, float]]) -> bool:
     """Ray casting. Used to find which zone a bend line sits in."""

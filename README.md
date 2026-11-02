@@ -931,7 +931,13 @@ was placed on. A component standing inside a bend area is placed on the curve
 and reported — that is a design rule violation, not a modelling choice. A
 copper pad drawn there is placed on the curve's tangent and reported the same
 way, with its bend; a via or a pin under the mask there draws nothing and gets
-a note of its own, by bend.
+a note of its own, by bend. A bend area here is the strip the bend curls, on
+the arm it crosses: a part on another arm, level with the bend, is not in it.
+A component whose origin lies outside the outline — a connector overhanging
+the end of an arm — moves with the piece of the board nearest to it, and the
+log names it with the distance. A bend whose inner side cannot be read — its
+property has no `INNER_SIDE`, or one that is neither `TOP` nor `BOTTOM` — is
+folded with its top face on the inside of the curve, and the log says so.
 
 **The radius is measured from the local stack**, since the flex surface can sit
 two millimetres below the top of a stiffener.
@@ -1011,6 +1017,13 @@ at `k = 0` while at `k = 0.5` each bend wants 0.3 mm more material than exists.
 **Set `foldNeutral` to `0` for such a board.** When the strips do reach each
 other the log says so **in blue**, with the largest `foldNeutral` this particular
 board takes cleanly — so the choice is a number rather than a guess.
+
+At `k = 0` the ring pays for its fit: the outer surface of each loop runs into
+the piece beside it before it clears it, so the folded flex holds some material
+in two places at once. The log says how much once the board is built — on
+flex3-a0, the ring board, 0.647 mm³ over its seven FLEX layers, about 1% of
+each — and the model holds that material once, so a collision check sees the
+flex pass through itself.
 
 Which of the two you want depends on whether you are reproducing the designer's
 layout or modelling the material. When two bends do claim the same material, the
@@ -1164,7 +1177,7 @@ stepbuilder/
   worker_bridge.py  the window's half of that process: start, drain, notice a crash, cancel
   gui.py         the tkinter window, a thin wrapper around core
   __main__.py    entry point: window, headless, or prefilled from Allegro
-tools/, tests/   SKILL checks, the docs audit, the Python name check, 32 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 597 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, one that runs the export command into folders it is given, and four that change the copy or the disk otherwise - its design units, a drill offset, a device's STEP mapping, folders on a UNC path and a property the hand test adds and takes off - two of them exporting it), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
+tools/, tests/   SKILL checks, the docs audit, the Python name check, 32 test suites, two golden corpora (STEP and the SKILL export, the latter run headless), the mutation table the suites are proved against (tests/mutations.json, 611 faults, applied by tools/mutate.py to private copies of the tree, in parallel, never to the working tree), the probes (read-only, bar four that draw test objects into the runner's scratch copy, one of them saving it for Allegro's artwork batch, one that runs the export command into folders it is given, and four that change the copy or the disk otherwise - its design units, a drill offset, a device's STEP mapping, folders on a UNC path and a property the hand test adds and takes off - two of them exporting it), the runner that drives one against a board headless (run_probe.py) the silkscreen's fill kinds checked against Allegro's own Gerber (silk_artwork.py) and the legend's area check shown on a board's own polygons, all eight readings of the arcs against the rounding margin (silk_areas.py)
 ```
 
 `QUICKSTART.md` is the five-minute version. `CHANGELOG.md` is what changed and
@@ -2108,7 +2121,14 @@ Simple 3D читает все три и складывает модель.
 не выбор модели. Медная площадка, нарисованная в области сгиба, ставится на
 касательную к дуге и отмечается так же, с именем сгиба. Переходное или вывод
 под маской в области сгиба ничего не рисует, и лог называет их отдельной
-заметкой, тоже по сгибам.
+заметкой, тоже по сгибам. Область сгиба здесь значит ту полосу, которую сгиб
+сворачивает, на том плече, которое он пересекает: деталь на другом плече на
+той же высоте в неё не входит. Компонент, чья точка привязки лежит за
+контуром (например, разъём, свисающий с конца плеча), едет вместе с
+ближайшим куском платы, и лог называет его вместе с расстоянием. Сгиб, у
+которого не прочесть внутреннюю сторону (в свойстве нет `INNER_SIDE` или там
+не `TOP` и не `BOTTOM`), складывается верхней гранью внутрь дуги, и лог об
+этом говорит.
 
 **Радиус отсчитывается от местного стека**: поверхность флекса может лежать на
 два миллиметра ниже верха стиффенера.
@@ -2189,6 +2209,13 @@ Allegro построена при `k = 0`. На плате с запасом р�
 поставьте `foldNeutral` в `0`.** Когда полосы всё же сходятся, лог говорит об
 этом **синим** и называет наибольшее `foldNeutral`, которое эта плата держит
 чисто, — то есть выбор становится числом, а не догадкой.
+
+За смыкание при `k = 0` кольцо платит: внешняя поверхность каждой петли
+заходит в соседний кусок, прежде чем отойти от него, и часть материала
+согнутого флекса оказывается в двух местах сразу. Лог называет этот объём
+после сборки платы: на flex3-a0, плате с кольцом, 0,647 мм³ на семи слоях
+FLEX, около 1 % каждого. В модели этот материал есть один раз, поэтому
+проверка столкновений увидит, что флекс проходит сам сквозь себя.
 
 Что вам нужно из двух — зависит от того, воспроизводите вы разводку
 конструктора или моделируете материал. Когда два сгиба действительно претендуют
@@ -2343,7 +2370,7 @@ stepbuilder/
   worker_bridge.py  половина этого процесса со стороны окна: запуск, чтение очереди, замеченное падение, отмена
   gui.py         окно tkinter, тонкая обёртка вокруг core
   __main__.py    точка входа: окно, консоль или запуск из Allegro
-tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 32 набора тестов, два золотых корпуса (STEP и экспорт SKILL, второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 597 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, одного, который запускает команду экспорта в данные ему папки, и четырёх, меняющих копию или диск иначе: её единицы, смещение сверла, привязку модели STEP к компоненту, папки на UNC-пути и свойство, которое ручной тест ставит и снимает; два из них её выгружают), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
+tools/, tests/   проверки SKILL, аудит документации, проверка имён Python, 32 набора тестов, два золотых корпуса (STEP и экспорт SKILL, второй гоняется без окна), таблица мутаций, на которой наборы доказаны (tests/mutations.json, 611 поломок, применяется tools/mutate.py к собственным копиям дерева параллельно, никогда к рабочему), зонды (только читают, кроме четырёх, рисующих тестовые объекты в черновую копию платы, причём один из них сохраняет её для пакетной команды artwork, одного, который запускает команду экспорта в данные ему папки, и четырёх, меняющих копию или диск иначе: её единицы, смещение сверла, привязку модели STEP к компоненту, папки на UNC-пути и свойство, которое ручной тест ставит и снимает; два из них её выгружают), запускалка зонда против платы без окна (run_probe.py) сверка видов заливки шелкографии с Gerber самого Allegro (silk_artwork.py) и сверка площадей легенды на многоугольниках самой платы, все восемь прочтений дуг против допуска на округление (silk_areas.py)
 ```
 
 `QUICKSTART.md` — версия на пять минут. `CHANGELOG.md` — что и когда менялось.

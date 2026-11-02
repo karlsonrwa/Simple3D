@@ -3522,6 +3522,53 @@ probe's procedure satisfy a call in the exporter).
 an ImportError deep inside `generate()`. `test_silk.py` already carried a
 comment about this; the other two now do too.
 
+## Update 2026-11-02 (round 131) — the fold findings (R5-2, R5-4, R5-5, R5-6, R5-8)
+
+Batch 8 of the owner's «Пройдись дальше сам по всем оставшимся находкам»,
+planned around a night without the 4090 at his «Машина 4090 будет недоступна
+ночью» and «Да, и лёгкие проверки»: the code, the tests and the rows written in
+the night with only test_mutations, the audit and pyflakes run here; measured
+and proved on the 4090 the next morning. The record is
+`docs/records/fold-batch-2026-11-02.md`, scratch in `build/fix-2026-10-31/r131/`.
+
+- Measured first, HEAD c83c9cb (`cases131.py`, the review's own cases): test
+  `[7c]`'s ring at k = 0 holds 4.9560 mm3 twice - its pieces 165.0265, README's
+  rule, the fused ring 160.0706 - and nothing is said; points 0.3 to 1.4 mm past
+  a tail's outline stay flat at their old place; on a U board bent across its
+  left arm a point on the right arm is "in bend area C"; three bends whose
+  INNER_SIDE is missing, spelled BEND_SIDE or Xyz fold upwards unsaid. The
+  pairwise oracle (`pairs131.py`): flex3-a0 at k = 0 shares 0.64718 mm3 over
+  its seven FLEX layers, at 0.5 nothing.
+- The fix: `apply._shared_volume` - the pieces' volumes less their union's,
+  per folded shape without facets, into `FoldPlan.overlap`, and a summary line
+  with `neutral_factor` (R5-2); test_bend [7c] expects README's rule and the
+  oracle (R5-6); `transform_at` falls back to `nearest_piece`, through the new
+  `contour.nearest_on_polygon`, and `core._place_components` names the part
+  (R5-4); `in_bend_area` asks the strips (R5-5); `info.py` reads TOP/BOTTOM only
+  and names a bend whose side it cannot read, and its docstring no longer says
+  the exporter writes the parsed fields (R5-8, R5-9's half). The 25.1 docs
+  name neither INNER_SIDE nor BEND_SIDE.
+- After: the oracle equals sum less union layer for layer; the boards
+  (`build131.py`, four flex boards x two neutral factors x three body modes, by
+  both trees): geometry identical line for line, colouring identical, only the
+  style order differs; logs differ in two ways - flex3-a0 at k = 0 says 0.6472
+  mm3 in two places, and Cadence_Demo no longer says "1045 pad(s) drawn in a
+  bend area": every one of the 726 points HEAD's band took lies on a panel
+  (693 on the held one, 33 on panels after other bends), none on a slice
+  (`bandcmp131.py`). Noise where nothing overlaps: at most 2.3e-05 mm3, 1.3e-06
+  of the layer, over 384 layer folds; the allowance (1e-3 mm3 or 1e-4) kept.
+- The 4090, job131a (10:28-10:49): red on HEAD's code, green on the new; rows
+  144 of 146. Two survivors, both mine: `fold-overlap-plain-integrator` - on
+  today's bends the plain integrator agrees with the iterative one to 1e-9
+  (`integrator131.py`), so the row is the code's equivalent and goes, the
+  constant's comment saying it is a precaution; `fold-overlap-threshold-zero` -
+  no test asked the rule with positive noise; [7c] now asks it with stood-in
+  volumes. Rows 597 -> 611. run_all 34/36 in session 0 (the window suites).
+- job131b (10:52-10:58): red in full on HEAD's code - [2] fails, [7c] stops on
+  `FoldPlan` having no `overlap`; green; the five `fold-overlap` rows 5 of 5;
+  run_all 34/36. No row of the round is held by the window suites alone, so
+  nothing waits for the owner's session.
+
 ## Update 2026-11-01 (round 130) — the window findings (R6-4, R6-6, R6-7, R6-9, R6-11, R6-12, R6-14, R6-15, R6n-5, R6n-6)
 
 Batch 7 of the owner's «Пройдись дальше сам по всем оставшимся находкам»,
