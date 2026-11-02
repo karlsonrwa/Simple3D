@@ -3594,8 +3594,8 @@ record is `docs/records/harness-batch-2026-11-02.md`, scratch in
      there open the ONE desktop; only session 0 refuses the second, because
      the desktop's DACL there lacks the journal and switch rights GENERIC_ALL
      asks for. test_harness [7] asked only that four stubs went on, so
-     `support-desktop-name-shared` was caught in session 0 and would pass in
-     the owner's session (read and reasoned, not run there). Now each stub
+     `support-desktop-name-shared` was caught in session 0 and passed in the
+     owner's session (reasoned first, then run there: job18 below). Now each stub
      says which desktop its thread is on, and [7] asks for four different
      ones, each one the helper named; a stub maps its window only on such a
      desktop, judged by the name and not by the helper's answer, so a helper
@@ -3607,7 +3607,7 @@ record is `docs/records/harness-batch-2026-11-02.md`, scratch in
      fails both halves there (three stubs error 5, one name), the never-set
      row the error-170 check and "no two the same" (`Default` four times);
      run_all 35/37. The new half bites on its own only in an interactive
-     session, so only a run in the owner's session shows it.
+     session, so only a run in the owner's session shows it (job18 below).
 - On the 4090: job132f (12:41-12:58), the whole table on the tree as it then
   stood, 640 rows: caught 590, none survived, refused or hung; 830 s of wall
   for 6309 s of suite runs on 8 copies; not proved 50 - 38 held only by
@@ -3616,8 +3616,24 @@ record is `docs/records/harness-batch-2026-11-02.md`, scratch in
   every test_window_rules row by a check of its own. job132g (12:58-13:04):
   the audit's 18 rows 18 of 18. job132h (13:05-13:10), the final tree: the
   round's 31 rows 31 of 31, each by the check written for it; run_all 35/37
-  (the two window suites). Rows 611 -> 642. The 38 window rows wait for the
-  owner's session.
+  (the two window suites). Rows 611 -> 642. The 38 window rows waited for
+  the owner's session (job18 below).
+- The owner's session, at his «Да, запускай»: job18 (23:23:40-23:29:21, a
+  one-shot task in session 2 as round 130's job17, `guarded_job.py`; scratch
+  in `build/fix-2026-10-31/r132/remote18/`, the 205 files hash-checked) -
+  run_all 37/37 in 126 s, the window suites on a desktop per process for the
+  first time in his session. The two desktop rows alone (`one132k.py`, [7]'s
+  checks line by line): with the shared name "each get a desktop of their
+  own" PASSES there and only "no two of them the same" fails, all four on
+  `Simple3D-tests` - the new half bites on its own; the never-set row fails
+  the error-170 check and "no two the same" (`Default` four times), no
+  window mapped. ac83193's harness in today's tree passes the shared name,
+  0 FAIL: the gap was real. The 38 window rows and the two desktop rows 40 of
+  40 (146 s of wall on 8 copies). His clipboard text (152 chars) put back
+  and read back equal; the task deleted, nothing left running. Round 130's
+  job17 made the same shared-name call (c83c9cb's `_support`), so by this
+  measurement its copies shared that hidden desktop and showed nothing on
+  his desktop; job17 itself not re-run.
 
 ## Update 2026-11-02 (round 131) — the fold findings (R5-2, R5-4, R5-5, R5-6, R5-8)
 
